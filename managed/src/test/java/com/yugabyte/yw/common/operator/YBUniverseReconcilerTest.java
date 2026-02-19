@@ -37,6 +37,7 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.OperatorResource;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.TaskInfo;
@@ -52,12 +53,15 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
+import io.fabric8.kubernetes.client.utils.Serialization;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
@@ -220,6 +224,54 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.verify(universeCRUDHandler, Mockito.times(1))
         .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
     Mockito.verify(ybUniverseResource, Mockito.atLeast(1)).patch(any(YBUniverse.class));
+
+    // Verify OperatorResource entries were persisted in the database
+    List<OperatorResource> allResources = OperatorResource.getAll();
+    assertEquals(1, allResources.size());
+    assertTrue(
+        "OperatorResource name should contain the universe name",
+        allResources.get(0).getName().contains(universeName));
+    YBUniverse rUniverse = Serialization.unmarshal(allResources.get(0).getData(), YBUniverse.class);
+    assertEquals(universeName, rUniverse.getMetadata().getName());
+    assertEquals(namespace, rUniverse.getMetadata().getNamespace());
+    assertEquals("2.21.0.0-b1", rUniverse.getSpec().getYbSoftwareVersion());
+    assertEquals(Long.valueOf(1), rUniverse.getSpec().getNumNodes());
+    assertEquals(Long.valueOf(1), rUniverse.getSpec().getReplicationFactor());
+    assertTrue(rUniverse.getSpec().getEnableYSQL());
+  }
+
+  @Test
+  public void testReconcileCreateAddsResourceToTrackedResources() {
+    String universeName = "test-tracked-resources-universe";
+    YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    assertTrue(
+        "Tracked resources should be empty before reconcile",
+        ybUniverseReconciler.getTrackedResources().isEmpty());
+
+    ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
+
+    assertEquals(
+        "Tracked resources should contain the universe after CREATE",
+        1,
+        ybUniverseReconciler.getTrackedResources().size());
+    KubernetesResourceDetails details =
+        ybUniverseReconciler.getTrackedResources().iterator().next();
+    assertEquals(universeName, details.name);
+    assertEquals(universe.getMetadata().getNamespace(), details.namespace);
+
+    // Verify OperatorResource entries were persisted in the database
+    List<OperatorResource> allResources = OperatorResource.getAll();
+    assertEquals(1, allResources.size());
+    assertTrue(
+        "OperatorResource name should contain the universe name",
+        allResources.get(0).getName().contains(universeName));
+    YBUniverse rUniverse = Serialization.unmarshal(allResources.get(0).getData(), YBUniverse.class);
+    assertEquals(universeName, rUniverse.getMetadata().getName());
+    assertEquals(namespace, rUniverse.getMetadata().getNamespace());
+    assertEquals("2.21.0.0-b1", rUniverse.getSpec().getYbSoftwareVersion());
+    assertEquals(Long.valueOf(1), rUniverse.getSpec().getNumNodes());
+    assertEquals(Long.valueOf(1), rUniverse.getSpec().getReplicationFactor());
+    assertTrue(rUniverse.getSpec().getEnableYSQL());
   }
 
   @Test
@@ -265,7 +317,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     universe.getSpec().setProviderName("");
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
@@ -418,7 +470,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
               return null;
             })
         .when(operatorUtils)
-        .createProviderCrFromProviderEbean(providerData, namespace);
+        .createProviderCrFromProviderEbean(providerData, namespace, true);
     // First reconcile will create auto provider CR
     ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
     try {
@@ -461,6 +513,30 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
     Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testReconcileDeleteRemovesOperatorResource() {
+    String universeName = "test-delete-tracked-universe";
+    YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // First CREATE to track the resource and persist OperatorResource
+    ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
+    assertEquals(1, OperatorResource.getAll().size());
+
+    // Stub findByName to return empty list (universe "already deleted" in YBA).
+    // The YBUniverse has no finalizers, so the delete thread spawn is skipped.
+    Mockito.when(universeCRUDHandler.findByName(eq(defaultCustomer), anyString()))
+        .thenReturn(Collections.emptyList());
+
+    ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.DELETE);
+
+    assertTrue(
+        "Tracked resources should be empty after delete",
+        ybUniverseReconciler.getTrackedResources().isEmpty());
+    assertTrue(
+        "OperatorResource entries should be removed after delete",
+        OperatorResource.getAll().isEmpty());
   }
 
   @Test

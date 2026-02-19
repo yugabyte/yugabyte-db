@@ -45,11 +45,13 @@
 
 #include <sys/stat.h>
 
+#include <chrono>
 #include <fstream>
 #include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 #include <set>
@@ -88,6 +90,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/perf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stack_trace_tracker.h"
@@ -604,99 +607,45 @@ static void ResetStackTraceHandler(const Webserver::WebRequest& req, Webserver::
                << "<a href=\"javascript:window.location=document.referrer\">Back</a>";
 }
 
-// Logs the command that was run to the webpage_stream, and returns the output of the command that
-// was run or a not-ok status if the command failed.
-Result<std::string> LogAndRunCommand(
-    const std::vector<std::string>& cmd, std::stringstream& webpage_stream) {
-  std::string out, err;
-  webpage_stream << Format("$0: running $1<br>", CoarseMonoClock::Now(), AsString(cmd));
-  auto status = Subprocess::Call(cmd, &out, &err);
-  LOG(INFO) << "Command: " << AsString(cmd) << " output: " << out << " error: " << err;
-  RETURN_NOT_OK_PREPEND(status, err);
-  return out;
-}
-
-// Run perf to record a profile and generate a flamegraph and print it to output.
-// storage_dir is the directory to store the profile data and flamegraph.
-Status RunPerf(
-    std::stringstream& output, int seconds, int freq, const std::string& storage_dir) {
-  const pid_t target_pid = getpid();
-  const auto perf_record_path = Format("$0/profile.data", storage_dir);
-  const auto perf_script_path = Format("$0/profile-script.txt", storage_dir);
-  const auto collapsed_stacks_name = "profile-collapsed.txt";
-  const auto collapsed_stacks_path = Format("$0/$1", storage_dir, collapsed_stacks_name);
-
-  // There are two newer flows listed on
-  // https://www.brendangregg.com/blog/2016-04-30/linux-perf-folded.html. Neither works for us.
-  // 1. Using perf report to directly report stacks still requires the same number of commands since
-  //    we need to write the awk command too.
-  // 2. BCC tools 'profile' requires sudo.
-
-  // Test to see if perf is installed.
-  // TODO(#28918): Change this to link to an official YB docs page once the endpoint is stable.
-  auto status = LogAndRunCommand({"perf", "--version"}, output);
-  if (!status.ok()) {
-    return STATUS(NotFound,
-      "Failed to get perf version. Consider running: sudo yum install perf && "
-      "sudo sysctl kernel.perf_event_paranoid=0 && sudo sysctl kernel.kptr_restrict=0");
-  }
-
-  // Record profile.
-  std::vector<std::string> record_cmd = {
-      "perf", "record",
-      "-F", std::to_string(freq),
-      "-p", std::to_string(target_pid),
-      "-g",
-      "-o", perf_record_path,
-      "--", "sleep", std::to_string(seconds)
-  };
-  VERIFY_RESULT(LogAndRunCommand(record_cmd, output));
-
-  // Run perf script to generate stacks.
-  std::vector<std::string> script_cmd = {"perf", "script", "-i", perf_record_path};
-  auto script_out = VERIFY_RESULT(LogAndRunCommand(script_cmd, output));
-  RETURN_NOT_OK_PREPEND(WriteStringToFile(Env::Default(), script_out, perf_script_path),
-      Format("Failed to write perf script output to '$0'", perf_script_path));
-
-  // Collapse stacks.
-  std::vector<std::string> collapse_cmd =
-      {VERIFY_RESULT(path_utils::GetToolPath("stackcollapse-perf.pl")), perf_script_path};
-  auto collapsed_out = VERIFY_RESULT(LogAndRunCommand(collapse_cmd, output));
-  RETURN_NOT_OK_PREPEND(WriteStringToFile(Env::Default(), collapsed_out, collapsed_stacks_path),
-      "Failed to write collapsed stacks output to '" + collapsed_stacks_path + "'");
-  // Output a download link for the collapsed stacks file.
-  output << Format(
-        "<br><a href=\"/$0\" download>Download collapsed stacks</a><br>", collapsed_stacks_name);
-
-  // Generate flamegraph.
-  std::vector<std::string> flamegraph_cmd =
-      {VERIFY_RESULT(path_utils::GetToolPath("flamegraph.pl")), collapsed_stacks_path};
-  output << VERIFY_RESULT(LogAndRunCommand(flamegraph_cmd, output));
-  return Status::OK();
-}
-
 static void PerfHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp,
     const std::string& storage_dir) {
-  std::stringstream* output = &resp->output;
+  std::stringstream& output = resp->output;
 
   const std::string seconds_str = FindWithDefault(req.parsed_args, "seconds", "1");
   const std::string freq_str = FindWithDefault(req.parsed_args, "freq", "99");
 
   int seconds, freq;
   if (!safe_strto32(seconds_str, &seconds) || seconds <= 0) {
-    *output << "Invalid 'seconds' value: " << seconds_str;
+    output << "Invalid 'seconds' value: " << seconds_str;
     return;
   }
   if (!safe_strto32(freq_str, &freq) || freq <= 0) {
-    *output << "Invalid 'freq' value: " << freq_str;
+    output << "Invalid 'freq' value: " << freq_str;
     return;
   }
 
-  auto s = RunPerf(*output, seconds, freq, storage_dir);
+  PerfProfiler profiler;
+  auto s = profiler.Start(freq, storage_dir);
   if (!s.ok()) {
-    *output << s.ToString();
+    output << s.ToString();
     return;
+  }
+
+  std::this_thread::sleep_for(std::chrono::seconds(seconds));
+
+  auto stop_result = profiler.Stop();
+  if (!stop_result.ok()) {
+    output << stop_result.status().ToString();
+    return;
+  } else {
+    // Output a download link for the collapsed stacks file.
+    output << Format(
+        "<br><a href=\"/$0\" download>Download collapsed stacks</a> (to load into another viewer "
+        "like Speedscope, or for archiving)<br>",
+        stop_result->collapsed_stacks_name);
+    // Output flamegraph.
+    output << stop_result->flamegraph;
   }
 }
 

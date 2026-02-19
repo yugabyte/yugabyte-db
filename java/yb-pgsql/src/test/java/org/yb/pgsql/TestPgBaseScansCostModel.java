@@ -1,6 +1,7 @@
 package org.yb.pgsql;
 
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_INDEX_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_BITMAP_TABLE_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.testExplain;
@@ -29,6 +30,15 @@ public class TestPgBaseScansCostModel extends BasePgSQLTest {
 
   private static PlanCheckerBuilder makePlanBuilder() {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  private void setReltuples(Statement stmt, String table_name, double reltuples) throws Exception {
+    stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+    stmt.execute(String.format("UPDATE pg_class SET reltuples = %f WHERE relname = '%s'",
+                               reltuples, table_name));
+    stmt.execute("UPDATE pg_yb_catalog_version SET current_version = current_version + 1 " +
+                 "WHERE db_oid = 1");
+    stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
   }
 
   @Test
@@ -221,6 +231,81 @@ public class TestPgBaseScansCostModel extends BasePgSQLTest {
               .build())
             .build())
           .build());
+    }
+  }
+
+  @Test
+  public void test29685NegativeCostEstimates() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("SET yb_enable_cbo = ON");
+
+      stmt.execute("CREATE TABLE t_29685_1 (k1 INT, v1 INT)");
+      stmt.execute("CREATE INDEX t_29685_1_idx ON t_29685_1 (k1 ASC)");
+      stmt.execute("INSERT INTO t_29685_1 (SELECT s, s FROM generate_series(1, 10000) s)");
+      stmt.execute("ANALYZE t_29685_1");
+
+      setReltuples(stmt, "t_29685_1", 2147483584.0);
+      testExplain(stmt, "/*+ IndexOnlyScan(t_29685_1 t_29685_1_idx) */ SELECT k1 FROM t_29685_1",
+        makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("t_29685_1_idx")
+          .totalCost(Checkers.greater(0))
+          .build())
+        .build());
+
+      setReltuples(stmt, "t_29685_1", 4000000000.0);
+      testExplain(stmt, "/*+ IndexOnlyScan(t_29685_1 t_29685_1_idx) */ SELECT k1 FROM t_29685_1",
+        makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("t_29685_1_idx")
+          .totalCost(Checkers.greater(0))
+          .build())
+        .build());
+
+      setReltuples(stmt, "t_29685_1", 400000000000.0);
+      testExplain(stmt, "/*+ IndexOnlyScan(t_29685_1 t_29685_1_idx) */ SELECT k1 FROM t_29685_1",
+        makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("t_29685_1_idx")
+          .totalCost(Checkers.greater(0))
+          .build())
+        .build());
+
+      stmt.execute("DROP TABLE t_29685_1");
+
+      stmt.execute("CREATE TABLE t_29685_2 (k1 INT, k2 INT)");
+      stmt.execute("CREATE INDEX t_29685_2_idx ON t_29685_2 (k1 ASC, k2 ASC)");
+      stmt.execute("INSERT INTO t_29685_2 (SELECT 1, s*100000 FROM generate_series(1, 10000) s)");
+      stmt.execute("ANALYZE t_29685_2");
+
+      /*
+       * Set up statistics to simulate a large table. Change stats so that k1 has 1 distinct value
+       * and k2 has all distinct values.
+       */
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = ON");
+      stmt.execute("UPDATE pg_class SET reltuples = 400000000000 WHERE relname like 't_29685_2%%'");
+      stmt.execute("UPDATE pg_statistic SET stadistinct = 1 WHERE " +
+                   "starelid = 't_29685_2'::regclass AND staattnum = 1");
+      stmt.execute("UPDATE pg_statistic SET stadistinct = -1 WHERE " +
+                   "starelid = 't_29685_2'::regclass AND staattnum = 2");
+      stmt.execute("UPDATE pg_yb_catalog_version SET current_version = current_version + 1 " +
+                   "WHERE db_oid = 1");
+      stmt.execute("SET yb_non_ddl_txn_for_sys_tables_allowed = OFF");
+
+      testExplain(stmt, "/*+ IndexOnlyScan(t_29685_2 t_29685_2_idx) */ SELECT * FROM t_29685_2 " +
+                        "WHERE k1 = 1 AND k2 IN (100000, 200000, 300000, 400000, 500000)",
+        makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+          .nodeType(NODE_INDEX_ONLY_SCAN)
+          .indexName("t_29685_2_idx")
+          .totalCost(Checkers.greater(0))
+          .build())
+        .build());
+
+      stmt.execute("DROP TABLE t_29685_2");
     }
   }
 }

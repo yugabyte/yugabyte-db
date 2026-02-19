@@ -486,7 +486,7 @@ Status EvalOperands(
 }
 
 // Get TServer opcode.
-yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr);
-bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
+yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionMsg& ql_expr);
+bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionMsg& ql_expr);
 
 } // namespace yb::qlexpr

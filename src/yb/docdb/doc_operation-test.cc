@@ -15,6 +15,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
@@ -623,7 +624,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
-                         ValueRef(QLValue::Primitive(2)),
+                         QLValue::Primitive(2),
                          HybridTime(2001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
                          QLValue::Primitive(101), HybridTime(3001)));
@@ -667,7 +668,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
                          dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
-                         ValueRef(QLValue::Primitive(2)),
+                         QLValue::Primitive(2),
                          HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(3000)));
@@ -948,7 +949,8 @@ class DocOperationScanTest : public DocOperationTest {
               doc_read_context().schema(), kFixedHashCode, kFixedHashCode, arena,
               dockv::TEST_KeyEntryValuesToSlices(*arena, hashed_components),
               QLConditionPBPtr(&condition), nullptr /* if_ req */,
-              rocksdb::kDefaultQueryId, is_forward_scan);
+              rocksdb::kDefaultQueryId,
+              is_forward_scan);
           dockv::ReaderProjection projection(doc_read_context().schema());
           auto pending_op = ScopedRWOperation::TEST_Create();
           DocRowwiseIterator ql_iter(

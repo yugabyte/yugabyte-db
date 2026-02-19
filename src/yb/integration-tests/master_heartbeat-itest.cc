@@ -35,7 +35,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
-#include "yb/master/master_fwd.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -47,9 +47,11 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -141,9 +143,12 @@ TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // First ensure that if a tserver heartbeats to a different cluster, heartbeats fail and
   // eventually, master marks servers as dead. Mock a different cluster by setting the flag
   // TEST_master_universe_uuid.
+  const auto unresponsive_log_waiter_timeout = 20s * kTimeMultiplier;
+  StringWaiterLogSink unresponsive_log_waiter("as UNRESPONSIVE: no heartbeat received for");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
+  ASSERT_OK(unresponsive_log_waiter.WaitFor(unresponsive_log_waiter_timeout));
 
   // When the flag is unset, ensure that master leader can register tservers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
@@ -773,6 +778,48 @@ void GlobalTransactionTableCreationTest::SetUp() {
 
 void GlobalTransactionTableCreationTest::TearDown() {
   cluster_->Shutdown();
+}
+
+TEST_F(MasterHeartbeatITest, Connectivity) {
+  using tserver::ServerType;
+  auto start_time = ASSERT_RESULT(WallClock()->Now()).time_point;
+  using NodeId = std::pair<ServerType, std::string>;
+  std::vector<NodeId> expected_nodes;
+  expected_nodes.emplace_back(
+      ServerType::MASTER, mini_cluster_->mini_master()->master()->permanent_uuid());
+  for (const auto& tserver : mini_cluster_->mini_tablet_servers()) {
+    expected_nodes.emplace_back(
+        ServerType::TABLET_SERVER, tserver->server()->permanent_uuid());
+  }
+  std::ranges::sort(expected_nodes);
+  for (const auto& tserver : mini_cluster_->mini_tablet_servers()) {
+    LOG(INFO) << AsString(tserver);
+    for (int i = 0;; ++i) {
+      tserver::TabletServerServiceProxy proxy(
+          proxy_cache_.get(), HostPort(tserver->bound_rpc_addr()));
+      tserver::ConnectivityStateRequestPB req;
+      tserver::ConnectivityStateResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(10s);
+      ASSERT_OK(proxy.ConnectivityState(req, &resp, &controller));
+      LOG(INFO) << "Response: " << AsString(resp);
+      std::vector<NodeId> found_nodes;
+      found_nodes.emplace_back(ServerType::TABLET_SERVER, tserver->server()->permanent_uuid());
+      for (const auto& entry : resp.entries()) {
+        found_nodes.emplace_back(entry.server_type(), entry.uuid());
+        ASSERT_TRUE(entry.alive());
+        ASSERT_GE(entry.last_seen_us_since_epoch(), start_time);
+        ASSERT_GT(entry.ping_us(), 0);
+      }
+      if (found_nodes.size() >= expected_nodes.size()) {
+        std::ranges::sort(found_nodes);
+        ASSERT_EQ(found_nodes, expected_nodes);
+        break;
+      }
+      ASSERT_LT(i, 20) << "Timed out waiting for complete connectivity report";
+      std::this_thread::sleep_for(1s);
+    }
+  }
 }
 
 }  // namespace yb::integration_tests

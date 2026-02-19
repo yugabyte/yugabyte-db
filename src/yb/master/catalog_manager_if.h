@@ -78,7 +78,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual std::string GenerateId() = 0;
 
-  virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(const TabletId& id) = 0;
+  virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetSystemTablet(TabletIdView id) = 0;
 
   virtual Status WaitForWorkerPoolTests(
       const MonoDelta& timeout = MonoDelta::FromSeconds(10)) const = 0;
@@ -177,7 +177,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
   virtual void GetAllUDTypes(std::vector<scoped_refptr<UDTypeInfo>>* types) = 0;
 
   virtual Status GetTabletLocations(
-      const TabletId& tablet_id,
+      TabletIdView tablet_id,
       TabletLocationsPB* locs_pb,
       IncludeHidden include_hidden = IncludeHidden::kFalse) = 0;
 
@@ -237,7 +237,7 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
-  virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) = 0;
+  virtual Result<TabletInfoPtr> GetTabletInfo(TabletIdView tablet_id) = 0;
 
   virtual bool AreTablesDeletingOrHiding() = 0;
 
@@ -266,10 +266,15 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(
-      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) = 0;
+      const TabletId& tablet_id, ManualSplit is_manual_split, int split_factor,
+      const LeaderEpoch& epoch) = 0;
 
   virtual Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
+
+  virtual Status TEST_SplitTablet(
+      const TabletInfoPtr& source_tablet_info,
+      const std::vector<docdb::DocKeyHash>& split_hash_codes) = 0;
 
   virtual Status TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,

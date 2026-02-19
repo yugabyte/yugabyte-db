@@ -36,7 +36,7 @@
 #include "yb/util/varint.h"
 #include "yb/util/flags.h"
 
-using yb::operator"" _MB;
+using yb::operator""_MB;
 
 // Maximumum value size is 64MB
 DEFINE_UNKNOWN_int32(yql_max_value_size, 64_MB,

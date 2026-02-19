@@ -150,7 +150,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
 
   // Sets the passed values on the row.
   // TODO randomize the string column.
-  void MakeRow(int64_t key, int64_t val, QLWriteRequestPB* req) const;
+  void MakeRow(int64_t key, int64_t val, QLWriteRequestMsg* req) const;
 
   // If 'key' is a multiple of kSessionBatchSize, it uses 'flush_future' to wait for the previous
   // batch to finish and then flushes the current one.
@@ -192,7 +192,7 @@ void UpdateScanDeltaCompactionTest::InsertBaseData() {
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
-      auto insert = table_.NewInsertOp();
+      auto insert = table_.NewInsertOp(session->arena());
       MakeRow(key, 0, insert->mutable_request());
       session->Apply(insert);
       ASSERT_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
@@ -253,7 +253,7 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
       auto flush_future = promise.get_future();
       promise.set_value(client::FlushStatus());
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
-        auto update = table_.NewUpdateOp();
+        auto update = table_.NewUpdateOp(session->arena());
         MakeRow(key, iteration, update->mutable_request());
         session->Apply(update);
         CHECK_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
@@ -295,7 +295,7 @@ void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) con
 
 void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
                                             int64_t val,
-                                            QLWriteRequestPB* req) const {
+                                            QLWriteRequestMsg* req) const {
   QLAddInt64HashValue(req, key);
   table_.AddStringColumnValue(req, "string", "TODO random string");
   table_.AddInt64ColumnValue(req, "int64", val);

@@ -112,7 +112,6 @@ Status CDCSDKTestBase::SetUpWithParams(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = replication_factor;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pack_full_row_update) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_safepoint_record) = cdc_populate_safepoint_record;
@@ -318,8 +317,8 @@ Status CDCSDKTestBase::RenameColumn(
 Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_name) {
   master::GetNamespaceInfoResponsePB namespace_info_resp;
 
-  RETURN_NOT_OK(test_client()->GetNamespaceInfo(
-      std::string(), kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
+  RETURN_NOT_OK(
+      test_client()->GetNamespaceInfo(kNamespaceName, YQL_DATABASE_PGSQL, &namespace_info_resp));
 
   // Return namespace_id.
   return namespace_info_resp.namespace_().id();
@@ -458,6 +457,9 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStreamWithReplic
       SCHECK_EQ(
           *snapshot_name, std::to_string(cstime), InternalError,
           "Snapshot Name is not matching the consistent snapshot time");
+    } else if (snapshot_option == EXPORT_SNAPSHOT) {
+      SCHECK(snapshot_name.has_value(), InternalError, "Snapshot name is NULL for EXPORT_SNAPSHOT");
+      SCHECK(!snapshot_name->empty(), InternalError, "Snapshot name is empty for EXPORT_SNAPSHOT");
     }
   }
 

@@ -41,10 +41,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/schema.h"
-
 #include "yb/gutil/bind.h"
-#include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -52,7 +49,6 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"
@@ -72,7 +68,6 @@ DECLARE_int32(memory_limit_soft_percentage);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_counter(leader_memory_pressure_rejections);
-METRIC_DECLARE_counter(follower_memory_pressure_rejections);
 
 using strings::Substitute;
 using std::vector;
@@ -112,7 +107,7 @@ class ClientStressTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
 TEST_F(ClientStressTest, TestLookupTimeouts) {
   const int kSleepMillis = AllowSlowTests() ? 5000 : 100;
 
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_num_write_threads(64);
   work.set_write_timeout_millis(10);
   work.set_timeout_allowed(true);
@@ -137,7 +132,7 @@ class ClientStressTest_MultiMaster : public ClientStressTest {
 // This is a regression test for KUDU-614 - it would cause a deadlock prior
 // to fixing that bug.
 TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_num_write_threads(RegularBuildVsSanitizers(64, 8));
 
   // This timeout gets applied to the master requests. It's lower than the
@@ -289,7 +284,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
 
   const MonoDelta kMaxWaitTime = MonoDelta::FromSeconds(60);
 
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_write_batch_size(RegularBuildVsSanitizers(25, 5));
 
   work.Setup();
@@ -305,15 +300,13 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
     for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
-      for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
-                                  &METRIC_follower_memory_pressure_rejections }) {
-        auto result = cluster_->tablet_server(i)->GetMetric<int64>(
-            &METRIC_ENTITY_tablet, nullptr, metric, "value");
-        if (result.ok()) {
-          total_num_rejections += *result;
-        } else {
-          ASSERT_TRUE(result.status().IsNotFound()) << result.status();
-        }
+      auto result = cluster_->tablet_server(i)->GetMetric<int64>(
+          &METRIC_ENTITY_tablet, /*entity_id=*/nullptr, &METRIC_leader_memory_pressure_rejections,
+          "value");
+      if (result.ok()) {
+        total_num_rejections += *result;
+      } else {
+        ASSERT_TRUE(result.status().IsNotFound()) << result.status();
       }
     }
     if (total_num_rejections >= kMinRejections) {
@@ -345,7 +338,7 @@ class ClientStressTestSmallQueueMultiMasterWithTServers : public ClientStressTes
 
 // Check behaviour of meta cache in case of server queue is full.
 TEST_F_EX(ClientStressTest, MasterQueueFull, ClientStressTestSmallQueueMultiMasterWithTServers) {
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.Setup();
 
   struct Item {
@@ -421,7 +414,7 @@ class ThrottleLogCounter : public ExternalDaemon::StringListener {
     daemon_->SetLogListener(this);
   }
 
-  ~ThrottleLogCounter() {
+  ~ThrottleLogCounter() override {
     daemon_->RemoveLogListener(this);
   }
 
@@ -481,7 +474,7 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
 TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
   constexpr int kNumRows = 20000 * RegularBuildVsSanitizers(5, 1);
 
-  TestWorkload workload(cluster_.get());
+  TestYcqlWorkload workload(cluster_.get());
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(1);
   workload.set_num_write_threads(4);
@@ -560,7 +553,7 @@ class RF1ClientStressTest : public ClientStressTest {
 
 // Test that config change works while running a workload.
 TEST_F_EX(ClientStressTest, IncreaseReplicationFactorUnderLoad, RF1ClientStressTest) {
-  TestWorkload work(cluster_.get());
+  TestYcqlWorkload work(cluster_.get());
   work.set_num_write_threads(1);
   work.set_num_tablets(6);
   work.Setup();

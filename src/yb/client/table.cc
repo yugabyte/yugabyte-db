@@ -187,27 +187,27 @@ PartitionListVersion YBTable::GetPartitionListVersion() const {
 
 //--------------------------------------------------------------------------------------------------
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLWrite(const ThreadSafeArenaPtr& arena) {
   return std::unique_ptr<YBqlWriteOp>(new YBqlWriteOp(shared_from_this()));
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLInsert(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewInsert(shared_from_this());
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLUpdate(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewUpdate(shared_from_this());
 }
 
-std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete() {
+std::unique_ptr<YBqlWriteOp> YBTable::NewQLDelete(const ThreadSafeArenaPtr& arena) {
   return YBqlWriteOp::NewDelete(shared_from_this());
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLSelect(const ThreadSafeArenaPtr& arena) {
   return YBqlReadOp::NewSelect(shared_from_this());
 }
 
-std::unique_ptr<YBqlReadOp> YBTable::NewQLRead() {
+std::unique_ptr<YBqlReadOp> YBTable::NewQLRead(const ThreadSafeArenaPtr& arena) {
   return std::unique_ptr<YBqlReadOp>(new YBqlReadOp(shared_from_this()));
 }
 

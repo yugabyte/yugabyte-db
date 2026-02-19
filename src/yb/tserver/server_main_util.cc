@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <string>
 #include <boost/algorithm/string/trim.hpp>
 #include "yb/util/string_case.h"
 
@@ -32,7 +33,9 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/csv_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
@@ -270,6 +273,10 @@ Status MasterTServerParseFlagsAndInit(
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 
   RETURN_NOT_OK(InitYB(server_type, (*argv)[0]));
+
+  std::cerr << "Started process id: " << getpid()
+    << " logfile(s): " << GetLogFilePathnamePrefix() << "*"
+    << GetTimePidString(Env::Default()->NowMicros(), getpid()) << std::endl;
 
   RETURN_NOT_OK(GetPrivateIpMode());
 

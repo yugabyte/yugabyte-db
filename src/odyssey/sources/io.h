@@ -252,11 +252,15 @@ static inline machine_msg_t *od_read(od_io_t *io, uint32_t time_ms)
 	return msg;
 }
 /*
- * YB NOTE: od_write also frees up msg object.
+ * YB: Since machine_write frees up the msg object, we have modified this
+ * function to take pointer to pointer. This is to defend against potential
+ * double free calls
  */
-static inline int od_write(od_io_t *io, machine_msg_t *msg)
+static inline int od_write(od_io_t *io, machine_msg_t **msg)
 {
-	return machine_write(io->io, msg, UINT32_MAX);
+	int rc = machine_write(io->io, *msg, UINT32_MAX);
+	*msg = NULL;
+	return rc;
 }
 
 #endif /* ODYSSEY_IO_H */

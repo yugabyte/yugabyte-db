@@ -225,6 +225,7 @@ typedef struct SnapshotData
 	uint64		snapXactCompletionCount;
 	YbOptionalReadPointHandle yb_read_point_handle;
 	bool		yb_is_built_for_export;
+	bool		yb_is_catalog_snapshot;
 } SnapshotData;
 
 #endif							/* SNAPSHOT_H */

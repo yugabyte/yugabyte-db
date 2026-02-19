@@ -801,6 +801,13 @@ class MasterSnapshotCoordinator::Impl {
       const SnapshotScheduleId& schedule_id, HybridTime restore_at) EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
     const auto [begin, end] = snapshots_.get<ScheduleTag>().equal_range(schedule_id);
+    SCHECK_FORMAT(
+        begin != end, IllegalState, "No snapshots have been created for schedule $0", schedule_id);
+    // Check if the restore time is earlier than minimum restore time.
+    SCHECK_FORMAT(
+        restore_at >= ComputeMinRestoreTime(**begin), IllegalState,
+        "Trying to restore to $0, which is earlier than the minimum allowed restore time $1.",
+        restore_at, ComputeMinRestoreTime(**begin));
 
     for (auto it = begin; it != end; ++it) {
       if (VERIFY_RESULT(IsSnapshotSuitableForRestoreAt(**it, restore_at))) {

@@ -15,9 +15,9 @@
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/util/memory/arena_list.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 // An iterator over a YQLVirtualTable.
 class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
@@ -26,7 +26,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
   // only rows starting with specified hashed columns will be iterated.
   YQLVTableIterator(
       std::shared_ptr<qlexpr::QLRowBlock> vtable,
-      const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values);
+      const QLExpressionMsgs& hashed_column_values);
 
   virtual ~YQLVTableIterator();
 
@@ -47,8 +47,7 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   std::shared_ptr<qlexpr::QLRowBlock> vtable_;
   size_t vtable_index_ = 0;
-  const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values_;
+  const QLExpressionMsgs& hashed_column_values_;
 };
 
-}  // namespace master
-}  // namespace yb
+}  // namespace yb::master

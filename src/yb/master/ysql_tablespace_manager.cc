@@ -20,8 +20,7 @@
 
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 YsqlTablespaceManager::YsqlTablespaceManager(
     std::shared_ptr<TablespaceIdToReplicationInfoMap> tablespace_map,
@@ -61,12 +60,18 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceRep
 Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable(
     const scoped_refptr<const TableInfo>& table) const {
   if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
-      !table->UsesTablespacesForPlacement()) {
+      !table->TableTypeUsesTablespacesForPlacement()) {
+    // At this point we know that table is not a type of table that will use tablespaces for
+    // placement.
     return std::nullopt;
   }
 
   if (!tablespace_id_to_replication_info_map_) {
-    return STATUS(InternalError, "Tablespace information not found for table " + table->id());
+    return STATUS(
+        InternalError,
+        "tablespace_id_to_replication_info_map_ not present; tablespace information not found "
+        "for table " +
+            table->id());
   }
 
   if (!ContainsCustomTablespaces()) {
@@ -78,7 +83,10 @@ Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable
     if (!tablespace_id.empty()) {
       return tablespace_id;
     }
-    return STATUS(InternalError, "Tablespace information not found for table " + table->id());
+    return STATUS(
+        InternalError,
+        "table_to_tablespace_map_ not present; tablespace information not found for table " +
+            table->id());
   }
 
   // Lookup the tablespace for this table.
@@ -88,7 +96,7 @@ Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable
     if (!tablespace_id.empty()) {
       return tablespace_id;
     }
-    return STATUS(InternalError, "Tablespace information not found for table " + table->id());
+    return std::nullopt;
   }
 
   return iter->second;
@@ -98,7 +106,6 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicat
     const scoped_refptr<const TableInfo>& table) const {
   // Lookup tablespace for the given table.
   auto tablespace_id = VERIFY_RESULT(GetTablespaceForTable(table));
-
   if (!tablespace_id) {
     VLOG(1) << "Tablespace not found for table " << table->id();
     return std::nullopt;
@@ -117,7 +124,7 @@ bool YsqlTablespaceManager::NeedsRefreshToFindTablePlacement(
     const scoped_refptr<TableInfo>& table) {
 
   if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
-      !table->UsesTablespacesForPlacement()) {
+      !table->TableTypeUsesTablespacesForPlacement()) {
     return false;
   }
 
@@ -169,5 +176,4 @@ bool YsqlTablespaceManager::ContainsCustomTablespaces() const {
   return tablespace_id_to_replication_info_map_->size() > kYsqlNumDefaultTablespaces;
 }
 
-}  // namespace master
-}  // namespace yb
+} // namespace yb::master

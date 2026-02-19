@@ -34,7 +34,6 @@ class ProcessWrapper {
   void Kill();
   void Kill(int signal);
   virtual void Shutdown();
-  virtual void ImmediateShutdown();
 
   // Waits for the running process to complete. Returns the exit code or an error.
   // Non-zero exit codes are considered non-error cases for the purpose of this function.

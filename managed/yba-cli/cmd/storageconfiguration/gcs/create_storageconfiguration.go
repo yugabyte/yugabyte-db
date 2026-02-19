@@ -7,7 +7,6 @@ package gcs
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -31,7 +30,7 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(storageNameFlag)) == 0 {
+		if util.IsEmptyString(storageNameFlag) {
 			cmd.Help()
 			logrus.Fatalln(
 				formatter.Colorize(
@@ -96,9 +95,7 @@ var createGCSStorageConfigurationCmd = &cobra.Command{
 		rCreate, response, err := authAPI.CreateCustomerConfig().
 			Config(requestBody).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration: GCS", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Storage Configuration: GCS", "Create")
 		}
 
 		storageUUID := rCreate.GetConfigUUID()

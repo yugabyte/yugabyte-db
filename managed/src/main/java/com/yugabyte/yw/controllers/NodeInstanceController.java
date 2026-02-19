@@ -500,6 +500,7 @@ public class NodeInstanceController extends AuthenticatedController {
     if (universe.isYbcEnabled()) {
       taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
     }
+    taskParams.runOnlyPrechecks = nodeActionFormData.isRunOnlyPrechecks();
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests

@@ -15,6 +15,7 @@
 
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -29,7 +30,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/lw_function.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
@@ -39,6 +39,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
@@ -48,17 +49,25 @@ namespace yb::pggate {
 
 class PgFlushDebugContext;
 
-YB_STRONGLY_TYPED_BOOL(OpBuffered);
-YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
-YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
-YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
+struct PgSessionRunOptions {
+  HybridTime in_txn_limit{};
+  ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
+  std::optional<PgSessionRunOperationMarker> marker{};
+
+  friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
+
+  std::string ToString() const {
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker);
+  }
+};
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
 class PgSession final : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
-  using ScopedRefPtr = scoped_refptr<PgSession>;
+  using ScopedRefPtr = PgSessionPtr;
+  using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
 
   // Constructors.
   PgSession(
@@ -68,7 +77,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings);
+      BufferingSettings& buffering_settings,
+      RunRWOperationsHook&& hook);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -82,54 +92,6 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                              bool *legacy_colocated_database);
-
-  //------------------------------------------------------------------------------------------------
-  // Operations on Database Objects.
-  //------------------------------------------------------------------------------------------------
-
-  // API for database operations.
-  Status DropDatabase(
-      const std::string& database_name, PgOid database_oid, CoarseTimePoint deadline);
-
-  Status GetCatalogMasterVersion(uint64_t *version);
-
-  Result<int> GetXClusterRole(uint32_t db_oid);
-
-  Status CancelTransaction(const unsigned char* transaction_id);
-
-  // API for sequences data operations.
-  Status CreateSequencesDataTable();
-
-  Status InsertSequenceTuple(int64_t db_oid,
-                             int64_t seq_oid,
-                             uint64_t ysql_catalog_version,
-                             bool is_db_catalog_version_mode,
-                             int64_t last_val,
-                             bool is_called);
-
-  Result<bool> UpdateSequenceTuple(int64_t db_oid,
-                                   int64_t seq_oid,
-                                   uint64_t ysql_catalog_version,
-                                   bool is_db_catalog_version_mode,
-                                   int64_t last_val,
-                                   bool is_called,
-                                   std::optional<int64_t> expected_last_val,
-                                   std::optional<bool> expected_is_called);
-
-  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
-                                                         int64_t seq_oid,
-                                                         uint64_t ysql_catalog_version,
-                                                         bool is_db_catalog_version_mode,
-                                                         uint32_t fetch_count,
-                                                         int64_t inc_by,
-                                                         int64_t min_value,
-                                                         int64_t max_value,
-                                                         bool cycle);
-
-  Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
-                                                     int64_t seq_oid,
-                                                     uint64_t ysql_catalog_version,
-                                                     bool is_db_catalog_version_mode);
 
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
@@ -149,7 +111,6 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Result<PgTableDescPtr> LoadTable(const PgObjectId& table_id);
   void InvalidateTableCache(
       const PgObjectId& table_id, InvalidateOnPgClient invalidate_on_pg_client);
-  Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   // Start operation buffering. Buffering must not be in progress.
   Status StartOperationsBuffering();
@@ -186,24 +147,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   using OperationGenerator = LWFunction<TableOperation<PgsqlOpPtr>()>;
   using ReadOperationGenerator = LWFunction<TableOperation<PgsqlReadOpPtr>()>;
-
-  template<class... Args>
-  Result<PerformFuture> RunAsync(
-      const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      Args&&... args) {
-    const auto generator = [ops, end = ops + ops_count, &table]() mutable {
-        using TO = TableOperation<PgsqlOpPtr>;
-        return ops != end ? TO{.operation = ops++, .table = &table} : TO();
-    };
-    return RunAsync(make_lw_function(generator), std::forward<Args>(args)...);
-  }
-
-  Result<PerformFuture> RunAsync(
-      const OperationGenerator& generator, HybridTime in_txn_limit,
-      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
-  Result<PerformFuture> RunAsync(
-      const ReadOperationGenerator& generator, HybridTime in_txn_limit,
-      ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
+  using RunOptions = PgSessionRunOptions;
 
   struct CacheOptions {
     uint32_t key_group;
@@ -211,36 +155,25 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     std::optional<uint32_t> lifetime_threshold_ms;
   };
 
-  Result<PerformFuture> RunAsync(const ReadOperationGenerator& generator, CacheOptions&& options);
+  Result<PerformFuture> RunAsync(
+      std::span<const PgsqlOpPtr> ops, const PgTableDesc& table, const RunOptions& options = {});
 
-  // Lock functions.
-  // -------------
-  Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
-      const std::string& table_id, const std::string& transaction_id);
+  Result<PerformFuture> RunAsync(
+      const OperationGenerator& generator, const RunOptions& options = {});
 
-  // Smart driver functions.
-  // -------------
-  Result<client::TabletServersInfo> ListTabletServers();
-
-  Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
-                                  uint64_t* num_rows_read_from_table,
-                                  double* num_rows_backfilled);
+  Result<PerformFuture> RunAsync(
+      const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options = {});
 
   std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache(uint64_t min_ysql_catalog_version);
   void UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version);
 
-  // Check if initdb has already been run before. Needed to make initdb idempotent.
-  Result<bool> IsInitDbDone();
-
   InsertOnConflictBuffer& GetInsertOnConflictBuffer(void* plan);
   InsertOnConflictBuffer& GetInsertOnConflictBuffer();
   void ClearAllInsertOnConflictBuffers();
   void ClearInsertOnConflictBuffer(void* plan);
   bool IsInsertOnConflictBufferEmpty() const;
-
-  Result<int> TabletServerCount(bool primary_only = false);
 
   // Sets the specified timeout in the rpc service.
   void SetTimeout(int timeout_ms);
@@ -254,9 +187,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   void TrySetCatalogReadPoint(const ReadHybridTime& read_ht);
 
-  PgClient& pg_client() const {
-    return pg_client_;
-  }
+  PgClient& pg_client() const { return pg_client_; }
 
   Status SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options);
 
@@ -268,33 +199,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   void SetDdlHasSyscatalogChanges();
 
-  Result<bool> CheckIfPitrActive();
-
-  Result<TableKeyRanges> GetTableKeyRanges(
-      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
-
   PgDocMetrics& metrics() { return metrics_; }
 
-  // Check whether the specified table has a CDC stream.
-  Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
-
-  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
-
-  Result<yb::tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
-      const ReplicationSlotName& slot_name);
-
   [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
-
-  Result<yb::tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
-  Result<yb::tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
-
-  Result<yb::tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
-
-  Result<yb::tserver::PgServersMetricsResponsePB> ServersMetrics();
-
-  Status SetCronLastMinute(int64_t last_minute);
-  Result<int64_t> GetCronLastMinute();
 
   Status AcquireAdvisoryLock(
       const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session);
@@ -313,9 +220,6 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
 
-  // Returns current PostgreSQL replication origin id for this backend session (0 if unset).
-  uint16_t GetSessionReplicationOriginId() const;
-
  private:
   Result<PgTableDescPtr> DoLoadTable(
       const PgObjectId& table_id, bool fail_on_cache_hit,
@@ -324,7 +228,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       BufferableOperations&& ops, bool transactional, const PgFlushDebugContext& debug_context);
   std::string FlushReasonToString(const PgFlushDebugContext& debug_context) const;
 
-  const std::string LogPrefix() const;
+  std::string LogPrefix() const;
 
   class RunHelper;
 
@@ -339,7 +243,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
-      const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+      const Generator& generator, const RunOptions& options,
       std::optional<CacheOptions>&& cache_options = std::nullopt);
 
   template <class... Args>
@@ -397,6 +301,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
 
   const WaitEventWatcher& wait_event_watcher_;
   TablespaceCache tablespace_cache_;
+  RunRWOperationsHook rw_operations_hook_;
 };
 
 template<class PB>

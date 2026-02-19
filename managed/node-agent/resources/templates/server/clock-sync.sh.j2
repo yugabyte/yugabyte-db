@@ -105,15 +105,14 @@ systemd_loaded() {
 
 is_mount_point_mounted() {
   local mount_point="$1"
-  # Check if the directory exists
   if [[ ! -d "$mount_point" ]]; then
     return 1
   fi
-  # Use /proc/mounts to check if the mount point is mounted
-  # This is more reliable than mountpoint -q for non-root mount points
-  # /proc/mounts format: device mount_point filesystem options dump pass
-  # We check for exact match of the mount point (with space before and after to avoid partial match)
-  grep -q " $mount_point " /proc/mounts 2>/dev/null
+  root_mount=$(df --output=target "$mount_point" 2>/dev/null | awk 'NR==2 {print $1}')
+  if [ -z "$root_mount" ]; then
+     root_mount="$mount_point"
+  fi
+  grep -q " $root_mount " /proc/mounts 2>/dev/null
   return $?
 }
 

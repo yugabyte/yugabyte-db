@@ -97,7 +97,7 @@ To explicitly set a port for YSQL, you should specify ports for the flags `ysql_
 The following table describes YB-TServer flags related to YSQL Connection Manager:
 
 | flag | Description |
-|:---- | :---------- |
+| :---- | :---------- |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process.<br>Default: false |
 | enable_ysql_conn_mgr_stats | Enable statistics collection from YSQL Connection Manager. These statistics are displayed at the endpoint `<ip_address_of_cluster>:13000/connections`. <br>Default: true |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager.<br>Default: 60 |
@@ -124,18 +124,18 @@ The following table describes YB-TServer flags related to YSQL Connection Manage
 
 The following table outlines the various authentication methods supported by YugabyteDB and their compatibility with the YSQL Connection Manager when a connection matches an HBA (Host-Based Authentication) record.
 
-| | Auth Method | Description |
-|:--| :---------------------| :------------ | :---- |
+|      | Auth Method | Description |
+| :--- | :---------- | :---------- |
 | {{<icon/no>}} | Ident Authentication | Server contacts client's OS to verify username that initiated connection, trusting OS-level identity.|
 | {{<icon/no>}} | Peer Authentication | For local/Unix socket connections, server checks that the connecting UNIX user matches the requested database user, relying on OS user identity. |
 | {{<icon/yes>}} | Plain/Clear Text Password | Standard password-based authentication, though storing passwords in plain text is not recommended. |
 | {{<icon/yes>}} | JWT Authentication (OIDC) | Uses JSON Web Tokens (JWT) from an external Identity Provider (IDP) to securely transmit authentication and authorization information. |
 | {{<icon/yes>}} | LDAP Authentication | Verifies users against a centralized directory service using Lightweight Directory Access Protocol (LDAP). |
-| {{<icon/no>}} | GSS API or Kerberos| Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited.|
-| {{<icon/no>}} | SCRAM-SHA-256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
-| {{<icon/no>}} | SCRAM-SHA-256-PLUS  | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. |
+| {{<icon/no>}} | GSS API or Kerberos | Enables Kerberos-based authentication through a standardized API, allowing secure, enterprise-grade Single Sign-On (SSO) logins without passwords. <br> **Note**: Testing of this feature with YugabyteDB is currently limited. |
+| {{<icon/no>}} | SCRAM-SHA-256 | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
+| {{<icon/no>}} | SCRAM-SHA-256-PLUS | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
-| {{<icon/no>}} | Cert  | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
+| {{<icon/no>}} | Cert | Certificate-based authentication requires the client to provide certificates to the server over a TLS connection for authentication. |
 
 ## Sticky connections
 
@@ -169,7 +169,8 @@ When using YSQL Connection Manager, sticky connections can form in the following
 - When YSQL Connection Manager is enabled, the backend PID stored using JDBC drivers may not be accurate. This does not affect backend-specific functionalities (for example, cancel queries), but this PID should not be used to identify the backend process.
 - By default, `currval` and `nextval` functions do not work when YSQL Connection Manager is enabled. They can be supported with the help of the `ysql_conn_mgr_sequence_support_mode` flag.
 - YSQL Connection Manager does not yet support IPv6 connections. {{<issue 24765>}}
-- Currently, [auth-method](https://docs.yugabyte.com/preview/secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. {{<issue 20658>}}
+- Currently, [auth-method](../../../secure/authentication/host-based-authentication/#auth-method) `cert` is not supported for host-based authentication. {{<issue 20658>}}
 - Although the use of auth-backends (`ysql_conn_mgr_use_auth_backend=true`) to authenticate client connections can result in higher connection acquisition latencies, using auth-passthrough (`ysql_conn_mgr_use_auth_backend=false`) may not be suitable depending on your workload. Contact {{% support-general %}} before setting `ysql_conn_mgr_use_auth_backend` to false. {{<issue 25313>}}
-- Salted Challenge Response Authentication Mechanism ([SCRAM](https://docs.yugabyte.com/preview/secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. {{<issue 25870>}}
+- Salted Challenge Response Authentication Mechanism ([SCRAM](../../../secure/authentication/password-authentication/#scram-sha-256)) is not supported with YSQL Connection Manager. {{<issue 25870>}}
 - Unix socket connections to YSQL Connection Manager are not supported. {{<issue 20048>}}
+- Connection manager is not supported or included in the MacOS YugabyteDB releases, and there are currently no plans to support it.

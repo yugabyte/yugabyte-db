@@ -27,8 +27,10 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/dockv/partial_row.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
+
+#include "yb/dockv/partial_row.h"
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"

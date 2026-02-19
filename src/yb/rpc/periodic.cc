@@ -172,7 +172,7 @@ void PeriodicTimer::Callback(int64_t my_callback_generation) {
     auto discrepancy = now - expected_callback_time_;
     if (discrepancy > MonoDelta::FromMilliseconds(FLAGS_slow_periodic_scheduling_threshold_ms)) {
       YB_LOG_EVERY_N_SECS(WARNING, 1)
-          << "PeriodicTimer callback delayed by " << discrepancy << THROTTLE_MSG;
+          << "PeriodicTimer callback delayed by " << discrepancy;
     }
     if (now < next_task_time_) {
       // It's not yet time to run the task. Reduce the scheduled delay if

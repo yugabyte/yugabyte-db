@@ -197,7 +197,7 @@ class DnsResolver::Impl {
           if (start_time + 250ms < now) {
             YB_LOG_EVERY_N_SECS(WARNING, 5)
                 << "Long time to resolve DNS for " << host_copy << ": "
-                << MonoDelta(now - start_time) << THROTTLE_MSG;
+                << MonoDelta(now - start_time);
           }
           SetResult(PickResolvedAddress(host_copy, error, entries), promise.get());
         });
@@ -251,7 +251,7 @@ class DnsResolver::Impl {
   Resolver resolver_;
   scoped_refptr<EventStats> metric_;
   std::shared_timed_mutex mutex_;
-  UnorderedStringMap<CacheEntry> cache_;
+  UnorderedStringMap<std::string, CacheEntry> cache_;
 };
 
 DnsResolver::DnsResolver(IoService* io_service, const scoped_refptr<MetricEntity>& metric_entity)

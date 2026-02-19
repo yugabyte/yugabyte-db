@@ -71,12 +71,11 @@ func InitializeAuthenticatedSession(url *url.URL, apiToken string, showToken boo
 	r, response, err := authAPI.GetSessionInfo().Execute()
 	if err != nil {
 		logrus.Debugf("Full HTTP response: %v\n", response)
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"Get Session Info", "Read")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Get Session Info", "Read")
 
 	}
-	logrus.Debugf("Session Info response without errors\n")
+
+	util.CheckAndDereference(r, "An error occurred while getting session info")
 
 	authAPI.IsCLISupported()
 
@@ -94,7 +93,7 @@ func InitializeAuthenticatedSession(url *url.URL, apiToken string, showToken boo
 	r.SetApiToken(apiToken)
 	viper.GetViper().Set("user-uuid", r.GetUserUUID())
 
-	authWriteConfigFile(r)
+	authWriteConfigFile(*r)
 }
 
 // ViperVariablesInAuth sets the viper variables for host, insecure and ca-cert
@@ -119,7 +118,7 @@ func ViperVariablesInAuth(cmd *cobra.Command, force bool) *url.URL {
 		}
 		host = strings.TrimSpace(input)
 		if len(host) == 0 {
-			if len(strings.TrimSpace(hostConfig)) == 0 {
+			if util.IsEmptyString(hostConfig) {
 				logrus.Fatalln(
 					formatter.Colorize("Host cannot be empty.\n",
 						formatter.RedColor))
@@ -183,7 +182,7 @@ func ViperVariablesInAuth(cmd *cobra.Command, force bool) *url.URL {
 		}
 		// If the host is empty
 		if strings.Compare(hostFlag, "http://localhost:9000") == 0 {
-			if len(strings.TrimSpace(hostConfig)) == 0 {
+			if util.IsEmptyString(hostConfig) {
 				host = hostFlag
 			} else {
 				host = hostConfig

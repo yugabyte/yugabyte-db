@@ -58,6 +58,8 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_utils.h"
 
+#include "yb/consensus/metadata.messages.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
@@ -374,9 +376,10 @@ RemoteTablet::~RemoteTablet() {
   }
 }
 
+template <class RaftPB, class ConsensusPB>
 Status RemoteTablet::RefreshFromRaftConfig(
-    const TabletServerMap& tservers, const consensus::RaftConfigPB& raft_config,
-    const consensus::ConsensusStatePB& consensus_state) {
+    const TabletServerMap& tservers, const RaftPB& raft_config,
+    const ConsensusPB& consensus_state) {
   std::lock_guard lock(mutex_);
   std::vector<std::shared_ptr<RemoteReplica>> new_replicas;
   std::string leader_uuid = "";
@@ -803,8 +806,9 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
   CHECK(ts_cache_.emplace(permanent_uuid, std::make_unique<RemoteTabletServer>(pb)).second);
 }
 
-Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) {
-  const std::string& permanent_uuid = pb.permanent_uuid();
+template <class PB>
+Status MetaCache::UpdateTabletServerWithRaftPeerUnlocked(const PB& pb) {
+  std::string_view permanent_uuid(pb.permanent_uuid());
   auto it = ts_cache_.find(permanent_uuid);
   if (it != ts_cache_.end()) {
     it->second->UpdateFromRaftPeer(pb);
@@ -857,7 +861,7 @@ class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
   // as we add to the to_notify set.
   virtual void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) = 0;
 
   // When looking up by key or full table, update the processed table with the returned location.
@@ -1213,12 +1217,17 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
 
 Status MetaCache::RefreshTabletInfoWithConsensusInfo(
     const tserver::TabletConsensusInfoPB& tablet_consensus_info) {
+  return DoRefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
+}
+
+template <class PB>
+Status MetaCache::DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensus_info) {
   SCHECK(
       tablet_consensus_info.has_consensus_state(), IllegalState,
       Format(
           "Tablet consensus info did not have a consensus state for tablet $0",
           tablet_consensus_info.tablet_id()));
-  auto consensus_state = tablet_consensus_info.consensus_state();
+  auto& consensus_state = tablet_consensus_info.consensus_state();
   SCHECK(
       consensus_state.config().has_opid_index(), IllegalState,
       "TabletConsensusInfo does not have a valid opid_index");
@@ -1252,8 +1261,8 @@ Status MetaCache::RefreshTabletInfoWithConsensusInfo(
 
     VLOG_WITH_PREFIX(1) << "Using Tablet Consensus Info to refresh metacache for tablet "
             << tablet_consensus_info.tablet_id();
-    consensus::RaftConfigPB raft_config = consensus_state.config();
-    for (auto peer : raft_config.peers()) {
+    const auto& raft_config = consensus_state.config();
+    for (const auto& peer : raft_config.peers()) {
       RETURN_NOT_OK(UpdateTabletServerWithRaftPeerUnlocked(peer));
     }
     return remote->RefreshFromRaftConfig(ts_cache_, raft_config, consensus_state);
@@ -1481,7 +1490,7 @@ class LookupByIdRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
     const ProcessedTablesMap& processed_tables,
-    std::unordered_map<TableId, TableData>* tables,
+    UnorderedStringMap<TableId, TableData>* tables,
     std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     // Nothing to do when looking up by id.
     return;
@@ -1574,7 +1583,7 @@ class LookupFullTableRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     for (const auto& processed_table : processed_tables) {
       // Handle tablet range
@@ -1685,7 +1694,7 @@ class LookupByKeyRpc : public LookupRpc {
 
   void AddCallbacksToBeNotified(
       const ProcessedTablesMap& processed_tables,
-      std::unordered_map<TableId, TableData>* tables,
+      UnorderedStringMap<TableId, TableData>* tables,
       std::vector<std::pair<LookupCallback, LookupCallbackVisitor>>* to_notify) override {
     for (const auto& processed_table : processed_tables) {
       const auto table_it = tables->find(processed_table.first);
@@ -2406,12 +2415,33 @@ void MetaCache::LookupTabletById(const TabletId& tablet_id,
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
 }
 
+void MetaCache::InvalidateVectorIndexes(const YBTable& indexed_table) {
+  TableIds vector_index_ids;
+  vector_index_ids.reserve(indexed_table.index_map().size());
+  for (const auto& [_, index] : indexed_table.index_map()) {
+    if (index.is_vector_index()) {
+      vector_index_ids.emplace_back(index.table_id());
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Collected: " << AsString(vector_index_ids);
+
+  size_t num_removed = 0;
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& id : vector_index_ids) {
+      num_removed += tables_.erase(id);
+    }
+  }
+  VLOG_WITH_FUNC(3) << "Removed " << num_removed << " cached vector indexes";
+}
+
 void MetaCache::RefreshTablePartitions(
     const std::shared_ptr<YBTable>& table, StdStatusCallback callback) {
-  // TODO(vector_index): it could be required to remove table's cached vector indexes here
-  // to let them get the actual partitions, because vector index does not participate in any DML,
-  // and hence the meta cache will never trigger partitions refresh for the vector index.
-  // Will be addressed by https://github.com/yugabyte/yugabyte-db/issues/29377.
+  // It is required to invalidate table's cached vector indexes completely to let them get
+  // the actual partitions, because vector index does not participate in any DML, and hence
+  // the meta cache will never trigger partitions refresh for the vector index.
+  InvalidateVectorIndexes(*table);
+
   table->RefreshPartitions(
       client_,
       [this, table, callback = std::move(callback)](

@@ -28,18 +28,22 @@ var describeCustomerCmd = &cobra.Command{
 
 		customerDetails, response, err := authAPI.CustomerDetail().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Customer", "Describe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Customer", "Describe")
 		}
 
-		if customerDetails.GetUuid() == "" {
+		customerDetail := util.CheckAndDereference(
+			customerDetails,
+			"Current customer details not found",
+		)
+
+		if customerDetail.GetUuid() == "" {
 			logrus.Fatalf(
 				formatter.Colorize("Current customer details not found\n", formatter.RedColor),
 			)
 		}
 
 		r := make([]ybaclient.CustomerDetailsData, 0)
-		r = append(r, customerDetails)
+		r = append(r, customerDetail)
 
 		if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullCustomerContext := *customer.NewFullCustomerContext()

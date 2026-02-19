@@ -102,9 +102,14 @@ class HostPort {
   template <class PB>
   PB ToPB() const {
     PB out;
-    out.set_host(host());
-    out.set_port(port());
+    ToPB(&out);
     return out;
+  }
+
+  template <class PB>
+  void ToPB(PB* out) const {
+    out->set_host(host());
+    out->set_port(port());
   }
 
   // Takes a vector of HostPort objects and returns a comma separated
@@ -189,7 +194,7 @@ void TryRunLsof(const Endpoint& addr, std::vector<std::string>* log = NULL);
 
 void TryRunChronycTracking(std::vector<std::string>* log = NULL);
 
-void TryRunChronycSourcestats(std::vector<std::string>* log = NULL);
+void TryRunChronycSourceInfo(std::vector<std::string>* log = NULL);
 
 // Get a free port that a local server could listen to. For use in tests. Tries up to a 1000 times
 // and fatals after that.

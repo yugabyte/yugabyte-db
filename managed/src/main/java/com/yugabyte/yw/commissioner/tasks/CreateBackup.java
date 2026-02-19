@@ -169,7 +169,7 @@ public class CreateBackup extends UniverseTaskBase {
         log.info("Task id {} for the backup {}", backup.getTaskUUID(), backup.getBackupUUID());
         if (params().scheduleUUID != null && params().getKubernetesResourceDetails() != null) {
           try {
-            operatorUtils.createBackupCr(backup);
+            operatorUtils.createBackupCr(backup, customerConfig.getConfigName());
           } catch (Exception e) {
             throw new RuntimeException(e);
           }

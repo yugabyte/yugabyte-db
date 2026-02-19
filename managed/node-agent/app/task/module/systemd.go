@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"node-agent/backoff"
 	"node-agent/util"
 	"os"
@@ -15,17 +16,29 @@ import (
 )
 
 const (
-	UserSystemdUnitPath = ".config/systemd/user"
+	UserSystemdUnitPath   = ".config/systemd/user"
+	ServerTemplateSubpath = "server/"
 )
 
 var (
 	SystemdBackOff = backoff.NewSimpleBackOff(10*time.Second /* interval */, 10 /* max attempts */)
+	// UserSystemdUnitsForUpdate maps process names to their service file source and destination paths.
+	UserSystemdUnitsForUpdate = map[string]struct {
+		Src  string
+		Dest string
+	}{
+		"master":     {"yb-master.service", UserSystemdUnitPath + "/yb-master.service"},
+		"tserver":    {"yb-tserver.service", UserSystemdUnitPath + "/yb-tserver.service"},
+		"controller": {"yb-controller.service", UserSystemdUnitPath + "/yb-controller.service"},
+	}
 )
 
-func IsUserSystemd(username, serverName string) (bool, error) {
+// IsUserSystemd checks if the systemd service file exists in the user's systemd directory.
+// It returns true along with the path if it exists, false otherwise.
+func IsUserSystemd(username, serverName string) (bool, string, error) {
 	info, err := util.UserInfo(username)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
 	if !strings.HasSuffix(serverName, ".service") && !strings.HasSuffix(serverName, ".timer") {
 		serverName = serverName + ".service"
@@ -33,12 +46,12 @@ func IsUserSystemd(username, serverName string) (bool, error) {
 	path := filepath.Join(info.User.HomeDir, ".config/systemd/user", serverName)
 	_, err = os.Stat(path)
 	if err == nil {
-		return true, nil
+		return true, path, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return false, "", nil
 	}
-	return false, err
+	return false, "", err
 }
 
 func getUserOptionForUserLevel(
@@ -49,7 +62,7 @@ func getUserOptionForUserLevel(
 	userOption := ""
 	cmdUser := ""
 	if username != "" {
-		yes, err := IsUserSystemd(username, serverName)
+		yes, _, err := IsUserSystemd(username, serverName)
 		if err != nil {
 			util.FileLogger().
 				Errorf(ctx, "Failed to get user option for systemd: %s - %s", serverName, err.Error())
@@ -283,4 +296,53 @@ func IsProcessEnabled(
 		Infof(ctx, "Process %s enabled state: %s", process, stdOut)
 	logOut.WriteLine("Process %s enabled state: %s", process, stdOut)
 	return stdOut == "enabled", nil
+}
+
+// UpdateUserSystemdUnits updates the user systemd unit file for the given process only if it exists.
+func UpdateUserSystemdUnits(
+	ctx context.Context,
+	username, process string,
+	templateCtx map[string]any,
+	logOut util.Buffer,
+) error {
+	fileInfo, ok := UserSystemdUnitsForUpdate[process]
+	if !ok {
+		util.FileLogger().Infof(ctx, "Skipping service file copy for process %s", process)
+		logOut.WriteLine("Skipping service file copy for process %s", process)
+		return nil
+	}
+	yes, path, err := IsUserSystemd(username, filepath.Base(fileInfo.Dest))
+	if err != nil {
+		util.FileLogger().
+			Infof(ctx, "Failed to determine user systemd for %s - %v", process, err)
+		logOut.WriteLine("Failed to determine user systemd for %s", process)
+		return err
+	}
+	if !yes {
+		util.FileLogger().Infof(ctx, "Skipping for non-user systemd for %s", process)
+		logOut.WriteLine("Skipping for non-user systemd for %s", process)
+		return nil
+	}
+	util.FileLogger().Infof(ctx, "Updating user systemd unit at %s", path)
+	logOut.WriteLine("Updating user systemd unit at %s", path)
+	_, err = CopyFile(
+		ctx,
+		templateCtx,
+		filepath.Join(ServerTemplateSubpath, fileInfo.Src),
+		path,
+		fs.FileMode(0755),
+		username,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = RunShellCmdWithRetry(
+		ctx,
+		SystemdBackOff,
+		username,
+		"ReloadSystemdDaemon",
+		"systemctl --user daemon-reload",
+		logOut,
+	)
+	return err
 }

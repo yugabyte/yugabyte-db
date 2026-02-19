@@ -79,6 +79,17 @@ class PgsqlOp {
     return read_time_;
   }
 
+  // Merge streams produce ordered results whether tablet split took place or not.
+  // Therefore if the request paginates fetch routine can append the response pages
+  // to the same operation's stream.
+  void set_is_merge_stream(bool value) {
+    is_merge_stream_ = value;
+  }
+
+  bool is_merge_stream() const {
+    return is_merge_stream_;
+  }
+
   std::string ToString() const;
 
   virtual Status InitPartitionKey(const PgTableDesc& table) = 0;
@@ -95,6 +106,7 @@ class PgsqlOp {
   const YbcPgTableLocalityInfo locality_info_;
   LWPgsqlResponsePB* response_ = nullptr;
   ReadHybridTime read_time_;
+  bool is_merge_stream_ = false;
 };
 
 class PgsqlReadOp : public PgsqlOp {

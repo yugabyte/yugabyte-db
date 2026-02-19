@@ -237,6 +237,7 @@ public class NodeAgentClient {
           && confGetter.getGlobalConf(GlobalConfKeys.nodeAgentEnableMessageCompression)) {
         callOptions = callOptions.withCompression(compression);
       }
+      int requestLogLevel = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerRequestLogLevel);
       return new ForwardingClientCall.SimpleForwardingClientCall<ReqT, RespT>(
           channel.newCall(methodDescriptor, callOptions)) {
 
@@ -259,6 +260,11 @@ public class NodeAgentClient {
           headers.put(
               Metadata.Key.of("x-correlation-id", Metadata.ASCII_STRING_MARSHALLER), correlationId);
           headers.put(Metadata.Key.of("x-request-id", Metadata.ASCII_STRING_MARSHALLER), requestId);
+          if (requestLogLevel >= 0) {
+            headers.put(
+                Metadata.Key.of("x-request-log-level", Metadata.ASCII_STRING_MARSHALLER),
+                String.valueOf(requestLogLevel));
+          }
           super.start(responseListener, headers);
         }
       };

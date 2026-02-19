@@ -143,8 +143,10 @@ const TransactionOperationContext kNonTransactionalOperationContext = {
     TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
-ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValuePB* holder) {
-  auto custom_value_type = dockv::GenRandomPrimitiveValue(rng, holder);
+ValueRef GenRandomPrimitiveValue(dockv::RandomNumberGenerator* rng, QLValueMsg* holder) {
+  QLValuePB pb_value;
+  auto custom_value_type = dockv::GenRandomPrimitiveValue(rng, &pb_value);
+  *holder = pb_value;
   if (custom_value_type != dockv::ValueEntryType::kInvalid) {
     return ValueRef(custom_value_type);
   }

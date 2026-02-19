@@ -298,6 +298,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->ybHintAlias = NULL;
 	rel->ybBlockId = 0;
 	rel->ybRoot = root;
+	rel->ybRelationName = NULL;
 
 	/*
 	 * Pass assorted information down the inheritance hierarchy.
@@ -405,6 +406,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 
 	if (IsYugaByteEnabled())
 	{
+		rte->ybScannedObjectName = rel->ybRelationName;
 		if (rte->ybHintAlias != NULL)
 		{
 			/*
@@ -431,6 +433,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			 * Assign a unique id to the rel.
 			 */
 			rel->ybUniqueBaseId = ++(glob->ybBaseRelCnt);
+			rte->ybUniqueBaseId = rel->ybUniqueBaseId;
 
 			/*
 			 * Start with the existing rel alias.
@@ -814,6 +817,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->ybHintAlias = NULL;
 	joinrel->ybBlockId = 0;
 	joinrel->ybRoot = root;
+	joinrel->ybRelationName = NULL;
 
 	/* Compute information relevant to the foreign relations. */
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
@@ -1387,6 +1391,7 @@ fetch_upper_rel(PlannerInfo *root, UpperRelationKind kind, Relids relids)
 	upperrel->ybHintAlias = NULL;
 	upperrel->ybBlockId = 0;
 	upperrel->ybRoot = root;
+	upperrel->ybRelationName = NULL;
 
 	root->upper_rels[kind] = lappend(root->upper_rels[kind], upperrel);
 

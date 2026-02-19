@@ -47,7 +47,7 @@
 #include "yb/util/env.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/path_util.h"
@@ -71,7 +71,6 @@ using std::thread;
 using std::unique_ptr;
 using std::vector;
 
-using rapidjson::Value;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
 
@@ -579,27 +578,18 @@ const string& ExternalDaemon::uuid() const {
 }
 
 template <>
-Result<int64_t> ExternalDaemon::ExtractMetricValue<int64_t>(
-    const JsonReader& r, const Value* metric, const char* value_field) {
-  int64_t value;
-  RETURN_NOT_OK(r.ExtractInt64(metric, value_field, &value));
-  return value;
+Result<int64_t> ExternalDaemon::ExtractMetricValue<int64_t>(const JsonValue& metric_value) {
+  return metric_value.GetInt64();
 }
 
 template <>
-Result<bool> ExternalDaemon::ExtractMetricValue<bool>(
-    const JsonReader& r, const Value* metric, const char* value_field) {
-  bool value;
-  RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
-  return value;
+Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonValue& metric_value) {
+  return metric_value.GetBool();
 }
 
 template <>
-Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
-    const JsonReader& r, const Value* metric, const char* value_field) {
-  uint32_t value;
-  RETURN_NOT_OK(r.ExtractUInt32(metric, value_field, &value));
-  return value;
+Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(const JsonValue& metric_value) {
+  return metric_value.GetUint32();
 }
 
 string ExternalDaemon::LogPrefix() {

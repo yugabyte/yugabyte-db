@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <chrono>
+
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/util/countdown_latch.h"
@@ -18,6 +20,8 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+
+using namespace std::chrono_literals;
 
 namespace yb::pgwrapper {
 namespace {
@@ -38,15 +42,28 @@ Status SuppressAllowedErrors(const Status& s) {
 }
 
 Status RunIndexCreationQueries(PGConn* conn, const std::string& table_name) {
-  static const std::initializer_list<std::string> queries = {
+  constexpr const char* kQueries[] = {
       "DROP TABLE IF EXISTS $0",
       "CREATE TABLE IF NOT EXISTS $0(k int PRIMARY KEY, v int)",
-      "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)"
+      "CREATE INDEX IF NOT EXISTS $0_v ON $0(v)",
   };
-  for (const auto& query : queries) {
-    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(query, table_name)));
+  while (true) {
+    RETURN_NOT_OK(SuppressAllowedErrors(conn->ExecuteFormat(kQueries[0], table_name)));
+
+    // CREATE TABLE may fail due to catalog version mismatch.
+    // If it fails, skip creating the index on it.
+    auto create_status = conn->ExecuteFormat(kQueries[1], table_name);
+    RETURN_NOT_OK(SuppressAllowedErrors(create_status));
+    if (!create_status.ok()) {
+      continue;
+    }
+
+    auto index_status = conn->ExecuteFormat(kQueries[2], table_name);
+    RETURN_NOT_OK(SuppressAllowedErrors(index_status));
+    if (index_status.ok()) {
+      return Status::OK();
+    }
   }
-  return Status::OK();
 }
 
 } // namespace
@@ -99,6 +116,158 @@ TEST_F(PgDDLConcurrencyTest, IndexCreation) {
   for (size_t i = 0; i < 3; ++i) {
     ASSERT_OK(RunIndexCreationQueries(&conn, table_name));
   }
+}
+
+/*
+ * Test concurrent temp table creation across multiple threads.
+ * Each thread creates its own connection and continuously creates temp tables
+ * until the test completes.
+ * Stress test to check read restart errors (see GH #29704).
+ */
+TEST_F(PgDDLConcurrencyTest, TempTableCreation) {
+  TestThreadHolder thread_holder;
+  constexpr size_t kThreadsCount = 10;
+  CountDownLatch start_latch(kThreadsCount);
+  for (size_t i = 0; i < kThreadsCount; ++i) {
+    thread_holder.AddThreadFunctor(
+        [this, &stop = thread_holder.stop_flag(), &start_latch] {
+          start_latch.CountDown();
+          start_latch.Wait();
+          while (!stop.load(std::memory_order_acquire)) {
+            auto conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+                Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+            ASSERT_OK(conn.Execute("CREATE TEMP TABLE temp_table(k int, v int)"));
+          }
+        });
+  }
+
+  thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+
+class PgDDLConcurrencyWithObjectLockingTest : public PgDDLConcurrencyTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        "--enable_object_locking_for_table_locks=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_ddl_transaction_block_enabled=true");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false");
+    PgDDLConcurrencyTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+// https://github.com/yugabyte/yugabyte-db/issues/28532
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDrop) {
+  TestThreadHolder thread_holder;
+  auto conn1 = CHECK_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE sample (i INT)"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("DROP TABLE sample"));
+  thread_holder.AddThreadFunctor(
+      [this] {
+    auto conn2 = CHECK_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Verify that we get the same error message as native PG.
+    // Prior to the fix, we get "ERROR:  cache lookup failed for relation 16384"
+    ASSERT_NOK_STR_CONTAINS(conn2.Execute("DROP TABLE sample"), "table \"sample\" does not exist");
+  });
+  // With object locking, this sleep will block the DROP statement on conn2 for 5 seconds.
+  SleepFor(5s);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.Stop();
+}
+
+// https://github.com/yugabyte/yugabyte-db/issues/28563
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, TableDropCascade) {
+  TestThreadHolder thread_holder;
+  auto conn1 = CHECK_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE dd (i INT)"));
+  ASSERT_OK(conn1.Execute("CREATE MATERIALIZED VIEW mat AS SELECT * FROM dd"));
+  ASSERT_OK(conn1.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+  ASSERT_OK(conn1.Execute("DROP TABLE dd CASCADE"));
+  thread_holder.AddThreadFunctor(
+      [this] {
+    auto conn2 = CHECK_RESULT(Connect());
+    ASSERT_OK(conn2.Execute("BEGIN ISOLATION LEVEL REPEATABLE READ"));
+    // Verify that we get the same error message as native PG.
+    // Prior to the fix, we get "ERROR:  could not open relation with OID 16387"
+    ASSERT_NOK_STR_CONTAINS(conn2.Execute("REFRESH MATERIALIZED VIEW mat"),
+                            "relation \"mat\" does not exist");
+  });
+  // With object locking, this sleep will block the REFRESH statement on conn2 for 5 seconds.
+  SleepFor(5s);
+  ASSERT_OK(conn1.Execute("COMMIT"));
+  thread_holder.Stop();
+}
+
+/*
+ * Test ANALYZE running concurrently with catalog version incrementing DDL operations.
+ * This test verifies that ANALYZE can handle concurrent DDL without producing
+ * serialization errors or other unexpected failures.
+ * Unlike other tests, this does NOT suppress serialization errors to verify
+ * that the operations can complete successfully.
+ */
+TEST_F(PgDDLConcurrencyWithObjectLockingTest, AnalyzeWithConcurrentDDL) {
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE analyze_test(k int PRIMARY KEY, v int)"));
+  ASSERT_OK(setup_conn.Execute(
+      "INSERT INTO analyze_test SELECT i, i * 2 FROM generate_series(1, 1000) i"));
+
+  TestThreadHolder thread_holder;
+  CountDownLatch start_latch(1);
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &start_latch] {
+    auto conn = ASSERT_RESULT(
+        SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+    start_latch.CountDown();
+    start_latch.Wait();
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(conn.Execute("ANALYZE analyze_test"));
+    }
+  });
+
+  auto ddl_conn =
+      ASSERT_RESULT(SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
+  start_latch.Wait();
+
+  auto deadline = std::chrono::steady_clock::now() + 10s * kTimeMultiplier;
+  while (std::chrono::steady_clock::now() < deadline) {
+    ASSERT_OK(ddl_conn.Execute("ALTER TABLE analyze_test ADD COLUMN temp_col INT"));
+    ASSERT_OK(ddl_conn.Execute("ALTER TABLE analyze_test DROP COLUMN temp_col"));
+  }
+
+  thread_holder.Stop();
+}
+
+class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObjectLockingTest {
+ public:
+  int GetNumMasters() const override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgDDLConcurrencyWithObjectLockingTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 1;
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=true");
+  }
+};
+
+TEST_F(PgDDLConcurrencyWithObjectLockingTestRF1, YB_DISABLE_TEST_IN_SANITIZERS(CreateTables)) {
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table s_$0 (id int)", i));
+    }
+  });
+  thread_holder.AddThreadFunctor( [this] {
+    auto conn = CHECK_RESULT(Connect());
+    for (int i = 0; i < 500; i++) {
+      ASSERT_OK(conn.ExecuteFormat("create table t_$0 (id int)", i));
+    }
+  });
+  thread_holder.JoinAll();
 }
 
 } // namespace yb::pgwrapper

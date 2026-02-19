@@ -349,6 +349,7 @@ Result<pgwrapper::PGConn> CreateTableLimitTestBase::PgConnect(const std::string&
 Status CreateTableLimitTestBase::SplitTablet(const TabletId& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController controller;
   auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();

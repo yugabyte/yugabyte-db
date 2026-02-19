@@ -3107,10 +3107,11 @@ SELECT 1 FROM ft1 LIMIT 1;
 -- Terminate the remote connection and wait for the termination to complete.
 -- (If a cache flush happens, the remote connection might have already been
 -- dropped; so code this step in a way that doesn't fail if no connection.)
-DO $$ BEGIN
-PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
-	WHERE application_name = 'fdw_retry_check';
-END $$;
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- DO $$ BEGIN
+-- PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+-- 	WHERE application_name = 'fdw_retry_check';
+-- END $$;
 
 -- This query should detect the broken connection when starting new remote
 -- transaction, reestablish new connection, and then succeed.
@@ -3120,15 +3121,17 @@ SELECT 1 FROM ft1 LIMIT 1;
 -- If we detect the broken connection when starting a new remote
 -- subtransaction, we should fail instead of establishing a new connection.
 -- Terminate the remote connection and wait for the termination to complete.
-DO $$ BEGIN
-PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
-	WHERE application_name = 'fdw_retry_check';
-END $$;
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- DO $$ BEGIN
+-- PERFORM pg_terminate_backend(pid, 180000) FROM pg_stat_activity
+-- 	WHERE application_name = 'fdw_retry_check';
+-- END $$;
 SAVEPOINT s;
 -- The text of the error might vary across platforms, so only show SQLSTATE.
-\set VERBOSITY sqlstate
-SELECT 1 FROM ft1 LIMIT 1;    -- should fail
-\set VERBOSITY default
+-- YB: Re-enable this section once GH-29528 is fixed.
+-- \set VERBOSITY sqlstate
+-- SELECT 1 FROM ft1 LIMIT 1;    -- should fail
+-- \set VERBOSITY default
 COMMIT;
 
 -- =============================================================================

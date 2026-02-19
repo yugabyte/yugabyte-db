@@ -4,6 +4,11 @@
 --
 -- Logical test on small size table, using column-ref expression index.
 --
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+\set explain 'EXPLAIN (COSTS OFF)'
+
 CREATE TABLE text_books ( id int PRIMARY KEY, author text, year int);
 CREATE INDEX text_books_author_first_name ON text_books (author);
 --
@@ -18,20 +23,26 @@ INSERT INTO text_books (id, author, year)
 INSERT INTO text_books (id, author, year)
   VALUES (5, '{ "first_name": "Stephen", "last_name": "Hawking" }', 1988);
 --
-EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
-EXPLAIN (COSTS OFF) SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+$$ AS query \gset
+:explain1run1
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
-EXPLAIN (COSTS OFF) SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
-EXPLAIN (COSTS OFF) SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+SELECT $$
+SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+$$ AS query \gset
+:explain1run1
 --
 -- Logical test on small size table, using JSONB expression index.
 --
@@ -65,21 +76,25 @@ INSERT INTO books (id, details)
                 "year": 1988,
                 "genre": "science",
                 "editors": ["Melisa", "Mark", "John"] }');
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
+SELECT $$
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
 -- Drop INDEX and run again.
 DROP index books_author_first_name;
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
+SELECT $$
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name';
-EXPLAIN (COSTS OFF) SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1
+SELECT $$
 SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name';
+  ORDER BY details->>'name'
+$$ AS query \gset
+:explain1run1

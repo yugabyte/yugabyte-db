@@ -9,7 +9,7 @@ export enum TelemetryProviderType {
   LOKI = 'LOKI',
   DYNATRACE = 'DYNATRACE',
   S3 = 'S3',
-  OTLP = 'OTLP',
+  OTLP = 'OTLP'
 }
 
 export interface ExportLogFormFields {
@@ -41,8 +41,15 @@ export interface ExportLogFormFields {
     organizationID?: string;
     basicAuth?: BasicAuth;
     // Dynatrace
-    endpointUrl?: string;
     apiToken?: string;
+    // OTLP
+    protocol?: string;
+    bearerToken?: { token?: string };
+    logsEndpoint?: string;
+    metricsEndpoint?: string;
+    compression?: string;
+    timeoutSeconds?: number;
+    headers?: Record<string, string>;
   };
 }
 

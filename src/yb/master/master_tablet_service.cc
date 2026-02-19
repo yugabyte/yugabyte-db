@@ -56,9 +56,9 @@ MasterTabletServiceImpl::MasterTabletServiceImpl(MasterTabletServer* server, Mas
 }
 
 Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabletForRead(
-  const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+  TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-  tserver::ReadResponsePB* resp) {
+  tserver::ReadResponseMsg* resp) {
   // Ignore looked_up_tablet_peer.
 
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
@@ -88,8 +88,8 @@ Result<tserver::GetYSQLLeaseInfoResponsePB> MasterTabletServiceImpl::GetYSQLLeas
   return STATUS(NotSupported, "GetYSQLLeaseInfo is not implemented at masters");
 }
 
-void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
-                                    tserver::WriteResponsePB* resp,
+void MasterTabletServiceImpl::Write(const tserver::WriteRequestMsg* req,
+                                    tserver::WriteResponseMsg* resp,
                                     rpc::RpcContext context) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
   if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {

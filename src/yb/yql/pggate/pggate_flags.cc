@@ -25,8 +25,7 @@ using namespace yb::size_literals;
 
 DEPRECATE_FLAG(int32, pgsql_rpc_keepalive_time_ms, "02_2024");
 
-DEFINE_UNKNOWN_int32(pggate_rpc_timeout_secs, 60,
-             "Timeout for RPCs from pggate to YB cluster");
+DEPRECATE_FLAG(int32, pggate_rpc_timeout_secs, "11_2025");
 
 DEFINE_UNKNOWN_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "

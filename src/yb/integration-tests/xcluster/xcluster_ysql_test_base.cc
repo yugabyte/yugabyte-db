@@ -46,7 +46,6 @@
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(replication_factor);
@@ -97,7 +96,6 @@ void XClusterYsqlTestBase::InitFlags(const MiniClusterOptions& opts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
 
   // Init CDC flags.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_implicit_checkpointing) = true;
@@ -979,8 +977,8 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
   RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     master::GetNamespaceInfoResponsePB resp;
-    auto namespace_status = cluster->client_->GetNamespaceInfo(
-        /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &resp);
+    auto namespace_status =
+        cluster->client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp);
     if (!namespace_status.ok()) {
       if (namespace_status.IsNotFound()) {
         RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, params.is_colocated));
@@ -1154,4 +1152,14 @@ Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
   LOG(INFO) << "PITR has been completed";
   return Status::OK();
 }
+
+Result<YBTableName> XClusterYsqlTestBase::CreateMaterializedView(
+    Cluster& cluster, const YBTableName& table) {
+  auto conn = EXPECT_RESULT(cluster.ConnectToDB(table.namespace_name()));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
+  return GetYsqlTable(
+      &cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
+}
+
 }  // namespace yb

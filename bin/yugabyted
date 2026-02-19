@@ -96,6 +96,22 @@ DEAFULT_RETENTION_PERIOD = 7
 CALLHOME_TYPE = "yugabyted"
 CALLHOME_EVENT_START = "start"
 CALLHOME_EVENT_HEARTBEAT_STATUS = "heartbeat_status"
+CALLHOME_EVENT_BACKUP = "backup"
+CALLHOME_EVENT_RESTORE = "restore"
+CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT = "xcluster_create_checkpoint"
+CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT = "xcluster_add_to_checkpoint"
+CALLHOME_EVENT_XCLUSTER_SET_UP = "xcluster_set_up"
+CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION = "xcluster_add_to_replication"
+CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION = "xcluster_delete_replication"
+CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION = \
+    "xcluster_remove_database_from_replication"
+CALLHOME_EVENT_PITR_ENABLE = "pitr_enable"
+CALLHOME_EVENT_PITR_DISABLE = "pitr_disable"
+CALLHOME_EVENT_DEMO_CONNECT = "demo_connect"
+CALLHOME_EVENT_UPGRADE_YSQL_CATALOG = "upgrade_ysql_catalog"
+CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION = "upgrade_finalize_new_version"
+CALLHOME_EVENT_UPGRADE_CHECK_VERSION_COMPATIBILITY = \
+    "upgrade_check_version_compatibility"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -931,10 +947,18 @@ class ControlScript(object):
         )
         final_status = "Backup started successfully."
         Output.log("Backup started successfully with Task UUID: {}".format(backup_task_id))
+
+        # Send callhome event for backup
+        self.start_callhome_thread(
+            CALLHOME_EVENT_BACKUP,
+            lambda: self._send_backup_restore_callhome(CALLHOME_EVENT_BACKUP,
+                                                         backup_task_id))
+
         status_details = [
             (Output.make_yellow("Status"), final_status)
         ]
         Output.print_out(self.get_status_string_common(status_details))
+        self.shutdown_callhome_thread(CALLHOME_EVENT_BACKUP, timeout=5)
 
     # PITR restore
     def restore_pitr(self):
@@ -1161,10 +1185,18 @@ class ControlScript(object):
         )
         final_status = "Restore started successfully."
         Output.log("Restore started successfully with Task UUID: {}".format(restore_task_id))
+
+        # Send callhome event for restore
+        self.start_callhome_thread(
+            CALLHOME_EVENT_RESTORE,
+            lambda: self._send_backup_restore_callhome(CALLHOME_EVENT_RESTORE,
+                                                        restore_task_id))
+
         status_details = [
             (Output.make_yellow("Status"), final_status)
         ]
         Output.print_out(self.get_status_string_common(status_details))
+        self.shutdown_callhome_thread(CALLHOME_EVENT_RESTORE, timeout=5)
 
 
     # Prints status of YugabyteDB.
@@ -1277,14 +1309,25 @@ class ControlScript(object):
         if self.configs.temp_data.get("upgrade_timeout") is not None:
             timeout = self.configs.temp_data.get("upgrade_timeout")
 
+        start_time = time.time()
         upgrade_check_message, upgrade_check_status = (
             PGUpgradeProxy.check_for_pg_upgrade_compatibility(advertise_ip,
                                 ysql_port, data_dir, timeout))
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
+
+        compatible = (upgrade_check_status == 0)
+        # Send callhome event for upgrade check version compatibility
+        self.start_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_CHECK_VERSION_COMPATIBILITY,
+            lambda: self._send_upgrade_check_version_compatibility_callhome(
+                timeout, compatible, time_taken))
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_CHECK_VERSION_COMPATIBILITY, timeout=5)
 
         if upgrade_check_status:
             Output.log_error_and_exit("FAILED: PG upgrade compatibility check failed. " +
                                     "Please check the logs. \n{}".format(upgrade_check_message))
-
 
         Output.update_animation("Clusters are compatible for upgrade.")
 
@@ -1324,7 +1367,23 @@ class ControlScript(object):
             timeout = self.configs.temp_data.get("upgrade_timeout")
 
         Output.init_animation("Finalizing the upgrade to {}...".format(highest_version))
-        if not YBAdminProxy.finalize_upgrade_uber_command(master_addresses, timeout):
+        start_time = time.time()
+        success = YBAdminProxy.finalize_upgrade_uber_command(master_addresses, timeout)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
+        node_count = len(tserver_addresses) if tserver_addresses else 0
+        failure_reason = None
+
+        if not success:
+            failure_reason = "Failed to finalize upgrade"
+            # Send callhome event before exit
+            self.start_callhome_thread(
+                CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION,
+                lambda: self._send_upgrade_finalize_new_version_callhome(
+                    highest_version, node_count, timeout, success,
+                    failure_reason, time_taken))
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION, timeout=5)
             Output.log_error_and_exit(Output.update_animation("Failed to "
                 "Finalize the upgrade.",status=Output.ANIMATION_FAIL))
         else:
@@ -1332,6 +1391,12 @@ class ControlScript(object):
 
         Output.update_animation("Cluster Upgrade Successfully " +
                                     "Completed to {}.".format(highest_version))
+        # Send callhome event for upgrade finalize new version
+        self.start_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION,
+            lambda: self._send_upgrade_finalize_new_version_callhome(
+                highest_version, node_count, timeout, success,
+                failure_reason, time_taken))
         status_details = []
         status_display_info = {}
         final_status = "Post-upgrade tasks completed successfully."
@@ -1340,6 +1405,8 @@ class ControlScript(object):
         status_display_info[final_status] = Output.make_green
         status_details.append((Output.make_yellow("Version"), highest_version))
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION, timeout=5)
 
     # Finalize YugabyteDB cluster upgrade
     # to-do: Need to deprecated this method
@@ -1517,17 +1584,27 @@ class ControlScript(object):
         demo_db = self.configs.temp_data.get("demo_db")
         db_name = DEMO_DB_PREFIX + demo_db
         ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+        start_time = time.time()
         if not ysql_proxy.db_exists(db_name):
             self.create_demo()
+            end_time = time.time()
+        else:
+            end_time = start_time
+        time_taken = self._format_time_taken_ms(start_time, end_time)
 
         # Ignore kill SIGINT to match normal ysqlsh and psql behavior.
         signal(SIGINT, SIG_IGN)
+        # Send callhome event for demo connect
+        self.start_callhome_thread(
+            CALLHOME_EVENT_DEMO_CONNECT,
+            lambda: self._send_demo_connect_callhome(demo_db, time_taken))
         website = Output.make_underline(SAMPLE_DATA_LINKS[demo_db])
         Output.print_out(Configs.get_demo_info()[demo_db]["examples"])
         Output.print_out(
             "For more, go to {}\n".format(website)
         )
         ysql_proxy.connect_with_password(db=db_name)
+        self.shutdown_callhome_thread(CALLHOME_EVENT_DEMO_CONNECT, timeout=5)
 
     # Destroy target demo database if it exists.
     def destroy_demo(self, signum=None, frame=None):
@@ -1686,6 +1763,8 @@ class ControlScript(object):
             object_not_found_yb_admin_err = "Could not find matching"
             db_already_replicated_yb_admin_err = "xCluster ReplicationGroup already contains " +\
                                     "all requested tables"
+            xcluster_not_set_up_yb_admin_err = "xCluster replication must already be setup in" +\
+                 "order to add a new namespace to the target."
 
             complete_bootstrap_err_msg = self.get_complete_bootstrap_msg(dbs_to_be_bootstrapped,
                                                                          dbs_not_to_be_bootstrapped)
@@ -1695,11 +1774,13 @@ class ControlScript(object):
             object_not_found_ybd_err = "All of the SQL Objects are not present in the " +\
                                 "target database. " + complete_bootstrap_err_msg
             db_already_replicated_ybd_err = "The database is already added to the replication."
-
+            xcluster_not_set_up_ybd_err = "xCluster replication is not set up. Please set up " +\
+                "the replication first using the yugabyted xcluster set_up command."
             yb_admin_err_msg_to_ybd_err_msg = {
                 db_not_found_yb_admin_err: db_not_found_ybd_err,
                 object_not_found_yb_admin_err: object_not_found_ybd_err,
                 db_already_replicated_yb_admin_err: db_already_replicated_ybd_err,
+                xcluster_not_set_up_yb_admin_err: xcluster_not_set_up_ybd_err,
             }
 
         for yb_admin_err, ybd_err in yb_admin_err_msg_to_ybd_err_msg.items():
@@ -1707,6 +1788,85 @@ class ControlScript(object):
                 return ybd_err
 
         return ""
+
+    def _extract_non_pii_failure_reason(self, error_msg):
+        """Extract non-PII failure reason from error message.
+
+        Args:
+            error_msg: Error message that may contain PII (database names, etc.)
+
+        Returns:
+            Generic failure reason without PII
+        """
+        if not error_msg:
+            return None
+
+        error_lower = error_msg.lower()
+
+        # Map error patterns to generic failure reasons
+        if ("database is missing" in error_lower or
+                "keyspace name not found" in error_lower):
+            return "Database(s) missing from target"
+        elif ("objects are not present" in error_lower or
+                "could not find matching" in error_lower):
+            return "DB Object(s) missing in target"
+        elif ("already added to the replication" in error_lower or
+                "already contains" in error_lower):
+            return "Already replicated"
+        elif ("should have at least one table" in error_lower or
+                "should have atleast 1 table" in error_lower):
+            return "Empty Database(s)"
+        elif ("replication with replication id" in error_lower and
+                "already exists" in error_lower):
+            return "Replication id exists"
+        elif "xcluster replication is not set up" in error_lower:
+            return "XCluster not set up"
+        elif "couldn't create xcluster checkpoint" in error_lower:
+            return "Create Checkpoint Failed"
+        elif "couldn't add to xcluster checkpoint" in error_lower:
+            return "Add to Checkpoint Failed"
+        elif "xcluster set-up not successful" in error_lower:
+            return "Set Up Failed"
+        elif "add to xcluster replication not successful" in error_lower:
+            return "Add to Replication Failed"
+        elif ("couldn't delete the replication" in error_lower or
+                "couldn't delete database from xcluster replication" in
+                error_lower):
+            return "Delete Failed"
+        elif "bootstrap" in error_lower:
+            return "Bootstrap required"
+        elif "replication group already exists" in error_lower or "already exists" in error_lower:
+            return "Replication id exists"
+        else:
+            return "unknown_error"
+
+    def _extract_failure_reasons_from_errors(self, error_dict, default_reason):
+        """Extract and combine non-PII failure reasons from multiple errors.
+
+        Args:
+            error_dict: Dictionary mapping database/identifier to error message
+            default_reason: Default reason to use if no valid reasons extracted
+
+        Returns:
+            Combined failure reason string (comma-separated unique reasons)
+        """
+        if not error_dict:
+            return default_reason
+
+        # If only one error, use _extract_non_pii_failure_reason directly
+        if len(error_dict) == 1:
+            error_msg = list(error_dict.values())[0]
+            reason = self._extract_non_pii_failure_reason(error_msg)
+            return reason if reason else default_reason
+
+        # For multiple errors, extract unique reasons
+        failure_reasons = set()
+        for error_msg in error_dict.values():
+            reason = self._extract_non_pii_failure_reason(error_msg)
+            if reason:
+                failure_reasons.add(reason)
+
+        return ','.join(sorted(failure_reasons)) if failure_reasons else default_reason
 
     # Checkpoint xcluster replication
     def xcluster_create_checkpoint(self):
@@ -1722,8 +1882,11 @@ class ControlScript(object):
         databases = self.configs.temp_data.get("xcluster_databases")
         automatic_mode = self.configs.temp_data.get("xcluster_automatic_mode")
 
+        start_time = time.time()
         out, err, ret_code = YBAdminProxy.create_checkpoint_xcluster(master_addrs, replication_id,
                                                               databases, automatic_mode)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
         is_bootstrap_required = False
 
         if ret_code:
@@ -1731,6 +1894,21 @@ class ControlScript(object):
                                                     replication_id=replication_id)
             if not err_msg:
                 err_msg = "couldn't create xcluster checkpoint."
+            # Extract failure reason for callhome
+            failure_reason = self._extract_non_pii_failure_reason(err_msg)
+            # Send callhome event for xcluster create checkpoint (failure)
+            database_count = len(databases.split(',')) if databases else 0
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    automatic_mode=automatic_mode,
+                    time_taken=time_taken))
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT, timeout=5)
             Output.log_error_and_exit(Output.make_red("Error") +
                                 ": {}".format(err_msg))
         else:
@@ -1744,6 +1922,16 @@ class ControlScript(object):
         status_details = [
             (Output.make_yellow("Status"), "xCluster create checkpoint success.")
         ]
+
+        # Send callhome event for xcluster create checkpoint (success)
+        database_count = len(databases.split(',')) if databases else 0
+        self.start_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT,
+            lambda: self._send_xcluster_callhome(
+                CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT,
+                database_count=database_count,
+                automatic_mode=automatic_mode,
+                time_taken=time_taken))
 
         all_databases = databases.split(',')
         databases_to_be_bootstrapped = []
@@ -1812,6 +2000,8 @@ class ControlScript(object):
 
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_CREATE_CHECKPOINT, timeout=5)
         if is_bootstrap_required:
             Output.print_out(bootstrap_help_msg)
 
@@ -1835,6 +2025,7 @@ class ControlScript(object):
         databases_to_be_bootstrapped = []
         databases_not_to_be_bootstrapped = []
 
+        start_time = time.time()
         for database in databases:
             out, err, ret_code = YBAdminProxy.add_to_checkpoint_xcluster(master_addrs,
                                                                     replication_id, database)
@@ -1853,6 +2044,8 @@ class ControlScript(object):
                     databases_to_be_bootstrapped.append(database)
                 else:
                     databases_not_to_be_bootstrapped.append(database)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
 
         status_details = []
         status_display_info = {}
@@ -1861,7 +2054,29 @@ class ControlScript(object):
             status_details = [
                (Output.make_yellow("Status"), "xCluster add database(s) to checkpoint success.")
             ]
+            # Send callhome event for xcluster add to checkpoint (success)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                    database_count=database_count,
+                    time_taken=time_taken))
         elif len(not_checkpointed_dbs) == len(databases):
+            # Extract failure reason for callhome
+            failure_reason = self._extract_failure_reasons_from_errors(
+                not_checkpointed_dbs, "all_databases_failed")
+
+            # Send callhome event for xcluster add to checkpoint (failure)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    time_taken=time_taken))
             status_details = [
                 (Output.make_yellow("Status"), "xCluster add database(s) to checkpoint failed."),
                 (Output.make_yellow("Errors"), "Following are the errors for each database:")
@@ -1871,9 +2086,26 @@ class ControlScript(object):
                 status_details.extend(
                     [(Output.make_yellow(""), "{}: {}".format(database, error))]
                 )
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT, timeout=5)
             Output.print_out(self.get_status_string_common(status_details, status_display_info))
             sys.exit(1)
         else:
+            # Extract failure reason for callhome (partial failure)
+            failure_reason = self._extract_failure_reasons_from_errors(
+                not_checkpointed_dbs, "partial_failure")
+
+            # Send callhome event for xcluster add to checkpoint (partial failure)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    time_taken=time_taken))
+
             status_details = [
                 (Output.make_yellow("Status"), "xCluster add database(s) to checkpoint " +
                                                         "partially succesful."),
@@ -1939,6 +2171,10 @@ class ControlScript(object):
 
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
+        # Shutdown callhome thread (reached end of function, not via early exit)
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_ADD_TO_CHECKPOINT, timeout=5)
+
         if len(databases_to_be_bootstrapped) != 0:
             Output.print_out(bootstrap_help_msg)
 
@@ -1984,16 +2220,33 @@ class ControlScript(object):
                                       if database not in bootstrap_required_databases]
 
         Output.init_animation("Setting up xCluster replication....")
+        start_time = time.time()
         out, err, ret_code = YBAdminProxy.set_up_xcluster(master_addresses, replication_id,
                                         self.configs.temp_data.get("xcluster_target_addresses"))
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
         Output.update_animation("", Output.ANIMATION_STOP)
         status_details = []
         status_display_info = {}
 
+        target_address = self.configs.temp_data.get("xcluster_target_addresses")
+        target_address = target_address.split(',')[0].split(':')[0]
+        database_count = len(databases_list) if databases_list else 0
         if ret_code == 0:
             status_details = [
                 (Output.make_yellow("Status"), "xCluster set-up successful.")
             ]
+            # Send callhome event for xcluster set up (success)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_SET_UP,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_SET_UP,
+                    database_count=database_count,
+                    target_address=target_address,
+                    time_taken=time_taken))
+
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_SET_UP, timeout=5)
             Output.print_out(self.get_status_string_common(status_details, status_display_info))
         else:
             err_msg = self.get_xcluster_error_msg(err, command = "set_up",
@@ -2001,6 +2254,22 @@ class ControlScript(object):
                                         dbs_not_to_be_bootstrapped=bootstrap_not_required_dbs)
             if not err_msg:
                 err_msg = "xCluster set-up not successful."
+            # Extract failure reason for callhome
+            failure_reason = self._extract_non_pii_failure_reason(err_msg)
+            # Send callhome event for xcluster set up (failure)
+            target_address = self.configs.temp_data.get("xcluster_target_addresses")
+            database_count = len(databases_list) if databases_list else 0
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_SET_UP,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_SET_UP,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    target_address=target_address,
+                    time_taken=time_taken))
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_SET_UP, timeout=5)
             Output.log_error_and_exit(Output.make_red("Error") +
                                 ": {}".format(err_msg))
 
@@ -2022,6 +2291,7 @@ class ControlScript(object):
 
         Output.init_animation("Adding database(s) to xCluster replication....")
 
+        start_time = time.time()
         for database in databases:
             out, ret_code = YBAdminProxy.xcluster_is_bootstrap_required(master_addresses,
                                                                         replication_id,
@@ -2053,16 +2323,45 @@ class ControlScript(object):
                     err_msg = "Add to xCluster replication not successful."
 
                 dbs_failed_to_add[database] = err_msg
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
 
         Output.update_animation("", Output.ANIMATION_STOP)
         status_details = []
         status_display_info = {}
 
+        target_address = self.configs.temp_data.get("xcluster_target_addresses")
+
         if len(dbs_failed_to_add) == 0:
             status_details = [
                (Output.make_yellow("Status"), "Add database(s) to xCluster replication successful.")
             ]
+            # Send callhome event for xcluster add to replication (success)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                    database_count=database_count,
+                    target_address=target_address,
+                    time_taken=time_taken))
         elif len(dbs_failed_to_add) == len(databases):
+            # Extract non-PII failure reason
+            failure_reason = self._extract_failure_reasons_from_errors(
+                dbs_failed_to_add, "all_databases_failed")
+
+            # Send callhome event for xcluster add to replication (failure)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                    replication_id, success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    target_address=target_address,
+                    time_taken=time_taken))
+
             status_details = [
                 (Output.make_yellow("Status"), "Add database(s) to xCluster replication failed."),
                 (Output.make_yellow("Errors"), "Following are the errors for each database:")
@@ -2072,9 +2371,27 @@ class ControlScript(object):
                 status_details.extend(
                     [(Output.make_yellow(""), "{}: {}".format(database, error))]
                 )
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION, timeout=5)
             Output.print_out(self.get_status_string_common(status_details, status_display_info))
             sys.exit(1)
         else:
+            # Extract non-PII failure reason for partial failure
+            failure_reason = self._extract_failure_reasons_from_errors(
+                dbs_failed_to_add, "partial_failure")
+
+            # Send callhome event for xcluster add to replication (partial failure)
+            database_count = len(databases)
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    target_address=target_address,
+                    time_taken=time_taken))
+
             status_details = [
                 (Output.make_yellow("Status"), "xCluster add database(s) to replication " +
                                                         "partially succesful."),
@@ -2087,7 +2404,12 @@ class ControlScript(object):
                     [(Output.make_yellow(""), "{}: {}".format(database, error))]
                 )
 
+
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+        # Shutdown callhome thread (reached end of function, not via early exit)
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_ADD_TO_REPLICATION, timeout=5)
 
     # Show Outbound and Inbound replications status
     def xcluster_status(self):
@@ -2151,18 +2473,46 @@ class ControlScript(object):
 
         replication_id = self.configs.temp_data.get("xcluster_replication_id")
 
+        start_time = time.time()
         err, ret_code = YBAdminProxy.drop_xcluster_replication(master_addresses,
                                         replication_id, target_addresses=target_master_addresses)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
 
         if ret_code:
             err_msg = self.get_xcluster_error_msg(err, command = "delete_replication",
                                                   replication_id=replication_id)
             if not err_msg:
                 err_msg = "Couldn't delete the replication."
+            # Extract failure reason for callhome
+            failure_reason = self._extract_non_pii_failure_reason(err_msg)
+            # Send callhome event for xcluster delete replication (failure)
+            target_address = self.configs.temp_data.get("xcluster_target_addresses")
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION,
+                    success=False,
+                    failure_reason=failure_reason,
+                    target_address=target_address,
+                    is_target_available=is_target_available,
+                    time_taken=time_taken))
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION, timeout=5)
             Output.log_error_and_exit(Output.make_red("Error") +
                                 ": {}".format(err_msg))
         status_details = []
         status_display_info = {}
+
+        # Send callhome event for xcluster delete replication (success)
+        target_address = self.configs.temp_data.get("xcluster_target_addresses")
+        self.start_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION,
+            lambda: self._send_xcluster_callhome(
+                CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION,
+                target_address=target_address,
+                is_target_available=is_target_available,
+                time_taken=time_taken))
 
         if is_target_available:
             status_details = [
@@ -2188,6 +2538,10 @@ class ControlScript(object):
                     Output.make_cyan("delete_universe_replication <replication_id>"))
             Output.print_out(msg)
 
+        # Shutdown callhome thread for success case
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_DELETE_REPLICATION, timeout=5)
+
     # Delete database from xcluster replication
     def xcluster_remove_database_from_replication(self):
         if not self.script.is_running():
@@ -2206,6 +2560,7 @@ class ControlScript(object):
 
         not_deleted_dbs = dict()
 
+        start_time = time.time()
         for database in databases.split(','):
             err, ret_code = YBAdminProxy.delete_from_xcluster_replication(master_addresses,
                                 replication_id, database, target_addresses=target_master_addresses)
@@ -2224,6 +2579,8 @@ class ControlScript(object):
                                "from source only.")
                 else:
                     Output.log("Database {} deleted from replication.".format(database))
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
 
         status_details = []
         status_display_info = {}
@@ -2233,7 +2590,30 @@ class ControlScript(object):
                (Output.make_yellow("Status"), "xCluster delete database(s) from " +
                             "replication success.")
             ]
+            # Send callhome event for xcluster remove database from replication (success)
+            database_count = len(databases.split(',')) if databases else 0
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                    database_count=database_count,
+                    time_taken=time_taken))
         elif len(not_deleted_dbs) == len(databases):
+            # Extract failure reason for callhome
+            failure_reason = self._extract_failure_reasons_from_errors(
+                not_deleted_dbs, "all_databases_failed")
+
+            # Send callhome event for xcluster remove database from replication (failure)
+            database_count = len(databases.split(',')) if databases else 0
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                    replication_id, success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    time_taken=time_taken))
+
             status_details = [
                 (Output.make_yellow("Status"), "xCluster delete database(s) from " +
                                                     "replication failed."),
@@ -2244,9 +2624,26 @@ class ControlScript(object):
                 status_details.extend(
                     [(Output.make_yellow(""), "{}: {}".format(database, error))]
                 )
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION, timeout=5)
             Output.print_out(self.get_status_string_common(status_details, status_display_info))
             sys.exit(1)
         else:
+            # Extract failure reason for callhome (partial failure)
+            failure_reason = self._extract_failure_reasons_from_errors(
+                not_deleted_dbs, "partial_failure")
+
+            # Send callhome event for xcluster remove database from replication (partial failure)
+            database_count = len(databases.split(',')) if databases else 0
+            self.start_callhome_thread(
+                CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                lambda: self._send_xcluster_callhome(
+                    CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION,
+                    success=False,
+                    failure_reason=failure_reason,
+                    database_count=database_count,
+                    time_taken=time_taken))
+
             status_details = [
                 (Output.make_yellow("Status"), "xCluster delete database(s) from " +
                                                     "replication partially succesful."),
@@ -2260,6 +2657,10 @@ class ControlScript(object):
                 )
 
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+        # Shutdown callhome thread (reached end of function, not via early exit)
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_XCLUSTER_REMOVE_DATABASE_FROM_REPLICATION, timeout=5)
 
     # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
@@ -2899,9 +3300,20 @@ class ControlScript(object):
 
         # Start the YSQL catalog upgrade
         Output.init_animation("YSQL Catalog upgrade in progress...")
+        start_time = time.time()
         _, ret_code = YBAdminProxy.start_ysql_catalog_upgrade(
                 master_addresses, timeout)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
+        success = (ret_code == 0)
+        # Send callhome event for upgrade ysql catalog
+        self.start_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_YSQL_CATALOG,
+            lambda: self._send_upgrade_ysql_catalog_callhome(success,
+                                                               time_taken))
         if ret_code:
+            self.shutdown_callhome_thread(
+                CALLHOME_EVENT_UPGRADE_YSQL_CATALOG, timeout=5)
             Output.log_error_and_exit("YSQL catalog upgrade failed. Please check the logs.")
         else:
             Output.update_animation("YSQL catalog upgrade successful.")
@@ -2911,6 +3323,8 @@ class ControlScript(object):
         status_details = [
             (Output.make_yellow("Status"), "YSQL catalog upgrade successful."),
         ]
+        self.shutdown_callhome_thread(
+            CALLHOME_EVENT_UPGRADE_YSQL_CATALOG, timeout=5)
         Output.print_out(self.get_status_string_common(status_details))
 
     def read_pidfile(self, pidfile_path):
@@ -3191,14 +3605,18 @@ class ControlScript(object):
             os._exit(os.EX_OK)
         self.set_signals(SIG_DFL)
 
-        for p in self.processes.values():
-            p.delete_pidfile()
-        self.script.delete_pidfile()
-
         try:
+            for p in self.processes.values():
+                p.kill()
+
+            for p in self.processes.values():
+                p.wait_until_stop()
+
+            self.script.delete_pidfile()
+
             # Kill process group instead of self.processes to ensure
-            # any spawned child processes are killed. Use SIGKILL because YugaWare
-            # requires KILL signal to terminate and nodes currently do not gracefully terminate.
+            # any spawned child processes are killed.
+            # This will terminate any processes that didn't respond to SIGTERM.
             os.killpg(pgid, SIGKILL)
             Output.log(
                 "{} may not have terminated properly... "
@@ -3833,15 +4251,26 @@ class ControlScript(object):
                 Diagnostics.first_run_secs = time.time() - start_time_sec
                 Diagnostics.first_install = is_first_install
 
-                # TODO: Change callhome for read replica also
                 if self.configs.saved_data.get("callhome"):
-                    callhome_thread = Thread(target=self.callhome_loop)
-                    callhome_thread.daemon = True
-                    callhome_thread.start()
+                    self.start_callhome_thread(
+                        CALLHOME_EVENT_START,
+                        self.start_cmd_callhome,
+                        use_shutdown_event=False
+                    )
+                    self.start_callhome_thread(
+                        CALLHOME_EVENT_HEARTBEAT_STATUS,
+                        self.heartbeat_status_callhome_loop,
+                        use_shutdown_event=True
+                    )
 
                 masters_list_update_thread = Thread(target=self.update_masters_list_loop)
                 masters_list_update_thread.daemon = True
                 masters_list_update_thread.start()
+
+            if self.configs.saved_data.get("callhome"):
+                self.shutdown_callhome_thread(
+                    callhome_event_name=CALLHOME_EVENT_START, timeout=120
+                )
 
             is_first_run = False
             if should_callhome:
@@ -4965,8 +5394,12 @@ class ControlScript(object):
         retention_period = self.configs.temp_data.get("retention_period")
         master_addresses = self.configs.saved_data.get("current_masters")
         Output.init_animation("Enabling Point-In-Time Recovery...")
-        if not YBAdminProxy.create_snapshot_schedule(master_addresses,
-            retention_period, pitr_object):
+        start_time = time.time()
+        success = YBAdminProxy.create_snapshot_schedule(master_addresses,
+            retention_period, pitr_object)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
+        if not success:
             Output.log_error_and_exit(Output.update_animation("Failed to "
                 "enable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
         else:
@@ -4974,6 +5407,13 @@ class ControlScript(object):
 
         Output.update_animation("Successfully enabled Point-In-Time recovery for {} {}.".format(
                                                             pitr_yb_api_type, pitr_object_name))
+        # Send callhome event for PITR enable
+        self.start_callhome_thread(
+            CALLHOME_EVENT_PITR_ENABLE,
+            lambda: self._send_pitr_enable_callhome(pitr_yb_api_type,
+                                                     retention_period,
+                                                     success, time_taken))
+        self.shutdown_callhome_thread(CALLHOME_EVENT_PITR_ENABLE, timeout=5)
         status_details = self.get_pitr_config_details(pitr_object, retention = retention_period)
 
         Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
@@ -5002,7 +5442,11 @@ class ControlScript(object):
         pitr_object_id, _, _ = self.get_pitr_object_details(pitr_object, schedules)
         master_addresses = self.configs.saved_data.get("current_masters")
         Output.init_animation("Disabling Point-In-Time Recovery...")
-        if not YBAdminProxy.delete_snapshot_schedule(master_addresses, pitr_object_id):
+        start_time = time.time()
+        success = YBAdminProxy.delete_snapshot_schedule(master_addresses, pitr_object_id)
+        end_time = time.time()
+        time_taken = self._format_time_taken_ms(start_time, end_time)
+        if not success:
             Output.log_error_and_exit(Output.update_animation("Failed to "
                 "disable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
         else:
@@ -5010,6 +5454,12 @@ class ControlScript(object):
 
         Output.update_animation("Successfully disabled Point-In-Time recovery for {} {}.".format(
                                                             pitr_yb_api_type, pitr_object_name))
+        # Send callhome event for PITR disable
+        self.start_callhome_thread(
+            CALLHOME_EVENT_PITR_DISABLE,
+            lambda: self._send_pitr_disable_callhome(pitr_yb_api_type,
+                                                     success, time_taken))
+        self.shutdown_callhome_thread(CALLHOME_EVENT_PITR_DISABLE, timeout=5)
         status_details = self.get_pitr_config_details(pitr_object)
 
         Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
@@ -6504,29 +6954,147 @@ class ControlScript(object):
                 return True
             return False
 
-    def _get_cluster_data(self):
+    def _get_cluster_data(self, target_ip=None):
         """Fetch cluster data from UI API using generic framework.
+
+        Args:
+            target_ip: Optional IP address to fetch from (default: local cluster)
 
         Returns:
             Tuple of (cluster data dictionary, response_code) or (None, None) if request fails
         """
-        return self._fetch_api_endpoint('/api/cluster', 'cluster data')
+        return self._fetch_api_endpoint('/api/cluster', 'cluster data', target_ip=target_ip)
 
-    def _fetch_api_endpoint(self, endpoint_path, description=""):
+    def _get_alerts_info(self):
+        """Fetch alerts from UI API and extract all info strings.
+
+        Returns:
+            List of alert info strings, or empty list if API call fails or no alerts
+        """
+        alerts_data, _ = self._fetch_api_endpoint('/api/alerts', 'alerts')
+        alert_info_strings = []
+
+        if alerts_data and 'data' in alerts_data:
+            for alert in alerts_data['data']:
+                if 'info' in alert:
+                    alert_info_strings.append(alert['info'])
+
+        return alert_info_strings
+
+    def _get_ysql_databases(self):
+        """Fetch YSQL tables and extract unique keyspaces/databases.
+
+        Returns:
+            List of unique database/keyspace names, or empty list if API call fails
+        """
+        tables_data, _ = self._fetch_api_endpoint(
+            '/api/tables', 'YSQL tables',
+            query_params={'api': 'YSQL'}
+        )
+        databases = []
+
+        if tables_data and 'tables' in tables_data:
+            for table in tables_data['tables']:
+                if 'keyspace' in table:
+                    keyspace = table['keyspace']
+                    if keyspace and keyspace not in databases:
+                        databases.append(keyspace)
+
+        return databases
+
+    def _get_index_backfill_activities(self):
+        """Fetch INDEX_BACKFILL activities for both COMPLETED and IN_PROGRESS.
+
+        Returns structured dictionary with in_progress and completed lists,
+        with PII fields filtered out.
+
+        Returns:
+            Dictionary with structure: {"in_progress": [...], "completed": [...]}
+        """
+        activities = {
+            'in_progress': [],
+            'completed': []
+        }
+
+        # Fetch COMPLETED activities
+        completed_data, _ = self._fetch_api_endpoint(
+            '/api/activities', 'INDEX_BACKFILL completed activities',
+            query_params={
+                'activities': 'INDEX_BACKFILL',
+                'status': 'COMPLETED'
+            }
+        )
+
+        if completed_data and 'data' in completed_data:
+            for activity in completed_data['data']:
+                if 'data' in activity:
+                    activity_data = activity['data']
+                    # Filter PII field: IndexName (only PII field in COMPLETED)
+                    filtered_data = {
+                        k: v for k, v in activity_data.items()
+                        if k != 'IndexName'
+                    }
+                    if filtered_data:
+                        activities['completed'].append(filtered_data)
+
+        # Fetch IN_PROGRESS activities for each YSQL database
+        databases = self._get_ysql_databases()
+        for database in databases:
+            in_progress_data, _ = self._fetch_api_endpoint(
+                '/api/activities', 'INDEX_BACKFILL in_progress activities',
+                query_params={
+                    'activities': 'INDEX_BACKFILL',
+                    'status': 'IN_PROGRESS',
+                    'database': database
+                }
+            )
+
+            if in_progress_data and 'data' in in_progress_data:
+                for activity in in_progress_data['data']:
+                    if 'data' in activity:
+                        activity_data = activity['data']
+                        # Filter PII fields: DBName, IndexName, Command
+                        filtered_data = {
+                            k: v for k, v in activity_data.items()
+                            if k not in ['DBName', 'IndexName', 'Command']
+                        }
+                        if filtered_data:
+                            activities['in_progress'].append(filtered_data)
+
+        return activities
+
+    def _fetch_api_endpoint(self, endpoint_path, description="", target_ip=None,
+                            query_params=None):
         """Generic method to fetch data from UI API endpoints.
+
+        For read replica nodes, API calls are made to the leader master node
+        (join IP) since read replicas don't have their own master.
 
         Args:
             endpoint_path: API endpoint path (e.g., '/api/nodes')
             description: Description for logging purposes
+            target_ip: Optional IP address to fetch from (default: local cluster)
+            query_params: Optional dictionary of query parameters to append to URL
 
         Returns:
             Tuple of (parsed JSON data, response_code) or (None, None) if request fails
         """
         try:
-            advertise_ip = self.advertise_ip()
-            advertise_url_ip = get_url_from_ip(advertise_ip)
+            if target_ip is None:
+                # For read replica nodes, use the join IP (leader master) for API calls
+                if self.configs.saved_data.get("read_replica"):
+                    target_ip = self.configs.saved_data.get("join")
+                else:
+                    target_ip = self.advertise_ip()
+
+            target_url_ip = get_url_from_ip(target_ip)
             ui_port = self.configs.saved_data.get("yugabyted_ui_port")
-            api_url = "http://{}:{}{}".format(advertise_url_ip, ui_port, endpoint_path)
+            api_url = "http://{}:{}{}".format(target_url_ip, ui_port, endpoint_path)
+
+            # Append query parameters if provided
+            if query_params:
+                query_string = urlencode(query_params)
+                api_url = "{}?{}".format(api_url, query_string)
 
             response = urlopen(Request(api_url))
             if response.code == 200:
@@ -6541,50 +7109,21 @@ class ControlScript(object):
 
         return (None, None)
 
-    def _execute_ysql_query(self, query, description=""):
-        """Generic method to execute YSQL queries.
-
-        Args:
-            query: SQL query string to execute
-            description: Description for logging purposes
-
-        Returns:
-            Query result as string or None if query fails
-        """
-        try:
-            current_node_ip = self.advertise_ip()
-            ysql_proxy = YsqlProxy(current_node_ip, self.configs.saved_data.get("ysql_port"))
-
-            cmd = ysql_proxy.cmd_with_password + ["-t", "-c", query]
-
-            # Create encrypted command for logging (mask password)
-            encrypted_cmd = []
-            for part in cmd:
-                if ysql_proxy.password and ysql_proxy.password in part:
-                    encrypted_cmd.append(part.replace(ysql_proxy.password, "***"))
-                else:
-                    encrypted_cmd.append(part)
-
-            out, _, ret_code = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd,
-                                          log_cmd=True, env_vars=ysql_proxy.env)
-
-            if ret_code == 0 and out:
-                return out.strip()
-        except Exception as e:
-            log_msg = "Failed to execute YSQL query{}: {}".format(
-                " for " + description if description else "", str(e))
-            Output.log(log_msg)
-
-        return None
+    def _format_time_taken_ms(self, start_time, end_time):
+        """Format time difference in milliseconds as string."""
+        time_diff_ms = int((end_time - start_time) * 1000)
+        return "{} ms".format(time_diff_ms)
 
     def get_common_callhome_payload(self, command: str, cluster_data=None, response_code=None):
         callhome_payload = CallhomePayload(
             callhome_type=CALLHOME_TYPE,
             command=command,
             timestamp=datetime.now().isoformat(),
+            node_uuid=self.configs.saved_data.get("node_uuid", ""),
             cluster_uuid="",
             universe_uuid="",
             is_ui_up=False,
+            is_read_replica=self.configs.saved_data.get("read_replica", False),
             payload=dict()
         )
 
@@ -6603,6 +7142,178 @@ class ControlScript(object):
         callhome_payload.timestamp = datetime.now().isoformat()
 
         return callhome_payload
+
+    def _send_backup_restore_callhome(self, event_type, task_id=None):
+        """Send callhome event for backup or restore command.
+
+        Args:
+            event_type: CALLHOME_EVENT_BACKUP or CALLHOME_EVENT_RESTORE
+            task_id: Task ID for the backup/restore operation (default None)
+        """
+        callhome_payload = self.get_common_callhome_payload(event_type)
+
+        # Determine ns_type from config
+        ns_type = ""
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            ns_type = "ysql"
+        elif self.configs.temp_data.get("keyspace_name_backup_restore"):
+            ns_type = "ycql"
+
+        payload = {
+            'cloud_type': self.configs.temp_data.get("ybc_cloud_type"),
+            'ns_type': ns_type
+        }
+
+        # Add task_id if provided
+        if task_id:
+            payload['task_id'] = task_id
+
+        # Add is_pitr_restore only for restore events
+        if event_type == CALLHOME_EVENT_RESTORE:
+            payload['is_pitr_restore'] = bool(
+                self.configs.temp_data.get("restore_time"))
+
+        callhome_payload.payload = payload
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_xcluster_callhome(self, event_type,
+                                success=True, failure_reason=None,
+                                database_count=None,
+                                target_address=None, automatic_mode=None,
+                                is_target_available=None, time_taken=None):
+        """Send callhome event for xcluster operations.
+
+        Args:
+            event_type: CALLHOME_EVENT_XCLUSTER_* constant
+            success: Whether operation succeeded (default True)
+            failure_reason: Failure reason if not successful (default None)
+            database_count: Number of databases (default None)
+            target_address: Target cluster address (default None)
+            automatic_mode: Automatic mode flag for create_checkpoint (default None)
+            is_target_available: Target availability for delete_replication (default None)
+            time_taken: Time taken for the operation in "XXXX ms" format (default None)
+        """
+        callhome_payload = self.get_common_callhome_payload(event_type)
+
+        payload = {
+            'success': success
+        }
+        if time_taken:
+            payload['time_taken'] = time_taken
+
+        # Add database_count if provided
+        if database_count is not None:
+            payload['database_count'] = database_count
+
+        # Add optional fields based on parameters
+        if automatic_mode is not None:
+            payload['automatic_mode'] = bool(automatic_mode)
+
+        if is_target_available is not None:
+            payload['target_available'] = is_target_available
+
+        # Add failure_reason if provided
+        if not success and failure_reason:
+            payload['failure_reason'] = failure_reason
+
+        # Get target cluster info if target_address provided
+        if target_address:
+            cluster_data, _ = self._get_cluster_data(target_ip=target_address)
+            if cluster_data and 'data' in cluster_data and \
+               'info' in cluster_data['data']:
+                target_cluster_uuid = cluster_data['data']['info'].get(
+                    'cluster_uuid', '')
+                target_universe_uuid = cluster_data['data']['info'].get(
+                    'universe_uuid', '')
+                if target_cluster_uuid:
+                    payload['target_cluster_uuid'] = target_cluster_uuid
+                if target_universe_uuid:
+                    payload['target_universe_uuid'] = target_universe_uuid
+
+        callhome_payload.payload = payload
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_pitr_enable_callhome(self, pitr_yb_api_type, retention_period,
+                                    success, time_taken):
+        """Send callhome event for PITR enable."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_PITR_ENABLE
+        )
+        retention_period_days = None
+        if retention_period:
+            retention_period_days = retention_period // 1440
+        callhome_payload.payload = {
+            'pitr_type': pitr_yb_api_type,
+            'retention_period_days': retention_period_days,
+            'success': success,
+            'time_taken': time_taken
+        }
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_pitr_disable_callhome(self, pitr_yb_api_type, success,
+                                     time_taken):
+        """Send callhome event for PITR disable."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_PITR_DISABLE
+        )
+        callhome_payload.payload = {
+            'pitr_type': pitr_yb_api_type,
+            'success': success,
+            'time_taken': time_taken
+        }
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_demo_connect_callhome(self, demo_db, time_taken):
+        """Send callhome event for demo connect."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_DEMO_CONNECT
+        )
+        callhome_payload.payload = {
+            'demo_db': demo_db,
+            'time_taken': time_taken
+        }
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_upgrade_ysql_catalog_callhome(self, success, time_taken):
+        """Send callhome event for upgrade ysql catalog."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_UPGRADE_YSQL_CATALOG
+        )
+        callhome_payload.payload = {
+            'success': success,
+            'time_taken': time_taken
+        }
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_upgrade_finalize_new_version_callhome(self, target_version,
+                                                     node_count, timeout_ms,
+                                                     success, failure_reason=None,
+                                                     time_taken=None):
+        """Send callhome event for upgrade finalize new version."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_UPGRADE_FINALIZE_NEW_VERSION
+        )
+        payload = {
+            'target_version': target_version,
+            'success': success
+        }
+        if not success and failure_reason:
+            payload['failure_reason'] = failure_reason
+        if time_taken:
+            payload['time_taken'] = time_taken
+        callhome_payload.payload = payload
+        self.diagnostics.callhome(callhome_payload)
+
+    def _send_upgrade_check_version_compatibility_callhome(self, compatible, time_taken):
+        """Send callhome event for upgrade check version compatibility."""
+        callhome_payload = self.get_common_callhome_payload(
+            CALLHOME_EVENT_UPGRADE_CHECK_VERSION_COMPATIBILITY
+        )
+        callhome_payload.payload = {
+            'compatible': compatible,
+            'time_taken': time_taken
+        }
+        self.diagnostics.callhome(callhome_payload)
 
     def _get_configuration_data(self):
         """Get configuration data for start command callhome.
@@ -6641,7 +7352,8 @@ class ControlScript(object):
                     self.configs.saved_data.get("ysql_enable_auth") and
                 self.configs.saved_data.get("use_cassandra_authentication")
                 ),
-                'clockbound': self.configs.temp_data.get("enhance_time_sync_via_clockbound")
+                'clockbound': self.configs.temp_data.get("enhance_time_sync_via_clockbound"),
+                'backup_daemon': self.configs.saved_data.get("backup_daemon")
             },
             'master_flags': filtered_master_flags,
             'tserver_flags': filtered_tserver_flags
@@ -6690,12 +7402,21 @@ class ControlScript(object):
             response_code=response_code
         )
 
+        # Determine if this is the first node or an added node
+        join_ip = self.configs.saved_data.get("join")
+
+        # Do we need following feilds for heartbeat_status events also?
+        is_first_node = not bool(join_ip)
+        is_added_node = bool(join_ip)
+
         # Build categorized payload structure
         payload = {
             'configuration': self._get_configuration_data(),
             'cluster_topology': self._get_cluster_topology_data(
                 cluster_data=cluster_data
-            )
+            ),
+            'is_first_node': is_first_node,
+            'is_added_node': is_added_node
         }
 
         # List of details pending to be sent
@@ -6873,29 +7594,39 @@ class ControlScript(object):
                 isinstance(migrations_data['data'], list)):
             database_metrics['migrations_count'] = len(migrations_data['data'])
 
-        # Fetch table count
-        tables_query = (
-            "SELECT COUNT(*) FROM information_schema.tables "
-            "WHERE table_schema NOT IN "
-            "('pg_catalog', 'information_schema', 'pg_toast', 'yb_catalog')")
-        tables_result = self._execute_ysql_query(tables_query, "table count")
-        if tables_result:
-            try:
-                database_metrics['user_tables_count'] = int(tables_result)
-            except ValueError:
-                pass
+        # Fetch table and index counts using API
+        # Fetch YSQL tables and indexes
+        ysql_data, _ = self._fetch_api_endpoint(
+            '/api/tables', 'YSQL tables',
+            query_params={'api': 'YSQL'}
+        )
+        ysql_tables_count = 0
+        ysql_indexes_count = 0
+        if ysql_data and 'tables' in ysql_data:
+            ysql_tables_count = len(ysql_data['tables'])
+        if ysql_data and 'indexes' in ysql_data:
+            ysql_indexes_count = len(ysql_data['indexes'])
 
-        # Fetch index count
-        indexes_query = (
-            "SELECT COUNT(*) FROM pg_indexes "
-            "WHERE schemaname NOT IN "
-            "('pg_catalog', 'information_schema', 'pg_toast', 'yb_catalog')")
-        indexes_result = self._execute_ysql_query(indexes_query, "index count")
-        if indexes_result:
-            try:
-                database_metrics['user_indexes_count'] = int(indexes_result)
-            except ValueError:
-                pass
+        # Fetch YCQL tables and indexes
+        ycql_data, _ = self._fetch_api_endpoint(
+            '/api/tables', 'YCQL tables',
+            query_params={'api': 'YCQL'}
+        )
+        ycql_tables_count = 0
+        ycql_indexes_count = 0
+        if ycql_data and 'tables' in ycql_data:
+            ycql_tables_count = len(ycql_data['tables'])
+        if ycql_data and 'indexes' in ycql_data:
+            ycql_indexes_count = len(ycql_data['indexes'])
+
+        database_metrics['user_tables_count'] = {
+            'YSQL': ysql_tables_count,
+            'YCQL': ycql_tables_count
+        }
+        database_metrics['user_indexes_count'] = {
+            'YSQL': ysql_indexes_count,
+            'YCQL': ycql_indexes_count
+        }
 
         return database_metrics
 
@@ -7013,6 +7744,47 @@ class ControlScript(object):
 
         return filtered_list
 
+    def _get_backup_restore_info(self):
+        """Fetch backup and restore information from API endpoints.
+
+        Returns:
+            Dictionary with 'backup' and 'restore' arrays containing
+            start_time, status, time_taken, bytes_transferred, and task_id
+            for each entry.
+        """
+        backup_restore_info = {
+            'backup': [],
+            'restore': []
+        }
+
+        # Fetch backup data
+        backup_data, _ = self._fetch_api_endpoint('/api/backup', 'backup')
+        if backup_data and 'backup' in backup_data:
+            for entry in backup_data['backup']:
+                backup_info = {
+                    'start_time': entry.get('task_start_time', ''),
+                    'status': entry.get('task_status', ''),
+                    'time_taken': entry.get('time_taken', ''),
+                    'bytes_transferred': entry.get('bytes_transferred', ''),
+                    'task_id': entry.get('ybc_task_id', '')
+                }
+                backup_restore_info['backup'].append(backup_info)
+
+        # Fetch restore data
+        restore_data, _ = self._fetch_api_endpoint('/api/restore', 'restore')
+        if restore_data and 'restore' in restore_data:
+            for entry in restore_data['restore']:
+                restore_info = {
+                    'start_time': entry.get('task_start_time', ''),
+                    'status': entry.get('task_status', ''),
+                    'time_taken': entry.get('time_taken', ''),
+                    'bytes_transferred': entry.get('bytes_transferred', ''),
+                    'task_id': entry.get('ybc_task_id', '')
+                }
+                backup_restore_info['restore'].append(restore_info)
+
+        return backup_restore_info
+
     def get_heartbeat_status_payload(self):
         """Fetch node metrics for current node and cluster info from the UI API.
 
@@ -7040,7 +7812,12 @@ class ControlScript(object):
                 'nodes': self._get_cluster_node_info(nodes_data),
                 'health': self._get_cluster_health_metrics(),
                 'database': self._get_cluster_database_metrics()
-            }
+            },
+            'alerts': self._get_alerts_info(),
+            'activities': {
+                'index_backfill': self._get_index_backfill_activities()
+            },
+            'backup_restore': self._get_backup_restore_info()
         }
 
         return payload
@@ -7904,6 +8681,11 @@ class ControlScript(object):
                 Output.print_out(err_msg)
                 sys.exit(1)
 
+            if not self.does_replication_id_exists(args.replication_id):
+                Output.log_error_and_exit(Output.make_red("Error") + ": --replication_id" +
+                        " {} provided is not present. ".format(args.replication_id) +
+                        "Was the xcluster replication with this replication_id set-up?")
+
             ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
             databases = args.databases.split(",")
             db_not_exist_list = list()
@@ -7913,11 +8695,6 @@ class ControlScript(object):
                     db_not_exist_list.append(db)
                 if self.does_database_exist_in_replication(db, args.replication_id):
                     db_exist_in_replication.append(db)
-
-            if not self.does_replication_id_exists(args.replication_id):
-                Output.log_error_and_exit(Output.make_red("Error") + ": --replication_id" +
-                        " {} provided is not present. ".format(args.replication_id) +
-                        "Was the xcluster replication with this replication_id set-up?")
 
             if len(db_not_exist_list):
                 if len(db_not_exist_list) == 1:
@@ -10028,12 +10805,11 @@ class CallhomePayload:
     callhome_type: str
     command: str
     timestamp: str
+    node_uuid: str
     cluster_uuid: str
     universe_uuid: str
-    # nodes: int # TODO: Add this
-    # masters: int # TODO: Add this
-    # tservers: int # TODO: Add this
     is_ui_up: bool
+    is_read_replica: bool
     payload: dict
 
     def to_json(self):
@@ -10046,53 +10822,6 @@ class Diagnostics(object):
 
     def __init__(self, configs):
         self.configs = configs
-
-    # Collects data.
-    def get_data(self, processes):
-        payload = {
-            "data_dir_size": self.get_dir_size(self.configs.saved_data.get("data_dir")),
-            "num_cpus": multiprocessing.cpu_count(),
-            # "master_flags": self.configs.saved_data.get("master_flags"),
-            # "tserver_flags": self.configs.saved_data.get("tserver_flags"),
-            "is_docker" : str(os.path.exists("/.dockerenv"))
-        }
-        if Diagnostics.first_install is not None:
-            payload['first_install'] = str(Diagnostics.first_install)
-            Diagnostics.first_install = None
-        if Diagnostics.first_run_secs is not None:
-            payload['first_run_secs'] = str(int(Diagnostics.first_run_secs))
-            Diagnostics.first_run_secs = None
-        for p in processes.values():
-            payload["{}_status".format(p.name)] = "UP" if p.is_running() else "DOWN"
-            if p.start_time:
-                payload["{}_start_time".format(p.name)] = p.start_time
-
-        bind_ip = self.configs.saved_data.get("advertise_address")
-        advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
-
-        master_addrs = "{}:{}".format(
-            get_url_from_ip(advertise_ip),
-            self.configs.saved_data.get("master_rpc_port"))
-        # TODO: This is going to change for multi-node.
-        cur_master_addr = master_addrs
-        data = {
-            "cluster_uuid": self.configs.saved_data.get("universe_uuid"),
-            "node_uuid": self.configs.saved_data.get("node_uuid"),
-            "server_type": SCRIPT_NAME,
-            "timestamp": int(time.time()),
-            "payload": payload
-        }
-        return json.dumps(data)
-
-    def get_dir_size(self, dirname):
-        size = 0
-        for path, _, files in os.walk(dirname):
-            for f in files:
-                filepath = os.path.join(path, f)
-                # Check that the file is not a symlink
-                if os.path.isfile(filepath):
-                    size += os.path.getsize(filepath)
-        return size
 
     # Collects callhome data and sends it.
     def callhome(self, callhome_payload: CallhomePayload):
@@ -11619,25 +12348,35 @@ def run_process_checked(cmd, timeout=None, log_cmd=True, env_vars=None):
     return out
 
 def run_process_with_retries(cmd, encrypted_cmd=None, timeout=None, log_cmd=False, env_vars=None,
-                             shell=False, retries=10):
+                             shell=False, retries=10, sleep_interval=0.2, log_retries=True):
     start_time = time.time()
     now = start_time
     try_count = 0
+
+    # Log command once at the start if log_cmd is True
+    if log_cmd:
+        if encrypted_cmd:
+            Output.log("run_process: cmd: {}".format(str(encrypted_cmd)))
+        else:
+            Output.log("run_process: cmd: {}".format(str(cmd)))
+
     while True:
         try_count+=1
-        if log_cmd:
+        if log_cmd and log_retries:
             Output.log("Running {}. Total retries: {}, Timeout: {}, Try count: {}".format(cmd,
                                                                     retries, timeout, try_count))
+        # Only log in run_process if log_retries is True (to avoid logging on each retry)
         out, err, retcode = run_process(cmd=cmd, encrypted_cmd=encrypted_cmd, timeout=timeout,
-                                        log_cmd=log_cmd, env_vars=env_vars, shell=shell)
+                                        log_cmd=(log_cmd and log_retries), env_vars=env_vars,
+                                        shell=shell)
         now = time.time()
         if retcode:
-            if now - start_time > timeout:
+            if timeout and (now - start_time > timeout):
                 return (out, err, retcode)
             elif try_count == retries:
                 return (out, err, retcode)
             else:
-                time.sleep(0.2)
+                time.sleep(sleep_interval)
         else:
             return (out, err, retcode)
 

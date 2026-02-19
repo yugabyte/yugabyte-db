@@ -13,6 +13,7 @@
 
 #include "yb/master/yql_virtual_table.h"
 
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -55,7 +56,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
 YQLVirtualTable::~YQLVirtualTable() = default;
 
 Status YQLVirtualTable::GetIterator(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
@@ -76,7 +77,7 @@ Status YQLVirtualTable::GetIterator(
 }
 
 Status YQLVirtualTable::BuildYQLScanSpec(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const ReadHybridTime& read_time,
     const Schema& schema,
     const bool include_static_columns,

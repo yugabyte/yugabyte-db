@@ -84,7 +84,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
@@ -605,7 +605,8 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " transactional batch of key range ["
               << start << ", " << end << ") into" << table->name().ToString();
     for (uint32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
+      auto op = delete_op ? table_handle.NewDeleteOp(session->arena())
+                          : table_handle.NewInsertOp(session->arena());
       int32_t key = i;
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, key);
@@ -1541,7 +1542,7 @@ TEST_F(XClusterTestTransactionalOnly, UpdateWithinTransaction) {
   session->SetTransaction(nullptr);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(producer_table_->name(), producer_client()));
-  auto op = table_handle.NewInsertOp();
+  auto op = table_handle.NewInsertOp(session->arena());
   auto req = op->mutable_request();
   QLAddInt32HashValue(req, 0);
   ASSERT_OK(session->TEST_ApplyAndFlush(op));
@@ -2247,7 +2248,7 @@ TEST_P(XClusterTest, TestAlterDDLBasic) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");
@@ -2320,7 +2321,7 @@ TEST_P(XClusterTest, TestAlterDDLWithRestarts) {
 
     LOG(INFO) << "Writing " << end - start << " inserts";
     for (uint32_t i = start; i < end; i++) {
-      auto op = table_handle.NewInsertOp();
+      auto op = table_handle.NewInsertOp(session->arena());
       auto req = op->mutable_request();
       QLAddInt32HashValue(req, i);
       table_handle.AddStringColumnValue(req, "contact_name", "YugaByte");
@@ -3345,31 +3346,21 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   ASSERT_OK(insert_rows_and_verify());
 }
 
-Status VerifyMetaCacheObjectIsValid(
-    const rapidjson::Value* object, const JsonReader& json_reader,  const char* member_name) {
-  const rapidjson::Value* meta_cache = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(object, member_name, &meta_cache));
-  EXPECT_TRUE(meta_cache->HasMember("tablets"));
-  std::vector<const rapidjson::Value*> tablets;
-  return json_reader.ExtractObjectArray(meta_cache, "tablets", &tablets);
+Status VerifyMetaCacheObjectIsValid(const JsonValue& object, std::string_view member_name) {
+  return ResultToStatus(object[member_name]["tablets"].GetArray());
 }
 
 Status VerifyMetaCacheWithXClusterConsumerSetUp(const std::string& produced_json) {
-  JsonReader json_reader(produced_json);
-  RETURN_NOT_OK(json_reader.Init());
-  const rapidjson::Value* object = nullptr;
-  RETURN_NOT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &object));
-  SCHECK_EQ(
-      CHECK_NOTNULL(object)->GetType(), rapidjson::kObjectType, IllegalState, "Not an JSON object");
+  JsonDocument doc;
+  auto root = VERIFY_RESULT(doc.Parse(produced_json));
 
-  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, "MainMetaCache"));
+  RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(root, "MainMetaCache"));
   bool found_xcluster_member = false;
-  for (auto it = object->MemberBegin(); it != object->MemberEnd(); ++it) {
-    std::string member_name = it->name.GetString();
+  for (const auto& [member_name, _] : VERIFY_RESULT(root.GetObject())) {
     if (member_name.starts_with(client::XClusterRemoteClientHolder::kClientName)) {
       found_xcluster_member = true;
     }
-    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(object, json_reader, member_name.c_str()));
+    RETURN_NOT_OK(VerifyMetaCacheObjectIsValid(root, member_name));
   }
   SCHECK_FORMAT(
       found_xcluster_member, IllegalState, "No member name starting with $0 found",

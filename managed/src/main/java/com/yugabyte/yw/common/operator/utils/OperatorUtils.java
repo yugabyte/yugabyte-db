@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.ResourceTracker;
 import com.yugabyte.yw.common.operator.YBUniverseReconciler;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
@@ -110,6 +112,7 @@ import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -138,6 +141,8 @@ public class OperatorUtils {
   public static final String IGNORE_RECONCILER_ADD_LABEL = "ignore-reconciler-add";
   public static final String YB_FINALIZER = "finalizer.k8soperator.yugabyte.com";
   public static final String AUTO_PROVIDER_LABEL = "auto-provider";
+  public static final int KUBERNETES_NAME_MAX_LENGTH = 63;
+  public static final String PROVIDER_KUBECONFIG_KEY = "PROVIDER_KUBECONFIG";
 
   private static final String[] ZONE_CONFIG_KEYS_TO_CHECK = {
     "KUBENAMESPACE",
@@ -339,6 +344,42 @@ public class OperatorUtils {
     return newName;
   }
 
+  /**
+   * Extracts the YBA resource ID from Kubernetes resource metadata annotations.
+   *
+   * @param metadata The ObjectMeta from a Kubernetes resource
+   * @return The UUID if the annotation exists and is valid, null otherwise
+   */
+  public static UUID getYbaResourceId(ObjectMeta metadata) {
+    if (metadata == null || metadata.getAnnotations() == null) {
+      return null;
+    }
+    Map<String, String> annotations = metadata.getAnnotations();
+    if (annotations == null) {
+      return null;
+    }
+    String resourceId = annotations.get(ResourceAnnotationKeys.YBA_RESOURCE_ID);
+    if (resourceId == null || resourceId.isEmpty()) {
+      return null;
+    }
+    try {
+      return UUID.fromString(resourceId);
+    } catch (IllegalArgumentException e) {
+      log.warn("Invalid YBA resource ID in annotation: {}. Expected UUID format.", resourceId, e);
+      return null;
+    }
+  }
+
+  /**
+   * Checks if a Kubernetes resource has a YBA resource ID annotation.
+   *
+   * @param metadata The ObjectMeta from a Kubernetes resource
+   * @return true if the annotation exists, false otherwise
+   */
+  public static boolean hasYbaResourceId(ObjectMeta metadata) {
+    return getYbaResourceId(metadata) != null;
+  }
+
   /*--- YBUniverse related help methods ---*/
 
   public boolean shouldUpdatePrimaryCluster(Cluster currentCluster, YBUniverse newYbUniverse) {
@@ -347,13 +388,21 @@ public class OperatorUtils {
     DeviceInfo newDeviceInfo = mapDeviceInfo(newYbUniverse.getSpec().getDeviceInfo());
     DeviceInfo newMasterDeviceInfo =
         mapMasterDeviceInfo(newYbUniverse.getSpec().getMasterDeviceInfo());
+    K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+    K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
     return !(currentUserIntent.numNodes == newNumNodes)
         || checkifDeviceInfoChanged(
             currentUserIntent.deviceInfo, newDeviceInfo.volumeSize.intValue())
         || checkifDeviceInfoChanged(
             currentUserIntent.masterDeviceInfo, newMasterDeviceInfo.volumeSize.intValue())
         || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
-            currentCluster.placementInfo, newYbUniverse, false);
+            currentCluster.placementInfo, newYbUniverse, false)
+        || !currentUserIntent.masterK8SNodeResourceSpec.equals(newMasterK8SNodeResourceSpec)
+        || !currentUserIntent.tserverK8SNodeResourceSpec.equals(newTserverK8SNodeResourceSpec);
   }
 
   public boolean shouldAddReadReplica(Universe universe, YBUniverse ybUniverse) {
@@ -379,6 +428,11 @@ public class OperatorUtils {
           universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
       PlacementInfo readReplicaPlacementInfo =
           universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      K8SNodeResourceSpec newReadReplicaTserverK8SNodeResourceSpec =
+          toNodeResourceSpec(
+              ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
+              s -> s.getCpu(),
+              s -> s.getMemory());
       return readReplicaUserIntent.numNodes
               != ybUniverse.getSpec().getReadReplica().getNumNodes().intValue()
           || readReplicaUserIntent.replicationFactor
@@ -387,7 +441,9 @@ public class OperatorUtils {
               readReplicaPlacementInfo, ybUniverse, true)
           || checkifDeviceInfoChanged(
               readReplicaUserIntent.deviceInfo,
-              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue());
+              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue())
+          || !readReplicaUserIntent.tserverK8SNodeResourceSpec.equals(
+              newReadReplicaTserverK8SNodeResourceSpec);
     }
   }
 
@@ -534,6 +590,27 @@ public class OperatorUtils {
     di.storageClass = spec.getStorageClass();
 
     return di;
+  }
+
+  public <T> K8SNodeResourceSpec toNodeResourceSpec(
+      T operatorNodeResourceSpec, Function<T, Double> cpuMapper, Function<T, Double> memoryMapper) {
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+
+    if (operatorNodeResourceSpec == null) {
+      return spec;
+    }
+
+    Double cpu = cpuMapper.apply(operatorNodeResourceSpec);
+    if (cpu != null) {
+      spec.cpuCoreCount = cpu;
+    }
+
+    Double memory = memoryMapper.apply(operatorNodeResourceSpec);
+    if (memory != null) {
+      spec.memoryGib = memory;
+    }
+
+    return spec;
   }
 
   public DeviceInfo defaultMasterDeviceInfo() {
@@ -705,12 +782,19 @@ public class OperatorUtils {
     log.info("Removed release {}", release.getMetadata().getName());
   }
 
-  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+  public String getAndParseSecretForKey(
+      String name,
+      @Nullable String namespace,
+      String key,
+      ResourceTracker resourceTracker,
+      KubernetesResourceDetails owner) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
+    resourceTracker.trackDependency(owner, secret);
+    log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
 
@@ -787,7 +871,7 @@ public class OperatorUtils {
             if (value != specParams.getDiskWriteBytesPerSec()) return true;
             break;
           default:
-            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            // This should only happen if a new throttle parameter is introduced and not added here.
             throw new RuntimeException("Unknown throttle parameter: " + key);
         }
       }
@@ -922,11 +1006,13 @@ public class OperatorUtils {
     return optBkp.get();
   }
 
-  public void createBackupCr(com.yugabyte.yw.models.Backup backup) throws Exception {
-    createBackupCr(backup, null);
+  public void createBackupCr(com.yugabyte.yw.models.Backup backup, String storageConfigName)
+      throws Exception {
+    createBackupCr(backup, storageConfigName, null);
   }
 
-  public void createBackupCr(com.yugabyte.yw.models.Backup backup, @Nullable String namespace)
+  public void createBackupCr(
+      com.yugabyte.yw.models.Backup backup, String storageConfigName, @Nullable String namespace)
       throws Exception {
     UUID baseBackupUUID = backup.getBaseBackupUUID();
     BackupTableParams params = backup.getBackupInfo();
@@ -952,7 +1038,7 @@ public class OperatorUtils {
     }
     CustomerConfig storageConfig =
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
-    crSpec.setStorageConfig(storageConfig.getConfigName());
+    crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
@@ -1017,13 +1103,30 @@ public class OperatorUtils {
   }
 
   public void createProviderCrFromProviderEbean(
-      KubernetesProviderFormData providerData, String namespace) {
-    YBProvider providerCr = new YBProvider();
-    providerCr.setMetadata(buildMetadata(providerData, namespace));
-    providerCr.setSpec(buildSpec(providerData));
+      KubernetesProviderFormData providerData, String namespace, boolean isAutoCreated) {
+    createProviderCrFromProviderEbean(providerData, namespace, null, isAutoCreated, null);
+  }
 
+  public void createProviderCrFromProviderEbean(
+      KubernetesProviderFormData providerData,
+      String namespace,
+      UUID providerUUID,
+      boolean isAutoCreated,
+      Map<String, String> secretMap) {
     try (final KubernetesClient client =
         kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      if (client
+              .resources(YBProvider.class)
+              .inNamespace(namespace)
+              .withName(kubernetesCompatName(providerData.name))
+              .get()
+          != null) {
+        log.info("Provider {} already exists, skipping creation", providerData.name);
+        return;
+      }
+      YBProvider providerCr = new YBProvider();
+      providerCr.setMetadata(buildMetadata(providerData, namespace, providerUUID, isAutoCreated));
+      providerCr.setSpec(buildSpec(providerData, secretMap, namespace));
       client.resources(YBProvider.class).inNamespace(namespace).resource(providerCr).create();
     } catch (Exception e) {
       throw new RuntimeException(
@@ -1031,18 +1134,30 @@ public class OperatorUtils {
     }
   }
 
-  private ObjectMeta buildMetadata(KubernetesProviderFormData data, String namespace) {
-    return new ObjectMetaBuilder()
-        .withName(data.name)
-        .withNamespace(namespace)
-        .withLabels(Map.of(AUTO_PROVIDER_LABEL, "true"))
-        .withFinalizers(Collections.singletonList(YB_FINALIZER))
-        .build();
+  private ObjectMeta buildMetadata(
+      KubernetesProviderFormData data, String namespace, UUID providerUUID, boolean isAutoCreated) {
+    ObjectMetaBuilder metadataBuilder =
+        new ObjectMetaBuilder()
+            .withName(kubernetesCompatName(data.name))
+            .withNamespace(namespace)
+            .withLabels(Map.of(AUTO_PROVIDER_LABEL, String.valueOf(isAutoCreated)))
+            .withFinalizers(Collections.singletonList(YB_FINALIZER));
+    if (providerUUID != null) {
+      metadataBuilder.withAnnotations(
+          Map.ofEntries(
+              Map.entry(ResourceAnnotationKeys.YBA_RESOURCE_ID, providerUUID.toString())));
+    }
+    return metadataBuilder.build();
   }
 
-  private YBProviderSpec buildSpec(KubernetesProviderFormData providerData) {
+  private YBProviderSpec buildSpec(
+      KubernetesProviderFormData providerData, Map<String, String> secretMap, String namespace) {
     YBProviderSpec spec = new YBProviderSpec();
-    spec.setCloudInfo(parseCloudInfoConfig(providerData.config));
+    String secretName = null;
+    if (secretMap != null && secretMap.containsKey(PROVIDER_KUBECONFIG_KEY)) {
+      secretName = secretMap.get(PROVIDER_KUBECONFIG_KEY);
+    }
+    spec.setCloudInfo(parseCloudInfoConfig(providerData.config, secretName, namespace));
 
     List<Regions> regions =
         providerData.regionList.stream()
@@ -1054,9 +1169,15 @@ public class OperatorUtils {
                       regionData.zoneList.stream()
                           .map(
                               zone -> {
+                                String secretNameZone = null;
+                                if (secretMap != null && secretMap.containsKey(zone.code)) {
+                                  secretNameZone = secretMap.get(zone.code);
+                                }
                                 Zones zoneSpec = new Zones();
                                 zoneSpec.setCode(zone.code);
-                                zoneSpec.setCloudInfo(parseZoneCloudInfoConfig(zone.config));
+                                zoneSpec.setCloudInfo(
+                                    parseZoneCloudInfoConfig(
+                                        zone.config, secretNameZone, namespace));
                                 return zoneSpec;
                               })
                           .collect(Collectors.toList());
@@ -1100,18 +1221,26 @@ public class OperatorUtils {
   // Parse cloud info config from the provider ebean and converts it to the form required by the
   // operator.
   private io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo parseCloudInfoConfig(
-      Map<String, String> cloudInfo) {
+      Map<String, String> cloudInfo, @Nullable String secretName, String namespace) {
     io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo cloudInfoSpec =
         new io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo();
     cloudInfoSpec.setKubernetesProvider(
         io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo.KubernetesProvider.valueOf(
             cloudInfo.get("KUBECONFIG_PROVIDER").toUpperCase()));
     cloudInfoSpec.setKubernetesImageRegistry(cloudInfo.get("KUBECONFIG_IMAGE_REGISTRY"));
+    if (secretName != null && !secretName.isEmpty()) {
+      io.yugabyte.operator.v1alpha1.ybproviderspec.cloudinfo.KubeConfigSecret kubeConfigSecret =
+          new io.yugabyte.operator.v1alpha1.ybproviderspec.cloudinfo.KubeConfigSecret();
+      kubeConfigSecret.setName(secretName);
+      kubeConfigSecret.setNamespace(namespace);
+      cloudInfoSpec.setKubeConfigSecret(kubeConfigSecret);
+    }
     return cloudInfoSpec;
   }
 
   private io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo
-      parseZoneCloudInfoConfig(Map<String, String> cloudInfo) {
+      parseZoneCloudInfoConfig(
+          Map<String, String> cloudInfo, @Nullable String secretName, String namespace) {
     io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo cloudInfoSpec =
         new io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.CloudInfo();
     cloudInfoSpec.setKubeDomain(cloudInfo.get("KUBE_DOMAIN"));
@@ -1121,6 +1250,15 @@ public class OperatorUtils {
     cloudInfoSpec.setCertManagerIssuerName(cloudInfo.get("CERT-MANAGER-ISSUER-NAME"));
     cloudInfoSpec.setCertManagerIssuerGroup(cloudInfo.get("CERT-MANAGER-ISSUER-GROUP"));
     cloudInfoSpec.setCertManagerIssuerKind(cloudInfo.get("CERT-MANAGER-ISSUER-KIND"));
+    if (secretName != null && !secretName.isEmpty()) {
+      io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.cloudinfo.KubeConfigSecret
+          kubeConfigSecret =
+              new io.yugabyte.operator.v1alpha1.ybproviderspec.regions.zones.cloudinfo
+                  .KubeConfigSecret();
+      kubeConfigSecret.setName(secretName);
+      kubeConfigSecret.setNamespace(namespace);
+      cloudInfoSpec.setKubeConfigSecret(kubeConfigSecret);
+    }
     return cloudInfoSpec;
   }
 
@@ -1395,6 +1533,11 @@ public class OperatorUtils {
           new ObjectMetaBuilder()
               .withName(ybRelease.getVersion())
               .withNamespace(namespace)
+              .withAnnotations(
+                  Map.ofEntries(
+                      Map.entry(
+                          ResourceAnnotationKeys.YBA_RESOURCE_ID,
+                          ybRelease.getReleaseUUID().toString())))
               .build());
       ReleaseSpec releaseSpec = new ReleaseSpec();
       io.yugabyte.operator.v1alpha1.releasespec.Config config =
@@ -1459,7 +1602,7 @@ public class OperatorUtils {
       if (kubernetesClient
               .resources(StorageConfig.class)
               .inNamespace(namespace)
-              .withName(cfg.getConfigName())
+              .withName(kubernetesCompatName(cfg.getConfigName()))
               .get()
           != null) {
         log.info("Storage config {} already exists, skipping creation", cfg.getName());
@@ -1470,6 +1613,10 @@ public class OperatorUtils {
           new ObjectMetaBuilder()
               .withName(kubernetesCompatName(cfg.getConfigName()))
               .withNamespace(namespace)
+              .withAnnotations(
+                  Map.ofEntries(
+                      Map.entry(
+                          ResourceAnnotationKeys.YBA_RESOURCE_ID, cfg.getConfigUUID().toString())))
               .build());
       StorageConfigSpec spec = new StorageConfigSpec();
       spec.setName(cfg.getConfigName());
@@ -1587,7 +1734,15 @@ public class OperatorUtils {
           Json.mapper().convertValue(ybBackupSchedule.getTaskParams(), BackupRequestParams.class);
       BackupSchedule backupSchedule = new BackupSchedule();
       backupSchedule.setMetadata(
-          new ObjectMetaBuilder().withName(name).withNamespace(namespace).build());
+          new ObjectMetaBuilder()
+              .withName(name)
+              .withNamespace(namespace)
+              .withAnnotations(
+                  Map.ofEntries(
+                      Map.entry(
+                          ResourceAnnotationKeys.YBA_RESOURCE_ID,
+                          ybBackupSchedule.getScheduleUUID().toString())))
+              .build());
       BackupScheduleSpec spec = new BackupScheduleSpec();
       spec.setStorageConfig(storageConfigName);
       spec.setUniverse(Universe.getOrBadRequest(ybBackupSchedule.getOwnerUUID()).getName());
@@ -1624,14 +1779,34 @@ public class OperatorUtils {
       throws Exception {
     try (final KubernetesClient kubernetesClient =
         kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
-      if (kubernetesClient
+      YBUniverse existing =
+          kubernetesClient
               .resources(YBUniverse.class)
               .inNamespace(namespace)
               .withName(universe.getName())
-              .get()
-          != null) {
-        log.info("Universe {} already exists, skipping creation", universe.getName());
-        return;
+              .get();
+      if (existing != null) {
+        String existingUuid =
+            existing.getMetadata().getAnnotations() != null
+                ? existing
+                    .getMetadata()
+                    .getAnnotations()
+                    .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)
+                : null;
+        if (universe.getUniverseUUID().toString().equals(existingUuid)) {
+          log.info(
+              "Universe {} already exists with matching UUID, skipping creation",
+              universe.getName());
+          return;
+        } else {
+          log.warn(
+              "Universe CR {} exists but with different UUID. Existing: {}, Expected: {}",
+              universe.getName(),
+              existingUuid,
+              universe.getUniverseUUID());
+          // Still skip to avoid overwriting, but log the mismatch
+          return;
+        }
       }
       YBUniverse ybUniverse = new YBUniverse();
       ybUniverse.setMetadata(
@@ -1639,6 +1814,11 @@ public class OperatorUtils {
               .withName(universe.getName())
               .withNamespace(namespace)
               .withFinalizers(YB_FINALIZER)
+              .withAnnotations(
+                  Map.ofEntries(
+                      Map.entry(
+                          ResourceAnnotationKeys.YBA_RESOURCE_ID,
+                          universe.getUniverseUUID().toString())))
               .build());
       YBUniverseSpec spec = new YBUniverseSpec();
 
@@ -1662,6 +1842,30 @@ public class OperatorUtils {
               == ExposingServiceState.EXPOSED);
       spec.setPaused(universe.getUniverseDetails().universePaused);
 
+      if (universe.getUniverseDetails().clusters.size() > 1) {
+        List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
+        if (readOnlyClusters == null || readOnlyClusters.isEmpty()) {
+          log.warn(
+              "Universe {} has multiple clusters but no read-only clusters found",
+              universe.getName());
+        } else {
+          if (readOnlyClusters.size() > 1) {
+            log.warn(
+                "Universe {} has {} read replica clusters, only importing the first one",
+                universe.getName(),
+                readOnlyClusters.size());
+          }
+          Cluster firstReadReplica = readOnlyClusters.get(0);
+          ReadReplica rr = new ReadReplica();
+          rr.setNumNodes(Long.valueOf(firstReadReplica.userIntent.numNodes));
+          rr.setReplicationFactor(Long.valueOf(firstReadReplica.userIntent.replicationFactor));
+          universeImporter.setReadReplicaDeviceInfo(rr, firstReadReplica);
+          universeImporter.setReadReplicaResourceSpecFromUniverse(rr, firstReadReplica);
+          universeImporter.setReadReplicaPlacementInfo(rr, firstReadReplica);
+          spec.setReadReplica(rr);
+        }
+      }
+
       // Set languages
       universeImporter.setYcqlSpec(
           spec,
@@ -1677,6 +1881,8 @@ public class OperatorUtils {
 
       // Device info
       universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
+      universeImporter.setTserverResourceSpecFromUniverse(spec, universe);
+      universeImporter.setMasterResourceSpecFromUniverse(spec, universe);
       universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
 
       // Ybc throttle parameters

@@ -51,6 +51,7 @@ export const ComplexityComponent: FC<ComplexityComponentProps> = ({ complexity }
       <Box display="flex" alignItems="center" gridGap={6} width="fit-content">
         {Array.from({ length: totalComplexityCount }).map((_, index) => (
           <Box
+            key={index}
             className={clsx(
               classes.complexity,
               index < activeComplexityCount && classes.complexityActive

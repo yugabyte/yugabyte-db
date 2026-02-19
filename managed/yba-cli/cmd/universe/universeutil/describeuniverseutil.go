@@ -32,7 +32,7 @@ func PopulateDescribeUniverseCLIOutput(
 	resources := u.GetResources()
 	primaryCluster := FindClusterByType(details.GetClusters(), util.PrimaryClusterType)
 	rrCluster := FindClusterByType(details.GetClusters(), util.ReadReplicaClusterType)
-	if primaryCluster == (ybaclient.Cluster{}) {
+	if IsClusterEmpty(primaryCluster) {
 		logrus.Fatalf(
 			formatter.Colorize(
 				fmt.Sprintf(
@@ -66,7 +66,7 @@ func PopulateDescribeUniverseCLIOutput(
 	var earKMSConfig string
 	kms := details.GetEncryptionAtRestConfig()
 	for _, k := range universe.KMSConfigs {
-		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+		if !util.IsEmptyString(k.ConfigUUID) &&
 			strings.Compare(k.ConfigUUID, kms.GetKmsConfigUUID()) == 0 {
 			earKMSConfig = k.Name
 			break
@@ -81,7 +81,7 @@ func PopulateDescribeUniverseCLIOutput(
 	var cveKMSConfig string
 	cveKMSConfigBlock := primaryDeviceInfo.GetCloudVolumeEncryption()
 	for _, k := range universe.KMSConfigs {
-		if len(strings.TrimSpace(k.ConfigUUID)) != 0 &&
+		if !util.IsEmptyString(k.ConfigUUID) &&
 			strings.Compare(k.ConfigUUID, cveKMSConfigBlock.GetKmsConfigUUID()) == 0 {
 			cveKMSConfig = k.Name
 			break
@@ -137,7 +137,7 @@ func PopulateDescribeUniverseCLIOutput(
 	var rrDeviceInfo ybaclient.DeviceInfo
 	var rrK8sTserverResourceSpec ybaclient.K8SNodeResourceSpec
 	rrClusterExists := false
-	if rrCluster != (ybaclient.Cluster{}) {
+	if !IsClusterEmpty(rrCluster) {
 		rrClusterExists = true
 		rrUserIntent = rrCluster.GetUserIntent()
 		rrDeviceInfo = rrUserIntent.GetDeviceInfo()
@@ -440,7 +440,7 @@ func PopulateDescribeUniverseCLIOutput(
 
 	if primaryUserIntent.GetDedicatedNodes() {
 		primaryMasterDeviceInfo := primaryUserIntent.GetMasterDeviceInfo()
-		if primaryMasterDeviceInfo == (ybaclient.DeviceInfo{}) {
+		if IsDeviceInfoEmpty(primaryMasterDeviceInfo) {
 			primaryMasterDeviceInfo = primaryUserIntent.GetDeviceInfo()
 		}
 

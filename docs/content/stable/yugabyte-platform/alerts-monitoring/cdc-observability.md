@@ -4,8 +4,6 @@ headerTitle: CDC observability
 linkTitle: CDC observability
 description: Learn how YugabyteDB Anywhere monitors replication slots used in CDC.
 headcontent: Monitor replication slots used for CDC
-tags:
-  feature: early-access
 menu:
   stable_yugabyte-platform:
     parent: alerts-monitoring

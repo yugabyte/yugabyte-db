@@ -1,13 +1,13 @@
 import { useQuery } from 'react-query';
 import { Box, makeStyles } from '@material-ui/core';
-import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBPanelItem } from '../../panels';
 import { CheckPerfAdvisorRegistration } from './CheckPerfAdvisorRegistration';
 import {
   PerfAdvisorAPI,
-  QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
+  QUERY_KEY as PERF_ADVISOR_QUERY_KEY
 } from '../../../redesign/features/PerfAdvisor/api';
+import { AppName } from '../../../redesign/helpers/dtos';
 import { isEmptyArray } from '../../../utils/ObjectUtils';
 
 interface RegisterYBAToPerfAdvisorProps {
@@ -30,20 +30,18 @@ export const RegisterYBAToPerfAdvisor = ({
   const helperClasses = useStyles();
   const {
     data: perfAdvisorListData,
-    isLoading: isTpListFetchLoading,
-    isError: isTpListFetchError,
-    isIdle: isTpListFetchIdle
-  } = useQuery(TROUBLESHOOTING_QUERY_KEY.fetchPerfAdvisorList, () =>
+    isLoading: isPaListFetchLoading,
+    isError: isPaListFetchError,
+    isIdle: isPaListFetchIdle
+  } = useQuery(PERF_ADVISOR_QUERY_KEY.fetchPerfAdvisorList, () =>
     PerfAdvisorAPI.fetchPerfAdvisorList()
   );
 
-  if (isTpListFetchError) {
-    return (
-      <YBErrorIndicator customErrorMessage={'Failed to get Troubleshooting Platform details'} />
-    );
+  if (isPaListFetchError) {
+    return <YBErrorIndicator customErrorMessage={'Failed to get Performance Advisor details'} />;
   }
 
-  if (isTpListFetchLoading || (isTpListFetchIdle && perfAdvisorListData === undefined)) {
+  if (isPaListFetchLoading || (isPaListFetchIdle && perfAdvisorListData === undefined)) {
     return <YBLoading />;
   }
 

@@ -41,7 +41,7 @@ Determines whether the snapshot will be consumed by the client during slot initi
 - USE_SNAPSHOT: the client will consume the snapshot. This option can only be used inside a transaction, and CREATE_REPLICATION_SLOT must be the first command run in that transaction.
 - NOEXPORT_SNAPSHOT: the snapshot will be used for logical decoding only.
 
-These options are only available if the preview flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) is set to true. When the flag is true, USE_SNAPSHOT is the default behavior. If the flag is not set, the snapshot options are not applicable and will be ignored.
+These options are only available if the preview flag [ysql_enable_pg_export_snapshot](../../../../../explore/ysql-language-features/advanced-features/snapshot-synchronization) {{<tags/feature/tp idea="1161">}} is set to true. When the flag is true, USE_SNAPSHOT is the default behavior. If the flag is not set, the snapshot options are not applicable and will be ignored.
 
 ## Examples
 

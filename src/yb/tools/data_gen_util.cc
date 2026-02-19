@@ -32,7 +32,7 @@
 #include "yb/tools/data_gen_util.h"
 
 #include "yb/client/schema.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 
 #include "yb/gutil/casts.h"
@@ -46,7 +46,7 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         size_t col_idx,
                         uint64_t value,
-                        QLValuePB* out) {
+                        QLValueMsg* out) {
   DataType type = schema.Column(col_idx).type()->main();
   char buf[kFastToBufferSize];
   switch (type) {
@@ -81,7 +81,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
 }
 
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, QLWriteRequestPB* req) {
+                        Random* random, QLWriteRequestMsg* req) {
   for (size_t col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,
     // which is always based on a monotonic "record id".
@@ -91,7 +91,7 @@ void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
     } else {
       value = random->Next64();
     }
-    QLValuePB* out;
+    QLValueMsg* out;
     if (col_idx < schema.num_hash_key_columns()) {
       out = req->add_hashed_column_values()->mutable_value();
     } else {

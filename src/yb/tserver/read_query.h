@@ -38,16 +38,16 @@ namespace tserver {
 class ReadTabletProvider {
  public:
   virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
-      const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+      TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
       YBConsistencyLevel consistency_level, AllowSplitTablet allow_split_tablet,
-      ReadResponsePB* resp) = 0;
+      ReadResponseMsg* resp) = 0;
 
   virtual ~ReadTabletProvider() = default;
 };
 
 void PerformRead(
     TabletServerIf* server, ReadTabletProvider* read_tablet_provider,
-    const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context);
+    const ReadRequestMsg* req, ReadResponseMsg* resp, rpc::RpcContext context);
 
 }  // namespace tserver
 }  // namespace yb

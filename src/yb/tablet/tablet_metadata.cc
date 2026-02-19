@@ -97,6 +97,8 @@ DEFINE_RUNTIME_bool(enable_schema_version_check, yb::kIsDebug,
     "Whether to check existence of given schema version in CheckCotablePacking and "
     "CheckColocationPacking. If it's off, always return Status::OK().");
 
+METRIC_DEFINE_entity(table);
+
 using std::string;
 
 using strings::Substitute;
@@ -373,7 +375,7 @@ Status TableInfo::MergeSchemaPackings(
       DFATAL, !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema()))
       << Format(
              "After merging schema packings during restore, latest schema does not have the same"
-             "packing as the corresponding latest packing for table $0, latest packing: $1, "
+             " packing as the corresponding latest packing for table $0, latest packing: $1, "
              "current schema: $2",
              table_id, latest_packing.ToString(), doc_read_context->schema().ToString());
   return Status::OK();
@@ -504,6 +506,19 @@ bool TableInfo::IsVectorIndex() const {
 bool TableInfo::NeedVectorIndex() const {
   return IsVectorIndex() &&
          index_info->vector_idx_options().idx_type() != PgVectorIndexType::DEPRECATED_DUMMY;
+}
+
+MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
+  MetricAttributeMap attrs;
+  attrs["table_id"] = table_id;
+  attrs["table_name"] = table_name;
+  attrs["table_type"] = TableType_Name(table_type);
+  attrs["namespace_name"] = namespace_name;
+  return attrs;
+}
+
+MetricEntityPtr TableInfo::CreateMetricEntity(MetricRegistry* registry) const {
+  return METRIC_ENTITY_table.Instantiate(registry, table_id, CreateMetricAttributeMap());
 }
 
 Status KvStoreInfo::LoadTablesFromPB(
@@ -801,7 +816,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
 }
 
 template <class TablesMap>
-Status MakeTableNotFound(const TableId& table_id, const RaftGroupId& raft_group_id,
+Status MakeTableNotFound(TableIdView table_id, const RaftGroupId& raft_group_id,
                          const TablesMap& tables, const char* file_name, int line_number) {
   std::string table_name = "<unknown_table_name>";
   if (!table_id.empty()) {
@@ -834,12 +849,12 @@ Status MakeColocatedTableNotFound(
   return STATUS(NotFound, msg);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfo(TableIdView table_id) const {
   std::lock_guard lock(data_mutex_);
   return GetTableInfoUnlocked(table_id);
 }
 
-Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& table_id) const {
+Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(TableIdView table_id) const {
   const auto& tables = kv_store_.tables;
 
   const auto& id = !table_id.empty() ? table_id : primary_table_id_;
@@ -1125,13 +1140,8 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
 
     if (superblock.has_split_op_id()) {
       split_op_id_ = OpId::FromPB(superblock.split_op_id());
-
-      SCHECK_EQ(implicit_cast<size_t>(superblock.split_child_tablet_ids().size()),
-                split_child_tablet_ids_.size(),
-                Corruption, "Expected exact number of child tablet ids");
-      for (size_t i = 0; i != split_child_tablet_ids_.size(); ++i) {
-        split_child_tablet_ids_[i] = superblock.split_child_tablet_ids(narrow_cast<int>(i));
-      }
+      split_child_tablet_ids_.assign(
+          superblock.split_child_tablet_ids().begin(), superblock.split_child_tablet_ids().end());
     }
 
     last_attempted_clone_seq_no_ = superblock.last_attempted_clone_seq_no();
@@ -1247,7 +1257,7 @@ Status RaftGroupMetadata::MergeWithRestored(
     const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
-  LOG_WITH_FUNC(INFO) << "Superblock: " << AsString(snapshot_superblock);
+  LOG_WITH_FUNC(INFO) << "Snapshot superblock: " << AsString(snapshot_superblock);
   std::lock_guard lock(data_mutex_);
   return kv_store_.MergeWithRestored(
       snapshot_superblock.kv_store(), primary_table_id_, colocated_, overwrite);
@@ -1854,7 +1864,7 @@ TabletDataState RaftGroupMetadata::tablet_data_state() const {
   return tablet_data_state_;
 }
 
-std::array<TabletId, kNumSplitParts> RaftGroupMetadata::split_child_tablet_ids() const {
+std::vector<TabletId> RaftGroupMetadata::split_child_tablet_ids() const {
   std::lock_guard lock(data_mutex_);
   return split_child_tablet_ids_;
 }
@@ -1873,12 +1883,11 @@ OpId RaftGroupMetadata::GetOpIdToDeleteAfterAllApplied() const {
 }
 
 void RaftGroupMetadata::SetSplitDone(
-    const OpId& op_id, const TabletId& child1, const TabletId& child2) {
+    const OpId& op_id, const std::vector<TabletId>& children) {
   std::lock_guard lock(data_mutex_);
   tablet_data_state_ = TabletDataState::TABLET_DATA_SPLIT_COMPLETED;
   split_op_id_ = op_id;
-  split_child_tablet_ids_[0] = child1;
-  split_child_tablet_ids_[1] = child2;
+  split_child_tablet_ids_ = children;
 }
 
 void RaftGroupMetadata::MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no) {
@@ -1907,8 +1916,11 @@ void RaftGroupMetadata::RegisterRestoration(const TxnSnapshotRestorationId& rest
   if (tablet_data_state_ == TabletDataState::TABLET_DATA_SPLIT_COMPLETED) {
     tablet_data_state_ = TabletDataState::TABLET_DATA_READY;
     split_op_id_ = OpId();
-    split_child_tablet_ids_[0] = std::string();
-    split_child_tablet_ids_[1] = std::string();
+    split_child_tablet_ids_.clear();
+  }
+  if (std::find(active_restorations_.begin(), active_restorations_.end(), restoration_id) !=
+      active_restorations_.end()) {
+    return;
   }
   active_restorations_.push_back(restoration_id);
 }

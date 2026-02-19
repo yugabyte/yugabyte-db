@@ -20,8 +20,8 @@ import { dbVersionWidgetStyles } from './DBVersionWidgetStyles';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 import { TaskObject } from '../universe-actions/rollback-upgrade/utils/types';
 //icons
-import UpgradeArrow from '../../../assets/upgrade-arrow.svg';
-import WarningExclamation from '../../../assets/warning-triangle.svg';
+import UpgradeArrow from '../../../assets/upgrade-arrow.svg?img';
+import WarningExclamation from '../../../assets/warning-triangle.svg?img';
 
 interface DBVersionWidgetProps {
   higherVersionCount: number;

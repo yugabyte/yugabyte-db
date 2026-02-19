@@ -52,7 +52,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-const RestoreSummary: FC = () => {
+interface RestoreSummaryProps {
+  backupRoles: boolean;
+}
+
+const RestoreSummary = ({ backupRoles }: RestoreSummaryProps) => {
   const classes = useStyles();
 
   const { t } = useTranslation('translation', { keyPrefix: 'backup.restore.backupSummary' });
@@ -75,11 +79,19 @@ const RestoreSummary: FC = () => {
         value:
           source.keyspace?.isDefaultOption || source.tableBackupType === Backup_Options_Type.ALL
             ? t('allTables')
-            : t('tablesSelected', { count: source.selectedTables?.length }) + '' ?? '-'
+            : t('tablesSelected', { count: source.selectedTables?.length ?? '-' })
       },
       {
         key: t('restoreTo'),
         value: pitrMillis ? ybFormatDate(pitrMillis) : '-'
+      },
+      {
+        key: t('restoreRoles'),
+        value: !backupRoles
+          ? t('restoreRolesNotApplicable')
+          : target.useRoles
+          ? t('restoreRolesOn')
+          : t('restoreRolesOff')
       },
       {
         key: t('restoreSize'),

@@ -49,11 +49,11 @@ var listRestoreCmd = &cobra.Command{
 
 		universeNamesList := []string{}
 		universeUUIDsList := []string{}
-		if (len(strings.TrimSpace(universeNames))) > 0 {
+		if !util.IsEmptyString(universeNames) {
 			universeNamesList = strings.Split(universeNames, ",")
 		}
 
-		if (len(strings.TrimSpace(universeUUIDs))) > 0 {
+		if !util.IsEmptyString(universeUUIDs) {
 			universeUUIDsList = strings.Split(universeUUIDs, ",")
 		}
 		restoreAPIFilter := ybaclient.RestoreApiFilter{
@@ -76,8 +76,7 @@ var listRestoreCmd = &cobra.Command{
 			// Execute backup list request
 			r, response, err := restoreListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "List")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Restore", "List")
 			}
 
 			// Check if backups found

@@ -64,7 +64,7 @@
 
 namespace yb::tablet {
 
-using TableInfoMap = std::unordered_map<TableId, TableInfoPtr>;
+using TableInfoMap = UnorderedStringMap<TableId, TableInfoPtr>;
 
 extern const int64 kNoDurableMemStore;
 
@@ -184,6 +184,9 @@ struct TableInfo {
 
   bool IsVectorIndex() const;
   bool NeedVectorIndex() const;
+
+  MetricAttributeMap CreateMetricAttributeMap() const;
+  MetricEntityPtr CreateMetricEntity(MetricRegistry* registry) const;
 
   // Should account for every field in TableInfo.
   static bool TEST_Equals(const TableInfo& lhs, const TableInfo& rhs);
@@ -326,8 +329,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // This is mostly useful for tests which instantiate Raft groups directly.
   static Result<RaftGroupMetadataPtr> TEST_LoadOrCreate(const RaftGroupMetadataData& data);
 
-  Result<TableInfoPtr> GetTableInfo(const TableId& table_id) const;
-  Result<TableInfoPtr> GetTableInfoUnlocked(const TableId& table_id) const REQUIRES(data_mutex_);
+  Result<TableInfoPtr> GetTableInfo(TableIdView table_id) const;
+  Result<TableInfoPtr> GetTableInfoUnlocked(TableIdView table_id) const REQUIRES(data_mutex_);
 
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
@@ -685,7 +688,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // Return standard "T xxx P yyy" log prefix.
   const std::string& LogPrefix() const;
 
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids() const;
+  std::vector<TabletId> split_child_tablet_ids() const;
 
   OpId split_op_id() const;
 
@@ -693,7 +696,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // before performing such deletion.
   OpId GetOpIdToDeleteAfterAllApplied() const;
 
-  void SetSplitDone(const OpId& op_id, const TabletId& child1, const TabletId& child2);
+  void SetSplitDone(const OpId& op_id, const std::vector<TabletId>& children);
 
   // Methods for handling clone requests that this tablet has applied.
   void MarkClonesAttemptedUpTo(uint32_t clone_request_seq_no);
@@ -876,7 +879,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   // SPLIT_OP ID designated for this tablet (so child tablets will have this unset until they've
   // been split themselves).
   OpId split_op_id_ GUARDED_BY(data_mutex_);
-  std::array<TabletId, kNumSplitParts> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
+  std::vector<TabletId> split_child_tablet_ids_ GUARDED_BY(data_mutex_);
 
   std::vector<TxnSnapshotRestorationId> active_restorations_;
 

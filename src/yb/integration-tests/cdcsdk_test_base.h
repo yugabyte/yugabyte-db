@@ -40,7 +40,6 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(ysql_yb_enable_replication_commands);
@@ -56,12 +55,14 @@ DECLARE_bool(TEST_stop_committed_op_id_updation);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
 DECLARE_bool(ysql_yb_allow_replication_slot_ordering_modes);
 DECLARE_bool(cdc_send_null_before_image_if_not_exists);
+DECLARE_bool(cdc_enable_savepoint_rollback_filtering);
 DECLARE_bool(enable_tablet_split_of_replication_slot_streamed_tables);
 DECLARE_bool(TEST_simulate_load_txn_for_cdc);
 DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
 DECLARE_bool(TEST_cdc_hit_deadline_on_wal_read);
 DECLARE_int32(min_segment_size_bytes_to_rollover_at_flush);
 DECLARE_uint64(initial_log_segment_size_bytes);
+DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
 
 namespace yb {
 using client::YBClient;
@@ -237,15 +238,15 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       bool verify_snapshot_name = false,
       std::string namespace_name = kNamespaceName);
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       bool verify_snapshot_name = false);
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
-      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::EXPORT_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE,
       std::string namespace_name = kNamespaceName);

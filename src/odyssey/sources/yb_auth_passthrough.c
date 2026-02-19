@@ -80,23 +80,34 @@ static void yb_control_connection_failed(od_server_t *server,
 	server->offline = 1;
 }
 
-static int yb_server_write_auth_passthroug_request_pkt(od_client_t *client,
+static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 						       od_server_t *server,
 						       od_instance_t *instance)
 {
 	int rc = -1;
 	machine_msg_t *msg;
+	od_route_t *route = server->route;
+
+	char user_name[64], db_name[64];
+	int user_name_len, db_name_len;
+
+	strcpy(user_name, (char *)client->startup.user.value);
+	user_name_len = client->startup.user.value_len;
+
+	strcpy(db_name, (char *)client->startup.database.value);
+	db_name_len = client->startup.database.value_len;
+
 	char client_address[128];
 	od_getpeername(client->io.io, client_address, sizeof(client_address), 1,
 		       0);
 
-	msg = kiwi_fe_write_authentication(NULL, client->startup.user.value,
-					   client->startup.database.value,
-					   client_address,
-					   client->tls ? YB_LOGICAL_ENCRYPTED_CONN : YB_LOGICAL_UNENCRYPTED_CONN);
+	char yb_logical_conn_type[2] = "x";
+	yb_logical_conn_type[0] = client->tls ? YB_LOGICAL_ENCRYPTED_CONN :
+						YB_LOGICAL_UNENCRYPTED_CONN;
 
+	msg = yb_kiwi_fe_write_authentication(NULL);
 	/* Send `Auth Passthrough Request` packet. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		yb_control_connection_failed(server, instance);
 		od_frontend_fatal(
@@ -104,10 +115,74 @@ static int yb_server_write_auth_passthroug_request_pkt(od_client_t *client,
 			"Unable to send auth passthrough request, broken control connection");
 		return -1;
 	}
-
 	od_debug(
 		&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
-		"Starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
+		"starting Auth Passthrough, sent 'Auth Passthrough Request' packet");
+
+	const int max_default_args = 16;
+	int num_startup_args = client->yb_startup_settings.size;
+	kiwi_var_t *startup_vars = client->yb_startup_settings.vars;
+
+	int argc = 0;
+	kiwi_fe_arg_t *argv = malloc(sizeof(kiwi_fe_arg_t) *
+				     (max_default_args + 2 * num_startup_args));
+
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("user"));
+	yb_kiwi_set_fe_arg(&argv[argc++], user_name, user_name_len);
+	yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("database"));
+	yb_kiwi_set_fe_arg(&argv[argc++], db_name, db_name_len);
+
+	/* override the remote host sent to the control backend. */
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF("yb_auth_remote_host"));
+	yb_kiwi_set_fe_arg(&argv[argc++], client_address,
+			   strlen(client_address) + 1);
+
+	/* send the connection type to the control backend. */
+	yb_kiwi_set_fe_arg(&argv[argc++],
+			   YB_NAME_AND_SIZEOF("yb_logical_conn_type"));
+	yb_kiwi_set_fe_arg(&argv[argc++], yb_logical_conn_type, 2);
+
+	if (route->id.physical_rep) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("replication"));
+		yb_kiwi_set_fe_arg(&argv[argc++], YB_NAME_AND_SIZEOF("on"));
+	} else if (route->id.logical_rep) {
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("replication"));
+		yb_kiwi_set_fe_arg(&argv[argc++],
+				   YB_NAME_AND_SIZEOF("database"));
+	}
+
+	/* We only allocated max_default_args spaces for these variables, so assert that */
+	assert(argc <= max_default_args);
+
+	/*
+	 * Also send external client's startup packet settings in the startup packet
+	 * to the control backend.
+	 */
+	for (int i = 0; i < num_startup_args; ++i) {
+		yb_kiwi_set_fe_arg(&argv[argc++], startup_vars[i].name,
+				   startup_vars[i].name_len);
+		yb_kiwi_set_fe_arg(&argv[argc++], startup_vars[i].value,
+				   startup_vars[i].value_len);
+	}
+
+	msg = kiwi_fe_write_startup_message(NULL, argc, argv);
+	free(argv);
+	argv = NULL;
+
+	if (msg == NULL)
+		return -1;
+	rc = od_write(&server->io, &msg);
+	if (rc == -1) {
+		od_error(&instance->logger, "auth passthrough startup", client,
+			 server, "write error: %s", od_io_error(&server->io));
+		return -1;
+	}
+
+	od_debug(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client, server,
+		 "forwarded startup packet");
 
 	return 0;
 }
@@ -147,12 +222,33 @@ static void yb_client_exit_mid_passthrough(od_server_t *server,
 					   od_instance_t *instance)
 {
 	machine_msg_t *msg = kiwi_fe_write_password(NULL, "", 1);
-	if (od_write(&server->io, msg) == -1) {
+	if (od_write(&server->io, &msg) == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, NULL,
 			 server, "write error in sever: %s",
 			 od_io_error(&server->io));
 		server->offline = 1;
 	}
+}
+
+/*
+ * TODO (vikram.damle) (#29176): Merge this function with the copy defined in backend.c
+ * This will merge when auth passthrough flow is merged with auth backend.
+ */
+
+static inline int
+yb_send_parameter_status_auth_passthrough(od_io_t *io, char *name, int name_len,
+					  char *value, int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = od_write(io, &msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
 }
 
 static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
@@ -187,7 +283,7 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	}
 
 	/* Forward the password response packet to the database. */
-	rc = od_write(&server->io, msg);
+	rc = od_write(&server->io, &msg);
 	if (rc == -1) {
 		od_error(
 			&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client,
@@ -206,7 +302,7 @@ static int yb_client_write_pkt(od_client_t *client, od_server_t *server,
 			       od_instance_t *instance, machine_msg_t *msg,
 			       enum YB_CLI_AUTH_STATUS progress)
 {
-	int rc = od_write(&client->io, msg);
+	int rc = od_write(&client->io, &msg);
 	if (rc == -1) {
 		od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH, client,
 			 NULL, "write error in middleware: %s",
@@ -217,8 +313,7 @@ static int yb_client_write_pkt(od_client_t *client, od_server_t *server,
 			 * pg_backend will be expecting a packet,
 			 * send an empty password packet.
 			 */
-			yb_client_exit_mid_passthrough(client->server,
-						       instance);
+			yb_client_exit_mid_passthrough(server, instance);
 		}
 
 		/* Since the client socket is closed, we need not send any fatal packet */
@@ -242,8 +337,10 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 	int auth_pkt_type = 0;
 	enum YB_CLI_AUTH_STATUS progress = YB_CLI_AUTH_PROGRESS;
 
-	/* Forward all the packets comming from the server until
-	 * we receive a "AUTH" pkt */
+	/* 
+	 * Forward all the packets comming from the server until
+	 * we receive a "AUTH" pkt 
+	 */
 	while (true) {
 		msg = yb_read_auth_pkt_from_server(client, server, instance);
 
@@ -350,7 +447,7 @@ static int yb_route_auth_packets(od_server_t *server, od_client_t *client)
 	od_instance_t *instance = server->global->instance;
 	enum YB_CLI_AUTH_STATUS status;
 
-	yb_server_write_auth_passthroug_request_pkt(client, server, instance);
+	yb_server_write_auth_passthrough_request_pkt(client, server, instance);
 
 	while (true) {
 		status = yb_forward_auth_pkt_server_to_client(client, server,
@@ -431,7 +528,14 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 	rc = yb_route_auth_packets(server, client);
 	rc_auth = rc;
 
-	/* Wait till the `READY_FOR_QUERY` packet is received. */
+	/*
+	 * Wait till the `READY_FOR_QUERY` packet is received.
+	 * TODO (vikram.damle) (#29176): Need a `reset phase` for control backends in
+	 * authentication. The backend may send extra information that is no longer
+	 * needed if auth fails as part of its internal state reset (eg. GUC reset
+	 * ParameterStatus packets). Need to clear the "buffer" of incoming messages
+	 * before returning the control backend to the pool.
+	 */
 	while (true) {
 		msg = od_read(&server->io, UINT32_MAX);
 		if (msg == NULL) {
@@ -477,7 +581,7 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				 * The notice packet does not contains any client id and
 				 * thus it is required to forward this notice packet to the client
 				 */
-				rc = od_write(&client->io, msg);
+				rc = od_write(&client->io, &msg);
 				if (rc < 0)
 					rc_auth = -1;
 				continue;
@@ -492,12 +596,107 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			machine_msg_free(msg);
 			continue;
 
+		case KIWI_BE_PARAMETER_STATUS:
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				NULL, server,
+				"Did not expect ParameterStatus 'S' packet from Postgres, refusing to parse");
+			machine_msg_free(msg);
+			return -1;
+		case YB_CONN_MGR_PARAMETER_STATUS: {
+			char *name;
+			uint32_t name_len;
+			char *value;
+			uint32_t value_len;
+			char flags;
+			rc = kiwi_fe_read_yb_parameter(machine_msg_data(msg),
+						       machine_msg_size(msg),
+						       &name, &name_len, &value,
+						       &value_len, &flags);
+			if (rc == -1) {
+				machine_msg_free(msg);
+				od_error(
+					&instance->logger,
+					CONTEXT_AUTH_PASSTHROUGH, NULL, server,
+					"failed to parse ParameterStatus message");
+				return -1;
+			}
+
+			od_debug(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				NULL, server,
+				"Received YbParameterStatus, name: %.*s, value: %.*s, flags: 0x%X",
+				name_len, name, value_len, value, flags);
+
+			/* Parse the yb_logical_client_version to store it in server */
+			if (name_len == sizeof("yb_logical_client_version") &&
+			    strcmp("yb_logical_client_version", name) == 0) {
+				client->logical_client_version = atoi(value);
+				machine_msg_free(msg);
+				break;
+			}
+
+			/* Explicitly ignoring these variables. We don't want to replay these */
+			if ((name_len == sizeof("yb_is_client_ysqlconnmgr") &&
+			     strcmp(name, "yb_is_client_ysqlconnmgr") == 0) ||
+			    (name_len == sizeof("yb_use_tserver_key_auth") &&
+			     strcmp(name, "yb_use_tserver_key_auth") == 0)) {
+				machine_msg_free(msg);
+				break;
+			}
+
+			if (flags & YB_PARAM_STATUS_REPORT_ENABLED) {
+				/*
+				 * We only care about reported variables when
+				 * auth backend starts
+				 */
+				int rc =
+					yb_send_parameter_status_auth_passthrough(
+						&client->io, name, name_len,
+						value, value_len);
+				if (rc != 0 && rc_auth == 0) {
+					od_error(
+						&instance->logger, "auth", NULL,
+						server,
+						"Unable to send ParameterStatus for GUC %.*s to client",
+						name_len, name);
+					machine_msg_free(msg);
+					return rc;
+				}
+			}
+
+			if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
+				/*
+				 * The parameters here are the ones set by the startup packet in
+				 * the auth backend (here, passthrough). These are the parameters
+				 * that have to be replayed in a transactional backend to get the
+				 * same impact as the client's startup packet.
+				 * See od_frontend_setup_params() for more details.
+				 * TODO (vikram.damle) (#29178): Check what has to be done for GUC name
+				 * casing now that we are "fixing" auth passthrough.
+				 */
+				kiwi_vars_update(
+					&client->yb_vars_startup, name,
+					name_len, value, value_len,
+					yb_od_instance_should_lowercase_guc_name(
+						instance));
+			}
+
+			machine_msg_free(msg);
+			break;
+		}
+
 		case KIWI_BE_ERROR_RESPONSE:
 			/* Physical connection is broken, no need to wait for readyForQuery pkt */
 			machine_msg_free(msg);
 			server->offline = 1;
 			break;
 		default:
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				client, server,
+				"got unhandled packet type %s (0x%x) during auth passthrough",
+				kiwi_be_type_to_string(type), type);
 			machine_msg_free(msg);
 			return -1;
 		}

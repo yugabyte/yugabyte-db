@@ -455,12 +455,6 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
         writer.String(entry->port);
       }
 
-      writer.String("pid");
-      writer.Int(entry->proc_id);
-
-      writer.String("pss_mem_bytes");
-      writer.Int64(entry->pss_mem_bytes);
-
       writer.EndObject();
     }
   }

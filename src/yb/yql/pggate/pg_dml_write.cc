@@ -136,6 +136,10 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   // Compatibility: set column ids as expected by legacy nodes
   ColumnRefsToPB(write_req_->mutable_column_refs());
 
+  if (targets_) {
+    doc_op_->SetFetchedTargets(targets_);
+  }
+
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
   if (VERIFY_RESULT(doc_op_->Execute(ForceNonBufferable(

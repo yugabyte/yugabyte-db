@@ -11,8 +11,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.LdapUnivSync.Params;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData;
 import com.yugabyte.yw.forms.LdapUnivSyncFormData.TargetApi;
@@ -29,9 +27,6 @@ import org.yb.CommonTypes.TableType;
 
 @Slf4j
 public class DbLdapSync extends UniverseTaskBase {
-
-  private final YsqlQueryExecutor ysqlQueryExecutor;
-  private final YcqlQueryExecutor ycqlQueryExecutor;
 
   // ycql/ysql create role statement have a default login=false/NOLOGIN property AND no superuser
   // privileges.
@@ -53,13 +48,8 @@ public class DbLdapSync extends UniverseTaskBase {
       "select role, member_of from system_auth.roles where is_superuser = FALSE;";
 
   @Inject
-  public DbLdapSync(
-      BaseTaskDependencies baseTaskDependencies,
-      YsqlQueryExecutor ysqlQueryExecutor,
-      YcqlQueryExecutor ycqlQueryExecutor) {
+  public DbLdapSync(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.ysqlQueryExecutor = ysqlQueryExecutor;
-    this.ycqlQueryExecutor = ycqlQueryExecutor;
   }
 
   protected Params taskParams() {

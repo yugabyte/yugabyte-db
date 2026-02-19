@@ -70,9 +70,6 @@ import play.libs.Json;
 @Slf4j
 public class ShellKubernetesManager extends KubernetesManager {
 
-  private final ShellProcessHandler shellProcessHandler;
-  private final FileHelperService fileHelperService;
-
   @Inject
   public ShellKubernetesManager(
       ShellProcessHandler shellProcessHandler, FileHelperService fileHelperService) {

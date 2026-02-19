@@ -1020,7 +1020,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     return subtxn_metadata_pb;
   }
 
-  Status SetPgTxnStart(int64_t pg_txn_start_us) {
+  Status SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
     VLOG_WITH_PREFIX(4) << "set pg_txn_start_us_=" << pg_txn_start_us;
     RSTATUS_DCHECK(
         !metadata_.pg_txn_start_us,
@@ -1028,6 +1028,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         Format("Tried to set pg_txn_start_us (= $0) to new value (= $1)",
                metadata_.pg_txn_start_us, pg_txn_start_us));
     metadata_.pg_txn_start_us = pg_txn_start_us;
+    metadata_.using_table_locks = using_table_locks;
     return Status::OK();
   }
 
@@ -1196,6 +1197,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    std::lock_guard l(mutex_);
     background_transaction_ = background_transaction;
   }
 
@@ -2630,7 +2632,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // that transaction and is passed on to the session level txn's status tablet, which creates a
   // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
   // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
-  std::weak_ptr<YBTransaction> background_transaction_;
+  std::weak_ptr<YBTransaction> background_transaction_ GUARDED_BY(mutex_);
 
   mutable std::mutex async_write_query_mutex_;
   std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_
@@ -2815,8 +2817,8 @@ bool YBTransaction::HasSubTransaction(SubTransactionId id) {
   return impl_->HasSubTransaction(id);
 }
 
-Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us) {
-  return impl_->SetPgTxnStart(pg_txn_start_us);
+Status YBTransaction::SetPgTxnStart(int64_t pg_txn_start_us, bool using_table_locks) {
+  return impl_->SetPgTxnStart(pg_txn_start_us, using_table_locks);
 }
 
 void YBTransaction::IncreaseMutationCounts(

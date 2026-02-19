@@ -91,6 +91,7 @@ public class AzureCloudInfo implements CloudInfoInterface {
   @ApiModelProperty(
       value = "New/Existing VPC for provider creation",
       accessMode = AccessMode.READ_ONLY)
+  @Builder.Default
   private VPCType vpcType = VPCType.EXISTING;
 
   @JsonIgnore

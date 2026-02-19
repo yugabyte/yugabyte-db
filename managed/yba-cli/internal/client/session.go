@@ -12,28 +12,28 @@ import (
 )
 
 // GetAppVersion fetches YugabyteDB Anywhere version
-func (a *AuthAPIClient) GetAppVersion() ybaclient.SessionManagementApiApiAppVersionRequest {
-	return a.APIClient.SessionManagementApi.AppVersion(a.ctx)
+func (a *AuthAPIClient) GetAppVersion() ybaclient.SessionManagementAPIAppVersionRequest {
+	return a.APIClient.SessionManagementAPI.AppVersion(a.ctx)
 }
 
 // ApiLogin fetches API Token and CustomerUUID
-func (a *AuthAPIClient) ApiLogin() ybaclient.SessionManagementApiApiApiLoginRequest {
-	return a.APIClient.SessionManagementApi.ApiLogin(a.ctx)
+func (a *AuthAPIClient) ApiLogin() ybaclient.SessionManagementAPIApiLoginRequest {
+	return a.APIClient.SessionManagementAPI.ApiLogin(a.ctx)
 }
 
 // RegisterCustomer registers a YugabyteDB Anywhere customer
-func (a *AuthAPIClient) RegisterCustomer() ybaclient.SessionManagementApiApiRegisterCustomerRequest {
-	return a.APIClient.SessionManagementApi.RegisterCustomer(a.ctx)
+func (a *AuthAPIClient) RegisterCustomer() ybaclient.SessionManagementAPIRegisterCustomerRequest {
+	return a.APIClient.SessionManagementAPI.RegisterCustomer(a.ctx)
 }
 
 // ApiToken regenerates and fetches unmasked API token
-func (a *AuthAPIClient) ApiToken() ybaclient.SessionManagementApiApiApiTokenRequest {
-	return a.APIClient.SessionManagementApi.ApiToken(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ApiToken() ybaclient.SessionManagementAPIApiTokenRequest {
+	return a.APIClient.SessionManagementAPI.ApiToken(a.ctx, a.CustomerUUID)
 }
 
 // GetSessionInfo fetches YugabyteDB Anywhere session info
-func (a *AuthAPIClient) GetSessionInfo() ybaclient.SessionManagementApiApiGetSessionInfoRequest {
-	return a.APIClient.SessionManagementApi.GetSessionInfo(a.ctx)
+func (a *AuthAPIClient) GetSessionInfo() ybaclient.SessionManagementAPIGetSessionInfoRequest {
+	return a.APIClient.SessionManagementAPI.GetSessionInfo(a.ctx)
 }
 
 // GetCustomerUUID fetches YugabyteDB Anywhere customer UUID

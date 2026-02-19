@@ -52,6 +52,7 @@ RunningTransaction::RunningTransaction(
     const TransactionalBatchData& last_batch_data,
     OneWayBitmap&& replicated_batches,
     HybridTime base_time_for_abort_check_ht_calculation,
+    HybridTime first_write_ht,
     RunningTransactionContext* context,
     const AtomicGaugePtr<uint64_t>& metric_aborted_transactions_pending_cleanup)
     : metadata_(std::move(metadata)),
@@ -66,6 +67,7 @@ RunningTransaction::RunningTransaction(
       apply_intents_task_(&context->applier_, context, &apply_data_),
       abort_check_ht_(base_time_for_abort_check_ht_calculation.AddDelta(
                           1ms * FLAGS_transaction_abort_check_interval_ms)),
+      first_write_ht_(first_write_ht),
       fast_mode_scope_(context->CreateFastModeTransactionScope(metadata_)),
       metric_aborted_transactions_pending_cleanup_(metric_aborted_transactions_pending_cleanup) {
 }

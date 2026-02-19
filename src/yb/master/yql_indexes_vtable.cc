@@ -93,7 +93,7 @@ string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const S
 } // namespace
 
 Result<VTableDataPtr> YQLIndexesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
+    const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto* catalog_manager = &this->catalog_manager();
 

@@ -531,5 +531,24 @@ INSERT INTO partitioned_table VALUES (2), (4);
 SELECT * FROM col_table_partition;
 SELECT * FROM non_col_table_partition;
 
+-- Test NULLS [NOT] DISTINCT WITH
+CREATE TABLE tbl3 (k int, v int);
+CREATE UNIQUE INDEX tbl3_k_u ON tbl3(k) NULLS NOT DISTINCT WITH (colocation_id=2929292929);
+CREATE INDEX tbl3_v_rtoid ON tbl3(v) NULLS DISTINCT WITH (row_type_oid = 1111111, colocation_id=2828282828);
+
+set yb_enable_create_with_table_oid = on;
+CREATE UNIQUE INDEX tbl3_v_u_toid ON tbl3(v) NULLS NOT DISTINCT WITH (table_oid = 2222222, colocation_id=2727272727);
+CREATE INDEX tbl3_k_many_oids ON tbl3(k) NULLS NOT DISTINCT WITH (colocation_id=2626262626, row_type_oid = 3333333, table_oid = 4444444);
+set yb_enable_create_with_table_oid = off;
+
+\d tbl3
+SELECT * FROM get_table_indexes('tbl3');
+
+-- Test include_yb_metadata = true
+SET yb_format_funcs_include_yb_metadata = on;
+\d tbl3
+SELECT * FROM get_table_indexes('tbl3');
+SET yb_format_funcs_include_yb_metadata = off;
+
 \c yugabyte
 DROP DATABASE colocation_test;

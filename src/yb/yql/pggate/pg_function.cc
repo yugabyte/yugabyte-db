@@ -13,9 +13,11 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <iostream>
+#include <algorithm>
 #include <fstream>
-#include <string>
+#include <iostream>
+#include <optional>
+#include <vector>
 
 #include "yb/client/yb_op.h"
 
@@ -31,11 +33,11 @@
 
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_function_helpers.h"
+#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 using dockv::PgTableRow;
 using dockv::PgValue;
@@ -74,6 +76,10 @@ PgFunctionParams::GetValueAndType(const std::string& name) const {
 //--------------------------------------------------------------------------------------------------
 // PgFunction
 //--------------------------------------------------------------------------------------------------
+
+PgFunction::PgFunction(PgFunctionDataProcessor processor, PgSessionPtr pg_session)
+    : pg_session_(std::move(pg_session)),
+      processor_(std::move(processor)) {}
 
 Status PgFunction::AddParam(
     const std::string& name, const YbcPgTypeEntity* type_entity, uint64_t datum, bool is_null) {
@@ -337,7 +343,7 @@ Result<std::vector<TransactionId>> GetDecodedBlockerTransactionIds(
 
 Result<std::list<PgTableRow>> PgLockStatusRequestor(
     const PgFunctionParams& params, const Schema& schema, const ReaderProjection& projection,
-    const scoped_refptr<PgSession>& pg_session) {
+    const PgSessionPtr& pg_session) {
   std::string table_id;
   const auto [relation, rel_null] = VERIFY_RESULT(params.GetParamValue<PgOid>("relation"));
   if (!rel_null) {
@@ -348,7 +354,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
   const auto [transaction, transaction_null] =
       VERIFY_RESULT(params.GetParamValue<Uuid>("transaction_id"));
 
-  const auto lock_status = VERIFY_RESULT(pg_session->GetLockStatusData(
+  const auto lock_status = VERIFY_RESULT(pg_session->pg_client().GetLockStatusData(
       table_id, transaction_null ? std::string() : transaction.AsSlice().ToBuffer()));
 
   VLOG(2) << "retrieved locks " << lock_status.DebugString();
@@ -434,5 +440,4 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
   return data;
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

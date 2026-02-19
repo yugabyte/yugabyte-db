@@ -23,6 +23,7 @@ export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
 export const BACKUP_PITR_ENABLED = 'yb.ui.feature_flags.off_cluster_pitr_enabled';
 export const PATH_STYLE_ACCESS = 'yb.ui.feature_flags.enable_path_style_access';
 export const ENABLE_SIGNING_REGION = 'yb.ui.feature_flags.enable_signing_region';
+export const ENABLE_S3_BACKUP_PROXY = 'yb.ui.feature_flags.enable_s3_backup_proxy';
 
 /**
  * Calculates the difference between two dates
@@ -68,11 +69,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: null
   },
   {
-    label: 'In Progress',
+    label: 'Backup In Progress',
     value: Backup_States.IN_PROGRESS
   },
   {
-    label: 'Completed',
+    label: 'Backup Completed',
     value: Backup_States.COMPLETED
   },
   {
@@ -80,7 +81,7 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.DELETE_IN_PROGRESS
   },
   {
-    label: 'Failed',
+    label: 'Backup Failed',
     value: Backup_States.FAILED
   },
   {
@@ -92,11 +93,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.QUEUED_FOR_DELETION
   },
   {
-    label: 'Skipped',
+    label: 'Backup Skipped',
     value: Backup_States.SKIPPED
   },
   {
-    label: 'Cancelled',
+    label: 'Backup Cancelled',
     value: Backup_States.STOPPED
   }
 ];
@@ -254,4 +255,8 @@ export const isPathStyleAccess = (runtimeConfigs: RunTimeConfig) => {
 
 export const isSigningRegionEnabled = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_SIGNING_REGION)?.value === 'true';
+};
+
+export const isS3BackupProxyEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_S3_BACKUP_PROXY)?.value === 'true';
 };

@@ -92,10 +92,10 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
     createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert, temporaryRootCAUUID);
 
     // Step 1a: Update pods with temporary multi-cert
-    createRotateCertTask(universe, temporaryRootCAUUID);
+    createRotateCertTask(universe, temporaryRootCAUUID, true /* useExistingServerCert */);
 
     // Step 2: Reverse the cert order - new cert first, old cert later
-    // This ensures node certs are generated with new rootCA
+    // This ensures node certs are generated with new rootCA and not old rootCA
     createUniverseUpdateRootCertTask(
         UpdateRootCertAction.MultiCertReverse, null /* temporaryRootCAUUID */);
 
@@ -120,10 +120,16 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   private void createRotateCertTask(Universe universe, UUID rootCAUUID) {
+    createRotateCertTask(universe, rootCAUUID, false);
+  }
+
+  private void createRotateCertTask(
+      Universe universe, UUID rootCAUUID, boolean useExistingServerCert) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     String stableYbcVersion = confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+    UpgradeContext upgradeContext = getUpgradeContext(rootCAUUID, useExistingServerCert);
     if (taskParams().upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {
-      createNonRestartUpgradeTask(universe, getUpgradeContext(rootCAUUID));
+      createNonRestartUpgradeTask(universe, upgradeContext);
       createKubernetesCertHotReloadTask(universe, getUserTaskUUID());
     } else if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
       createUpgradeTask(
@@ -133,7 +139,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           true /* upgradeTservers */,
           getUniverse().isYbcEnabled(),
           stableYbcVersion,
-          getUpgradeContext(rootCAUUID));
+          upgradeContext);
     } else {
       createNonRollingUpgradeTask(
           universe,
@@ -142,7 +148,7 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           true /* upgradeTservers */,
           getUniverse().isYbcEnabled(),
           stableYbcVersion,
-          getUpgradeContext(rootCAUUID));
+          upgradeContext);
     }
   }
 
@@ -186,5 +192,12 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private UpgradeContext getUpgradeContext(UUID rootCAUUID) {
     return UpgradeContext.builder().rootCAUUID(rootCAUUID).build();
+  }
+
+  private UpgradeContext getUpgradeContext(UUID rootCAUUID, boolean useExistingServerCert) {
+    return UpgradeContext.builder()
+        .rootCAUUID(rootCAUUID)
+        .useExistingServerCert(useExistingServerCert)
+        .build();
   }
 }

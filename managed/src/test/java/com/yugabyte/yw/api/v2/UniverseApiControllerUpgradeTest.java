@@ -304,9 +304,10 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
   }
 
   @Test
-  public void testV2PrecheckFinalize() throws ApiException {
+  public void testV2PrecheckFinalizeAndYsqlMajorUpgradeTrue() throws ApiException {
     SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
     response.setFinalizeRequired(true);
+    response.setYsqlMajorVersionUpgrade(true);
     when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
             eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
         .thenReturn(response);
@@ -315,12 +316,14 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     UniverseSoftwareUpgradePrecheckResp resp =
         apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
     assertTrue(resp.getFinalizeRequired());
+    assertTrue(resp.getYsqlMajorVersionUpgrade());
   }
 
   @Test
-  public void testV2PrecheckNoFinalize() throws ApiException {
+  public void testV2PrecheckFinalizeAndYsqlMajorUpgradeFalse() throws ApiException {
     SoftwareUpgradeInfoResponse response = new SoftwareUpgradeInfoResponse();
     response.setFinalizeRequired(false);
+    response.setYsqlMajorVersionUpgrade(false);
     when(mockUpgradeUniverseHandler.softwareUpgradeInfo(
             eq(customer.getUuid()), eq(universe.getUniverseUUID()), any()))
         .thenReturn(response);
@@ -329,6 +332,7 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     UniverseSoftwareUpgradePrecheckResp resp =
         apiClient.precheckSoftwareUpgrade(customer.getUuid(), universe.getUniverseUUID(), req);
     assertFalse(resp.getFinalizeRequired());
+    assertFalse(resp.getYsqlMajorVersionUpgrade());
   }
 
   @Test

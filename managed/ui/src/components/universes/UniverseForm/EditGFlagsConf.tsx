@@ -17,8 +17,8 @@ import {
   verifyAttributes
 } from '../../../utils/UniverseUtils';
 import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
-import { ReactComponent as DraggableIcon } from '../../../redesign/assets/draggable.svg';
-import { ReactComponent as CloseIcon } from '../../../redesign/assets/close.svg';
+import DraggableIcon from '../../../redesign/assets/draggable.svg';
+import CloseIcon from '../../../redesign/assets/close.svg';
 
 const OIDC_ENABLED_DB_VERSION = '2.18.0.0';
 

@@ -9,6 +9,10 @@ cascade:
   unversioned: true
 ---
 
+{{< tip title="Docs MCP Server" >}}
+Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../reference/docs-mcp-server/).
+{{< /tip >}}
+
 ## Tutorials
 
 Get started with step-by-step guides for building scalable and fault-tolerant applications using YugabyteDB and your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
@@ -28,13 +32,6 @@ Get started with step-by-step guides for building scalable and fault-tolerant ap
     buttonUrl="tutorials/build-and-learn/"
   >}}
 
-  {{< sections/3-box-card
-    title="AI"
-    description="Add a scalable and highly-available database to your AI projects."
-    buttonText="Explore"
-    buttonUrl="tutorials/ai/"
-  >}}
-
 {{< /sections/3-boxes >}}
 
 ## Application development
@@ -49,8 +46,16 @@ To learn how to build applications on top of YugabyteDB, see [Learn app developm
 
 To communicate with YugabyteDB, applications need to use drivers. Applications can also be built using Object-Relational mappings, a technique used to communicate with the database using object-oriented techniques. We've tested various drivers and ORMs in multiple languages with the optimal configurations to get your applications up and running.
 
-{{<lead link="../drivers-orms/">}}
+{{<lead link="./drivers-orms/">}}
 For the list of drivers and ORMs with sample code, see [Drivers and ORMs](./drivers-orms/).
+{{</lead>}}
+
+## AI
+
+Using the pgvector PostgreSQL extension, YugabyteDB can function as a highly performant vector database, with enterprise scale and resilience. Use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data. Unlike monolithic PostgreSQL databases, YugabyteDB scales effortlessly, allowing it to store and search billions of vectors.
+
+{{<lead link="./ai/">}}
+For examples of how you can use YugabyteDB as the vector store for AI applications, see [Develop applications with AI and YugabyteDB](./ai/).
 {{</lead>}}
 
 ## Data modeling

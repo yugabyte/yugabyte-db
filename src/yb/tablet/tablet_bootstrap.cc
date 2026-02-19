@@ -509,7 +509,7 @@ class TabletBootstrap {
     }
 
     std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
-    HybridTime min_replay_txn_start_ht = HybridTime::kInvalid;
+    HybridTime min_replay_txn_first_write_ht = HybridTime::kInvalid;
     if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
       auto result = data_.bootstrap_state_manager->LoadFromDisk();
       if (result.ok()) {
@@ -517,14 +517,14 @@ class TabletBootstrap {
 
         if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
           const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
-          min_replay_txn_start_ht = bootstrap_state.GetMinReplayTxnStartTime();
+          min_replay_txn_first_write_ht = bootstrap_state.GetMinReplayTxnFirstWriteTime();
         }
       } else if (!result.status().IsNotFound()) {
         return result.status();
       }
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_start_ht));
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_replay_txn_first_write_ht));
 
     if (data_.retryable_requests) {
       const auto table_type_for_retryable_request_timeout =
@@ -567,9 +567,7 @@ class TabletBootstrap {
     }
 
     // Only sleep if this isn't a new tablet, since we only want to delay on restart when testing.
-    if (PREDICT_FALSE(FLAGS_TEST_tablet_bootstrap_delay_ms > 0)) {
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_tablet_bootstrap_delay_ms));
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_tablet_bootstrap_delay_ms);
 
     // If there were blocks, there must be segments to replay. This is required by Raft, since we
     // always need to know the term and index of the last logged op in order to vote, know how to
@@ -631,7 +629,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet(HybridTime min_replay_txn_start_ht) {
+  Result<bool> OpenTablet(HybridTime min_replay_txn_first_write_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -645,7 +643,7 @@ class TabletBootstrap {
 
     auto participant = tablet->transaction_participant();
     if (participant) {
-      participant->SetMinReplayTxnStartTimeLowerBound(min_replay_txn_start_ht);
+      participant->SetMinReplayTxnFirstWriteTimeLowerBound(min_replay_txn_first_write_ht);
     }
 
     // Doing nothing for now except opening a tablet locally.

@@ -538,7 +538,8 @@ public class NodeAgentRpcPayload {
                   config,
                   queryLogConfig,
                   metricsExportConfig,
-                  GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+                  GFlagsUtil.getLogLinePrefix(
+                      queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
                   NodeManager.getOtelColMetricsPort(taskParams),
                   nodeAgent)
               .toAbsolutePath()
@@ -697,18 +698,17 @@ public class NodeAgentRpcPayload {
     ServerGFlagsInput.Builder builder =
         ServerGFlagsInput.newBuilder().setServerHome(serverHome).setServerName(serverName);
 
-    Map<String, String> gflags =
-        new HashMap<>(
-            GFlagsUtil.getAllDefaultGFlags(
-                taskParams, universe, userIntent, useHostname, confGetter));
+    Map<String, String> gflags = new HashMap<>();
     if (processType.equals(ServerType.CONTROLLER.toString())) {
       // TODO Is the check taskParam.isEnableYbc() required here?
-      Map<String, String> ybcFlags =
-          GFlagsUtil.getYbcFlags(universe, taskParams, confGetter, appConfig, taskParams.ybcGflags);
-      // Override for existing keys as this has higher precedence.
-      gflags.putAll(ybcFlags);
+      gflags.putAll(
+          GFlagsUtil.getYbcFlags(
+              universe, taskParams, confGetter, appConfig, taskParams.ybcGflags));
     } else if (processType.equals(ServerType.MASTER.toString())
         || processType.equals(ServerType.TSERVER.toString())) {
+      gflags.putAll(
+          GFlagsUtil.getAllDefaultGFlags(
+              taskParams, universe, userIntent, useHostname, confGetter));
       // Override for existing keys as this has higher precedence.
       gflags.putAll(taskParams.gflags);
       nodeManager.processGFlags(appConfig, universe, nodeDetails, taskParams, gflags, useHostname);

@@ -420,6 +420,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   //------------------------------------------------------------------------------------------------
   // CDC Related
 
+  bool is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh = nullptr) const;
+
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
   Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
@@ -439,6 +441,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
   bool is_under_cdc_sdk_replication();
+
+  Status reset_all_cdc_retention_barriers_if_stale();
 
   HybridTime GetMinStartHTRunningTxnsOrLeaderSafeTime();
 
@@ -480,10 +484,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   bool CanBeDeleted();
 
   std::string LogPrefix() const;
-
-  // Called from RemoteBootstrapSession and RemoteBootstrapAnchorSession to change role of the
-  // new peer post RBS.
-  Status ChangeRole(const std::string& requestor_uuid);
 
   Result<consensus::RetryableRequests> GetRetryableRequests();
   Status FlushBootstrapState();
@@ -604,8 +604,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   OperationCounter preparing_operations_counter_;
 
-  // Serializes access to set_cdc_min_replicated_index and reset_cdc_min_replicated_index_if_stale
-  // and protects cdc_min_replicated_index_refresh_time_ for reads and writes.
+  // Serializes access to set_cdc_min_replicated_index and is_cdc_min_replicated_index_stale and
+  // protects cdc_min_replicated_index_refresh_time_ for reads and writes.
   mutable simple_spinlock cdc_min_replicated_index_lock_;
   MonoTime cdc_min_replicated_index_refresh_time_ = MonoTime::Min();
 
@@ -627,7 +627,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   bool FlushBootstrapStateEnabled() const;
 
-  void MinReplayTxnStartTimeUpdated(HybridTime start_ht);
+  void MinReplayTxnFirstWriteTimeUpdated(HybridTime first_write_ht);
 
   MetricRegistry* metric_registry_;
 
@@ -664,7 +664,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 };
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client);
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client);
 
 }  // namespace tablet
 }  // namespace yb

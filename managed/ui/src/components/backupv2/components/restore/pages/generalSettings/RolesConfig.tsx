@@ -6,20 +6,14 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-
-import { useContext } from 'react';
-import { keys } from 'lodash';
 import { useFormContext } from 'react-hook-form';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { YBCheckbox } from '../../../../../../redesign/components';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { IGeneralSettings } from './GeneralSettings';
-import { TablespaceWarnings } from '@app/redesign/features/backup/restore/pages/RestoreTarget/TablespaceWarnings';
-import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
-import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
 
-const TRANS_PREFIX = 'backup.restore.target';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg?img';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg?img';
 
 const useStyles = makeStyles((theme) => ({
   warning: {
@@ -31,7 +25,8 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.ybacolors.backgroundGrayDark}`,
     background: theme.palette.common.white,
     padding: '10px',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    marginTop: theme.spacing(1)
   },
   tablespaceHelpText: {
     color: '#67666C',
@@ -42,7 +37,7 @@ const useStyles = makeStyles((theme) => ({
   conflictingTablespace: {
     marginLeft: '34px',
     marginTop: '5px'
-  },
+  }
 }));
 
 export const RolesConfig = () => {
@@ -50,14 +45,11 @@ export const RolesConfig = () => {
 
   const { watch, setValue } = useFormContext<IGeneralSettings>();
   const useRoles = watch('useRoles');
-  const errorIfRolesExists = watch('errorIfRolesExists');
   const classes = useStyles();
 
   return (
     <Box>
-      <Typography variant="body1">
-        {t('newRestoreModal.rolesConfig.title')}
-      </Typography>
+      <Typography variant="body1">{t('newRestoreModal.rolesConfig.title')}</Typography>
       <Box className={classes.root}>
         <Box>
           <YBCheckbox
@@ -71,27 +63,7 @@ export const RolesConfig = () => {
             }}
           />
         </Box>
-        {/* <Box ml={2}>
-          {useRoles && (
-            <>
-              <YBCheckbox
-                label={t('newRestoreModal.rolesConfig.checkboxTitle2')}
-                checked={errorIfRolesExists}
-                name="errorIfRolesExists"
-                icon={<img src={UnChecked} alt="unchecked" />}
-                checkedIcon={<img src={Checked} alt="checked" />}
-                onChange={(event) => {
-                  setValue('errorIfRolesExists', event.target.checked);
-                }}
-              />
-              <span className={classes.tablespaceHelpText}>
-                <Trans i18nKey="newRestoreModal.rolesConfig.checkboxHelpText2" components={{ b: <b /> }} />
-              </span>
-          </>
-          )}
-        </Box> */}
       </Box>
     </Box>
   );
 };
-

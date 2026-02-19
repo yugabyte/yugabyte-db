@@ -324,7 +324,7 @@ class TnodeContext {
   // Called from Executor::ExecPTNode for PTSelectStmt.
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" start_position 0:
   // this will set req->hashed_column_values() to [1, 2, 4, 6].
-  void InitializePartition(QLReadRequestPB *req, bool continue_user_request);
+  void InitializePartition(QLReadRequestMsg *req, bool continue_user_request);
 
   // Predicate for the completion of a partition read.
   bool FinishedReadingPartition();
@@ -335,9 +335,9 @@ class TnodeContext {
   // Called from Executor::FetchMoreRowsIfNeeded.
   // E.g. for a query "h1 = 1 and h2 in (2,3) and h3 in (4,5) and h4 = 6" partition index 2:
   // this will do, index: 2 -> 3 and hashed_column_values: [1, 3, 4, 6] -> [1, 3, 5, 6].
-  void AdvanceToNextPartition(QLReadRequestPB *req);
+  void AdvanceToNextPartition(QLReadRequestMsg *req);
 
-  std::vector<std::vector<QLExpressionPB>>& hash_values_options() {
+  std::vector<std::vector<QLExpressionMsg>>& hash_values_options() {
     if (!hash_values_options_) {
       hash_values_options_.emplace();
     }
@@ -436,7 +436,7 @@ class TnodeContext {
   //  hash_values_options_ = [[2, 3], [4, 5], [6]]
   //  partitions_count_ = 4 (i.e. [2,4,6], [2,5,6], [3,4,6], [3,5,6]).
   //  current_partition_index_ starts from 0 unless set in the paging state.
-  std::optional<std::vector<std::vector<QLExpressionPB>>> hash_values_options_;
+  std::optional<std::vector<std::vector<QLExpressionMsg>>> hash_values_options_;
   uint64_t partitions_count_ = 0;
   uint64_t current_partition_index_ = 0;
 
@@ -511,10 +511,10 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Prepare a child distributed transaction.
-  Status PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
+  Status PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataMsg* data);
 
   // Apply the result of a child distributed transaction.
-  Status ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+  Status ApplyChildTransactionResult(const ChildTransactionResultMsg& result);
 
   // Commit the current distributed transaction.
   void CommitTransaction(CoarseTimePoint deadline, client::CommitCallback callback);

@@ -9,21 +9,21 @@ import (
 )
 
 // CreateBackup creates backups associated with the universe
-func (a *AuthAPIClient) CreateBackup() ybaclient.BackupsApiApiCreatebackupRequest {
-	return a.APIClient.BackupsApi.Createbackup(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CreateBackup() ybaclient.BackupsAPICreatebackupRequest {
+	return a.APIClient.BackupsAPI.Createbackup(a.ctx, a.CustomerUUID)
 }
 
 // ListBackups associated with the customer
-func (a *AuthAPIClient) ListBackups() ybaclient.BackupsApiApiListBackupsV2Request {
-	return a.APIClient.BackupsApi.ListBackupsV2(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ListBackups() ybaclient.BackupsAPIListBackupsV2Request {
+	return a.APIClient.BackupsAPI.ListBackupsV2(a.ctx, a.CustomerUUID)
 }
 
 // GetBackupByTaskUUID fetches backups by the universe and task UUID
 func (a *AuthAPIClient) GetBackupByTaskUUID(
 	universeUUID string,
 	taskUUID string,
-) ybaclient.BackupsApiApiFetchBackupsByTaskUUIDRequest {
-	return a.APIClient.BackupsApi.FetchBackupsByTaskUUID(
+) ybaclient.BackupsAPIFetchBackupsByTaskUUIDRequest {
+	return a.APIClient.BackupsAPI.FetchBackupsByTaskUUID(
 		a.ctx,
 		a.CustomerUUID,
 		universeUUID,
@@ -31,18 +31,18 @@ func (a *AuthAPIClient) GetBackupByTaskUUID(
 }
 
 // EditBackup edits a backup
-func (a *AuthAPIClient) EditBackup(backupUUID string) ybaclient.BackupsApiApiEditBackupV2Request {
-	return a.APIClient.BackupsApi.EditBackupV2(a.ctx, a.CustomerUUID, backupUUID)
+func (a *AuthAPIClient) EditBackup(backupUUID string) ybaclient.BackupsAPIEditBackupV2Request {
+	return a.APIClient.BackupsAPI.EditBackupV2(a.ctx, a.CustomerUUID, backupUUID)
 }
 
 // DeleteBackups deletes the backups
-func (a *AuthAPIClient) DeleteBackups() ybaclient.BackupsApiApiDeleteBackupsV2Request {
-	return a.APIClient.BackupsApi.DeleteBackupsV2(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) DeleteBackups() ybaclient.BackupsAPIDeleteBackupsV2Request {
+	return a.APIClient.BackupsAPI.DeleteBackupsV2(a.ctx, a.CustomerUUID)
 }
 
 // ListIncrementalBackups lists the incremental backups
 func (a *AuthAPIClient) ListIncrementalBackups(
 	backupUUID string,
-) ybaclient.BackupsApiApiListIncrementalBackupsRequest {
-	return a.APIClient.BackupsApi.ListIncrementalBackups(a.ctx, a.CustomerUUID, backupUUID)
+) ybaclient.BackupsAPIListIncrementalBackupsRequest {
+	return a.APIClient.BackupsAPI.ListIncrementalBackups(a.ctx, a.CustomerUUID, backupUUID)
 }

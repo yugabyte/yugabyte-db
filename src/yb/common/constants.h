@@ -19,9 +19,9 @@
 
 namespace yb {
 
-// As a result of single dynamic tablet splitting operation we always have kNumSplitParts new
+// As a result of single dynamic tablet splitting operation we always have kDefaultNumSplitParts new
 // post-split tablets.
-constexpr const auto kNumSplitParts = 2;
+constexpr const auto kDefaultNumSplitParts = 2;
 
 constexpr const ColocationId kColocationIdNotSet = 0;
 

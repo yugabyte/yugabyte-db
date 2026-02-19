@@ -30,8 +30,10 @@
 
 DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 
+DEFINE_RUNTIME_int32(xcluster_automatic_target_create_table_ddl_rpc_timeout_sec, 60 * 60,
+    "Timeout for YSQL Create Table DDL operations on xCluster automatic target databases.");
+
 DECLARE_int32(max_num_tablets_for_table);
-DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
 
 namespace yb::pggate {
@@ -44,6 +46,24 @@ CoarseTimePoint DdlDeadline() {
   return CoarseMonoClock::now() + (FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
+CoarseTimePoint CreateTableDeadline(
+    const PgSession::ScopedRefPtr& pg_session, const tserver::PgCreateTableRequestPB& req) {
+  // Check if this is an xCluster automatic target and use longer timeout if so.
+  // This is needed because new tables on the target need to be added to replication and also catch
+  // up to the xCluster safe time during this timeout (see AddTableToXClusterTargetTask).
+  const auto table_id = PgObjectId::FromPB(req.table_id());
+  if (table_id.IsValid()) {
+    const auto xcluster_role_result =
+        pg_session->pg_client().GetXClusterRole(table_id.database_oid);
+    if (xcluster_role_result.ok() && *xcluster_role_result == XCLUSTER_ROLE_AUTOMATIC_TARGET) {
+      return CoarseMonoClock::now() +
+             (FLAGS_xcluster_automatic_target_create_table_ddl_rpc_timeout_sec * 1s);
+    }
+  }
+
+  return DdlDeadline();
+}
+
 CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
   // Creating the database through clone workflow has a different deadline compared to non-clone
   // workflow to account for extra time to clone the schema objects.
@@ -51,7 +71,7 @@ CoarseTimePoint CreateDatabaseDeadline(bool is_clone = false) {
                                             : FLAGS_ysql_ddl_rpc_timeout_sec * 1s);
 }
 
-} // namespace
+}  // namespace
 
 //--------------------------------------------------------------------------------------------------
 // PgCreateDatabase
@@ -96,7 +116,11 @@ PgDropDatabase::PgDropDatabase(
 }
 
 Status PgDropDatabase::Exec() {
-  return pg_session_->DropDatabase(database_name_, database_oid_, DdlDeadline());
+  tserver::PgDropDatabaseRequestPB req;
+  req.set_database_name(database_name_);
+  req.set_database_oid(database_oid_);
+
+  return pg_session_->pg_client().DropDatabase(&req, DdlDeadline());
 }
 
 PgAlterDatabase::PgAlterDatabase(
@@ -271,7 +295,8 @@ Status PgCreateTableBase::AddSplitBoundary(PgExpr** exprs, int expr_count) {
 
 Status PgCreateTableBase::Exec() {
   RETURN_NOT_OK(SetupPerformOptionsForDdlIfNeeded(*pg_session_, req_));
-  RETURN_NOT_OK(pg_session_->pg_client().CreateTable(&req_, DdlDeadline()));
+  RETURN_NOT_OK(
+      pg_session_->pg_client().CreateTable(&req_, CreateTableDeadline(pg_session_, req_)));
 
   const auto base_table_id = PgObjectId::FromPB(req_.base_table_id());
   if (base_table_id.IsValid()) {

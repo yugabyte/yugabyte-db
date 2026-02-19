@@ -37,22 +37,17 @@ class TabletBootstrapState {
 
   TabletBootstrapState(const TabletBootstrapState& rhs);
 
-  TabletBootstrapState(TabletBootstrapState&& rhs);
-  void operator=(TabletBootstrapState&& rhs);
-
-  void CopyFrom(const TabletBootstrapState& rhs);
-
-  void SetMinReplayTxnStartTime(HybridTime min_replay_txn_start_ht) {
-    min_replay_txn_start_ht_.store(min_replay_txn_start_ht);
+  void SetMinReplayTxnFirstWriteTime(HybridTime min_replay_txn_first_write_ht) {
+    min_replay_txn_first_write_ht_.store(min_replay_txn_first_write_ht);
   }
 
-  HybridTime GetMinReplayTxnStartTime() const { return min_replay_txn_start_ht_.load(); }
+  HybridTime GetMinReplayTxnFirstWriteTime() const { return min_replay_txn_first_write_ht_.load(); }
 
   void ToPB(consensus::TabletBootstrapStatePB* pb) const;
   void FromPB(const consensus::TabletBootstrapStatePB& pb);
 
  private:
-  std::atomic<HybridTime> min_replay_txn_start_ht_{HybridTime::kInvalid};
+  std::atomic<HybridTime> min_replay_txn_first_write_ht_{HybridTime::kInvalid};
 };
 
 class TabletBootstrapStateManager {

@@ -300,7 +300,7 @@
 
 [[leftbottom]]
   name = "Slack"
-  weight = 3
+  weight = 1
   parent = "join-our-community"
   pre = "<i class='icon-slack'></i>"
   url = "https://inviter.co/yugabytedb"
@@ -309,7 +309,7 @@
 
 [[leftbottom]]
   name = "Yugabyte University"
-  weight = 4
+  weight = 2
   parent = "join-our-community"
   pre = "<i class='icon-university'></i>"
   url = "https://university.yugabyte.com/"
@@ -318,7 +318,7 @@
 
 [[leftbottom]]
   name = "GitHub"
-  weight = 5
+  weight = 3
   parent = "join-our-community"
   pre = "<i class='icon-github'></i>"
   url = "https://github.com/yugabyte/yugabyte-db"
@@ -327,7 +327,7 @@
 
 [[leftbottom]]
   name = "Yugabyte Friday Tech Talks"
-  weight = 6
+  weight = 4
   parent = "join-our-community"
   pre = "<i class='icon-yftt'></i>"
   url = "https://www.yugabyte.com/yftt/"
@@ -336,7 +336,7 @@
 
 [[leftbottom]]
   name = "Forum"
-  weight = 7
+  weight = 5
   parent = "join-our-community"
   pre = "<i class='icon-forum'></i>"
   url = "https://forum.yugabyte.com/"
@@ -580,15 +580,22 @@
     showSection = true
 
 [[stable_integrations]]
-  name = "Data integration"
+  name = "Gen AI"
   weight = 6
+  identifier = "ai-integration"
+  [stable_integrations.params]
+    showSection = true
+
+[[stable_integrations]]
+  name = "Data integration"
+  weight = 7
   identifier = "data-integration"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "GUI clients"
-  weight = 7
+  weight = 8
   identifier = "tools"
   url = "/stable/integrations/tools/"
   [stable_integrations.params]
@@ -596,42 +603,42 @@
 
 [[stable_integrations]]
   name = "Application frameworks"
-  weight = 8
+  weight = 9
   identifier = "application-frameworks"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Development platforms"
-  weight = 9
+  weight = 10
   identifier = "development-platforms"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Data discovery"
-  weight = 10
+  weight = 11
   identifier = "data-discovery"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Security"
-  weight = 11
+  weight = 12
   identifier = "integrations-security"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Applications"
-  weight = 12
+  weight = 13
   identifier = "integrations-applications"
   [stable_integrations.params]
     showSection = true
 
 [[stable_integrations]]
   name = "Infrastructure"
-  weight = 13
+  weight = 14
   identifier = "integrations-platforms"
   [stable_integrations.params]
     showSection = true
@@ -662,6 +669,16 @@
     showSection = true
 
 [[stable_develop]]
+  name = "Tutorials"
+  weight = 3
+  identifier = "tutorials"
+  url = "/stable/develop/tutorials/"
+  [stable_develop.params]
+    classes = "separator"
+    showSection = true
+
+
+[[stable_develop]]
   name = "Learn app development"
   weight = 5
   identifier = "learn"
@@ -678,8 +695,16 @@
     showSection = true
 
 [[stable_develop]]
-  name = "Data modeling"
+  name = "AI"
   weight = 7
+  identifier = "tutorials-ai"
+  url = "/stable/develop/ai/"
+  [stable_develop.params]
+    showSection = true
+
+[[stable_develop]]
+  name = "Data modeling"
+  weight = 8
   identifier = "data-modeling"
   url = "/stable/develop/data-modeling/"
   [stable_develop.params]
@@ -687,7 +712,7 @@
 
 [[stable_develop]]
   name = "Build global applications"
-  weight = 8
+  weight = 9
   identifier = "build-global-apps"
   url = "/stable/develop/build-global-apps/"
   [stable_develop.params]
@@ -695,7 +720,7 @@
 
 [[stable_develop]]
   name = "Build Multi-cloud Applications"
-  weight = 9
+  weight = 10
   identifier = "build-multicloud-apps"
   url = "/stable/develop/multi-cloud/"
   [stable_develop.params]
@@ -703,7 +728,7 @@
 
 [[stable_develop]]
   name = "Best practices"
-  weight = 10
+  weight = 11
   identifier = "best-practices-develop"
   url = "/stable/develop/best-practices-develop/"
   [stable_develop.params]
@@ -711,7 +736,7 @@
 
 [[stable_develop]]
   name = "Quality of service"
-  weight = 11
+  weight = 12
   identifier = "develop-quality-of-service"
   url = "/stable/develop/quality-of-service/"
   [stable_develop.params]
@@ -719,23 +744,14 @@
 
 [[stable_develop]]
   name = "Cloud-native development"
-  weight = 12
+  weight = 13
   identifier = "gitdev"
   url = "/stable/develop/gitdev/"
   [stable_develop.params]
     classes = "separator"
     showSection = true
 
-
-[[stable_develop]]
-  name = "Tutorials"
-  weight = 3
-  identifier = "tutorials"
-  url = "/stable/develop/tutorials/"
-  [stable_develop.params]
-    classes = "separator"
-    showSection = true
-
+### AI submenus
 [[stable_develop]]
   name = "RAG"
   weight = 10
@@ -760,6 +776,7 @@
   [stable_develop.params]
     showSection = true
 
+#### Tutorials submenus
 [[stable_develop]]
   name = "Cloud"
   weight = 40

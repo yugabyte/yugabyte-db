@@ -3371,7 +3371,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRew
   ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX idx1 ON $0 (b DESC)", table_name)));
   // Perform a failed ADD PKEY operation.
   ASSERT_NO_FATALS(RunPsqlCommand(
-      Format("SET yb_test_fail_next_ddl = true;"
+      Format("SET yb_test_fail_next_ddl = 1;"
              "ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", table_name), "SET"));
   // Verify the original table and the orphaned table exist.
   ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
@@ -3691,7 +3691,7 @@ TEST_F(
   // Perform some failed rewrite operations.
   ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_table_rewrite_after_creation = true;"
       "ALTER TABLE table_1 ADD COLUMN d SERIAL", "SET"));
-  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = true;"
+  ASSERT_NO_FATALS(RunPsqlCommand("SET yb_test_fail_next_ddl = 1;"
       "ALTER TABLE table_1 DROP CONSTRAINT table_1_pkey", "SET"));
   // Backup then restore to a new database.
   const string backup_dir = GetTempDir("backup");
@@ -3818,6 +3818,40 @@ TEST_F_EX(
         (1 row)
       )#"
   ));
+}
+
+TEST_F(YBBackupTest, ColocatedDatabaseNonColocatedTableWithVectorIndex) {
+  const std::string db_name{"test_colo_db"};
+  const std::string table_name{"test_tbl"};
+  {
+    auto base_conn = ASSERT_RESULT(cluster_->ConnectToDB());
+    ASSERT_OK(base_conn.ExecuteFormat("CREATE DATABASE $0 with COLOCATION=TRUE", db_name));
+  }
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB(db_name));
+  ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(id int PRIMARY KEY, vec vector(3)) with (colocation = false)", table_name));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE INDEX idx on $0 using ybhnsw (vec vector_l2_ops)", table_name));
+  // Took these queries from pg_vector_index-test.cc.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1.0, 0.5, 0.25]')", table_name));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, '[0.125, 0.375, 0.25]')", table_name));
+  auto result = ASSERT_RESULT(conn.FetchAllAsString(
+      Format("SELECT * FROM $0 ORDER BY vec <-> '[1.0, 0.4, 0.3]'", table_name)));
+  ASSERT_EQ(result, "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
+
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", db_name), "create"}));
+  const std::string restored_db_name{"restored_test_colo_db"};
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restored_db_name),
+       "restore"}));
+  auto restored_conn = ASSERT_RESULT(cluster_->ConnectToDB(restored_db_name));
+  ASSERT_EQ(
+      ASSERT_RESULT(restored_conn.FetchAllAsString(
+          Format("SELECT * FROM $0 ORDER BY vec <-> '[1.0, 0.4, 0.3]'", table_name))),
+      "1, [1, 0.5, 0.25]; 2, [0.125, 0.375, 0.25]");
 }
 
 }  // namespace tools

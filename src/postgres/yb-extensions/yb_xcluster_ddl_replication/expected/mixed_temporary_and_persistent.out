@@ -19,9 +19,9 @@ HINT:  Drop the temporary objects separately from the permanent ones using multi
 DROP TABLE temp_foo;
 DROP TABLE foo;
 SELECT yb_data FROM TEST_filtered_ddl_queue() ORDER BY ddl_end_time;
-                                                                                              yb_data                                                                                              
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY)", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": "***"}]}
- {"user": "yugabyte", "query": "DROP TABLE foo", "schema": "public", "version": 1, "command_tag": "DROP TABLE"}
+                                                                                                                                                                                                                                          yb_data                                                                                                                                                                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY)", "schema": "public", "version": 1, "variables": {"TimeZone": "America/Los_Angeles", "DateStyle": "Postgres, MDY", "IntervalStyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": "***", "rel_namespace": "public"}]}
+ {"user": "yugabyte", "query": "DROP TABLE foo", "schema": "public", "version": 1, "variables": {"TimeZone": "America/Los_Angeles", "DateStyle": "Postgres, MDY", "IntervalStyle": "postgres_verbose", "default_tablespace": "", "check_function_bodies": "on", "standard_conforming_strings": "on", "yb_use_hash_splitting_by_default": "on"}, "command_tag": "DROP TABLE"}
 (2 rows)
 

@@ -34,6 +34,11 @@ class MasterLeaderFinder {
   void set_master_addresses(server::MasterAddressesPtr master_addresses) EXCLUDES(master_meta_mtx_);
   void Shutdown();
 
+  template <class P>
+  Result<P> CreateProxy(MonoDelta timeout) {
+    return P(&get_proxy_cache(), VERIFY_RESULT(UpdateMasterLeaderHostPort(timeout)));
+  }
+
  private:
   server::MasterAddressesPtr get_master_addresses_unlocked() const REQUIRES(master_meta_mtx_);
   Result<HostPort> FindMasterLeader(MonoDelta timeout) REQUIRES(master_meta_mtx_);
@@ -53,7 +58,6 @@ class MasterLeaderPollerInterface {
   virtual MonoDelta IntervalToNextPoll(int32_t consecutive_failures) = 0;
   virtual void Init() = 0;
   virtual void ResetProxy() = 0;
-  virtual std::string category() = 0;
   virtual std::string name() = 0;
   virtual const std::string& LogPrefix() const = 0;
 };
@@ -61,10 +65,12 @@ class MasterLeaderPollerInterface {
 class MasterLeaderPollScheduler {
  public:
   MasterLeaderPollScheduler(MasterLeaderFinder& connector, MasterLeaderPollerInterface& poller);
-  Status Start();
-  Status Stop();
-  void TriggerASAP();
   ~MasterLeaderPollScheduler();
+
+  Status Start();
+  void Shutdown();
+  void TriggerASAP();
+  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses);
 
  private:
   class Impl;

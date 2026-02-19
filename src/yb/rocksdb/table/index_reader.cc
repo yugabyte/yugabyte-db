@@ -473,7 +473,7 @@ class MultiLevelIterator final : public DataBlockAwareIndexInternalIteratorBase 
     }
 
     // Return Incomplete when there are less than 3 data block restarts in the SST with user keys.
-    return STATUS(Incomplete, "Insufficient entries in SST.");
+    return STATUS(Incomplete, "Insufficient number of entries");
   }
 
  private:

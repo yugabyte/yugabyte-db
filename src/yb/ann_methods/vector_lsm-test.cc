@@ -44,7 +44,7 @@ DECLARE_int32(vector_index_compaction_size_ratio_min_merge_width);
 DECLARE_uint64(TEST_vector_index_delay_saving_first_chunk_ms);
 DECLARE_uint64(vector_index_compaction_always_include_size_threshold);
 
-METRIC_DEFINE_entity(vector_index);
+METRIC_DEFINE_entity(table);
 
 namespace yb::vector_index {
 
@@ -84,7 +84,7 @@ class SimpleVectorLSMKeyValueStorage {
   std::unordered_map<VectorId, size_t> storage_;
 };
 
-class TestFrontier : public rocksdb::UserFrontier {
+class TestFrontier : public storage::UserFrontier {
  public:
   std::unique_ptr<UserFrontier> Clone() const override {
     return std::make_unique<TestFrontier>(*this);
@@ -106,20 +106,20 @@ class TestFrontier : public rocksdb::UserFrontier {
     return YB_CLASS_EQUALS(vertex_id);
   }
 
-  void Update(const UserFrontier& pre_rhs, rocksdb::UpdateUserValueType update_type) override {
+  void Update(const UserFrontier& pre_rhs, storage::UpdateUserValueType update_type) override {
     const auto& rhs = down_cast<const TestFrontier&>(pre_rhs);
     switch (update_type) {
-      case rocksdb::UpdateUserValueType::kLargest:
+      case storage::UpdateUserValueType::kLargest:
         vertex_id_ = std::max(vertex_id_, rhs.vertex_id_);
         return;
-      case rocksdb::UpdateUserValueType::kSmallest:
+      case storage::UpdateUserValueType::kSmallest:
         vertex_id_ = std::min(vertex_id_, rhs.vertex_id_);
         return;
     }
-    FATAL_INVALID_ENUM_VALUE(rocksdb::UpdateUserValueType, update_type);
+    FATAL_INVALID_ENUM_VALUE(storage::UpdateUserValueType, update_type);
   }
 
-  bool IsUpdateValid(const UserFrontier& rhs, rocksdb::UpdateUserValueType type) const override {
+  bool IsUpdateValid(const UserFrontier& rhs, storage::UpdateUserValueType type) const override {
     return true;
   }
 
@@ -159,7 +159,7 @@ class TestFrontier : public rocksdb::UserFrontier {
   VectorId vertex_id_;
 };
 
-using TestFrontiers = rocksdb::UserFrontiersBase<TestFrontier>;
+using TestFrontiers = storage::UserFrontiersBase<TestFrontier>;
 
 class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMethodKind> {
  protected:
@@ -218,7 +218,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   void SetMergeFilter(MergeFilterPtr&& filter);
 
-  void SetMergeFilter(rocksdb::FilterDecision decision) {
+  void SetMergeFilter(storage::FilterDecision decision) {
     SetMergeFilter(CreateDummyMergeFilter(decision));
   }
 
@@ -226,12 +226,12 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
   struct FilterProxy : public MergeFilter {
     FilterImpl filter;
     explicit FilterProxy(FilterImpl&& impl) : filter(std::move(impl)) {}
-    rocksdb::FilterDecision Filter(VectorId vector_id) override {
+    storage::FilterDecision Filter(VectorId vector_id) override {
       return filter(vector_id);
     }
   };
 
-  static MergeFilterPtr CreateDummyMergeFilter(rocksdb::FilterDecision decision) {
+  static MergeFilterPtr CreateDummyMergeFilter(storage::FilterDecision decision) {
     auto filter = [decision](VectorId vector_id) {
       VLOG(1) << "DummyMergeFilter: " << vector_id << " => " << decision;
       return decision;
@@ -248,7 +248,7 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
 
   std::unique_ptr<MetricRegistry> metric_registry_ = std::make_unique<MetricRegistry>();
   MetricEntityPtr vector_index_metric_entity_ =
-      METRIC_ENTITY_vector_index.Instantiate(metric_registry_.get(), "test");
+      METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "test");
 };
 
 auto GetVectorIndexFactory(ANNMethodKind ann_method) {
@@ -462,20 +462,12 @@ void VectorLSMTest::CheckQueryVector(
 }
 
 Result<std::vector<std::string>> VectorLSMTest::GetFiles(FloatVectorLSM& lsm) {
-  auto files = VERIFY_RESULT(lsm.TEST_GetEnv()->GetChildren(lsm.StorageDir()));
-  std::erase_if(files, [](const auto& file) {
-    return !boost::ends_with(file, ".meta") && !boost::contains(file, "vectorindex");
-  });
-  std::sort(files.begin(), files.end(), [](auto&& lhs, auto&& rhs){
-    // Refer to VectorLSMMetadataLoad().
-    return lhs.size() < rhs.size() || (lhs.size() == rhs.size() && lhs < rhs);
-  });
-  return files;
+  return path_utils::GetVectorIndexFiles(*lsm.TEST_GetEnv(), lsm.StorageDir());
 }
 
 MergeFilterPtr VectorLSMTest::GetMergeFilter() {
   if (!merge_filter_) {
-    SetMergeFilter(rocksdb::FilterDecision::kKeep);
+    SetMergeFilter(storage::FilterDecision::kKeep);
   }
   auto filter = [this](VectorId vector_id) {
     std::lock_guard lock(merge_filter_mutex_);
@@ -621,7 +613,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   // Discard all vectors on compaction.
-  SetMergeFilter(rocksdb::FilterDecision::kDiscard);
+  SetMergeFilter(storage::FilterDecision::kDiscard);
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, 2 * kNumEntries));
@@ -649,7 +641,7 @@ TEST_P(VectorLSMTest, AllVectorsRemovalCompaction) {
   VerifyVectorLSM(lsm, kDimensions);
 
   // Make sure further writes work fine.
-  SetMergeFilter(rocksdb::FilterDecision::kKeep);
+  SetMergeFilter(storage::FilterDecision::kKeep);
   ASSERT_OK(InsertCube(lsm, kDimensions, 2 * kNumEntries));
   ASSERT_EQ(kNumEntries, inserted_entries_.size());
   ASSERT_OK(WaitForBackgroundInsertsDone(lsm));

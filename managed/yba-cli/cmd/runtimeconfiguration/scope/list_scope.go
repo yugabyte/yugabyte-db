@@ -33,11 +33,7 @@ var listScopeCmd = &cobra.Command{
 
 		r, response, err := authAPI.ListScopes().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Runtime Configuration Scope", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Runtime Configuration Scope", "List")
 		}
 
 		scopeType, err := cmd.Flags().GetString("type")
@@ -82,27 +78,25 @@ func populateCustomerProviderAndUniverses(authAPI *ybaAuthClient.AuthAPIClient) 
 	var response *http.Response
 	scope.Customers, response, err = authAPI.ListOfCustomers().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
+		util.FatalHTTPError(
 			response,
 			err,
-			"Runtime Configuration Scope", "List - Get List of Customers")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			"Runtime Configuration Scope",
+			"List - Get List of Customers",
+		)
 	}
 	scope.Providers, response, err = authAPI.GetListOfProviders().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
+		util.FatalHTTPError(
 			response,
 			err,
-			"Runtime Configuration Scope", "List - Get List of Providers")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			"Runtime Configuration Scope",
+			"List - Get List of Providers",
+		)
 	}
 
 	scope.Universes, response, err = authAPI.ListUniverses().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			"Runtime Configuration Scope", "List - List Universes")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Runtime Configuration Scope", "List - List Universes")
 	}
 }

@@ -52,6 +52,7 @@
 #include "utils/selfuncs.h"
 
 /* YB includes */
+#include "pg_yb_utils.h"
 #include "ybctid.h"
 
 PG_MODULE_MAGIC;
@@ -71,7 +72,8 @@ PG_MODULE_MAGIC;
 const char *yb_server_types[] = {
 	[PG_FDW_SERVER_UNKNOWN] = "unknown",
 	[PG_FDW_SERVER_POSTGRES] = "postgreSQL",
-	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB"
+	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB",
+	[PG_FDW_SERVER_FEDERATED_YUGABYTEDB] = "federatedYugabyteDB"
 };
 
 /*
@@ -185,6 +187,9 @@ typedef struct PgFdwScanState
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 
 	int			fetch_size;		/* number of tuples per fetch */
+
+	/* YB state */
+	YbPgFdwServerType yb_server_type;	/* type of server hosting the relation */
 } PgFdwScanState;
 
 /*
@@ -1547,6 +1552,21 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
 	rte = exec_rt_fetch(rtindex, estate);
+
+	fsstate->yb_server_type = yb_get_server_type_from_ftrelid(rte->relid);
+
+	if (fsstate->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+	{
+		if (!yb_enable_global_views)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED)),
+					(errmsg("must enable the GUC yb_enable_global_views")));
+
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED)),
+				(errmsg("global views feature is incomplete")));
+	}
+
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
@@ -7775,6 +7795,10 @@ yb_get_server_type(const char *server_type)
 							yb_server_types[PG_FDW_SERVER_YUGABYTEDB],
 							strlen(yb_server_types[PG_FDW_SERVER_YUGABYTEDB])) == 0)
 		return PG_FDW_SERVER_YUGABYTEDB;
+	else if (pg_strncasecmp(server_type,
+							yb_server_types[PG_FDW_SERVER_FEDERATED_YUGABYTEDB],
+							strlen(yb_server_types[PG_FDW_SERVER_FEDERATED_YUGABYTEDB])) == 0)
+		return PG_FDW_SERVER_FEDERATED_YUGABYTEDB;
 
 	return PG_FDW_SERVER_UNKNOWN;
 }
@@ -7812,6 +7836,7 @@ yb_get_min_attr_from_server_type(YbPgFdwServerType server_type)
 		case PG_FDW_SERVER_UNKNOWN:
 			return FirstLowInvalidHeapAttributeNumber;
 		case PG_FDW_SERVER_YUGABYTEDB:
+		case PG_FDW_SERVER_FEDERATED_YUGABYTEDB:
 			return YBFirstLowInvalidAttributeNumber;
 		default:
 			elog(ERROR, "Unsupported server type: %d", server_type);
@@ -7835,6 +7860,7 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 		case PG_FDW_SERVER_UNKNOWN:
 			return "ctid";
 		case PG_FDW_SERVER_YUGABYTEDB:
+		case PG_FDW_SERVER_FEDERATED_YUGABYTEDB:
 			return "ybctid";
 		default:
 			elog(ERROR, "Unsupported server type: %d", server_type);

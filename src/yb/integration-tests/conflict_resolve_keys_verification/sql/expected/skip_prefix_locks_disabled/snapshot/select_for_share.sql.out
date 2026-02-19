@@ -17,7 +17,7 @@ SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [])
 
 intent_write:
 Wrote 9 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: SNAPSHOT_ISOLATION status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
  2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []) [kStrongRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) l
  4. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []) [kWeakRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
  6. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], []), []) [kWeakRead] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none

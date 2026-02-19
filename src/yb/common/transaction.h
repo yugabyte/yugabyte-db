@@ -442,6 +442,9 @@ struct TransactionMetadata {
 
   bool skip_prefix_locks = false;
 
+  // Indicates whether the transaction is using table locks.
+  bool using_table_locks = false;
+
   static Result<TransactionMetadata> FromPB(const LWTransactionMetadataPB& source);
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 

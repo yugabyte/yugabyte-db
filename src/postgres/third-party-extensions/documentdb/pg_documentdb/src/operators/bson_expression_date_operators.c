@@ -6222,7 +6222,8 @@ DeepFreeFormatArray(char **elements, int sizeOfSplitFormat)
 static inline int
 IsFormatSpecifierExist(char *formatSpecifier)
 {
-	DateFormatMap key;
+	// YB: Added initializer to avoid uninitialized const fields.
+	DateFormatMap key = {};
 	key.mongoFormat = formatSpecifier;
 	DateFormatMap *result = bsearch(&key, dateFormats, sizeof(dateFormats) /
 									sizeof(DateFormatMap), sizeof(DateFormatMap),

@@ -5,7 +5,7 @@ import { Box } from '@material-ui/core';
 import { YBLabel, YBTooltip, YBToggleField } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { EAR_FIELD } from '../../../utils/constants';
-import InfoMessageIcon from '../../../../../../assets/info-message.svg';
+import InfoMessageIcon from '../../../../../../assets/info-message.svg?img';
 
 interface EncryptionAtRestFieldProps {
   disabled: boolean;

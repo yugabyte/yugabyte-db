@@ -120,6 +120,12 @@ typedef struct ReplicationSlotPersistentData
 
 	/* YB: The last time at which a publication's table list was refreshed */
 	uint64_t	yb_last_pub_refresh_time;
+
+	/*
+	 * YB: Whether tables without primary key are allowed to be polled by
+	 * replication slot.
+	 */
+	bool		yb_allow_tables_without_primary_key;
 } ReplicationSlotPersistentData;
 
 /*
@@ -234,7 +240,7 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 								  YbCRSLsnType lsn_type,
 								  YbCRSOrderingMode yb_ordering_mode);
 extern void ReplicationSlotPersist(void);
-extern void ReplicationSlotDrop(const char *name, bool nowait);
+extern void ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exists);
 
 extern void ReplicationSlotAcquire(const char *name, bool nowait);
 extern void ReplicationSlotRelease(void);
@@ -267,5 +273,12 @@ extern void CheckSlotPermissions(void);
 /* YB */
 extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
+extern void YbReplicationSlotCreateForDB(const char *name, bool two_phase,
+										 const char *yb_plugin_name,
+										 CRSSnapshotAction yb_snapshot_action,
+										 uint64_t *yb_consistent_snapshot_time,
+										 YbCRSLsnType lsn_type,
+										 YbCRSOrderingMode yb_ordering_mode,
+										 Oid database_oid);
 
 #endif							/* SLOT_H */

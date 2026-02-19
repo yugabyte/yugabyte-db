@@ -67,13 +67,13 @@ If your node-to-node root certificate has expired, rotation requires a simultane
 If the certificate has not expired:
 
 - If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart, which can be done in a rolling manner with no downtime. You can opt to not perform a rolling update to update all nodes at the same time, but this will result in downtime.
-- If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
+- If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart.
 
 **Client-to-node certificates**
 
 If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart. This can be done in a rolling manner with no downtime, regardless of whether the client-to-node certificates are expired or not expired.
 
-If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
+If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart.
 
 If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate. Refer to [Download the universe certificate](../../../create-deployments/connect-to-universe/#download-the-universe-certificate).
 
@@ -114,3 +114,10 @@ To rotate root certificates for a universe, do the following:
     If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
+
+## Limitation
+
+Currently, certificate rotation for Kubernetes universes using [cert-manager](../add-certificate-kubernetes/) is not managed using YugabyteDB Anywhere.
+
+For Kubernetes universes using cert-manager, certificate renewal is handled automatically by cert-manager based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). cert-manager monitors certificates and automatically renews them before expiration. Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
+

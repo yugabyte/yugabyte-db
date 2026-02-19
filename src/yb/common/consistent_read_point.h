@@ -34,7 +34,7 @@ YB_STRONGLY_TYPED_BOOL(HadReadTime);
 class ConsistentReadPoint {
  public:
   // A map of tablet id to local limits.
-  using HybridTimeMap = UnorderedStringMap<HybridTime>;
+  using HybridTimeMap = UnorderedStringMap<TabletId, HybridTime>;
 
   explicit ConsistentReadPoint(const scoped_refptr<ClockBase>& clock);
 

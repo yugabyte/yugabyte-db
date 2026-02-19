@@ -126,6 +126,8 @@ typedef struct PlannedStmt
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
+
+	uint64		ybPlanId;		/* plan id */
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -540,6 +542,9 @@ typedef struct Scan
 {
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
+
+	/* YB */
+	char	   *ybScannedObjectName;
 } Scan;
 
 /* ----------------
@@ -1333,6 +1338,9 @@ typedef struct Hash
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */
 	/* all other info is in the parent HashJoin node */
 	Cardinality rows_total;		/* estimate total rows if parallel_aware */
+
+	/* YB specific fields */
+	char	   *ybSkewTableName;
 } Hash;
 
 /* ----------------

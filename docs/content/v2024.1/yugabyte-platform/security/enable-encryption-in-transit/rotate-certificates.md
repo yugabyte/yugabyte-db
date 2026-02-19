@@ -26,6 +26,8 @@ If you are using [automatically generated universe certificates](../auto-certifi
 
 If you are using your own certificates, before rotating certificates, ensure that you have added the new certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
+If you are using Kubertnetes cert-manager, certificate renewal is handled automatically by cert-manager. Refer to [Rotate certificates in cert-manager](../add-certificate-kubernetes/#rotate-certificates-in-cert-manager).
+
 Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
 
 ## Enable or disable encryption in transit
@@ -44,13 +46,19 @@ To enable or disable encryption in transit:
 
 1. Click **Actions > More > Edit Security > Encryption in-Transit** to open the **Manage encryption in transit** dialog.
 
-    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)
+<!--    ![Enable encryption in transit](/images/yp/encryption-in-transit/enable-eit.png)-->
 
 1. Set the **Enable encryption in transit for this Universe** option.
 
 1. On the **Certificate Authority** tab, set the **Enable Node to Node Encryption** and **Enable Client to Node Encryption** options.
 
-1. If you are enabling node-to-node or client-to-node encryption, select the root certificate to use, or leave the **Select root certificate** field empty to have YugabyteDB Anywhere generate a self-signed certificate.
+    You can also opt to use the same certificate for both. (Note that in Kubernetes deployments, you must use the same certificate for both.)
+
+1. Select the root certificate(s) to use.
+
+    If your certificate is not listed, ensure you have [added the certificate](../add-certificate-ca/) to YugabyteDB Anywhere.
+
+    To have YugabyteDB Anywhere generate a new self-signed CA certificate [automatically](../auto-certificate/), use the default **Root Certificate** setting of **Create New Certificate**.
 
 1. Click **Apply**.
 
@@ -67,13 +75,13 @@ If your node-to-node root certificate has expired, rotation requires a simultane
 If the certificate has not expired:
 
 - If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart, which can be done in a rolling manner with no downtime. You can opt to not perform a rolling update to update all nodes at the same time, but this will result in downtime.
-- If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
+- If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart.
 
 **Client-to-node certificates**
 
 If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, then the rotation requires a restart. This can be done in a rolling manner with no downtime, regardless of whether the client-to-node certificates are expired or not expired.
 
-If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart and no downtime.
+If the universe was created using YugabyteDB Anywhere v2.16.6 or later, then the rotation is done without a restart.
 
 If you change your client-to-node root certificate, be sure to update your clients and applications to use the new certificate. Refer to [Download the universe certificate](../../../create-deployments/connect-to-universe/#download-the-universe-certificate).
 
@@ -114,3 +122,9 @@ To rotate root certificates for a universe, do the following:
     If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
+
+## Limitation
+
+Currently, certificate rotation for Kubernetes universes using [cert-manager](../add-certificate-kubernetes/) is not managed using YugabyteDB Anywhere.
+
+For Kubernetes universes using cert-manager, certificate renewal is handled automatically by cert-manager based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). cert-manager monitors certificates and automatically renews them before expiration. Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.

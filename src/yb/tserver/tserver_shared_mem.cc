@@ -183,7 +183,9 @@ class SharedExchangeHeader {
 
   void SignalStop() {
     state_.store(SharedExchangeState::kShutdown, std::memory_order_release);
-    WARN_NOT_OK(request_semaphore_.Post(), "SignalStop failed");
+    for (auto* semaphore : {&request_semaphore_, &response_semaphore_}) {
+      WARN_NOT_OK(semaphore->Post(), "SignalStop failed");
+    }
   }
 
  private:

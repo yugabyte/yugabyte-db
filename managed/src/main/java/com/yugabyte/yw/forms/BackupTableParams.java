@@ -234,6 +234,11 @@ public class BackupTableParams extends TableManagerParams {
   @Setter
   private Boolean enableBackupsDuringDDL = false;
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private Boolean backupStats = true;
+
   @ToString
   public static class ParallelBackupState {
     public String nodeIp;
@@ -293,6 +298,7 @@ public class BackupTableParams extends TableManagerParams {
     this.useRoles = backupRequestParams.getUseRoles();
     this.usePrivileges = backupRequestParams.getUsePrivileges();
     this.dumpRoleChecks = backupRequestParams.getDumpRoleChecks();
+    this.backupStats = backupRequestParams.getBackupStats();
   }
 
   @JsonIgnore
@@ -350,6 +356,8 @@ public class BackupTableParams extends TableManagerParams {
     this.useRoles = tableParams.getUseRoles();
     this.revertToPreRolesBehaviour = tableParams.getRevertToPreRolesBehaviour();
     this.dumpRoleChecks = tableParams.getDumpRoleChecks();
+    this.backupStats = tableParams.getBackupStats();
+    this.enableBackupsDuringDDL = tableParams.getEnableBackupsDuringDDL();
   }
 
   @JsonIgnore

@@ -21,11 +21,13 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_string(allowed_preview_flags_csv);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
 
@@ -246,8 +248,10 @@ class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
                                       public ::testing::WithParamInterface<TestCommit> {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allowed_preview_flags_csv) =
+        "ysql_yb_enable_ddl_savepoint_support";
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_ddl_savepoint_support) = true;
 
     // Disable READ_COMMITTED isolation because it creates additional savepoints (sub_transactions)
     // for a statement that requires special handling when asserting the size of
@@ -740,6 +744,7 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
   ASSERT_EQ(table_schema.columns()[2].name(), "b");
 
   ASSERT_FALSE(table_id_after_drop.empty());
+  ASSERT_OK(WaitForTableDeletionToFinish(client.get(), table_id_after_drop));
   auto table_after_drop = catalog_mgr.GetTableInfo(table_id_after_drop);
   ASSERT_FALSE(table_after_drop->LockForRead()->has_ysql_ddl_txn_verifier_state());
 
@@ -755,6 +760,41 @@ TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointWithReleaseSavepoin
     ASSERT_OK(conn.Execute("ROLLBACK"));
   }
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
+TEST_P(PgDdlSavepointMiniClusterTest, TestRollbackToSavepointSlowTableDeletion) {
+  // Skip in case of commit as the test case is redundant.
+  if (GetParam()) {
+    return;
+  }
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE IF EXISTS $0", kTableName));
+
+  SyncPoint::GetInstance()->LoadDependency({
+    {
+      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable",
+      "CatalogManager::CheckTableDeleted:BeforeRemoveDdlTransactionState"
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName2));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (a INT, b INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX idx ON $0 (a)", kTableName));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  // The deletion of the table due to the above rollback to savepoint b will be delayed until the
+  // below sync point is hit. So it simulates the case when another rollback to savepoint arrives
+  // while the table deletion has started but not completed.
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT a"));
+  TEST_SYNC_POINT(
+      "PgDdlSavepointMiniClusterTest::TestRollbackToSavepointSlowTableDeletion:WaitForDeleteTable");
+  ASSERT_OK(conn.Execute("ROLLBACK"));
 }
 
 } // namespace yb::pgwrapper

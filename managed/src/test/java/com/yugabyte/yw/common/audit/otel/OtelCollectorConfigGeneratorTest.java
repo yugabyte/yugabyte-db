@@ -97,6 +97,9 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
                   node.yqlServerHttpPort = 12000;
                   node.nodeExporterPort = 9300;
                   node.otelCollectorMetricsPort = 8889;
+                  node.cloudInfo.region = "";
+                  node.cloudInfo.az = "";
+                  node.azUuid = null;
                 }
                 universe.setUniverseDetails(params);
               }
@@ -436,6 +439,28 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void generateOtelColConfigAuditLogPlusS3WithUniverseNodePrefix() {
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+    s3Config.setIncludeUniverseAndNodeInPrefix(true);
+
+    TelemetryProvider s3TelemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+
+    // Create audit log config
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3TelemetryProvider.getUuid(), ImmutableMap.of("additionalTag", "auditValue"));
+
+    generateAndAssertConfig(
+        auditLogConfig, null, null, "audit/s3_audit_with_universe_node_prefix_config.yml");
+  }
+
+  @Test
   public void generateOtelColConfigYsqlQueryLogPlusDatadog() {
     DataDogConfig config = new DataDogConfig();
     config.setType(ProviderType.DATA_DOG);
@@ -691,6 +716,40 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     metricsExporterConfig.setMetricsPrefix("");
 
     generateAndAssertConfig(null, null, metricsExportConfig, "audit/metrics_datadog_config.yml");
+  }
+
+  @Test
+  public void generateOtelColConfigMetricsPlusOTLP() {
+    OTLPConfig config = new OTLPConfig();
+    config.setType(ProviderType.OTLP);
+    config.setEndpoint("http://otlp:3100");
+    config.setAuthType(AuthType.NoAuth);
+    config.setLogsEndpoint("http://otlp:3000/logs");
+    config.setMetricsEndpoint("http://otlp:3000/metrics");
+
+    TelemetryProvider telemetryProvider =
+        createTelemetryProvider(new UUID(0, 0), "OTLP", ImmutableMap.of("tag", "value"), config);
+
+    when(mockTelemetryProviderService.getOrBadRequest(telemetryProvider.getUuid()))
+        .thenReturn(telemetryProvider);
+
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            telemetryProvider.getUuid(),
+            ImmutableMap.of("env", "prod", "region", "us-west"),
+            15,
+            10,
+            MetricCollectionLevel.NORMAL);
+
+    UniverseMetricsExporterConfig metricsExporterConfig =
+        (UniverseMetricsExporterConfig)
+            metricsExportConfig.getUniverseMetricsExporterConfig().get(0);
+    metricsExporterConfig.setSendBatchSize(500);
+    metricsExporterConfig.setSendBatchMaxSize(1000);
+    metricsExporterConfig.setSendBatchTimeoutSeconds(5);
+    metricsExporterConfig.setMetricsPrefix("");
+
+    generateAndAssertConfig(null, null, metricsExportConfig, "audit/metrics_otlp_config.yml");
   }
 
   @Test

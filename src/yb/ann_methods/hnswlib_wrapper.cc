@@ -150,6 +150,37 @@ Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
       InvalidArgument, "Unsupported distance type for Hnswlib: $0", options.distance_kind);
 }
 
+namespace {
+
+void LogDistFunction(hnswlib::DISTFUNC<int> ptr) {
+  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
+}
+
+void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
+#define CHECK_LOG_AND_RETURN(fname) \
+  if (ptr == hnswlib::fname) { \
+    LOG(INFO) << "Hnswlib distance function: " << BOOST_PP_STRINGIZE(fname); \
+    return; \
+  }
+  CHECK_LOG_AND_RETURN(L2Sqr);
+  CHECK_LOG_AND_RETURN(InnerProductDistance);
+  #if defined(__x86_64__) || defined(_M_X64)
+  CHECK_LOG_AND_RETURN(L2SqrSIMD16ExtAVX512);
+  CHECK_LOG_AND_RETURN(L2SqrSIMD16ExtAVX);
+  CHECK_LOG_AND_RETURN(L2SqrSIMD4Ext);
+  CHECK_LOG_AND_RETURN(L2SqrSIMD16ExtResiduals);
+  CHECK_LOG_AND_RETURN(L2SqrSIMD4ExtResiduals);
+  CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD16ExtAVX512);
+  CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD16ExtAVX);
+  CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD4ExtAVX);
+  CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD16ExtResiduals);
+  CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD4ExtResiduals);
+  #endif
+  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
+}
+
+} // namespace
+
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 class HnswlibIndex :
     public IndexWrapperBase<HnswlibIndex<Vector, DistanceResult>, Vector, DistanceResult> {
@@ -161,6 +192,10 @@ class HnswlibIndex :
   explicit HnswlibIndex(const HNSWOptions& options)
       : options_(options),
         space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
+    static std::once_flag once_flag;
+    std::call_once(once_flag, [func = space_->get_dist_func()]() {
+      LogDistFunction(func);
+    });
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {

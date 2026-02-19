@@ -167,6 +167,13 @@ public class BackupRequestParams extends UniverseTaskParams {
   @Setter
   private Boolean useRoles = false;
 
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. Backup stats with YSQL dump.")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2025.2.2.0")
+  @Getter
+  @Setter
+  private Boolean backupStats = true;
+
   // Intermediate states to resume ybc backups
   public UUID backupUUID;
 

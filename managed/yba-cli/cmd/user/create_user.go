@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -83,7 +82,7 @@ var createUserCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if rbacAllow && len(strings.TrimSpace(role)) != 0 {
+		if rbacAllow && !util.IsEmptyString(role) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Role cannot be added when yb.rbac.use_new_authz is "+
@@ -98,7 +97,7 @@ var createUserCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
-		if len(roleResourceDefinitionString) == 0 && len(strings.TrimSpace(role)) == 0 {
+		if len(roleResourceDefinitionString) == 0 && util.IsEmptyString(role) {
 			logrus.Fatalln(
 				formatter.Colorize(
 					"Either role or role-resource-definition must be specified.\n",
@@ -114,20 +113,24 @@ var createUserCmd = &cobra.Command{
 			ConfirmPassword:         util.GetStringPointer(password),
 			Timezone:                util.GetStringPointer(timezone),
 			Role:                    util.GetStringPointer(role),
-			RoleResourceDefinitions: &resourceRoleDefinition,
+			RoleResourceDefinitions: resourceRoleDefinition,
 		}
 
 		rCreate, response, err := authAPI.CreateUser().User(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "User", "Create")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "User", "Create")
 		}
+
+		createdUser := util.CheckAndDereference(
+			rCreate,
+			"An error occurred while creating user",
+		)
 
 		r := make([]ybaclient.UserWithFeatures, 0)
 
-		r = append(r, rCreate)
+		r = append(r, createdUser)
 
-		fetchRoleBindingsForListing(rCreate.GetUuid(), authAPI, "Create")
+		fetchRoleBindingsForListing(createdUser.GetUuid(), authAPI, "Create")
 
 		usersCtx := formatter.Context{
 			Command: "create",

@@ -26,7 +26,7 @@ Features in stable releases are considered to be {{<tags/feature/ga>}} unless ma
 
 Stable release versions use the numbering format `YYYY.N.MAINTENANCE.PATCH` as follows:
 
-- `YYYY.N` - Includes substantial changes, such as new features and possibly incompatible API changes. `YYYY` is the year (for example, 2024). `N` is either 1 or 2 designating either the first release of the year, or the second. Such major releases occur roughly every 6 months. Generally, one of these releases (and its derivative maintenance and patch releases) per year is designated as LTS, and the other is designated as STS.
+- `YYYY.N` - Includes substantial changes, such as new features and possibly incompatible API changes. `YYYY` is the year (for example, 2024). `N` is either 1 or 2 designating either the first release of the year, or the second. Such major releases occur roughly every 6 months. The first release (and its derivative maintenance and patch releases) per year is designated as STS, and the second is designated as LTS.
 
 - `MAINTENANCE` - Includes releases which occur roughly every 1-2 months.
   - For YugabyteDB, backward compatible bug fixes are included.
@@ -48,9 +48,9 @@ For a list of releases and their support timelines, see [YugabyteDB releases](..
 
 For Stable releases, the LTS or STS designation determines its support timelines.
 
-**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 2.5 years of support is provided in total.
+**STS** release series (.1 releases) receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 1.5 years of support is provided in total.
 
-**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 1.5 years of support is provided in total.
+**LTS** release series (.2 releases) receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release. Extended support (defined below) is provided for an additional 180 days. As a result, 2.5 years of support is provided in total.
 
 - **Extended support:** Following the maintenance update period, Yugabyte will provide support for at least an additional 180 days subject to the following guidelines:
   - Updates and Upgrades will not be made to the minor release.

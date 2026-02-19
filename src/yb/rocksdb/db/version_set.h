@@ -577,7 +577,11 @@ class Version {
   void UpdateFilesByCompactionPri();
 
   Result<TableCache::TableReaderWithHandle> GetLargestSstTableReader();
-  Result<std::string> GetMiddleOfMiddleKeys(Slice lower_bound_internal_key);
+
+  // The second component of the return value is true iff there are not enough entries in the file
+  // to detect the middle point. In this case, the first component must contain a non-OK status.
+  std::tuple<Result<std::string>, bool> GetMiddleKeyFromFile(
+      const FileMetaData& file, Slice lower_bound);
 
   template <typename IteratorBuilder, typename CreateIteratorFunc>
   void AddLevel0Iterators(
@@ -693,7 +697,7 @@ class VersionSet {
     return last_sequence_.load(std::memory_order_acquire);
   }
 
-  UserFrontier* FlushedFrontier() const {
+  yb::storage::UserFrontier* FlushedFrontier() const {
     return flushed_frontier_.get();
   }
 
@@ -708,7 +712,7 @@ class VersionSet {
   // supplied values for each dimension. This will DFATAL in case the supplied frontier regresses
   // relative to the current frontier in any of its dimensions which have non-default (defined)
   // values.
-  void UpdateFlushedFrontier(UserFrontierPtr values);
+  void UpdateFlushedFrontier(yb::storage::UserFrontierPtr values, FrontierModificationMode mode);
 
   // Mark the specified file number as used.
   // REQUIRED: this is only called during single-threaded recovery
@@ -792,7 +796,7 @@ class VersionSet {
   uint64_t ApproximateSize(Version* v, const FdWithBoundaries& f, const Slice& key);
 
   // Save current contents to *log
-  Status WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_frontier_override);
+  Status WriteSnapshot(log::Writer* log, yb::storage::UserFrontierPtr flushed_frontier_override);
 
   void AppendVersion(ColumnFamilyData* column_family_data, Version* v);
 
@@ -802,9 +806,9 @@ class VersionSet {
   static void EnsureNonDecreasingLastSequence(
       SequenceNumber prev_last_seq, SequenceNumber new_last_seq);
   static void EnsureNonDecreasingFlushedFrontier(
-      const UserFrontier* prev_value, const UserFrontier& new_value);
+      const yb::storage::UserFrontier* prev_value, const yb::storage::UserFrontier& new_value);
 
-  void UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr values);
+  void UpdateFlushedFrontierNoSanityChecking(yb::storage::UserFrontierPtr values);
 
   std::unique_ptr<ColumnFamilySet> column_family_set_;
 
@@ -816,7 +820,7 @@ class VersionSet {
   uint64_t pending_manifest_file_number_ = 0;
   std::atomic<uint64_t> last_sequence_ = {0};
   uint64_t prev_log_number_ = 0; // 0 or backing store for memtable being compacted
-  UserFrontierPtr flushed_frontier_;
+  yb::storage::UserFrontierPtr flushed_frontier_;
 
   // Opened lazily
   std::unique_ptr<log::Writer> descriptor_log_;

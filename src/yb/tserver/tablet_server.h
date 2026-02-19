@@ -66,6 +66,7 @@
 
 #include "yb/server/webserver_options.h"
 
+#include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -172,6 +173,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() const override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
+
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
     return ysql_lease_manager_->ts_local_lock_manager();
   }
@@ -349,7 +351,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   rpc::Messenger* GetMessenger(ash::Component component) const override;
 
   void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) override;
+      server::YCQLServerExternalInterface* cql_server_if) override;
 
   virtual Env* GetEnv();
 
@@ -445,6 +447,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ClearMetacache(const std::string& namespace_id) override;
 
+  Status ClearYCQLMetaDataCache() override;
+
   Result<std::vector<tablet::TabletStatusPB>> GetLocalTabletsMetadata() const override;
 
   Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const override;
@@ -460,6 +464,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   docdb::ObjectLockSharedStateManager* object_lock_shared_state_manager() {
     return object_lock_shared_state_manager_.get();
   }
+
+  ConnectivityStateResponsePB ConnectivityState() override;
 
  protected:
   virtual Status RegisterServices();
@@ -639,6 +645,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname);
   void RelcacheInitConnectionDone(std::promise<Status>* p, const std::string& dbname,
                                   const Status& status);
+  void DoUpdateMasterAddresses();
 
   std::string log_prefix_;
 
@@ -669,11 +676,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<encryption::UniverseKeyManager> universe_key_manager_;
 
   std::atomic<yb::server::RpcAndWebServerBase*> cql_server_{nullptr};
-  std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
+  std::atomic<yb::server::YCQLServerExternalInterface*> cql_server_external_{nullptr};
 
   std::shared_ptr<ObjectLockTracker> object_lock_tracker_;
 
-  std::unique_ptr<YSQLLeaseManager> ysql_lease_manager_;
+  std::optional<YSQLLeaseManager> ysql_lease_manager_;
+  std::optional<ConnectivityPoller> connectivity_poller_;
 
   std::unique_ptr<docdb::ObjectLockSharedStateManager> object_lock_shared_state_manager_;
   OneTimeBool shutting_down_;

@@ -13,7 +13,7 @@ rightNav:
 type: docs
 ---
 
-YugabyteDB's innovative approach to distributed database systems extends beyond its core architecture to include intelligent client drivers that are specifically designed to interact with distributed clusters. In this section, we will explore the features and benefits of YugabyteDB's cluster-aware [smart client drivers](/preview/develop/drivers-orms/smart-drivers/), highlighting their significance in distributed application development.
+YugabyteDB's innovative approach to distributed database systems extends beyond its core architecture to include intelligent client drivers that are specifically designed to interact with distributed clusters. In this section, we will explore the features and benefits of YugabyteDB's cluster-aware [smart client drivers](/stable/develop/drivers-orms/smart-drivers/), highlighting their significance in distributed application development.
 
 ## External load balancer
 
@@ -37,4 +37,4 @@ Now that the driver has fetched information about all the nodes in the cluster, 
 
 ## Learn more
 
-- [Develop with smart drivers](/preview/develop/drivers-orms/smart-drivers/)
+- [Develop with smart drivers](/stable/develop/drivers-orms/smart-drivers/)

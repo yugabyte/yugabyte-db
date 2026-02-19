@@ -64,7 +64,8 @@ namespace rocksdb {
 using std::dynamic_pointer_cast;
 
 std::string DocDBKVFormatter::Format(
-    const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
+    yb::Slice, yb::Slice, yb::docdb::StorageDbType, const std::string&,
+    yb::docdb::AllowEmptyValue) const {
   CHECK(false) << "unimplemented";
   return "";
 }
@@ -370,10 +371,20 @@ Status SstFileReader::ReadSequential(bool print_kv,
         }
         case OutputFormat::kDecodedRegularDB:
         case OutputFormat::kDecodedIntentsDB:
-          auto storage_type =
+          const auto storage_type =
               (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
                                                                  : StorageDbType::kIntents);
-          fprintf(stdout, "%s\n", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
+          const auto is_deletion =
+              ikey.type == ValueType::kTypeDeletion || ikey.type == ValueType::kTypeSingleDeletion;
+          const auto key_suffix = is_deletion ?
+              yb::Format(" @ $0 : $1", ikey.sequence, std::to_underlying(ikey.type)) : "";
+          fprintf(
+              stdout, "%s\n",
+              docdb_kv_formatter_
+                  ->Format(
+                      ikey.user_key, value, storage_type, key_suffix,
+                      yb::docdb::AllowEmptyValue(is_deletion))
+                  .c_str());
           break;
       }
     }

@@ -15,6 +15,9 @@ import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.DrConfigStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
@@ -28,6 +31,16 @@ public class DrConfigReconciler implements ResourceEventHandler<DrConfig>, Runna
   private final String namespace;
   private final SharedIndexInformer<StorageConfig> scInformer;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public DrConfigReconciler(
       SharedIndexInformer<DrConfig> drConfigInformer,
@@ -71,6 +84,10 @@ public class DrConfigReconciler implements ResourceEventHandler<DrConfig>, Runna
       return;
     }
 
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(drConfig);
+    resourceTracker.trackResource(drConfig);
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     log.debug("Creating DR config: {}", drConfig);
 
     try {
@@ -104,8 +121,14 @@ public class DrConfigReconciler implements ResourceEventHandler<DrConfig>, Runna
       handleDelete(newDrConfig);
       return;
     }
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    resourceTracker.trackResource(newDrConfig);
 
-    if (oldDrConfig.getSpec().getDatabases().equals(newDrConfig.getSpec().getDatabases())) {
+    List<String> oldDbs =
+        oldDrConfig.getSpec() != null ? oldDrConfig.getSpec().getDatabases() : null;
+    List<String> newDbs =
+        newDrConfig.getSpec() != null ? newDrConfig.getSpec().getDatabases() : null;
+    if (Objects.equals(oldDbs, newDbs)) {
       log.info("The list of databases didn't change, there is nothing to update");
       return;
     }
@@ -158,6 +181,10 @@ public class DrConfigReconciler implements ResourceEventHandler<DrConfig>, Runna
 
   private void handleDelete(DrConfig drConfig) {
     log.info("Got DR config delete: {}", drConfig);
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(drConfig);
+    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    log.info("Untracked DR config {} and orphaned dependencies: {}", resourceDetails, orphaned);
+
     DrConfigStatus status = drConfig.getStatus();
 
     // Remove finalizer if no status

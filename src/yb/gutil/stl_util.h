@@ -49,19 +49,23 @@
 #include <deque>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+
+#include "yb/util/concepts.h"
 
 namespace yb {
 
@@ -900,10 +904,11 @@ struct PointerHash {
   }
 };
 
-template <class Value>
-using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
+template <class Key, class Value>
+using UnorderedStringMap = std::unordered_map<Key, Value, StringHash, std::equal_to<void>>;
 
-using UnorderedStringSet = std::unordered_set<std::string, StringHash, std::equal_to<void>>;
+template <class Key>
+using UnorderedStringSet = std::unordered_set<Key, StringHash, std::equal_to<void>>;
 
 template <class Map, class K>
 auto& MappedValue(Map& map, K&& key) {
@@ -913,44 +918,34 @@ auto& MappedValue(Map& map, K&& key) {
       std::forward_as_tuple()).first->second;
 }
 
-// Define a concept that ensures Container's value_type is T
-template<typename Container, typename T>
-concept ContainerOf = requires {
-  typename Container::value_type;
-} && std::same_as<typename Container::value_type, T>;
+// A unified way to insert/emplace values into supported containers
 
-// A unified way to insert values into supported containers
-
-// Overload for std::set
-template <class T, class... Args>
-void InsertIntoContainer(std::set<std::decay_t<T>, Args...>& container, T&& value) {
-  container.emplace(std::forward<T>(value));
+template <ContainerType Container, class T>
+void InsertIntoContainer(Container& container, T&& value) {
+  if constexpr (requires { container.push_back(std::forward<T>(value)); }) {
+    container.push_back(std::forward<T>(value));
+    return;
+  } else if constexpr (requires { container.insert(std::forward<T>(value)); }) { // NOLINT
+    container.insert(std::forward<T>(value));
+  } else {
+    constexpr auto dependent_false = sizeof(Container) == 0;
+    static_assert(dependent_false,
+                  "InsertIntoContainer is not supported for this container and argument types.");
+  }
 }
 
-// Overload for std::vector
-template <class T, class... Args>
-void InsertIntoContainer(std::vector<std::decay_t<T>, Args...>& container, T&& value) {
-  container.emplace_back(std::forward<T>(value));
-}
-
-// Overload for boost::container::small_vector_base
-template <class T, class... Args>
-void InsertIntoContainer(
-    boost::container::small_vector<Args...>& container, T&& value) {
-  container.emplace_back(std::forward<T>(value));
-}
-
-template <class T, class... Args>
-void InsertIntoContainer(
-    boost::container::small_vector_base<Args...>& container, T&& value) {
-  container.emplace_back(std::forward<T>(value));
-}
-
-// Fallback to generate a compile-time error for unsupported containers
-template <class T, class Container>
-void InsertIntoContainer(Container&, T&&) {
-  static_assert(sizeof(Container) == 0,
-                "InsertIntoContainer is not supported for this container type.");
+template <ContainerType Container, class... Args>
+void EmplaceIntoContainer(Container& container, Args&&... args) {
+  if constexpr (requires { container.emplace_back(std::forward<Args>(args)...); }) {
+    container.emplace_back(std::forward<Args>(args)...);
+    return;
+  } else if constexpr (requires { container.emplace(std::forward<Args>(args)...); }) { // NOLINT
+    container.emplace(std::forward<Args>(args)...);
+  } else {
+    constexpr auto dependent_false = sizeof(Container) == 0;
+    static_assert(dependent_false,
+                  "EmplaceIntoContainer is not supported for this container and argument types.");
+  }
 }
 
 template <class T1, class T2>

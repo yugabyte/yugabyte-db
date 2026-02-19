@@ -26,8 +26,6 @@ public class TemplateManager extends DevopsBase {
 
   @Inject Config appConfig;
 
-  @Inject NodeAgentClient nodeAgentClient;
-
   @Override
   protected String getCommandType() {
     return COMMAND_TYPE;

@@ -46,7 +46,9 @@ class PgDml : public PgStatement {
   ~PgDml() override;
 
   // Append a target in SELECT or RETURNING.
-  Status AppendTarget(PgExpr* target);
+  Status AppendTarget(PgExpr* target, bool is_for_secondary_index);
+
+  Status AppendIndexTarget(PgExpr* target);
 
   Status AddBaseYbctidTarget();
 
@@ -183,7 +185,7 @@ class PgDml : public PgStatement {
   // - "target_desc_" is the table descriptor where data will be read from.
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
-  std::vector<PgFetchedTarget*> targets_;
+  FetchedTargetsPtr targets_;
   bool has_aggregate_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the

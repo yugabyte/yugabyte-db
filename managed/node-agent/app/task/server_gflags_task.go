@@ -71,15 +71,21 @@ func (handler *ServerGflagsHandler) postmasterCgroupPath(ctx context.Context) (s
 		return "", err
 	}
 	userID := strconv.Itoa(int(userInfo.UserID))
-	postmasterCgroupPath := "/sys/fs/cgroup/memory/ysql"
 	stdout := strings.TrimSpace(cmdInfo.StdOut.String())
-	if stdout == "cgroup2fs" {
-		postmasterCgroupPath = filepath.Join(
-			fmt.Sprintf("user.slice/user-%s.slice", userID),
-			fmt.Sprintf("user@%s.service", userID),
-			"ysql")
+	return buildPostmasterCgroupPath(stdout, userID), nil
+}
+
+// buildPostmasterCgroupPath returns the postmaster cgroup path for the given cgroup stat output and user ID.
+// cgroupStatOutput is the trimmed output of: stat -fc %T /sys/fs/cgroup/ (e.g. "cgroup2fs" or "tmpfs").
+func buildPostmasterCgroupPath(cgroupStatOutput string, userID string) string {
+	if cgroupStatOutput != "cgroup2fs" {
+		return "/sys/fs/cgroup/memory/ysql"
 	}
-	return postmasterCgroupPath, nil
+	return filepath.Join("/sys/fs/cgroup",
+		"user.slice",
+		fmt.Sprintf("user-%s.slice", userID),
+		fmt.Sprintf("user@%s.service", userID),
+		"ysql")
 }
 
 func (handler *ServerGflagsHandler) Handle(
@@ -158,7 +164,7 @@ func (handler *ServerGflagsHandler) Handle(
 		"gflags": processedGflags,
 	}
 	destination := filepath.Join(handler.param.GetServerHome(), ServerConfSubpath)
-	err := module.CopyFile(
+	_, err := module.CopyFile(
 		ctx,
 		gflagsContext,
 		ServerConfTemplateSubpath,

@@ -32,7 +32,7 @@ var listMaintenanceWindowCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(states)) > 0 {
+		if !util.IsEmptyString(states) {
 			statesList := strings.Split(states, ",")
 			if len(statesList) > 0 {
 				for i, state := range statesList {
@@ -46,7 +46,7 @@ var listMaintenanceWindowCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(uuids)) > 0 {
+		if !util.IsEmptyString(uuids) {
 			maintenanceWindowListFilter.SetUuids(strings.Split(uuids, ","))
 		}
 
@@ -59,8 +59,7 @@ var listMaintenanceWindowCmd = &cobra.Command{
 
 		r, response, err := maintenanceWindowListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Maintenance Window", "List")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Maintenance Window", "List")
 		}
 
 		if len(maintenanceWindowName) > 0 {

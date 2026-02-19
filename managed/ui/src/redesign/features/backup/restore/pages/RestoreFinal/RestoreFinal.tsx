@@ -78,7 +78,7 @@ const RestoreFinal = forwardRef<PageRef>((_, forwardRef) => {
     onPrev: () => {
       moveToPage(Page.TARGET);
     },
-    onNext: () => { }
+    onNext: () => {}
   }));
 
   return (
@@ -105,6 +105,7 @@ const preparePayload = (
   } = formValues;
 
   const isKeyspaceRenamed = target.renameKeyspace;
+  const useRoles = target.useRoles;
 
   if (!currentCommonBackupInfo) return null;
 
@@ -125,18 +126,25 @@ const preparePayload = (
         }
       }
 
-      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'unsupportedTablespaces');
-      const conflictingTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'conflictingTablespaces');
+      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(
+        preflightResponse!,
+        'unsupportedTablespaces'
+      );
+      const conflictingTablespaces = getUnSupportedTableSpaceConfig(
+        preflightResponse!,
+        'conflictingTablespaces'
+      );
 
       const infoList = {
         backupType: backupDetails!.backupType,
         keyspace: keyspacename,
         sse: currentCommonBackupInfo.sse,
         storageLocation: keyspaceinfo?.storageLocation ?? keyspaceinfo?.defaultLocation,
-        useTablespaces: target.useTablespaces
+        useTablespaces: target.useTablespaces,
+        useRoles: useRoles
       } as any;
 
-      if (target?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {
+      if (target?.useTablespaces && (conflictingTablespaces || unSupportedTablespaces)) {
         infoList['errorIfTablespacesExists'] = false;
       }
 

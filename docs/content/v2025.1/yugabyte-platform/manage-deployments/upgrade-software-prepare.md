@@ -26,13 +26,13 @@ If your universe is running on a [deprecated OS](../../../reference/configuratio
 
 cron and root-level systemd have been deprecated in favor of user-level systemd with node agent for management of universe nodes.
 
-In particular, cron-based universes will no longer be supported in YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
+In particular, cron-based universes are longer supported in YugabyteDB Anywhere v2025.2 and later. Before you will be able to upgrade to v2025.2 or later, all your universes must be using systemd. YugabyteDB Anywhere will automatically upgrade universes that use a cloud provider configuration to systemd.
 
 However, on-premises cron-based universes must be upgraded manually. To do this, in YugabyteDB Anywhere v2024.2.2 or later, navigate to the universe and choose **Actions>Upgrade to Systemd**.
 
 ## Node agent
 
-YugabyteDB Anywhere v2025.2 (LTS release planned for end of 2025) and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent.
+YugabyteDB Anywhere v2025.2 and later require universes have node agent running on their nodes. Before you will be able to upgrade to v2025.2 or later, all your universes must be using node agent. (Note that this does not apply to universes deployed on Kubernetes.)
 
 To upgrade a universe to node agent, first make sure the universe is not cron-based and if necessary [update the universe to systemd](#cron-based-universes). Then navigate to the universe and click **Actions>More>Install Node Agent**. If installation fails on a node, make sure the node satisfies the [prerequisites](../../prepare/server-nodes-software/) and re-try the install.
 
@@ -42,7 +42,7 @@ You can configure YugabyteDB Anywhere to automatically update universes to node 
 
 Transparent hugepages (THP) should be enabled on nodes for optimal performance. If you have on-premises universes with legacy provisioning where THP are not enabled, you can update THP settings by following the [node patching](../../manage-deployments/upgrade-nodes/) procedure; THP settings are automatically updated in step 3 when re-provisioning the node.
 
-## Backups and point-in-time-restore
+## Backups and point-in-time-recovery
 
 - Backups
 
@@ -50,10 +50,16 @@ Transparent hugepages (THP) should be enabled on nodes for optimal performance. 
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- [Point-in-time-restore](../../back-up-restore-universes/pitr/) (PITR)
+- [Point-in-time-recovery](../../back-up-restore-universes/pitr/) (PITR)
 
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
-  - After the upgrade, PITR cannot be done to a time before the upgrade.
+  When you start the [upgrade](../upgrade-software-install/#perform-the-upgrade), the PITR change history is invalidated. This means that after an upgrade starts, you will no longer be able to access or restore to any time before the upgrade was started - _regardless of the outcome of the upgrade_.
+
+  During the [monitoring phase](../upgrade-software-install/#monitor-the-universe) (that is, after upgrading but before finalizing or rolling back), any attempt to perform any PITR-based actions (such as rewind or clone a database to a point in time, back up and restore a database with PITR, or inspect a database at a point in time) will fail.
+
+  After [finalizing](../upgrade-software-install/#finalize-an-upgrade) or [rolling back](../upgrade-software-install/#roll-back-an-upgrade) the upgrade, PITR-based actions become available again. However, keep in mind the following:
+
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
+  - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
 ## Review major changes in previous YugabyteDB releases
 

@@ -213,7 +213,7 @@ void DocPgsqlScanSpec::InitOptions(const ConditionPB& condition) {
           // Hashed columns should always be sent as tuples along with their yb_hash_code.
           // Hence, for hashed columns lhs should never be a column id.
           YB_LOG_EVERY_N_SECS_OR_VLOG(DFATAL, 60, 1)
-              << "Expected only range column: id=" << col_id << " idx=" << col_idx << THROTTLE_MSG;
+              << "Expected only range column: id=" << col_id << " idx=" << col_idx;
           return;
         }
 

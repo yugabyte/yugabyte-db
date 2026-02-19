@@ -688,6 +688,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promotes Auto flags while upgrading YB-DB",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  // FIXME: The milliSeconds suffix does not make sense since the type is Duration.
   public static final ConfKeyInfo<Duration> autoFlagUpdateSleepTimeInMilliSeconds =
       new ConfKeyInfo<>(
           "yb.upgrade.auto_flag_update_sleep_time_ms",
@@ -1785,4 +1786,39 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Check if edit operation will affect existing tablespaces",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_new_perf_advisor_ui",
+          ScopeType.UNIVERSE,
+          "Enables new Performance Monitoring UI via Performance Tab if universe"
+              + " is registered with Perf Advisor Service",
+          "Enables new Performance Monitoring UI via Performance Tab",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          ScopeType.UNIVERSE,
+          "Enable Edit Universe V2 UI",
+          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // Node Script API configs (Internal)
+  public static final ConfKeyInfo<Boolean> nodeScriptEnabled =
+      new ConfKeyInfo<>(
+          "yb.node_script.enabled",
+          ScopeType.UNIVERSE,
+          "Enable All Nodes Script APIs",
+          "Enables the all node script APIs for this universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCanaryUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_canary_upgrade",
+          ScopeType.UNIVERSE,
+          "Enable Canary Upgrade",
+          "Enable canary upgrade for the universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

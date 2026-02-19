@@ -14,13 +14,13 @@ rightNav:
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later. The following features are part of EPCM.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in {{<release "2024.1">}} and later. The following features are part of EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | |
 | [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_base_scans_cost_model](../yb-tserver/#yb-enable-base-scans-cost-model) | {{<release "2024.1">}} | |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
@@ -29,6 +29,8 @@ To test and take advantage of features developed for enhanced PostgreSQL compati
 | Planned Feature | Flag/Configuration Parameter | EA |
 | :--- | :--- | :--- |
 | [Parallel query](#parallel-query) | | Planned |
+
+Note that Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.
 
 ## Feature availability
 
@@ -56,11 +58,11 @@ Read Committed isolation level handles serialization errors and avoids the need 
 To learn about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
-### Cost based optimizer
+### Cost-based optimizer
 
 Configuration parameter: `yb_enable_base_scans_cost_model=true`
 
-[Cost based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
+[Cost-based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
 {{<note>}}
 When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
@@ -141,7 +143,7 @@ Note: When enabling the cost models, ensure that packed row for colocated tables
 
 ### YugabyteDB Anywhere
 
-To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#v2024.1.0.0).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/stable/releases/yba-releases/v2024.1/#v2024.1.0.0).
 
 To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 

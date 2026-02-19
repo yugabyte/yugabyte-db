@@ -28,14 +28,8 @@ The YugabyteDB clients are installed with [YugabyteDB](../ybdb-releases/) and lo
 You can also install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fa-brands fa-apple" aria-hidden="true"></i>
-      macOS
-    </a>
-  </li>
   <li>
-    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+    <a href="#linuxx86" class="nav-link active" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux x86
     </a>
@@ -55,18 +49,11 @@ You can also install a standalone version using any of the following methods:
 </ul>
 
 <div class="tab-content">
-  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-
-```sh
-curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
-tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
-```
-
-  </div>
-  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
+  <div id="linuxx86" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linuxx86-tab">
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64-tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
 ./bin/post_install.sh
@@ -77,6 +64,7 @@ cd yugabyte-client-{{< yb-version version="stable" >}}
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64-tar.gz.sha) *yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
 ./bin/post_install.sh
@@ -95,6 +83,10 @@ docker pull yugabytedb/yugabyte-client:latest
 ## Release notes
 
 The YugabyteDB clients are released with every version of [YugabyteDB](../ybdb-releases/). Only versions with client-specific changes are listed.
+
+### v2025.2.1.0 - February 12, 2025 {#v2025.2.1.0}
+
+* Updated ycqlsh Python compatibility. ycqlsh now requires Python 3 v3.6 or later.
 
 ### v2.25.0.0 - January 17, 2025 {#v2.25.0.0}
 

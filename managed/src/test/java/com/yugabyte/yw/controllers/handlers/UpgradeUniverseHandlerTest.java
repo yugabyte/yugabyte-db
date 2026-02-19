@@ -38,6 +38,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -107,7 +108,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(AutoFlagUtil.class),
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
-            mock(SoftwareUpgradeHelper.class));
+            mock(SoftwareUpgradeHelper.class),
+            mock(GFlagsValidation.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -1011,7 +1013,8 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
 
     assertEquals(
-        "Kubernetes universes supports only SelfSigned or HashicorpVault certificates.",
+        "CustomCertHostPath certificates are not supported for Kubernetes certificate rotation."
+            + " Use CertManager instead.",
         exception.getMessage());
   }
 

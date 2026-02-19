@@ -15,7 +15,6 @@
 
 #include "yb/util/flags.h"
 
-DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(pggate_cert_base_name);

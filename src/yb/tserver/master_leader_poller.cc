@@ -32,11 +32,22 @@ namespace yb::tserver {
 
 class MasterLeaderPollScheduler::Impl {
  public:
-  Impl(MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller);
+  Impl(
+    MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
+    : finder_(finder), poller_(poller), cond_(&mutex_) {}
+
   Status Start();
-  Status Stop();
+  void Shutdown();
   void Run();
   void TriggerASAP();
+
+  rpc::ProxyCache& proxy_cache() {
+    return finder_.get_proxy_cache();
+  }
+
+  void UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
+    finder_.set_master_addresses(std::move(master_addresses));
+  }
 
  private:
   const std::string& LogPrefix() const;
@@ -57,33 +68,30 @@ MasterLeaderPollScheduler::MasterLeaderPollScheduler(
 
 Status MasterLeaderPollScheduler::Start() { return impl_->Start(); }
 
-Status MasterLeaderPollScheduler::Stop() {
-  return impl_->Stop();
+void MasterLeaderPollScheduler::Shutdown() {
+  impl_->Shutdown();
 }
 
 void MasterLeaderPollScheduler::TriggerASAP() { impl_->TriggerASAP(); }
 
 MasterLeaderPollScheduler::~MasterLeaderPollScheduler() {
-  WARN_NOT_OK(Stop(), "Unable to stop poller thread");
+  Shutdown();
 }
-
-MasterLeaderPollScheduler::Impl::Impl(
-    MasterLeaderFinder& finder, MasterLeaderPollerInterface& poller)
-    : finder_(finder), poller_(poller), cond_(&mutex_) {}
 
 Status MasterLeaderPollScheduler::Impl::Start() {
   MutexLock l(mutex_);
   CHECK(thread_ == nullptr);
   should_run_ = true;
   return Thread::Create(
-      poller_.category(), poller_.name(), &MasterLeaderPollScheduler::Impl::Run, this, &thread_);
+      "master_leader_poller", poller_.name(), &MasterLeaderPollScheduler::Impl::Run, this,
+      &thread_);
 }
 
-Status MasterLeaderPollScheduler::Impl::Stop() {
+void MasterLeaderPollScheduler::Impl::Shutdown() {
   {
     MutexLock l(mutex_);
     if (!thread_) {
-      return Status::OK();
+      return;
     }
     poll_asap_ = true;
     should_run_ = false;
@@ -91,9 +99,8 @@ Status MasterLeaderPollScheduler::Impl::Stop() {
   }
   finder_.Shutdown();
 
-  RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
+  WARN_NOT_OK(ThreadJoiner(thread_.get()).Join(), "Poll thread join failed");
   thread_ = nullptr;
-  return Status::OK();
 }
 
 void MasterLeaderPollScheduler::Impl::Run() {
@@ -117,7 +124,7 @@ void MasterLeaderPollScheduler::Impl::Run() {
     Status s = poller_.Poll();
     if (!s.ok()) {
       const auto master_addresses = finder_.get_master_addresses();
-      LOG_WITH_PREFIX(WARNING) << "Failed to heartbeat to " << finder_.get_master_leader_hostport()
+      LOG_WITH_PREFIX(WARNING) << "Failed to poll " << finder_.get_master_leader_hostport()
                                << ": " << s << " tries=" << consecutive_failures_
                                << ", num=" << master_addresses->size()
                                << ", masters=" << AsString(master_addresses)
@@ -151,6 +158,10 @@ void MasterLeaderPollScheduler::Impl::TriggerASAP() {
 
 const std::string& MasterLeaderPollScheduler::Impl::LogPrefix() const {
   return poller_.LogPrefix();
+}
+
+void MasterLeaderPollScheduler::UpdateMasterAddresses(server::MasterAddressesPtr master_addresses) {
+  impl_->UpdateMasterAddresses(std::move(master_addresses));
 }
 
 MasterLeaderFinder::MasterLeaderFinder(
@@ -230,6 +241,7 @@ Result<HostPort> MasterLeaderFinder::UpdateMasterLeaderHostPort(MonoDelta timeou
   RETURN_NOT_OK_PREPEND(
       new_proxy->Ping(req, &resp, &rpc),
       Format("Failed to ping master at $0", local_hp_copy));
+  VLOG(1) << "Connected to leader master server at " << local_hp_copy;
   return local_hp_copy;
 }
 

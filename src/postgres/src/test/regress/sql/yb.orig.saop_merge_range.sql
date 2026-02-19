@@ -1,6 +1,5 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
--- TODO(#29072): fix output.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
@@ -299,6 +298,16 @@
 -- (Reset the limit change)
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
 
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
+:explain4
+
 --
 -- Secondary index
 --
@@ -316,6 +325,15 @@ SPLIT AT VALUES (
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
+-- No limit
+-- TODO(#29078): this likely should use SAOP merge.
+\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5'
+:explain2
+
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
@@ -327,6 +345,9 @@ SPLIT AT VALUES (
 -- Targets
 \set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
 :explain2run2
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Secondary index scan VS SAOP merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5'
@@ -453,16 +474,14 @@ SPLIT AT VALUES (
 :explain2
 
 -- Forward scan
--- NOTE(#29383): the output is correct but subject to issue #29383.
--- TODO(#29072): Determine if the above note needs updating.
-\set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5'
-:explain2run2
+-- TODO(#29383): the output is incorrect where it relies on DocDB order.
+-- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5'
+-- :explain2run2
 
 -- Backward scan
--- NOTE(#29383): the output is correct but subject to issue #29383.
--- TODO(#29072): Determine if the above note needs updating.
-\set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5'
-:explain2run2
+-- TODO(#29383): the output is incorrect where it relies on DocDB order.
+-- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5'
+-- :explain2run2
 
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_r4_r5_idx;
@@ -484,6 +503,10 @@ SPLIT AT VALUES (
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
@@ -495,6 +518,9 @@ SPLIT AT VALUES (
 -- Targets
 \set query 'SELECT n, 1, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
 :explain2run2
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- Secondary index only scan VS SAOP merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5'
@@ -593,6 +619,10 @@ SPLIT AT VALUES (
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
+
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5'
 :explain2run2
@@ -619,6 +649,9 @@ SPLIT AT VALUES (
 -- SAOP merge is not used.
 \set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5'
 :explain2
+
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_idx;

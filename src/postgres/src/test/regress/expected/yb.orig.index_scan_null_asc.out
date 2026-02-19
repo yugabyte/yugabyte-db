@@ -9,14 +9,36 @@ CREATE INDEX i_nulltest_ba ON nulltest (b ASC, a ASC);
 \set filename :abs_srcdir '/yb_commands/index_scan_null_queries.sql'
 \i :filename
 -- Queries for the null scan key tests
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\i :filename
+-- A helper script to explain and run a query.  Use in regress tests by
+-- defining :explain, :query, and optionally :hint#.
+\set explain1 ':explain :hint1 :query;'
+\set explain2 ':explain1 :explain :hint2 :query;'
+\set explain3 ':explain2 :explain :hint3 :query;'
+\set explain4 ':explain3 :explain :hint4 :query;'
+\set explain5 ':explain4 :explain :hint5 :query;'
+\set explain1run1 ':explain1; :hint1 :query;'
+\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
+\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
+\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
+\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
+-- Default to no hints.
+\set hint1 ''
+\set hint2 ''
+\set hint3 ''
+\set hint4 ''
+\set hint5 ''
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)'
 SET client_min_messages = DEBUG1;
 \set YB_DISABLE_ERROR_PREFIX on
 SET yb_bnl_batch_size to 1;
 -- Should return empty results (actual rows=0)
 -- The plans should not show any "Recheck"
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;
+\set hint1 '/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */'
+\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x'
+:explain1
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -29,9 +51,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: (a = t2.x)
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
+\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x'
+:explain1
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -44,9 +65,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: (a <= t2.x)
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
+\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2'
+:explain1
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -59,9 +79,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);
+\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y)'
+:explain1
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
@@ -74,9 +93,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: ((b = t2.y) AND (a = t2.x))
 (7 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
-SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
+\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y)'
+:explain1
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -90,9 +108,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Filter: (ROW(a, b) <= ROW(t2.x, t2.y))
 (8 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
+\set hint1 '/*+ IndexScan(t1) */'
+\set hint2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query 'SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1)'
+:explain2
 DEBUG:  skipping a scan due to unsatisfiable condition
                               QUERY PLAN                              
 ----------------------------------------------------------------------
@@ -101,9 +120,6 @@ DEBUG:  skipping a scan due to unsatisfiable condition
    Filter: (ROW(a, b) <= ROW(NULL::integer, 1))
 (3 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
 DEBUG:  skipping a scan due to unsatisfiable condition
                               QUERY PLAN                               
 -----------------------------------------------------------------------
@@ -111,18 +127,14 @@ DEBUG:  skipping a scan due to unsatisfiable condition
    Index Cond: (ROW(a, b) <= ROW(NULL::integer, 1))
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, null);
+\set query 'SELECT a FROM nulltest t1 WHERE a IN (null, null)'
+:explain2
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
    Index Cond: (a = ANY ('{NULL,NULL}'::integer[]))
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, null);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=0 loops=1)
@@ -130,17 +142,10 @@ SELECT a FROM nulltest t1 WHERE a IN (null, null);
 (2 rows)
 
 -- Should return 1s
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
+\set hint1 '/*+ IndexScan(t1) */'
+\set hint2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query 'SELECT a FROM nulltest t1 WHERE a IN (null, 1)'
+:explain2run2
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -153,17 +158,6 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
    Storage Index Rows Scanned: 2
 (8 rows)
 
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE a IN (null, 1);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=2 loops=1)
@@ -176,17 +170,21 @@ SELECT a FROM nulltest t1 WHERE a IN (null, 1);
    Storage Index Rows Scanned: 2
 (8 rows)
 
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
  a 
 ---
  1
  1
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
+ a 
+---
+ 1
+ 1
+(2 rows)
+
 /*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
+\set query 'SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null)'
+:explain2run2
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -200,17 +198,6 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Storage Index Rows Scanned: 2
 (9 rows)
 
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
- a 
----
- 1
- 1
-(2 rows)
-
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1 i_nulltest_ba) */
-SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Index Scan using i_nulltest_ba on nulltest t1 (actual rows=2 loops=1)
@@ -224,18 +211,22 @@ SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);
    Storage Index Rows Scanned: 4
 (9 rows)
 
--- Should return nulls
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IS NULL;
  a 
 ---
-  
-  
+ 1
+ 1
 (2 rows)
 
-EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
-/*+ IndexScan(t1) */
-SELECT a FROM nulltest t1 WHERE a IS NULL;
+ a 
+---
+ 1
+ 1
+(2 rows)
+
+-- Should return nulls
+\set hint1 '/*+ IndexScan(t1) */'
+\set query 'SELECT a FROM nulltest t1 WHERE a IS NULL'
+:explain1run1
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -247,6 +238,12 @@ SELECT a FROM nulltest t1 WHERE a IS NULL;
    Storage Index Read Ops: 1
    Storage Index Rows Scanned: 2
 (8 rows)
+
+ a 
+---
+  
+  
+(2 rows)
 
 RESET client_min_messages;
 \unset YB_DISABLE_ERROR_PREFIX

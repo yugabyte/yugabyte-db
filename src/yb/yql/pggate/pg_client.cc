@@ -13,10 +13,13 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include <concepts>
+
 #include "yb/ash/rpc_wait_state.h"
 
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
@@ -50,10 +53,9 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 DECLARE_bool(enable_object_lock_fastpath);
-DECLARE_bool(use_node_hostname_for_local_tserver);
-DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 
@@ -65,6 +67,9 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
    "and report it.");
 
+DEFINE_test_flag(bool, emulate_op_lost_on_write, false,
+    "Emulate lost of operation with serial_no by incrementing counter twice.");
+
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
@@ -73,6 +78,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -84,6 +90,133 @@ using yb::cdc::CDCServiceProxy;
 using yb::ash::PggateRPC;
 
 namespace yb::pggate {
+
+namespace {
+// The following two terms are used to express how long an operation can take to complete:
+// - Timeout: the maximum duration of time that an operation is allowed to run for.
+//            For example: '30s'. Timeouts are relative.
+// - Deadline: the fixed point in time by which an operation must complete.
+//            For example: '13450s since epoch'. Deadlines are absolute.
+//
+// Pggate encounters the following classes of timeouts/deadlines:
+// 1. Global timeout/deadline (from postgres): GUCs such as 'statement_timeout',
+//    'transaction_timeout' (PG 17+) represent a timeout for a group of RPCs. These timeouts are
+//    expressed as deadlines in pggate. These deadlines are enforced by postgres' timer mechanism
+//    since pggate does not know how many RPCs the given statement/query will generate.
+// 2. RPC timeout (from pggate): This represents how long a specific RPC is allowed to take. If the
+//    deadline for the RPC exceeds the global deadline, the RPC timeout is clamped to the global
+//    deadline.
+// 3. Operation timeout (from postgres): GUCs such as 'lock_timeout', 'deadlock_timeout' represent
+//    timeouts for specific operations. Each RPC may be composed of multiple operations. While
+//    global and RPC timeouts are client-side timeouts (ie. enforced by pggate::PgClient), operation
+//    timeouts must be implemented on the server side (ie. enforced by the tservers). Consequently,
+//    operation timeouts must be communicated to the server as part of the RPC.
+//
+// There exists another class of timeouts, which does not affect pggate:
+// 4. Idle timeout (from postgres): GUCs such as 'idle_in_transaction_session_timeout',
+//    'idle_session_timeout' represent how long a session can be idle. These timeouts are enforced
+//    in postgres and are not propagated to pggate.
+class PgTimeout {
+ public:
+  void SetPGTimeoutAsGlobalDeadline(int timeout_ms) {
+    const MonoDelta adjusted_timeout =
+        MonoDelta::FromMilliseconds(timeout_ms) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+
+    global_deadline_ = CoarseMonoClock::now() + adjusted_timeout;
+  }
+
+  void ClearGlobalDeadline() {
+    global_deadline_ = CoarseTimePoint();
+  }
+
+  void SetLockTimeout(int timeout_ms) {
+    if (timeout_ms <= 0) {
+      // TODO(kramanathan): When disabled by PG, evaluate whether the lock timeout should be set to
+      // a default value.
+      lock_timeout_ = GetDefaultRpcTimeout();
+      return;
+    }
+
+    lock_timeout_ =
+        MonoDelta::FromMilliseconds(timeout_ms) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  }
+
+  // TODO: Lock timeouts are the only operation timeouts currently supported and are implemented as
+  // both client-side (RPC timeout) and server-side timeouts (tserver RPC timeout). They instead
+  // need to be a part of the RPC message (since each RPC may have multiple operations, each of
+  // which may have its own timeout).
+  template<typename T>
+  std::pair<CoarseTimePoint, MonoDelta> GetDeadlineAndTimeoutForRPC(
+      CoarseTimePoint rpc_deadline = CoarseTimePoint()) const {
+
+    const CoarseTimePoint now = CoarseMonoClock::now();
+    const MonoDelta operation_timeout = GetOperationTimeout<T>();
+
+    // Prioritize the minimum of RPC and global deadline, if supplied.
+    CoarseTimePoint deadline = MinDeadline(rpc_deadline, global_deadline_);
+
+    // If an RPC is being scheduled while we're in the grace period, it is likely that the
+    // statement timer has already fired in postgres. Therefore check for interrupts.
+    if (PREDICT_FALSE(
+        global_deadline_ != CoarseTimePoint() &&
+        global_deadline_ - MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms) < now)) {
+      YBCCheckForInterrupts();
+    }
+
+    // Assert that the global deadline is not in the past.
+    DCHECK(deadline == CoarseTimePoint() || now < deadline);
+
+    // If an operation timeout is applicable, apply it to further clamp the deadline.
+    if (operation_timeout.Initialized()) {
+      deadline = MinDeadline(deadline, now + operation_timeout);
+    }
+
+    // If none of the timeouts/deadlines are applicable, set it to a default value.
+    if (deadline == CoarseTimePoint()) {
+      deadline = now + GetDefaultRpcTimeout();
+    }
+
+    return std::make_pair(deadline, deadline - now);
+  }
+
+ private:
+  template<typename T>
+  MonoDelta GetOperationTimeout() const {
+    if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB> ||
+                  std::is_same_v<T, tserver::LWPgAcquireObjectLockRequestPB>) {
+      return lock_timeout_;
+    }
+
+    return MonoDelta();
+  }
+
+  static MonoDelta GetDefaultRpcTimeout() {
+    return MonoDelta::FromMilliseconds(client::YsqlClientReadWriteTimeoutMs()) +
+        MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  }
+
+  const CoarseTimePoint& MinDeadline(const CoarseTimePoint& a, const CoarseTimePoint& b) const {
+    if (a == CoarseTimePoint()) {
+      return b;
+    }
+    if (b == CoarseTimePoint()) {
+      return a;
+    }
+
+    return a < b ? a : b;
+  }
+
+  // The deadline representing statement timeout in postgres.
+  // Unset if statement_timeout is set to 0 (ie. no timeout).
+  // This deadline is not applicable to heartbeats.
+  CoarseTimePoint global_deadline_;
+  // The timeout representing lock_timeout in postgres.
+  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+};
+} // namespace
+
 namespace {
 
 class FetchBigDataCallback {
@@ -248,10 +381,11 @@ struct PgClientData : public FetchBigDataCallback {
   PgClientData(const LWReqPB& req_, ThreadSafeArena* arena_) : req(req_), resp(arena_) {}
 
   void SetupExchange(
-      tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_, MonoDelta timeout) {
+      tserver::SharedExchange* exchange_, BigDataFetcher* big_data_fetcher_,
+      CoarseTimePoint deadline_) {
     exchange = exchange_;
     big_data_fetcher = big_data_fetcher_;
-    deadline = CoarseMonoClock::now() + timeout;
+    deadline = deadline_;
   }
 
   bool BigDataReady() const REQUIRES(exchange_mutex) {
@@ -493,35 +627,26 @@ static PggateRPC kDebugLogRPCs[] = {
 class PgClient::Impl : public BigDataFetcher {
  public:
   Impl(
+      const ProxyInitInfo& proxy_init_info,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
       std::atomic<uint64_t>& next_perform_op_serial_no)
-    : heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
-      wait_event_watcher_(wait_event_watcher),
-      next_perform_op_serial_no_(next_perform_op_serial_no) {
+      : proxy_(
+            &proxy_init_info.cache, proxy_init_info.host_port, nullptr /* protocol */,
+            proxy_init_info.resolve_cache_timeout),
+        local_cdc_service_proxy_(
+            &proxy_init_info.cache, proxy_init_info.host_port, nullptr /* protocol */,
+            proxy_init_info.resolve_cache_timeout),
+        heartbeat_poller_(std::bind(&Impl::Heartbeat, this, false)),
+        wait_event_watcher_(wait_event_watcher),
+        next_perform_op_serial_no_(next_perform_op_serial_no) {
     tablet_server_count_cache_.fill(0);
   }
 
   ~Impl() {
-    CHECK(!proxy_);
+    heartbeat_poller_.Shutdown();
   }
 
-  Status Start(rpc::ProxyCache* proxy_cache,
-               rpc::Scheduler* scheduler,
-               const tserver::TServerSharedData& tserver_shared_data,
-               std::optional<uint64_t> session_id) {
-    MonoDelta resolve_cache_timeout;
-    HostPort host_port(tserver_shared_data.endpoint());
-    if (FLAGS_use_node_hostname_for_local_tserver) {
-      host_port = HostPort(tserver_shared_data.host().ToBuffer(),
-                           tserver_shared_data.endpoint().port());
-      resolve_cache_timeout = MonoDelta::kMax;
-    }
-    LOG(INFO) << "Using TServer host_port: " << host_port;
-    proxy_ = std::make_unique<PgClientServiceProxy>(
-        proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
-    local_cdc_service_proxy_ = std::make_unique<CDCServiceProxy>(
-        proxy_cache, host_port, nullptr /* protocol */, resolve_cache_timeout);
-
+  Status Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id) {
     if (!session_id) {
       auto future = create_session_promise_.get_future();
       Heartbeat(true);
@@ -530,14 +655,14 @@ class PgClient::Impl : public BigDataFetcher {
       session_id_ = *session_id;
     }
     LOG_WITH_PREFIX(INFO) << "Session id acquired. Postgres backend pid: " << getpid();
-    heartbeat_poller_.Start(scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
+    heartbeat_poller_.Start(&scheduler, FLAGS_pg_client_heartbeat_interval_ms * 1ms);
     return Status::OK();
   }
 
-  void Shutdown() {
-    heartbeat_poller_.Shutdown();
-    proxy_ = nullptr;
-    local_cdc_service_proxy_ = nullptr;
+  void Interrupt() {
+    if (session_shared_mem_) {
+      session_shared_mem_->exchange().SignalStop();
+    }
   }
 
   uint64_t SessionID() { return session_id_; }
@@ -556,7 +681,7 @@ class PgClient::Impl : public BigDataFetcher {
     } else {
       req.set_session_id(session_id_);
     }
-    proxy_->HeartbeatAsync(
+    proxy_.HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
         [this, create] {
       auto status = heartbeat_controller_.status();
@@ -601,12 +726,16 @@ class PgClient::Impl : public BigDataFetcher {
     });
   }
 
-  void SetTimeout(MonoDelta timeout) {
-    timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  void SetTimeout(int timeout_ms) {
+    timeouts_.SetPGTimeoutAsGlobalDeadline(timeout_ms);
   }
 
-  void SetLockTimeout(MonoDelta lock_timeout) {
-    lock_timeout_ = lock_timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
+  void ClearTimeout() {
+    timeouts_.ClearGlobalDeadline();
+  }
+
+  void SetLockTimeout(int timeout_ms) {
+    timeouts_.SetLockTimeout(timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -696,7 +825,7 @@ class PgClient::Impl : public BigDataFetcher {
 
     tserver::PgGetDatabaseInfoResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->GetDatabaseInfo(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_.GetDatabaseInfo(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.info();
   }
@@ -884,10 +1013,11 @@ class PgClient::Impl : public BigDataFetcher {
       auto& exchange = session_shared_mem_->exchange();
       auto out = exchange.Obtain(kHeaderSize + kMetadataSize + data->req.SerializedSize());
       if (out) {
-        auto timeout = GetTimeout<typename Data::RequestType>();
+        const auto [rpc_deadline, rpc_timeout] =
+            timeouts_.GetDeadlineAndTimeoutForRPC<typename Data::RequestType>();
         *reinterpret_cast<uint8_t *>(out) = Data::kSharedExchangeRequestType;
         out += sizeof(uint8_t);
-        LittleEndian::Store64(out, timeout.ToMilliseconds());
+        LittleEndian::Store64(out, rpc_timeout.ToMilliseconds());
         out += sizeof(uint64_t);
         out = pointer_cast<std::byte*>(metadata.SerializeToArray(to_uchar_ptr(out)));
         const auto size = data->req.SerializedSize();
@@ -904,13 +1034,13 @@ class PgClient::Impl : public BigDataFetcher {
           data->promise.set_value(MakeExchangeResult(*data, status));
           return data->promise.get_future();
         }
-        data->SetupExchange(&exchange, this, timeout);
+        data->SetupExchange(&exchange, this, rpc_deadline);
         return ExchangeFuture<Data>(std::move(data));
       }
     }
     data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
     method(
-        proxy_.get(), data->req, &data->resp,
+        &proxy_, data->req, &data->resp,
         SetupController<typename Data::RequestType>(&data->controller),
         [data] {
           data->promise.set_value(MakeExchangeResult(*data, data->controller.CheckedResponse()));
@@ -920,11 +1050,23 @@ class PgClient::Impl : public BigDataFetcher {
 
   PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options, PgsqlOps&& operations, PgDocMetrics& metrics) {
+    auto get_next_serial_no =
+        [this] { return next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel); };
+
+    if (PREDICT_FALSE(
+        FLAGS_TEST_emulate_op_lost_on_write &&
+        !options->ddl_mode() &&
+        operations.size() == 1 &&
+        operations.front()->is_write())) {
+      const auto serial_no = get_next_serial_no();
+      LOG(INFO) << "Emulating lost of operation with serial_no=" << serial_no;
+    }
+
     auto& arena = operations.front()->arena();
     tserver::LWPgPerformRequestPB req(&arena);
     req.set_session_id(session_id_);
     *req.mutable_options() = std::move(*options);
-    req.set_serial_no(next_perform_op_serial_no_.fetch_add(1, std::memory_order_acq_rel));
+    req.set_serial_no(get_next_serial_no());
     PrepareOperations(&req, operations);
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->PerformAsync(req, resp, controller, std::move(callback));
@@ -991,7 +1133,7 @@ class PgClient::Impl : public BigDataFetcher {
     info->fetch_req->set_data_id(data_id);
     info->fetch_resp = arena->NewArenaObject<tserver::LWPgFetchDataResponsePB>();
     info->controller = arena->NewObject<rpc::RpcController>();
-    proxy_->FetchDataAsync(
+    proxy_.FetchDataAsync(
         *info->fetch_req, info->fetch_resp, SetupController(info->controller), [info]() {
       auto se = ScopeExit([&info] {
         info->controller->~RpcController();
@@ -1061,7 +1203,7 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgIsInitDbDoneRequestPB req;
     tserver::PgIsInitDbDoneResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->IsInitDbDone(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_.IsInitDbDone(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.done();
   }
@@ -1070,7 +1212,7 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgGetCatalogMasterVersionRequestPB req;
     tserver::PgGetCatalogMasterVersionResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->GetCatalogMasterVersion(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_.GetCatalogMasterVersion(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp.version();
   }
@@ -1093,7 +1235,7 @@ class PgClient::Impl : public BigDataFetcher {
     tserver::PgCreateSequencesDataTableRequestPB req;
     tserver::PgCreateSequencesDataTableResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->CreateSequencesDataTable(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_.CreateSequencesDataTable(req, &resp, PrepareController()));
     return ResponseStatus(resp);
   }
 
@@ -1419,6 +1561,16 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries() {
+    tserver::PgListSlotEntriesRequestPB req;
+    tserver::PgListSlotEntriesResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ListSlotEntries,
+        req, resp, PggateRPC::kListSlotEntries));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
@@ -1488,7 +1640,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_.ActiveSessionHistory(req, &resp, PrepareController()));
     RETURN_NOT_OK(ResponseStatus(resp));
     return resp;
   }
@@ -1503,6 +1655,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
     cdc::InitVirtualWALForCDCRequestPB req;
@@ -1512,6 +1665,12 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_active_pid(active_pid);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+      for (const auto& e : oid_to_relfilenode) {
+        req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
+      }
     }
 
     if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
@@ -1553,12 +1712,19 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
     cdc::UpdatePublicationTableListRequestPB req;
     req.set_session_id(session_id_);
     req.set_stream_id(stream_id);
     for (const auto& table_id : table_ids) {
       *req.add_table_id() = table_id.GetYbTableId();
+    }
+
+    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+      for (const auto& e : oid_to_relfilenode) {
+        req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
+      }
     }
 
     cdc::UpdatePublicationTableListResponsePB resp;
@@ -1648,37 +1814,43 @@ class PgClient::Impl : public BigDataFetcher {
     return resp.last_minute();
   }
 
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
+    tserver::PgGetYbSystemTableInfoRequestPB req;
+    tserver::PgGetYbSystemTableInfoResponsePB resp;
+    req.set_namespace_oid(namespace_oid);
+    req.set_table_name(table_name.data(), table_name.size());
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetYbSystemTableInfo, req, resp, PggateRPC::kGetYbSystemTableInfo));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    *oid = resp.table_oid();
+    *relfilenode = resp.relfilenode();
+    return Status::OK();
+  }
+
  private:
   std::string LogPrefix() const {
     return Format("Session id $0: ", session_id_);
   }
 
   template <typename T = void>
-  MonoDelta GetTimeout() {
-    if constexpr (std::is_same_v<T, tserver::PgAcquireAdvisoryLockRequestPB> ||
-                  std::is_same_v<T, tserver::LWPgAcquireObjectLockRequestPB>) {
-      return std::min(timeout_, lock_timeout_);
-    }
-    return timeout_;
-  }
-
-  template <typename T = void>
   rpc::RpcController* SetupController(
       rpc::RpcController* controller,
-      CoarseTimePoint deadline = CoarseTimePoint()) {
-    if (deadline != CoarseTimePoint()) {
-      controller->set_deadline(deadline);
-    } else {
-      controller->set_timeout(GetTimeout<T>());
-    }
+      CoarseTimePoint rpc_deadline = CoarseTimePoint()) {
+    const auto [_, timeout] = timeouts_.GetDeadlineAndTimeoutForRPC<T>(rpc_deadline);
+    controller->set_timeout(timeout);
     return controller;
   }
 
   template <typename T = void>
-  rpc::RpcController* PrepareController(
-      CoarseTimePoint deadline = CoarseTimePoint()) {
+  rpc::RpcController* PrepareController(CoarseTimePoint rpc_deadline = CoarseTimePoint()) {
     controller_.Reset();
-    return SetupController<T>(&controller_, deadline);
+    return SetupController<T>(&controller_, rpc_deadline);
+  }
+
+  template <typename T = void>
+  rpc::RpcController* PrepareController(rpc::RpcController* controller) {
+    return controller;
   }
 
   rpc::RpcController* PrepareHeartbeatController() {
@@ -1713,27 +1885,28 @@ class PgClient::Impl : public BigDataFetcher {
                 << "status " << s << "\n" << resp.ShortDebugString();
     }
 
+    // Check for interrupts are executing sync RPC.
+    YBCCheckForInterrupts();
+
     return s;
   }
 
-  template <class T>
-  auto* GetRpcController(CoarseTimePoint deadline = CoarseTimePoint()) {
-    return PrepareController<T>(deadline);
+  template <class Proxy>
+  Proxy& GetProxy() {
+    if constexpr (std::same_as<Proxy, PgClientServiceProxy>) {
+      return proxy_;
+    } else {
+      return local_cdc_service_proxy_;
+    }
   }
-
-  template <class T>
-  auto* GetRpcController(rpc::RpcController* controller) { return controller; }
-
-  auto* GetProxy(PgClientServiceProxy*) const { return proxy_.get(); }
-  auto* GetProxy(CDCServiceProxy*) const { return local_cdc_service_proxy_.get(); }
 
   template <class Proxy, class Req, class Resp, class... Args>
   Status DoSyncRPC(
       SyncRPCFunc<Proxy, Req, Resp> func,
       Req& req, Resp& resp, PggateRPC rpc_enum, Args&&... args) {
     return DoSyncRPCImpl(
-        *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, rpc_enum,
-        GetRpcController<Req>(std::forward<Args>(args)...), ash::WaitStateCode::kWaitingOnTServer);
+        GetProxy<Proxy>(), func, req, resp, rpc_enum,
+        PrepareController<Req>(std::forward<Args>(args)...), ash::WaitStateCode::kWaitingOnTServer);
   }
 
   // Overload for when wait_event is specific enough and RPC name is not needed.
@@ -1742,12 +1915,12 @@ class PgClient::Impl : public BigDataFetcher {
       SyncRPCFunc<Proxy, Req, Resp> func,
       Req& req, Resp& resp, ash::WaitStateCode wait_event, Args&&... args) {
     return DoSyncRPCImpl(
-        *DCHECK_NOTNULL(GetProxy(static_cast<Proxy*>(nullptr))), func, req, resp, PggateRPC::kNoRPC,
-        GetRpcController<Req>(std::forward<Args>(args)...), wait_event);
+        GetProxy<Proxy>(), func, req, resp, PggateRPC::kNoRPC,
+        PrepareController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
-  std::unique_ptr<PgClientServiceProxy> proxy_;
-  std::unique_ptr<CDCServiceProxy> local_cdc_service_proxy_;
+  PgClientServiceProxy proxy_;
+  CDCServiceProxy local_cdc_service_proxy_;
 
   rpc::RpcController controller_;
   uint64_t session_id_ = 0;
@@ -1759,10 +1932,7 @@ class PgClient::Impl : public BigDataFetcher {
   std::optional<tserver::PgSessionSharedMemoryManager> session_shared_mem_;
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
-  MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
-  // When making a request to acquire an advisory lock or object lock, the RPC timeout
-  // should be the minimum of timeout_ and lock_timeout_.
-  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+  PgTimeout timeouts_;
 
   const WaitEventWatcher& wait_event_watcher_;
 
@@ -1787,29 +1957,31 @@ void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const 
 }
 
 PgClient::PgClient(
+    const ProxyInitInfo& proxy_init_info,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
     std::atomic<uint64_t>& seq_number)
-    : impl_(new Impl(wait_event_watcher, seq_number)) {}
+    : impl_(new Impl(proxy_init_info, wait_event_watcher, seq_number)) {}
 
 PgClient::~PgClient() = default;
 
-Status PgClient::Start(
-    rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
-    const tserver::TServerSharedData& tserver_shared_object,
-    std::optional<uint64_t> session_id) {
-  return impl_->Start(proxy_cache, scheduler, tserver_shared_object, session_id);
+Status PgClient::Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id) {
+  return impl_->Start(scheduler, session_id);
 }
 
-void PgClient::Shutdown() {
-  impl_->Shutdown();
+void PgClient::Interrupt() {
+  impl_->Interrupt();
 }
 
-void PgClient::SetTimeout(MonoDelta timeout) {
-  impl_->SetTimeout(timeout);
+void PgClient::SetTimeout(int timeout_ms) {
+  impl_->SetTimeout(timeout_ms);
 }
 
-void PgClient::SetLockTimeout(MonoDelta lock_timeout) {
-  impl_->SetLockTimeout(lock_timeout);
+void PgClient::ClearTimeout() {
+  impl_->ClearTimeout();
+}
+
+void PgClient::SetLockTimeout(int lock_timeout_ms) {
+  impl_->SetLockTimeout(lock_timeout_ms);
 }
 
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
@@ -2046,6 +2218,10 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgClient::CreateReplicationSl
   return impl_->CreateReplicationSlot(req, deadline);
 }
 
+Result<tserver::PgListSlotEntriesResponsePB> PgClient::ListSlotEntries() {
+  return impl_->ListSlotEntries();
+}
+
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {
   return impl_->ListReplicationSlots();
 }
@@ -2076,10 +2252,12 @@ Result<tserver::PgYCQLStatementStatsResponsePB> PgClient::YCQLStatementStats() {
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgClient::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
     const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
     const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
   return impl_->InitVirtualWALForCDC(
-      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
+      stream_id, table_ids, oid_to_relfilenode, slot_hash_range, active_pid, publication_oids,
+      pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
@@ -2088,8 +2266,9 @@ Result<cdc::GetLagMetricsResponsePB> PgClient::GetLagMetrics(
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgClient::UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return impl_->UpdatePublicationTableList(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
+  return impl_->UpdatePublicationTableList(stream_id, table_ids, oid_to_relfilenode);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgClient::DestroyVirtualWALForCDC() {
@@ -2119,6 +2298,11 @@ Status PgClient::SetCronLastMinute(int64_t last_minute) {
 }
 
 Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(); }
+
+Status PgClient::GetYbSystemTableInfo(
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
+  return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
 
 template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformData>;
 template class pg_client::internal::ResultFuture<pg_client::internal::PerformData>;

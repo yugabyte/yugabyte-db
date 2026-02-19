@@ -174,7 +174,7 @@ class IndexInfo {
 
 // A map to look up an index by its index table id.
 // TODO: Rewrite IndexMap be std::unordered_map instead of extending it.
-class IndexMap : public UnorderedStringMap<IndexInfo> {
+class IndexMap : public UnorderedStringMap<TableId, IndexInfo> {
  public:
   explicit IndexMap(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
   explicit IndexMap(const ArenaList<LWIndexInfoPB>& indexes);

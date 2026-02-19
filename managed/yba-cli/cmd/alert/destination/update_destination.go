@@ -33,7 +33,7 @@ var updateDestinationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No name specified to update alert destination\n",
@@ -52,13 +52,12 @@ var updateDestinationAlertCmd = &cobra.Command{
 		var existingAlertDestination ybaclient.AlertDestination
 		alertDestinations, response, err := authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
+			util.FatalHTTPError(
 				response,
 				err,
 				"Alert Destination",
 				"Update - List Alert Destinations",
 			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		for _, alertDestination := range alertDestinations {
 			if strings.EqualFold(alertDestination.GetName(), name) {
@@ -67,7 +66,7 @@ var updateDestinationAlertCmd = &cobra.Command{
 			}
 		}
 
-		if len(strings.TrimSpace(existingAlertDestination.GetUuid())) == 0 {
+		if util.IsEmptyString(existingAlertDestination.GetUuid()) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"Alert destination with name: "+name+" not found\n",
@@ -78,7 +77,7 @@ var updateDestinationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(newName)) != 0 {
+		if !util.IsEmptyString(newName) {
 			logrus.Debug("Updating alert destination name\n")
 			existingAlertDestination.SetName(newName)
 		}
@@ -110,13 +109,7 @@ var updateDestinationAlertCmd = &cobra.Command{
 		}
 		channels, response, err := authAPI.ListAlertChannels().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Destination",
-				"Update - List Alert Channels",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Update - List Alert Channels")
 		}
 
 		addChannelUUIDs := make([]string, 0)
@@ -197,18 +190,17 @@ var updateDestinationAlertCmd = &cobra.Command{
 			}).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Destination",
-				"Update",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Destination", "Update")
 		}
 
-		alertDestinationUUID := r.GetUuid()
+		alertDestination := util.CheckAndDereference(
+			r,
+			fmt.Sprintf("An error occurred while updating alert destination %s", name),
+		)
 
-		if len(strings.TrimSpace(alertDestinationUUID)) == 0 {
+		alertDestinationUUID := alertDestination.GetUuid()
+
+		if util.IsEmptyString(alertDestinationUUID) {
 			logrus.Fatal(formatter.Colorize(
 				fmt.Sprintf(
 					"An error occurred while adding alert destination %s\n",
@@ -221,7 +213,7 @@ var updateDestinationAlertCmd = &cobra.Command{
 			formatter.Colorize(name, formatter.GreenColor), alertDestinationUUID)
 
 		alerts := make([]ybaclient.AlertDestination, 0)
-		alerts = append(alerts, r)
+		alerts = append(alerts, alertDestination)
 		alertCtx := formatter.Context{
 			Command: "update",
 			Output:  os.Stdout,

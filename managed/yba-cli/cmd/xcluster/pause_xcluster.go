@@ -58,9 +58,10 @@ var pauseXClusterCmd = &cobra.Command{
 		rTask, response, err := authAPI.EditXClusterConfig(uuid).
 			XclusterReplicationEditFormData(req).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "xCluster", "Pause")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "xCluster", "Pause")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The xcluster %s is being paused",
 			formatter.Colorize(uuid, formatter.GreenColor))
@@ -79,20 +80,21 @@ var pauseXClusterCmd = &cobra.Command{
 
 			rXCluster, response, err := authAPI.GetXClusterConfig(uuid).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(
-					response,
-					err,
-					"xCluster",
-					"Pause - Get xCluster")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "xCluster", "Pause - Get xCluster")
 			}
+
+			xclusterConfig := util.CheckAndDereference(
+				rXCluster,
+				"No xcluster found with uuid "+uuid,
+			)
+
 			r := make([]ybaclient.XClusterConfigGetResp, 0)
-			r = append(r, rXCluster)
+			r = append(r, xclusterConfig)
 
 			sourceUniverse, targetUniverse := GetSourceAndTargetXClusterUniverse(
 				authAPI, "", "",
-				rXCluster.GetSourceUniverseUUID(),
-				rXCluster.GetTargetUniverseUUID(),
+				xclusterConfig.GetSourceUniverseUUID(),
+				xclusterConfig.GetTargetUniverseUUID(),
 				"Pause",
 			)
 
@@ -108,12 +110,13 @@ var pauseXClusterCmd = &cobra.Command{
 			return
 		}
 		logrus.Infoln(msg + "\n")
+		task := util.CheckTaskAfterCreation(rTask)
 		taskCtx := formatter.Context{
 			Command: "pause",
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{task})
 
 	},
 }

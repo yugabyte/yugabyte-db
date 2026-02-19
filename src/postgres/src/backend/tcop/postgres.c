@@ -253,7 +253,7 @@ static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
 
 static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint);
-
+static void yb_abort_xact_command(void);
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -497,6 +497,22 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 's':				/* YB: SET SESSION PARAMETER */
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 'G':				/* YB: RESET ALL & RESET defaults from ConnMgr */
+			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 'g':				/* YB: RESET GUC DEFAULTS from ConnMgr */
 			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
@@ -3040,6 +3056,35 @@ finish_xact_command(void)
 	}
 }
 
+/*
+ * YB: Use this function to cleanly abort a txn, similar to finish_xact_command.
+ * Used in the Authentication Passthrough mode of Connection Manager to reset
+ * control backend state.
+ */
+static void
+yb_abort_xact_command(void)
+{
+	/* cancel active statement timeout after each command */
+	disable_statement_timeout();
+
+	if (xact_started)
+	{
+		AbortCurrentTransaction();
+
+#ifdef MEMORY_CONTEXT_CHECKING
+		/* Check all memory contexts that weren't freed during commit */
+		/* (those that were, were checked before being deleted) */
+		MemoryContextCheck(TopMemoryContext);
+#endif
+
+#ifdef SHOW_MEMORY_STATS
+		/* Print mem stats after each commit for leak tracking */
+		MemoryContextStats(TopMemoryContext);
+#endif
+
+		xact_started = false;
+	}
+}
 
 /*
  * Convenience routines for checking whether a statement is one of the
@@ -3298,10 +3343,27 @@ FloatExceptionHandler(SIGNAL_ARGS)
 	/* We're not returning, so no need to save errno */
 	ereport(ERROR,
 			(errcode(ERRCODE_FLOATING_POINT_EXCEPTION),
-			 errmsg("floating-point exception"),
-			 errdetail("An invalid floating-point operation was signaled. "
-					   "This probably means an out-of-range result or an "
-					   "invalid operation, such as division by zero.")));
+				errmsg("floating-point exception"),
+				errdetail("An invalid floating-point operation was signaled. "
+						"This probably means an out-of-range result or an "
+						"invalid operation, such as division by zero."),
+				errbacktrace()));
+}
+
+void
+YbCriticalSignalHandler(SIGNAL_ARGS)
+{
+	/* reset to default handler */
+	pqsignal(postgres_signal_arg, SIG_DFL);
+
+	ereport(LOG,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("received critical signal %d", postgres_signal_arg),
+				errdetail("The backend received signal %d.", postgres_signal_arg),
+				errbacktrace()));
+
+	/* route to default handler */
+	raise(postgres_signal_arg);
 }
 
 /*
@@ -4796,14 +4858,21 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			ereport(edata->elevel,
-					(errcode(edata->sqlerrcode),
-					 errmsg("%s", edata->message),
-					 edata->detail ? errdetail("%s", edata->detail) : 0,
-					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
-					 (errcontext("Catalog Version Mismatch: A DDL occurred "
-								 "while processing this query. Try again.")) : 0));
+			if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
+			{
+				const char *ddl_error_context =
+					"Catalog Version Mismatch: "
+					"A DDL occurred while processing this query. "
+					"Try again.";
+				MemoryContext oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+				if (edata->context)
+					edata->context = psprintf("%s; %s", edata->context, ddl_error_context);
+				else
+					edata->context = pstrdup(ddl_error_context);
+				MemoryContextSwitchTo(oldcontext);
+			}
+			ThrowErrorData(edata);
 		}
 		else
 		{
@@ -5041,8 +5110,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	edata->detail = psprintf("%s [%s]", edata->detail,
-							 yb_fetch_effective_transaction_isolation_level());
+	/* Only one of detail_log or detail can be set */
+	if (edata->detail_log)
+		edata->detail_log = psprintf("%s [%s]", edata->detail_log,
+									 yb_fetch_effective_transaction_isolation_level());
+	else if (edata->detail)
+		edata->detail = psprintf("%s [%s]", edata->detail,
+								 yb_fetch_effective_transaction_isolation_level());
 
 	if (yb_is_multi_statement_query)
 	{
@@ -5240,21 +5314,14 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (IsYBReadCommitted())
-	{
-		if (YBGetDdlNestingLevel() != 0)
-		{
-			const char *retry_err = ("query layer retries aren't supported "
-									 "for DDLs inside a read committed "
-									 "isolation transaction block");
-
-			edata->message = psprintf("%s (%s)", edata->message, retry_err);
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "%s", retry_err);
-			return false;
-		}
-	}
-	else if (!(is_read || is_dml))
+	/*
+	 * pg_client_session rejects read restarts in DDL mode.
+	 * Retrying in that case is not only wasteful but also results in a non-retryable error
+	 * instead of the expected read restart error. For that reason, reject read restarts
+	 * for non DML statements.
+	 * However, allow retries on conflict errors in read committed isolation.
+	 */
+	if ((!IsYBReadCommitted() || is_read_restart_error) && !(is_read || is_dml))
 	{
 		/*
 		 * if !read committed, we only support retries with
@@ -5537,7 +5604,7 @@ yb_restart_current_stmt(int attempt, bool is_read_restart)
 	}
 	else
 	{
-		HandleYBStatus(YBCPgResetTransactionReadPoint());
+		HandleYBStatus(YBCPgResetTransactionReadPoint(false));
 		yb_maybe_sleep_on_txn_conflict(attempt);
 	}
 }
@@ -6063,7 +6130,8 @@ PostgresMain(const char *dbname, const char *username)
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 		pqsignal(SIGUSR2, SIG_IGN);
 		pqsignal(SIGFPE, FloatExceptionHandler);
-
+		pqsignal(SIGSEGV, YbCriticalSignalHandler);
+		pqsignal(SIGABRT, YbCriticalSignalHandler);
 		/*
 		 * Reset some signals that are accepted by postmaster but not by
 		 * backend
@@ -6485,6 +6553,10 @@ PostgresMain(const char *dbname, const char *username)
 
 			ReadyForQuery(whereToSendOutput);
 			send_ready_for_query = false;
+
+			yb_refresh_stats_before_exec = true;
+
+			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
 		}
 
 		/*
@@ -6603,6 +6675,8 @@ PostgresMain(const char *dbname, const char *username)
 			yb_is_multi_statement_query = false;
 			/* New Query => Did not sent any data for the current query. */
 			YBMarkDataNotSentForCurrQuery();
+			/* Unclamp uncertainty window at the start of each new query. */
+			YBCPgSetClampUncertaintyWindow(false);
 		}
 
 		switch (firstchar)
@@ -7149,7 +7223,19 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				break;
 
-			case 'A':			/* YB: Auth Passthrough Request */
+			case 'A':
+				/*
+				 * YB: Auth Passthrough Request.
+				 * We should have a `startup packet` sent from Connection
+				 * manager queued up to be read in the socket buffer as well.
+				 * This is to mimic normal startup in order to allow reusing as
+				 * much of the original authentication code path as possible.
+				 * Authentication wire protocol after this should look exactly
+				 * like normal authentication, barring the values/existence of
+				 * certain fields in the startup (and subsequent) packets. The
+				 * packet types themselves should match the regular pg startup
+				 * wire protocol.
+				 */
 				if (YbIsClientYsqlConnMgr())
 				{
 					/*
@@ -7168,14 +7254,15 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *host = MyProcPort->remote_host;
 					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
+					List	   *guc_options = MyProcPort->guc_options;
+					char	   *cmdline_options = MyProcPort->cmdline_options;
 
-					/* Update the Port details with the new context. */
-					MyProcPort->user_name =
-						(char *) pq_getmsgstring(&input_message);
-					MyProcPort->database_name =
-						(char *) pq_getmsgstring(&input_message);
-					MyProcPort->remote_host =
-						(char *) pq_getmsgstring(&input_message);
+					/*
+					 * Clear guc_options sent in startup packet for
+					 * control_connection_client/db
+					 */
+					MyProcPort->guc_options = NIL;
+					MyProcPort->cmdline_options = NULL;
 
 					/*
 					 * This will be set when authenticating and needs to be
@@ -7189,8 +7276,6 @@ PostgresMain(const char *dbname, const char *username)
 					 * authentication
 					 */
 					MyProcPort->raddr.addr.ss_family = AF_INET;
-					MyProcPort->yb_is_ssl_enabled_in_logical_conn =
-						pq_getmsgbyte(&input_message) == 'E' ? true : false;
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -7200,27 +7285,78 @@ PostgresMain(const char *dbname, const char *username)
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 					MyProcPort->yb_is_auth_passthrough_req = true;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
 
 					/* Start authentication */
-					start_xact_command();
-					ClientAuthentication(MyProcPort);
-					finish_xact_command();
+					{
+						start_xact_command();
+						/*
+						 * Parse input to populate MyProcPort with new client
+						 * context. Also parse GUC vars. We pass true for the
+						 * ssl_done and gss_done args as this negotiation
+						 * between conn mgr and the control backend is already
+						 * done during control backend startup.
+						 */
+						YbProcessStartupPacket(MyProcPort,
+											   true /* ssl_done */ ,
+											   true /* gss_done */ );
+
+						/*
+						 * Set up a timeout in case a buggy or malicious client
+						 * fails to respond during authentication.  Since we're
+						 * inside a transaction and might do database access, we
+						 * have to use the statement_timeout infrastructure.
+						 */
+						enable_timeout_after(STATEMENT_TIMEOUT,
+											 AuthenticationTimeout * 1000);
+
+						ClientAuthentication(MyProcPort);
+
+						/*
+						 * Done with authentication.  Disable the timeout, and
+						 * log if needed.
+						 * TODO (vikram.damle) (#29817):
+						 * Add connection logging (cf postinit.c:284) and update
+						 * YbGetAuthorizedConnections as done in
+						 * `PerformaAuthentication()`.
+						 */
+						disable_timeout(STATEMENT_TIMEOUT, false);
+
+						/*
+						 * Skip these steps if authentication failed. Normally,
+						 * the backend would just close by passing an ERROR
+						 * level log to ereport, but we pass a WARNING level log
+						 * instead, to avoid closing the control backend. Thus,
+						 * the subsequent steps need to be manually skipped.
+						 */
+						if (!MyProcPort->yb_has_auth_passthrough_failed)
+						{
+							if (YbCreateClientId() == 0)
+								YbAuthPassthroughSetupGUCAndReport();
+						}
+
+						yb_abort_xact_command();
+					}
+
+					/*
+					 * NOTE: We don't need to free previous
+					 * MyProcPort fields since they should be allocated in the
+					 * transaction MemoryContext which has been free'd now
+					 */
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
 					MyProcPort->yb_is_ssl_enabled_in_logical_conn = false;
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
 					MyProcPort->raddr.addr.ss_family = conn_type;
+					MyProcPort->guc_options = guc_options;
+					MyProcPort->cmdline_options = cmdline_options;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
-					/*
-					 * NOTE: We don't need to free previous
-					 * MyProcPort->authn_id since it was allocated in the
-					 * transaction MemoryContext which has been free'd now
-					 */
 					MyProcPort->authn_id = authn_id;
 
 					send_ready_for_query = true;
@@ -7250,6 +7386,41 @@ PostgresMain(const char *dbname, const char *username)
 					if (new_shmem_key > 0)
 						yb_logical_client_shmem_key = new_shmem_key;
 
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 'G':			/* YB: RESET ALL & RESET defaults from ConnMgr */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbSetYsqlConnMgrGucDefaults(input_message.data,
+												input_message.len);
+					finish_xact_command();
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 'g':			/* YB: RESET GUC DEFAULTS from ConnMgr */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbResetYsqlConnMgrGucDefaults();
+					finish_xact_command();
 					send_ready_for_query = true;
 				}
 				else
@@ -7563,6 +7734,12 @@ YbRedactPasswordIfExists(const char *queryStr, CommandTag commandTag)
 	redactedStr[strLen] = '\0';
 
 	return redactedStr;
+}
+
+void
+YBCheckForInterrupts()
+{
+	CHECK_FOR_INTERRUPTS();
 }
 
 long

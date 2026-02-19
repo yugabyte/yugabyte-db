@@ -34,7 +34,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(name)) == 0 {
+		if util.IsEmptyString(name) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No name specified to create alert policy\n",
@@ -45,7 +45,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(templateName)) == 0 {
+		if util.IsEmptyString(templateName) {
 			logrus.Fatal(
 				formatter.Colorize(
 					"No template name specified to create alert policy\n",
@@ -72,7 +72,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 		}
 		targetUUIDs := make([]string, 0)
 		useAllTargets := false
-		if len(strings.TrimSpace(targetUUIDsString)) > 0 {
+		if !util.IsEmptyString(targetUUIDsString) {
 			targetUUIDs = strings.Split(targetUUIDsString, ",")
 			useAllTargets = false
 		} else {
@@ -96,7 +96,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(destinationType)) > 0 {
+		if !util.IsEmptyString(destinationType) {
 			switch destinationType {
 			case "no":
 				destinationType = util.NoDestinationAlertConfigurationDestinationType
@@ -119,15 +119,9 @@ var createConfigurationAlertCmd = &cobra.Command{
 		}
 		rList, response, err := authAPI.ListAlertDestinations().Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Create - List Alert Destinations",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Create - List Alert Destinations")
 		}
-		if len(strings.TrimSpace(destination)) != 0 {
+		if !util.IsEmptyString(destination) {
 			for _, r := range rList {
 				if strings.Compare(r.GetName(), destination) == 0 {
 					destinationUUID = r.GetUuid()
@@ -157,13 +151,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 			},
 		).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Create - List Alert Templates",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Create - List Alert Templates")
 		}
 
 		if len(templates) == 0 {
@@ -197,7 +185,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 			Description:  description,
 			TargetType:   targetType,
 			Target: ybaclient.AlertConfigurationTarget{
-				Uuids: util.StringSliceFromString(targetUUIDs),
+				Uuids: targetUUIDs,
 				All:   util.GetBoolPointer(useAllTargets),
 			},
 			Thresholds:         threshold,
@@ -213,18 +201,17 @@ var createConfigurationAlertCmd = &cobra.Command{
 			CreateAlertConfigurationRequest(reqBody).
 			Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Alert Policy",
-				"Create",
-			)
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert Policy", "Create")
 		}
 
-		alertConfigUUID := r.GetUuid()
+		alertConfig := util.CheckAndDereference(
+			r,
+			fmt.Sprintf("An error occurred while adding alert policy %s", name),
+		)
 
-		if len(strings.TrimSpace(alertConfigUUID)) == 0 {
+		alertConfigUUID := alertConfig.GetUuid()
+
+		if util.IsEmptyString(alertConfigUUID) {
 			logrus.Fatal(formatter.Colorize(
 				fmt.Sprintf(
 					"An error occurred while adding alert policy %s\n",
@@ -239,7 +226,7 @@ var createConfigurationAlertCmd = &cobra.Command{
 		populateAlertDestinationAndTemplates(authAPI, "Create")
 
 		alerts := make([]ybaclient.AlertConfiguration, 0)
-		alerts = append(alerts, r)
+		alerts = append(alerts, alertConfig)
 		alertCtx := formatter.Context{
 			Command: "create",
 			Output:  os.Stdout,
@@ -308,19 +295,19 @@ func buildThresholdObjectFromString(thresholdStrings []string, operation string,
 			val := kvp[1]
 			switch key {
 			case "severity":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					thresholdMap["severity"] = val
 				} else {
 					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "condition":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					thresholdMap["condition"] = val
 				} else {
 					providerutil.ValueNotFoundForKeyError(key)
 				}
 			case "threshold":
-				if len(strings.TrimSpace(val)) != 0 {
+				if !util.IsEmptyString(val) {
 					thresholdMap["threshold"] = val
 				} else {
 					providerutil.ValueNotFoundForKeyError(key)

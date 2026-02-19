@@ -12,7 +12,7 @@ import _ from 'lodash';
 import React, { FC, useState } from 'react';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
-import Close from '../../../../universes/images/close.svg';
+import Close from '../../../../universes/images/close.svg?img';
 import { OptionTypeBase } from 'react-select';
 import { Col, Row } from 'react-bootstrap';
 import { IStorageProviders } from '../IStorageConfigs';
@@ -31,6 +31,7 @@ import './CreateAWSConfigForm.scss';
 import { toast } from 'react-toastify';
 import YBInfoTip from '../../../../common/descriptors/YBInfoTip';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
+import { isS3BackupProxyEnabled } from '../../../../backupv2/common/BackupUtils';
 
 interface CreateAWSConfigFormProps {
   visible: boolean;
@@ -102,9 +103,8 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       .filter((p: any) => p.code === CloudType.aws)
       .map((t: any) => t.regions)
   );
-  const featureFlags = useSelector((state: any) => state.featureFlags);
-  const enableS3BackupProxy =
-    featureFlags.test.enableS3BackupProxy || featureFlags.released.enableS3BackupProxy;
+  const runtimeConfigs = useSelector((state: any) => state.customer.runtimeConfigs);
+  const enableS3BackupProxy = isS3BackupProxyEnabled(runtimeConfigs?.data);
 
   const isEditMode = !isEmpty(editInitialValues);
 

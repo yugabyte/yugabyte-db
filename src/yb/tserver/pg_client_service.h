@@ -80,6 +80,7 @@ class TserverXClusterContextIf;
     (IsObjectPartOfXRepl) \
     (ListClones) \
     (ListLiveTabletServers) \
+    (ListSlotEntries) \
     (ListReplicationSlots) \
     (ReadSequenceTuple) \
     (ReserveOids) \
@@ -100,6 +101,7 @@ class TserverXClusterContextIf;
     (ExportTxnSnapshot) \
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
+    (GetYbSystemTableInfo) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \
@@ -113,7 +115,6 @@ class TserverXClusterContextIf;
     (OpenTable) \
     (GetTableKeyRanges) \
     /**/
-
 
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
@@ -132,7 +133,8 @@ class PgClientServiceImpl : public PgClientServiceIf {
   ~PgClientServiceImpl();
 
   void Perform(
-      const PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext context) override;
+      const PgPerformRequestMsg* req, PgPerformResponseMsg* resp,
+      rpc::RpcContext context) override;
 
   void InvalidateTableCache();
   void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,

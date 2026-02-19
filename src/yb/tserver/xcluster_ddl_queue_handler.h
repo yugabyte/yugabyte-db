@@ -20,6 +20,7 @@
 #include <vector>
 
 #include <rapidjson/document.h>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
@@ -31,7 +32,7 @@ namespace tserver {
 
 struct XClusterOutputClientResponse;
 
-typedef std::function<void(HybridTime)> UpdateSafeTimeFunc;
+using UpdateSafeTimeFunc = std::function<void (HybridTime)>;
 
 struct XClusterDDLQueryInfo {
   int64 ddl_end_time;
@@ -46,19 +47,22 @@ struct XClusterDDLQueryInfo {
 
   struct RelationInfo {
     std::string relation_name;
+    std::string relation_pgschema_name;
     PgOid relfile_oid;
     ColocationId colocation_id;
     bool is_index;
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(relation_name, relfile_oid, colocation_id, is_index);
+      return YB_STRUCT_TO_STRING(
+          relation_name, relation_pgschema_name, relfile_oid, colocation_id, is_index);
     }
   };
   std::vector<RelationInfo> relation_map;
+  std::map<std::string, std::string> variables;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         query, ddl_end_time, query_id, version, command_tag, schema, user, json_for_oid_assignment,
-        is_manual_execution, relation_map);
+        is_manual_execution, relation_map, variables);
   }
 };
 
@@ -174,7 +178,7 @@ class XClusterDDLQueueHandler {
   // Keep track of how many times we've repeatedly failed a DDL.
   int num_fails_for_this_ddl_ = 0;
   std::optional<QueryIdentifier> last_failed_query_;
-  Status last_failed_status_;
+  Status original_failed_status_;
 
   // Cache of the DDL batch in replicated_ddl table. This only set when we are certain that it is up
   // to date with the persisted state. It is set to nullopt in all other cases and needs to be

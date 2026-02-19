@@ -65,14 +65,12 @@ func buildClusters(
 	providerListRequest := authAPI.GetListOfProviders()
 	providerListRequest = providerListRequest.ProviderCode(strings.ToLower(providerType))
 	providerName := v1.GetString("provider-name")
-	if strings.TrimSpace(providerName) != "" {
+	if !util.IsEmptyString(providerName) {
 		providerListRequest = providerListRequest.Name(providerName)
 	}
 	providerListResponse, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err,
-			"Universe", "Create - Fetch Providers")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, "Universe", "Create - Fetch Providers")
 	}
 	if len(providerListResponse) < 1 {
 		return nil, fmt.Errorf("no provider with name %s found", providerName)
@@ -91,9 +89,7 @@ func buildClusters(
 	if providerType == util.OnpremProviderType {
 		onpremInstanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe",
-				"Create - Fetch Instance Types")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create - Fetch Instance Types")
 		}
 		if len(onpremInstanceTypes) > 0 {
 			onpremInstanceTypeDefault = onpremInstanceTypes[0]
@@ -101,7 +97,7 @@ func buildClusters(
 	}
 
 	cpuArch := v1.GetString("cpu-architecture")
-	if len(strings.TrimSpace(cpuArch)) == 0 {
+	if util.IsEmptyString(cpuArch) {
 		cpuArch = util.X86_64
 	}
 
@@ -402,9 +398,7 @@ func buildClusters(
 
 		r, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Create - Fetch Releases")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create - Fetch Releases")
 		}
 
 		sortedReleases := release.SortReleasesWithMetadata(r)
@@ -421,20 +415,29 @@ func buildClusters(
 
 	accessKeyCode := v1.GetString("access-key-code")
 
+	// Check if provider is on-prem with skipProvisioning enabled
+	providerDetails := providerUsed.GetDetails()
+	isOnpremManualProvisioning := providerType == util.OnpremProviderType &&
+		providerDetails.GetSkipProvisioning()
+
 	if len(accessKeyCode) == 0 && providerType != util.K8sProviderType {
 		r, response, err := authAPI.List(providerUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err,
-				"Universe", "Create - Fetch Access Keys")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create - Fetch Access Keys")
 		}
 		if len(r) < 1 {
-			return nil, fmt.Errorf("no Access keys found")
+			// Access keys are optional for on-prem providers with skipProvisioning enabled
+			if !isOnpremManualProvisioning {
+				return nil, fmt.Errorf("no Access keys found")
+			}
+			logrus.Info("No access keys found, continuing without access key " +
+				"(on-prem manual provisioning)\n")
+		} else {
+			idKey := r[0].GetIdKey()
+			accessKeyCode = idKey.GetKeyCode()
+			logrus.Info("Using access key: ",
+				formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 		}
-		idKey := r[0].GetIdKey()
-		accessKeyCode = idKey.GetKeyCode()
-		logrus.Info("Using access key: ",
-			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
 	} else if len(accessKeyCode) > 0 {
 		logrus.Info("Using access key: ",
 			formatter.Colorize(accessKeyCode, formatter.GreenColor), "\n")
@@ -507,7 +510,7 @@ func buildClusters(
 
 	masterGFlagsString := v1.GetString("master-gflags")
 	var masterGFlags map[string]string
-	if len(strings.TrimSpace(masterGFlagsString)) > 0 {
+	if !util.IsEmptyString(masterGFlagsString) {
 		if strings.HasPrefix(strings.TrimSpace(masterGFlagsString), "{") {
 			masterGFlags = universeutil.ProcessGFlagsJSONString(masterGFlagsString, "Master")
 		} else {
@@ -539,7 +542,7 @@ func buildClusters(
 	}
 
 	var tserverGflagsMapOfMaps map[string]map[string]string
-	if strings.TrimSpace(tserverGflagsString) != "" {
+	if !util.IsEmptyString(tserverGflagsString) {
 		if err := universeutil.ProcessTServerGFlagsFromString(
 			tserverGflagsString, &tserverGflagsMapOfMaps); err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -581,6 +584,16 @@ func buildClusters(
 			}
 		} else {
 			logrus.Debug("Not a valid cluster type, ignoring value\n")
+		}
+	}
+
+	// If user provided only primary tserver gflags (no async), read replica should inherit from primary
+	if noOfClusters == 2 && len(tserverGflagsMapOfMaps) == 1 {
+		for k := range tserverGflagsMapOfMaps {
+			if strings.EqualFold(k, util.PrimaryClusterType) {
+				tserverGFlagsList[1] = tserverGFlagsList[0]
+				specificGFlagsList[1].SetInheritFromPrimary(true)
+			}
 		}
 	}
 
@@ -628,7 +641,7 @@ func buildClusters(
 
 				ReplicationFactor: util.GetInt32Pointer(int32(rfs[i])),
 				NumNodes:          util.GetInt32Pointer(int32(nodes[i])),
-				RegionList:        util.StringSliceFromString(regions[i]),
+				RegionList:        regions[i],
 				PreferredRegion:   util.GetStringPointer(preferredRegions[i]),
 				AwsArnString:      util.GetStringPointer(awsARNString),
 
@@ -928,7 +941,7 @@ func setDefaultStorageTypes(
 
 func getProviderType() {
 	providerType = v1.GetString("provider-code")
-	if len(strings.TrimSpace(providerType)) == 0 {
+	if util.IsEmptyString(providerType) {
 		logrus.Fatalln(formatter.Colorize("No provider code found\n", formatter.RedColor))
 	}
 	if strings.Compare(providerType, "azure") == 0 || strings.Compare(providerType, "az") == 0 {
@@ -1016,7 +1029,7 @@ func buildKMSConfigs(authAPI *ybaAuthClient.AuthAPIClient) string {
 			opType = util.EnableOpType
 			kmsConfigName := v1.GetString("kms-config")
 			// find kmsConfigUUID from the name
-			if len(strings.TrimSpace(kmsConfigName)) == 0 {
+			if util.IsEmptyString(kmsConfigName) {
 				logrus.Fatalf(formatter.Colorize(
 					"No kms config name found to create universe, "+
 						"use --cloud-volume-encryption-kms-config or --encryption-at-rest-kms-config\n",

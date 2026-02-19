@@ -67,9 +67,9 @@ class PgStatActivityTest : public LibPqTestBase {
   }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
-    auto opt_txn_id =
-        VERIFY_RESULT(conn->FetchRow<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
-    return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
+    auto [pid, txn] = VERIFY_RESULT((conn->FetchRow<int32_t, std::optional<Uuid>>(
+        "SELECT pg_backend_pid(), yb_get_current_transaction()")));
+    return TxnInfo{pid, txn.value_or(Uuid::Nil())};
   }
 
   static Result<Uuid> GetTransactionId(PGConn* conn) {

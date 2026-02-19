@@ -62,6 +62,14 @@ skip_tls_verify() {
     fi
 }
 
+dump_response_contents() {
+    if [ -f response.txt ]; then
+        echo -e "Response contents:\n"
+        cat response.txt
+        echo -e "\n"
+    fi
+}
+
 tls_verify_option=$(skip_tls_verify "$yba_url")
 
 readarray -t headers <<< "$(_get_headers "$token")"
@@ -105,14 +113,18 @@ if test -f "{{ tmp_directory }}/create_provider.json"; then
             # Check if provider creation failed
             if [ "$usability_state" != "READY" ]; then
                 echo "Provider Creation failed"
+                dump_response_contents
                 exit 1
             fi
         else
+            print_response_exit_on_error "$http_status" "$response_body"
             echo "Error: GET request failed with HTTP status $http_status"
+            dump_response_contents
             exit 1
         fi
     else
         echo "Error: POST request failed with HTTP status $http_status"
+        dump_response_contents
         exit 1
     fi
     echo "Provider created successfully"
@@ -153,14 +165,17 @@ if test -f "{{ tmp_directory }}/update_provider.json"; then
             # Check if provider creation failed
             if [ "$usability_state" != "READY" ]; then
                 echo "Provider Creation failed"
+                dump_response_contents
                 exit 1
             fi
         else
             echo "Error: GET request failed with HTTP status $http_status"
+            dump_response_contents
             exit 1
         fi
     else
         echo "Error: PUT request failed with HTTP status $http_status"
+        dump_response_contents
         exit 1
     fi
     echo "Provider updated successfully"
@@ -181,6 +196,7 @@ if test -f "{{ tmp_directory }}/create_instance.json"; then
         echo "Instance created successfully"
     else
         echo "Error: POST request failed with HTTP status $http_status"
+        dump_response_contents
         exit 1
     fi
 fi
@@ -194,8 +210,7 @@ airgap_flag=""
 
 installer_dir="{{ yb_home_dir }}/.install"
 # Check if root systemd unit exists.
-root_unit_exists=$(systemctl list-units | grep -F yb-node-agent.service)
-if [ -n "$root_unit_exists" ]; then
+if systemctl list-units | grep -F yb-node-agent.service; then
     # Uninstall root unit as node-agent-installer.sh run as non-root cannot handle it.
     echo "Uninstalling root systemd unit of node agent service"
     $installer_dir/node-agent-installer.sh -c uninstall -u {{ url }} -t {{ api_key }} \
@@ -216,12 +231,15 @@ else
   exit 1
 fi
 
-loginctl enable-linger {{ yb_user }}
+if ! loginctl enable-linger {{ yb_user }}; then
+    echo "Failed to enable linger for user {{ yb_user }}"
+    exit 1
+fi
 
 if [ $? -eq 0 ]; then
   echo "Node agent service installation successful"
 else
-  echo "Error: Node agent serviceinstallation failed"
+  echo "Error: Node agent service installation failed"
   exit 1
 fi
 
@@ -247,6 +265,7 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
         done
     else
         echo "Error: GET request failed with HTTP status $http_status"
+        dump_response_contents
         exit 1
     fi
 
@@ -283,6 +302,7 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
             # Check if zone_uuid was found
             if [ -z "$zone_uuid" ]; then
                 echo "Zone with code {{ provider_region_zone_name }} not found"
+                dump_response_contents
                 exit 1
             fi
 
@@ -292,15 +312,16 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
                 "${header_options[@]}" -d "$add_node_data" \
                 $tls_verify_option "$add_node_url")
             http_status="${response:(-3)}"
-
             if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
                 echo "Node added successfully"
             else
-                echo "Error: POST request failed with HTTP status $http_status"
+                echo "Error: POST request to add node failed with HTTP status $http_status"
+                dump_response_contents
                 exit 1
             fi
         else
-            echo "Error: POST request failed with HTTP status $http_status"
+            echo "Error: POST request to get provider failed with HTTP status $http_status"
+            dump_response_contents
             exit 1
         fi
     fi

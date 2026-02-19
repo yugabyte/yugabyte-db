@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -24,6 +25,7 @@ import io.yugabyte.operator.v1alpha1.storageconfigspec.AzureStorageSasTokenSecre
 import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
@@ -41,6 +43,19 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   private final CustomerConfigService ccs;
   private final String namespace;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The current storage config resource being reconciled, used for associating secret dependencies.
+  private KubernetesResourceDetails currentReconcileResource;
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public StorageConfigReconciler(
       SharedIndexInformer<StorageConfig> scInformer,
@@ -82,9 +97,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
         iamFieldName = CustomerConfigConsts.USE_S3_IAM_FIELDNAME;
       } else if (configType.equals(CustomerConfigConsts.NAME_GCS)) {
         iamFieldName = CustomerConfigConsts.USE_GCP_IAM_FIELDNAME;
+      } else if (configType.equals(CustomerConfigConsts.NAME_AZURE)) {
+        iamFieldName = CustomerConfigConsts.USE_AZURE_IAM_FIELDNAME;
       } else {
         throw new RuntimeException(
-            String.format("IAM only works with S3/GCS but %s config type used", configType));
+            String.format("IAM only works with S3/GCS/AZ but %s config type used", configType));
       }
       object.put(iamFieldName, useIAM);
     }
@@ -100,14 +117,15 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
     status.setSuccess(success);
     status.setMessage(message);
-    UUID currentconfigUUID;
-    try {
-      currentconfigUUID = UUID.fromString(sc.getStatus().getResourceUUID());
-    } catch (Exception e) {
-      currentconfigUUID = null;
+    UUID currentconfigUUID = null;
+    if (status.getResourceUUID() != null) {
+      try {
+        currentconfigUUID = UUID.fromString(status.getResourceUUID());
+      } catch (Exception e) {
+        // ignore invalid UUID
+      }
     }
     // Don't overwrite configUUID once set.
-
     if (currentconfigUUID == null) {
       status.setResourceUUID(configUUID);
     }
@@ -121,6 +139,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (awsSecret != null) {
       Secret secret = operatorUtils.getSecret(awsSecret.getName(), awsSecret.getNamespace());
       if (secret != null) {
+        resourceTracker.trackDependency(currentReconcileResource, secret);
+        log.trace(
+            "Tracking AWS secret {} as dependency of {}",
+            secret.getMetadata().getName(),
+            currentReconcileResource);
         String awsSecretKey =
             operatorUtils.parseSecretForKey(secret, AWS_SECRET_ACCESS_KEY_SECRET_KEY);
         configObject.put("AWS_SECRET_ACCESS_KEY", awsSecretKey);
@@ -133,6 +156,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (gcsSecret != null) {
       Secret secret = operatorUtils.getSecret(gcsSecret.getName(), gcsSecret.getNamespace());
       if (secret != null) {
+        resourceTracker.trackDependency(currentReconcileResource, secret);
+        log.trace(
+            "Tracking GCS secret {} as dependency of {}",
+            secret.getMetadata().getName(),
+            currentReconcileResource);
         String gcsSecretKey =
             operatorUtils.parseSecretForKey(secret, GCS_CREDENTIALS_JSON_SECRET_KEY);
         configObject.put("GCS_CREDENTIALS_JSON", gcsSecretKey);
@@ -145,6 +173,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     if (azureSecret != null) {
       Secret secret = operatorUtils.getSecret(azureSecret.getName(), azureSecret.getNamespace());
       if (secret != null) {
+        resourceTracker.trackDependency(currentReconcileResource, secret);
+        log.trace(
+            "Tracking Azure secret {} as dependency of {}",
+            secret.getMetadata().getName(),
+            currentReconcileResource);
         String azureSecretKey =
             operatorUtils.parseSecretForKey(secret, AZURE_STORAGE_SAS_TOKEN_SECRET_KEY);
         configObject.put("AZURE_STORAGE_SAS_TOKEN", azureSecretKey);
@@ -162,6 +195,12 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
         return;
       }
     }
+
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(sc);
+    resourceTracker.trackResource(sc);
+    currentReconcileResource = resourceDetails;
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     String cuuid;
     String value = sc.getSpec().getConfig_type().getValue();
     String name = value.split("_")[1];
@@ -179,6 +218,24 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       String configName = sc.getMetadata().getName();
       if (sc.getSpec().getName() != null) {
         configName = OperatorUtils.kubernetesCompatName(sc.getSpec().getName());
+      }
+      if (sc.getMetadata().getAnnotations() != null
+          && sc.getMetadata()
+              .getAnnotations()
+              .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+        if (CustomerConfig.get(
+                UUID.fromString(cuuid),
+                UUID.fromString(
+                    sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID)))
+            != null) {
+          log.info("Storage config {} is already controlled by the operator, ignoring", configName);
+          updateStatus(
+              sc,
+              true,
+              sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID),
+              "Storage Config already controlled by the operator");
+          return;
+        }
       }
       CustomerConfig existingConfig = CustomerConfig.get(UUID.fromString(cuuid), configName);
       if (existingConfig != null) {
@@ -207,9 +264,27 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   @Override
   public void onUpdate(StorageConfig oldSc, StorageConfig newSc) {
     log.info("Updating a storage config");
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    resourceTracker.trackResource(newSc);
     ObjectMapper objectMapper = new ObjectMapper();
     String cuuid;
-    String configUUID = oldSc.getStatus().getResourceUUID();
+    String configUUID = null;
+    if (oldSc.getStatus() != null && oldSc.getStatus().getResourceUUID() != null) {
+      configUUID = oldSc.getStatus().getResourceUUID();
+    }
+    if (newSc.getMetadata().getAnnotations() != null
+        && newSc
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      configUUID = newSc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID);
+    }
+    if (configUUID == null) {
+      log.warn(
+          "Cannot update storage config {}: no resource UUID in status or annotations",
+          oldSc.getMetadata().getName());
+      return;
+    }
 
     try {
       cuuid = operatorUtils.getCustomerUUID();
@@ -237,6 +312,11 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   @Override
   public void onDelete(StorageConfig sc, boolean deletedFinalStateUnknown) {
     log.info("Deleting a storage config");
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(sc);
+    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    log.info(
+        "Untracked storage config {} and orphaned dependencies: {}", resourceDetails, orphaned);
+
     String cuuid;
     try {
       cuuid = operatorUtils.getCustomerUUID();
@@ -244,7 +324,20 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
       log.info("Failed deleting storageconfig {}, ", e.getMessage());
       return;
     }
-    String configUUID = sc.getStatus().getResourceUUID();
+    String configUUID = null;
+    if (sc.getStatus() != null && sc.getStatus().getResourceUUID() != null) {
+      configUUID = sc.getStatus().getResourceUUID();
+    }
+    if (sc.getMetadata().getAnnotations() != null
+        && sc.getMetadata().getAnnotations().containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      configUUID = sc.getMetadata().getAnnotations().get(ResourceAnnotationKeys.YBA_RESOURCE_ID);
+    }
+    if (configUUID == null) {
+      log.warn(
+          "Cannot delete storage config {}: no resource UUID in status or annotations",
+          sc.getMetadata().getName());
+      return;
+    }
     ccs.delete(UUID.fromString(cuuid), UUID.fromString(configUUID));
     log.info("Done deleting storage config  {} {}", sc.getMetadata().getName(), configUUID);
   }

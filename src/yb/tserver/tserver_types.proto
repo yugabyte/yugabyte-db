@@ -127,6 +127,10 @@ message TabletServerErrorPB {
 
     // This tablet's partition is too small to split (e.g. if it only contains 1 hash code).
     TABLET_SPLIT_KEY_RANGE_TOO_SMALL = 31;
+
+    // The tablet server either does not have a live ysql lease or it does not have the expected
+    // lease epoch. It cannot service a lock acquire / release request.
+    INVALID_YSQL_LEASE = 32;
   }
 
   // The error code.

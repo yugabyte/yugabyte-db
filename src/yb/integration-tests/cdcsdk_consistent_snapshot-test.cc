@@ -114,7 +114,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishmentYbAdminYsq
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNameFromCreateReplicationSlot) {
   ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(USE_SNAPSHOT,
+  ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(EXPORT_SNAPSHOT,
       true /* verify_snapshot_name */));
   ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot(NOEXPORT_SNAPSHOT,
       true /* verify_snapshot_name */));
@@ -127,6 +127,7 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) = poll_catalog_tables;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
@@ -316,6 +317,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_rpc_timeout_sec) = 30 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
   yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
@@ -368,10 +370,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) 
 TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   google::SetVLOGLevel("tablet*", 1);
   SyncPoint::GetInstance()->LoadDependency(
       {{"Tablet::SetAllInitialCDCSDKRetentionBarriers::End", "UpdatePeersAndMetrics::Start"},
-       {"UpdateTabletPeersWithMaxCheckpoint::Done",
+       {"TabletPeer::reset_all_cdc_retention_barriers_if_stale::End",
         "PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start"}});
   SyncPoint::GetInstance()->EnableProcessing();
 
@@ -641,7 +644,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotWithInvalidFromOpId) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -771,8 +774,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestLeadershipChangeDuringSnapshot) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
 
@@ -835,7 +838,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, InsertedRowInbetweenSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
 
@@ -903,13 +906,12 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
   // cdc_state table, so that stream should not expire if the snapshot operation takes longer than
   // the stream expiry time.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;  // 20 seconds
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
-  // Inserting 1000 rows, so that there will be 100 snapshot batches each with
-  // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
+  // Inserting 1000 rows.
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
@@ -957,7 +959,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
@@ -1059,7 +1061,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNoData) {
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 10_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -1109,7 +1111,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCommitTimeRecordTimeAndNoSafepointRecordForSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_records_threshold_size_bytes) = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
@@ -1255,7 +1257,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
-  FLAGS_cdc_snapshot_batch_size = 10;
+  FLAGS_cdc_snapshot_records_threshold_size_bytes = 1_KB;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
 
@@ -1414,6 +1416,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
   // Since the test requires the state table entries to verify the release of resources, we disable
   // the cleanup of not of interest tables for this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -1464,7 +1467,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
   //  3) Retention barriers on tablet1 must be in place
   //  4) Retention barriers on tablet2 should be released
   //  5) GetChanges on stream_id should work for both tablet1 and tablet2
-  SleepFor(MonoDelta::FromSeconds(5));
+  SleepFor(MonoDelta::FromSeconds(7));
   ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
       cs_stream_id, tablets1[0].tablet_id(), test_client()));
   ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
@@ -1484,6 +1487,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   ASSERT_OK(SetUpWithParams(1, 1, false));
   const uint32_t num_tablets = 1;
@@ -1527,7 +1531,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 
   // Now, sleep and make stream indicate no interest in all tablets
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
-  SleepFor(MonoDelta::FromSeconds(8));
+  SleepFor(MonoDelta::FromSeconds(15));
 
   // Check that retention barriers have been released on parent and child tablets
   for (const auto& tablet : {tablets[0], tablets_after_split[0], tablets_after_split[1]}) {
@@ -1544,6 +1548,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
 TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 120;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
@@ -1559,7 +1564,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) 
 }
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_pg_export_snapshot) = true;
   auto slot_name = "logical_repl_slot_export_snapshot";
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -1613,6 +1617,54 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateReplicationSlotExportSnapshot) {
   LOG(INFO) << "Got " << rows_in_import_transaction << " rows after setting snapshot";
   // After setting snapshot, we should see exactly the same number of rows as reads_snapshot.
   ASSERT_EQ(rows_in_import_transaction, reads_snapshot);
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestUseSnapshotWithTransaction) {
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 101 /* end */, &test_cluster_, true));
+
+  auto repl_conn = ASSERT_RESULT(test_cluster_.ConnectToDBWithReplication(kNamespaceName));
+  // Start a transaction with REPEATABLE READ isolation (required for USE_SNAPSHOT)
+  ASSERT_OK(repl_conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+
+  std::string slot_name = "test_use_snapshot_slot";
+  auto result = ASSERT_RESULT(repl_conn.FetchFormat(
+      "CREATE_REPLICATION_SLOT $0 LOGICAL pgoutput USE_SNAPSHOT", slot_name));
+
+  auto snapshot_name =
+      ASSERT_RESULT(pgwrapper::GetValue<std::optional<std::string>>(result.get(), 0, 2));
+  ASSERT_TRUE(snapshot_name.has_value());
+  LOG(INFO) << "USE_SNAPSHOT returned snapshot name: " << *snapshot_name;
+
+  auto stream_id = ASSERT_RESULT(repl_conn.FetchRow<std::string>(
+      Format("SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = '$0'", slot_name)));
+  auto xrepl_stream_id = ASSERT_RESULT(xrepl::StreamId::FromString(stream_id));
+
+  auto resp = ASSERT_RESULT(GetCDCStream(xrepl_stream_id));
+  auto cstime = resp.stream().cdcsdk_consistent_snapshot_time();
+
+  ASSERT_EQ(*snapshot_name, std::to_string(cstime));
+  LOG(INFO) << "Verified: snapshot_name (" << *snapshot_name
+            << ") matches consistent_snapshot_time (" << cstime << ")";
+
+  ASSERT_OK(repl_conn.Execute("COMMIT"));
+
+  ASSERT_OK(WriteRowsHelper(101 /* start */, 201 /* end */, &test_cluster_, true));
+
+  auto cp_resp = ASSERT_RESULT
+  (GetCDCSDKSnapshotCheckpoint(xrepl_stream_id, tablets[0].tablet_id()));
+
+  GetChangesResponsePB change_resp;
+  uint32_t reads_snapshot = ASSERT_RESULT(
+      ConsumeSnapshotAndVerifyCounts(xrepl_stream_id, tablets, cp_resp, &change_resp));
+  LOG(INFO) << "Snapshot READs: " << reads_snapshot;
+  ASSERT_EQ(reads_snapshot, 100);
+
+  uint32_t inserts = ASSERT_RESULT(
+      ConsumeInsertsAndVerifyCounts(xrepl_stream_id, tablets, change_resp));
+  LOG(INFO) << "INSERTs after snapshot: " << inserts;
+  ASSERT_EQ(inserts, 100);
 }
 
 }  // namespace cdc

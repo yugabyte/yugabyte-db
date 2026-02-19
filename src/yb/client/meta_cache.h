@@ -47,6 +47,8 @@
 
 #include "yb/dockv/partition.h"
 #include "yb/common/tablespace_parser.h"
+
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -201,7 +203,7 @@ struct RemoteReplica {
   std::string ToString() const;
 };
 
-typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
+using TabletServerMap = UnorderedStringMap<TabletServerId, std::unique_ptr<RemoteTabletServer>>;
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
@@ -260,11 +262,10 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB_ReplicaPB>& replicas);
 
   // Update this tablet's replica locations with raft_config from a Tablet Server.
+  template <class RaftPB, class ConsensusPB>
   Status RefreshFromRaftConfig(
-      const TabletServerMap& tservers,
-      const consensus::RaftConfigPB& raft_config,
-      const consensus::ConsensusStatePB& consensus_state
-  );
+      const TabletServerMap& tservers, const RaftPB& raft_config,
+      const ConsensusPB& consensus_state);
 
   // Mark this tablet as stale, indicating that the cached tablet metadata is
   // out of date. Staleness is checked by the MetaCache when
@@ -661,7 +662,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // the latest host/port info for a server.
   void UpdateTabletServerUnlocked(const master::TSInfoPB& pb) REQUIRES(mutex_);
 
-  Status UpdateTabletServerWithRaftPeerUnlocked(const consensus::RaftPeerPB& pb) REQUIRES(mutex_);
+  template <class PB>
+  Status UpdateTabletServerWithRaftPeerUnlocked(const PB& pb) REQUIRES(mutex_);
 
   // Notify appropriate callbacks that lookup of specified partition group of specified table
   // was failed because of specified status.
@@ -729,10 +731,15 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   void RefreshTablePartitions(const std::shared_ptr<YBTable>& table, StdStatusCallback callback);
 
+  void InvalidateVectorIndexes(const YBTable& indexed_table);
+
   Result<RemoteTabletPtr> ProcessTabletLocation(
       const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,
       const std::optional<PartitionListVersion>& table_partition_list_version,
       LookupRpc* lookup_rpc) REQUIRES(mutex_);
+
+  template <class PB>
+  Status DoRefreshTabletInfoWithConsensusInfo(const PB& tablet_consensus_info);
 
   YBClient* const client_;
 
@@ -751,15 +758,15 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   RemoteTabletServer* local_tserver_ = nullptr;
 
   // Cache of tablets, keyed by table ID, then by start partition key.
-  std::unordered_map<TableId, TableData> tables_ GUARDED_BY(mutex_);
+  UnorderedStringMap<TableId, TableData> tables_ GUARDED_BY(mutex_);
 
   // Cache of tablets, keyed by tablet ID.
-  std::unordered_map<TabletId, RemoteTabletPtr> tablets_by_id_ GUARDED_BY(mutex_);
+  UnorderedStringMap<TabletId, RemoteTabletPtr> tablets_by_id_ GUARDED_BY(mutex_);
 
-  std::unordered_map<TabletId, LookupDataGroup> tablet_lookups_by_id_ GUARDED_BY(mutex_);
+  UnorderedStringMap<TabletId, LookupDataGroup> tablet_lookups_by_id_ GUARDED_BY(mutex_);
 
   // Cache of deleted tablets.
-  std::unordered_set<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
+  UnorderedStringSet<TabletId> deleted_tablets_ GUARDED_BY(mutex_);
 
   // Prevents master lookup "storms" by delaying master lookups when all
   // permits have been acquired.

@@ -47,7 +47,7 @@ QLRocksDBStorage::QLRocksDBStorage(
 //--------------------------------------------------------------------------------------------------
 
 Status QLRocksDBStorage::GetIterator(
-    const QLReadRequestPB& request,
+    const QLReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
@@ -63,7 +63,7 @@ Status QLRocksDBStorage::GetIterator(
 }
 
 Status QLRocksDBStorage::BuildYQLScanSpec(
-    const QLReadRequestPB& request, const ReadHybridTime& read_time, const Schema& schema,
+    const QLReadRequestMsg& request, const ReadHybridTime& read_time, const Schema& schema,
     const bool include_static_columns, std::unique_ptr<qlexpr::QLScanSpec>* spec,
     std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // Populate dockey from QL key columns.
@@ -190,7 +190,7 @@ Result<std::unique_ptr<YQLRowwiseIteratorIf>> QLRocksDBStorage::GetIteratorForYb
 }
 
 Status QLRocksDBStorage::GetIterator(
-    const PgsqlReadRequestPB& request,
+    const PgsqlReadRequestMsg& request,
     const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,

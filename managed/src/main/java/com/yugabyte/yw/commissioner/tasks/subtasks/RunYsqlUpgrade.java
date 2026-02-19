@@ -15,7 +15,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
@@ -48,19 +47,12 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
   public static final String USE_SINGLE_CONNECTION_PARAM =
       "yb.upgrade.single_connection_ysql_upgrade";
 
-  private static final String USE_SINGLE_CONNECTION_ARG = "use_single_connection";
-
-  private final NodeUniverseManager nodeUniverseManager;
-
   private final YbClientConfigFactory ybClientConfigFactory;
 
   @Inject
   protected RunYsqlUpgrade(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      YbClientConfigFactory ybClientConfigFactory) {
+      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybClientConfigFactory) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.ybClientConfigFactory = ybClientConfigFactory;
   }
 

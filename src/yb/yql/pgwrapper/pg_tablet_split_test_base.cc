@@ -119,7 +119,7 @@ Result<TabletId> PgTabletSplitTestBase::GetOnlyTabletId(const TableId& table_id)
 Status PgTabletSplitTestBase::SplitTablet(const TabletId& tablet_id) {
   auto epoch = VERIFY_RESULT(catalog_manager())->GetLeaderEpochInternal();
   return VERIFY_RESULT(catalog_manager())->SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, epoch);
+      tablet_id, master::ManualSplit::kTrue, cluster_->GetSplitFactor(), epoch);
 }
 
 Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {

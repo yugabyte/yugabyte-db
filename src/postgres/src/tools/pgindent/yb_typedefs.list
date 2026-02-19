@@ -51,6 +51,7 @@ YbBucketTupleInfo
 YbBundleInfo
 YbCRSLsnType
 YbCRSOrderingMode
+YbCacheReplacementAlgorithmEnum
 YbCatCListIterator
 YbCatCacheInfo
 YbCatNamePfId
@@ -114,6 +115,8 @@ YbInstrumentation
 YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
+YbJumbleState
+YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
@@ -122,6 +125,7 @@ YbNLBucketInfo
 YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
+YbObjectLockMode
 YbOidAssignmentMapEntry
 YbOptSplit
 YbOptionalReadPointHandle
@@ -145,10 +149,20 @@ YbPgRpcStats
 YbPgssCounters
 YbPgssFillInConstantLengths
 YbPlanInfo
+YbPlanStatePtr
 YbPrefetcherStarterFunctor
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
+YbQpmConfiguration
+YbQpmHashEntry
+YbQpmHashKey
+YbQpmInfoEntry
+YbQpmLruClock
+YbQpmLruEntry
+YbQpmSharedState
+YbQpmTiming
+YbQpmTrackEnum
 YbQueryConstantsMetadata
 YbQueryDiagnosticsBundles
 YbQueryDiagnosticsEntry
@@ -182,6 +196,7 @@ YbSplitType
 YbStatLabel
 YbStatLabelData
 YbStatementType
+YbSubstituteContext
 YbSysCatalogModificationAspect
 YbSysScanBase
 YbSysScanBaseData
@@ -223,7 +238,9 @@ YbcCloneInfo
 YbcConnectionMetrics
 YbcConstSliceSet
 YbcConstSliceVector
+YbcCreateMemoryContextFn
 YbcCstringToTextWithLenFn
+YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
@@ -315,7 +332,10 @@ YbcSamplingAlgorithmEnum
 YbcServerDescriptor
 YbcSliceSet
 YbcSliceVector
+YbcSlotEntryDescriptor
+YbcSortKey
 YbcStatus
+YbcSwitchMemoryContextFn
 YbcTableProperties
 YbcTablePropertiesData
 YbcTcmallocStats

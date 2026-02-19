@@ -920,10 +920,6 @@ main(int argc, char **argv)
 
 	fout->numWorkers = numWorkers;
 
-	/* YB */
-	if (dopt.cparams.pghost == NULL || dopt.cparams.pghost[0] == '\0')
-		dopt.cparams.pghost = DefaultHost;
-
 	/*
 	 * Open the database using the Archiver, so it knows about it. Errors mean
 	 * death.
@@ -5385,7 +5381,7 @@ yb_binary_upgrade_preserve_index_tablegroup_oid(Archive *fout,
 							  "SELECT pg_catalog.yb_binary_upgrade_set_next_colocation_id('%u'::pg_catalog.oid);\n",
 							  yb_properties->colocation_id);
 		}
-		else
+		else if (yb_properties->tablegroup_oid != 0)
 		{
 			appendPQExpBufferStr(buffer,
 								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
@@ -10743,7 +10739,8 @@ dumpRelationStats_dumper(Archive *fout, const void *userArg, const TocEntry *te)
 		if (!PQgetisnull(res, rownum, i_elem_count_histogram))
 			appendNamedArgument(out, fout, "elem_count_histogram", "real[]",
 								PQgetvalue(res, rownum, i_elem_count_histogram));
-		if (fout->remoteVersion >= 170000)
+		if (fout->remoteVersion >= 170000 ||
+			(IsYugabyteEnabled && fout->remoteVersion >= 110000))
 		{
 			if (!PQgetisnull(res, rownum, i_range_length_histogram))
 				appendNamedArgument(out, fout, "range_length_histogram", "text",
@@ -18030,7 +18027,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			if (dump_index_for_constraint)
 			{
 				appendPQExpBuffer(q, "USING INDEX %s",
-								  indxinfo->dobj.name);
+								  fmtId(indxinfo->dobj.name));
 			}
 			/*
 			 * YB: If a table has a non-unique constraint or does not have an
@@ -20018,7 +20015,15 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbcTableProperties properties,
 			pg_fatal("colocation ID is not defined for a colocated table \"%s\"\n",
 					 relname);
 
-		if (is_colocated_database && !is_legacy_colocated_database && properties->is_colocated)
+		if (is_colocated_database && !is_legacy_colocated_database &&
+			properties->is_colocated &&
+			/*
+			 * Also check that tablegroup_oid is not 0, as vector indexes
+			 * are always "colocated" but they are not always in a tablegroup.
+			 * This additional check is required for vector indexes of
+			 * non-colocated tables in colocated databases.
+			 */
+			properties->tablegroup_oid != 0)
 		{
 			query = createPQExpBuffer();
 			/* Get name of the tablegroup. */

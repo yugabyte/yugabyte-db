@@ -14,7 +14,6 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.ReleasesUtils;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -67,8 +66,6 @@ public class ReleaseController extends AuthenticatedController {
   @Inject ReleaseManager releaseManager;
 
   @Inject GFlagsValidation gFlagsValidation;
-
-  @Inject ValidatingFormFactory formFactory;
 
   @Inject RuntimeConfGetter confGetter;
 

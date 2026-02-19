@@ -125,7 +125,7 @@ void PgDocMetrics::RecordRequestMetrics(const LWPgsqlRequestMetricsPB& metrics, 
   }
   for (const auto& storage_metric : metrics.event_metrics()) {
     auto metric = storage_metric.metric();
-    if (metric >= YB_STORAGE_GAUGE_COUNT) {
+    if (metric >= YB_STORAGE_EVENT_COUNT) {
       continue;
     }
     if (storage_metric.count()) {

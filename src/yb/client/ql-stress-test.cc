@@ -101,13 +101,14 @@ METRIC_DECLARE_counter(majority_sst_files_rejections);
 using namespace std::literals;
 
 using rocksdb::checkpoint::CreateCheckpoint;
-using rocksdb::UserFrontierPtr;
-using yb::tablet::TabletOptions;
-using yb::docdb::InitRocksDBOptions;
 
 DECLARE_bool(enable_ysql);
 
 namespace yb::client {
+
+using storage::UserFrontierPtr;
+using tablet::TabletOptions;
+using docdb::InitRocksDBOptions;
 
 namespace {
 

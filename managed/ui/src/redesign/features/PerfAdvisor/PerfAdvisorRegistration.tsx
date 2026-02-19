@@ -68,7 +68,7 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="300px" dataTestId="RegisterTSService-Label">
-              {t('clusterDetail.troubleshoot.tpServiceUrlLabel')}
+              {t('clusterDetail.troubleshoot.paServiceUrlLabel')}
             </YBLabel>
             <Box flex={1}>
               <YBInputField
@@ -134,20 +134,6 @@ export const PerfAdvisorRegistration = ({ onRefetchConfig }: PerfAdvisorRegistra
                 rules={{
                   required: t('clusterDetail.troubleshoot.apiTokenRequired')
                 }}
-              />
-            </Box>
-          </Box>
-
-          <Box display="flex" flexDirection={'row'} mt={2}>
-            <YBLabel width="300px" dataTestId="RegisterTSService-Label">
-              {t('clusterDetail.troubleshoot.tpApiTokenLabel')}
-            </YBLabel>
-            <Box flex={1}>
-              <YBInputField
-                control={control}
-                name="tpApiToken"
-                style={{ width: '300px' }}
-                type="text"
               />
             </Box>
           </Box>

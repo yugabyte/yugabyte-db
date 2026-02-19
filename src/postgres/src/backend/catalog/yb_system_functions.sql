@@ -129,6 +129,81 @@ LANGUAGE INTERNAL
 IMMUTABLE PARALLEL SAFE
 AS 'yb_compute_row_ybctid';
 
+CREATE OR REPLACE FUNCTION
+  yb_active_session_history(start_time TIMESTAMPTZ DEFAULT NULL,
+                            end_time TIMESTAMPTZ DEFAULT NULL,
+                            OUT sample_time TIMESTAMPTZ,
+                            OUT root_request_id UUID,
+                            OUT rpc_request_id INT8,
+                            OUT wait_event_component TEXT,
+                            OUT wait_event_class TEXT,
+                            OUT wait_event TEXT,
+                            OUT top_level_node_id UUID,
+                            OUT query_id INT8,
+                            OUT pid INT4,
+                            OUT client_node_ip TEXT,
+                            OUT wait_event_aux TEXT,
+                            OUT sample_weight FLOAT4,
+                            OUT wait_event_type TEXT,
+                            OUT ysql_dbid OID,
+                            OUT wait_event_code INT8,
+                            OUT pss_mem_bytes INT8,
+                            OUT ysql_userid OID)
+RETURNS SETOF RECORD
+LANGUAGE INTERNAL
+VOLATILE ROWS 100000 PARALLEL RESTRICTED
+AS 'yb_active_session_history';
+
+CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_insert(dbid oid, user_id oid, query_id bigint, plan_id bigint, hint_text text, 
+  				plan_text text, first_used TIMESTAMPTZ, last_used TIMESTAMPTZ,
+				total_time float8, est_total_cost float8) 
+  RETURNS boolean
+  LANGUAGE INTERNAL
+  VOLATILE STRICT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_insert';
+
+  CREATE OR REPLACE FUNCTION yb_pg_stat_plans_get_all_entries() 
+  RETURNS SETOF RECORD
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_get_all_entries';
+
+  CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_reset(dbid oid, user_id oid, query_id bigint, plan_id bigint) 
+  RETURNS bigint
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_reset';
+
+  CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_total_time() 
+  RETURNS float8
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_total_time';
+
+  CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_total_calls() 
+  RETURNS bigint
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_total_calls';
+
+  CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_read_file() 
+  RETURNS int
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_read_file';
+
+  CREATE OR REPLACE FUNCTION 
+  yb_pg_stat_plans_write_file() 
+  RETURNS int
+  LANGUAGE INTERNAL
+  VOLATILE CALLED ON NULL INPUT PARALLEL SAFE
+  AS 'yb_pg_stat_plans_write_file';
+
 --
 -- Grant and revoke statements on YB objects.
 --
@@ -146,4 +221,17 @@ GRANT EXECUTE ON FUNCTION yb_increment_db_catalog_version_with_inval_messages(oi
 REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions_with_inval_messages(oid,boolean,bytea,int4)
   FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions_with_inval_messages(oid,boolean,bytea,int4)
+  TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_pg_stat_plans_reset(oid, oid, bigint, bigint) FROM public;
+GRANT EXECUTE ON FUNCTION yb_pg_stat_plans_reset(oid, oid, bigint, bigint)
+  TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_pg_stat_plans_insert(oid, oid, bigint, bigint, text, text, TIMESTAMPTZ, TIMESTAMPTZ, float8, float8)
+  FROM public;
+GRANT EXECUTE ON FUNCTION yb_pg_stat_plans_insert(oid, oid, bigint, bigint, text, text, TIMESTAMPTZ, TIMESTAMPTZ, float8, float8)
+  TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_pg_stat_plans_read_file() FROM public;
+GRANT EXECUTE ON FUNCTION yb_pg_stat_plans_read_file()
+  TO yb_db_admin;
+REVOKE EXECUTE ON FUNCTION yb_pg_stat_plans_write_file() FROM public;
+GRANT EXECUTE ON FUNCTION yb_pg_stat_plans_write_file()
   TO yb_db_admin;

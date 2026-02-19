@@ -24,6 +24,14 @@
 
 namespace yb::dockv {
 
+// |----------------------------------------------------|
+// | kVectorIndexMetadata | kVectorId |    vector id    |
+// |----------------------------------------------------|
+// |        1 byte        |  1 byte   | kUuidSize bytes |
+// |----------------------------------------------------|
+// See DecodeDocVectorKey() for the details.
+constexpr size_t kEncodedDocVectorKeyStaticSize = 2 + kUuidSize;
+
 struct EncodedDocVectorValue final {
   Slice data;
   Slice id;
@@ -35,7 +43,7 @@ struct EncodedDocVectorValue final {
 
 class DocVectorValue final : public PackableValue {
  public:
-  DocVectorValue(const QLValuePB& value, const vector_index::VectorId& id)
+  DocVectorValue(std::reference_wrapper<const QLValueMsg> value, const vector_index::VectorId& id)
       : value_(value), id_(id)
   {}
 
@@ -49,7 +57,7 @@ class DocVectorValue final : public PackableValue {
   size_t PackedSizeV2() const override;
   void PackToV2(ValueBuffer* result) const override;
 
-  const QLValuePB& value() const {
+  const QLValueMsg& value() const {
     return value_;
   }
 
@@ -61,7 +69,7 @@ class DocVectorValue final : public PackableValue {
   template <class Buffer>
   void AppendVectorId(Buffer* buffer) const;
 
-  const QLValuePB& value_;
+  const QLValueMsg& value_;
   vector_index::VectorId id_;
 };
 

@@ -8,6 +8,8 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2000
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -633,7 +635,7 @@ For example:
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
 
-The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL server options](#postgresql-server-options).
+The server configuration parameters for YugabyteDB are the same as for PostgreSQL, with some minor exceptions. Refer to [PostgreSQL configuration parameters](#postgresql-configuration-parameters).
 
 ##### --ysql_timezone
 
@@ -655,7 +657,7 @@ This is a maximum per server, so a 3-node cluster will have a default of 900 ava
 
 Any active, idle in transaction, or idle in session connection counts toward the connection limit.
 
-Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL configuration parameter](#postgresql-configuration-parameters). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
 
 Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
@@ -663,11 +665,11 @@ Default: If `ysql_max_connections` is not set, the database startup process will
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-Default: `READ COMMITTED`<sup>$</sup>
+Default: `'read committed'`
 
-<sup>$</sup> Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed isolation {{<tags/feature/ea idea="1099">}} is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --ysql_sequence_cache_method
 
@@ -1083,7 +1085,7 @@ Default: `0`
 
 ##### --ycql_enable_packed_row
 
-YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+YCQL packed row support is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Whether packed row is enabled for YCQL.
 
@@ -1107,7 +1109,7 @@ To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-
 
 ##### --yb_enable_cdc_consistent_snapshot_streams
 
-Support for creating a stream for Transactional CDC is currently in [Tech Preview](/preview/releases/versioning/#feature-maturity).
+Support for creating a stream for Transactional CDC is currently in [Tech Preview](/stable/releases/versioning/#feature-maturity).
 
 Enable support for creating streams for transactional CDC.
 
@@ -1339,7 +1341,7 @@ Default: 128
 
 ##### --allowed_preview_flags_csv
 
-Comma-separated values (CSV) formatted catalogue of [preview feature](/preview/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
+Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
 By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that you are fully aware of the experimental nature of the flags you are working with.
 
@@ -1355,36 +1357,52 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
 
-## PostgreSQL server options
+## PostgreSQL configuration parameters
 
-YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
+YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgresql.org/docs/11/config-setting.html) to apply server configuration settings to new server instances.
 
 ### Modify configuration parameters
 
-You can modify these parameters in the following ways:
+The methods for setting configurations are listed in order of precedence, from lowest to highest. That is, explicitly setting values for a configuration parameter using methods further down the following list have higher precedence than earlier methods.
 
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+For example, if you set a parameter explicitly using both the YSQL flag (`ysql_<parameter>`), and in the PostgreSQL server configuration flag (`ysql_pg_conf_csv`), the YSQL flag takes precedence.
+
+#### Methods
+
+- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+
+    For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+
+- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly.
+
+    For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
     ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ALTER DATABASE database_name SET yb_bnl_batch_size=512;
     ```
 
 - Set the option per-role:
 
     ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ALTER ROLE yugabyte SET yb_bnl_batch_size=512;
     ```
 
-    When setting a parameter at the role or database level, you have to open a new session for the changes to take effect.
+- Set the option for a specific database and role:
+
+    ```sql
+    ALTER ROLE yugabyte IN DATABASE yugabyte SET yb_bnl_batch_size=512;
+    ```
+
+    Parameters set at the role or database level only take effect on new sessions.
 
 - Set the option for the current session:
 
     ```sql
-    SET temp_file_limit=-1;
+    SET yb_bnl_batch_size=512;
     --- alternative way
-    SET SESSION temp_file_limit=-1;
+    SET SESSION yb_bnl_batch_size=512;
     ```
 
     If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
@@ -1394,7 +1412,13 @@ You can modify these parameters in the following ways:
 - Set the option for the current transaction:
 
     ```sql
-    SET LOCAL temp_file_limit=-1;
+    SET LOCAL yb_bnl_batch_size=512;
+    ```
+
+- Set the option within the scope of a function or procedure:
+
+    ```sql
+    ALTER FUNCTION add_new SET yb_bnl_batch_size=512;
     ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/11/runtime-config.html) in the PostgreSQL documentation.
@@ -1478,11 +1502,19 @@ Default: false
 
 ##### default_transaction_isolation
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
-Default: `read committed`
+See also the [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag.
+
+Default: `'read committed'`
 
 ##### yb_locks_min_txn_age
 

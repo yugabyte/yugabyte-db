@@ -29,20 +29,23 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TimeUnit;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.yb.CommonTypes.TableType;
 
 @Slf4j
 public class BackupLocalTest extends LocalProviderUniverseTestBase {
-  private final String DUMP_CHECK_URL =
-      "https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/2.25.2.0-b275/"
-          + "yugabyte-2.25.2.0-b275-centos-x86_64.tar.gz";
+  private final String DDL_SUPPORT_URL =
+      "https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/2.29.0.0-b435/"
+          + "yugabyte-2.29.0.0-b435-centos-x86_64.tar.gz";
 
   @Override
   protected Pair<Integer, Integer> getIpRange() {
@@ -56,7 +59,7 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     params.customerUUID = customer.getUuid();
     params.storageConfigUUID = customerConfig.getConfigUUID();
     params.timeBeforeDelete = 8640000L;
-    params.expiryTimeUnit = TimeUnit.DAYS;
+    params.expiryTimeUnit = com.yugabyte.yw.models.helpers.TimeUnit.DAYS;
     params.setDumpRoleChecks(true);
 
     return params;
@@ -85,13 +88,13 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
   private void providerSetup() {
     if (Util.compareYBVersions(
             DB_VERSION,
-            YbcBackupUtil.YBDB_STABLE_GRANT_SAFETY_VERSION,
-            YbcBackupUtil.YBDB_PREVIEW_GRANT_SAFETY_VERSION,
+            YbcBackupUtil.YBDB_STABLE_DUMP_WITH_DDL_SUPPORT_VERSION,
+            YbcBackupUtil.YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION,
             true)
         < 0) {
-      ybVersion = YbcBackupUtil.YBDB_PREVIEW_GRANT_SAFETY_VERSION;
-      log.info("Setting DB_VERSION to {} for testYBCBackupDumpRolesCheck", ybVersion);
-      downloadAndSetUpYBSoftware(os, arch, DUMP_CHECK_URL, ybVersion);
+      ybVersion = YbcBackupUtil.YBDB_PREVIEW_DUMP_WITH_DDL_SUPPORT_VERSION;
+      log.info("Setting DB_VERSION to {} for testBackupsWithDDL", ybVersion);
+      downloadAndSetUpYBSoftware(os, arch, DDL_SUPPORT_URL, ybVersion);
       ObjectNode releases =
           (ObjectNode) YugawareProperty.get(ReleaseManager.CONFIG_TYPE.name()).getValue();
       releases.set(ybVersion, getMetadataJson(ybVersion, false).get(ybVersion));
@@ -317,6 +320,30 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
   }
 
   @Test
+  public void testYBCBackupWithDDL() {
+    providerSetup();
+    YbcBackupTestParams params = new YbcBackupTestParams();
+    Universe source = null;
+    Universe target = null;
+    params.privilegesShouldExist = false;
+    params.runDDLs = true; // Enable DDL operations during backup
+    try {
+      UniverseDefinitionTaskParams.UserIntent userIntent =
+          getDefaultUserIntent("universe-1", false);
+      userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+      userIntent.ybcFlags = getYbcGFlags(userIntent);
+      source = createUniverseWithYbc(userIntent);
+      userIntent = getDefaultUserIntent("universe-2", false);
+      userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+      userIntent.ybcFlags = getYbcGFlags(userIntent);
+      target = createUniverseWithYbc(userIntent);
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    runYbcBackupTest(source, target, params);
+  }
+
+  @Test
   public void testYbcBackupUseRolesErrorIfRolesExists() {
     providerSetup();
     YbcBackupTestParams params = new YbcBackupTestParams();
@@ -376,6 +403,9 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
     // Privileges are set (grants and alters). This requires the role to exist on the target (either
     // through backup/restore or manual creation) and usePrivileges to be true.
     private boolean privilegesShouldExist = true;
+
+    // Add concurrent ddl nemesis
+    private boolean runDDLs = false;
   }
 
   private void runYbcBackupTest(Universe source, Universe target, YbcBackupTestParams params) {
@@ -511,6 +541,40 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
 
   private Backup takeYbcBackup(
       Universe universe, YbcBackupTestParams params, CustomerConfig customerConfig) {
+    // Setup DDL executor service if runDDLs is true
+    ScheduledExecutorService ddlExecutorService = null;
+    AtomicInteger tableCounter = new AtomicInteger(0);
+    if (params.runDDLs) {
+      NodeDetails nodeDetails =
+          universe.getUniverseDetails().nodeDetailsSet.stream()
+              .filter(n -> n.state.equals(NodeDetails.NodeState.Live))
+              .findFirst()
+              .orElse(null);
+      boolean authEnabled =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+
+      ddlExecutorService = Executors.newSingleThreadScheduledExecutor();
+      ddlExecutorService.scheduleAtFixedRate(
+          () -> {
+            int tableNum = tableCounter.incrementAndGet();
+            String createTableCommand =
+                String.format("CREATE TABLE ddl_test_table_%d (id int, name text);", tableNum);
+            try {
+              ShellResponse resp =
+                  localNodeUniverseManager.runYsqlCommand(
+                      nodeDetails, universe, params.srcDbName, createTableCommand, 10, authEnabled);
+              if (!resp.isSuccess()) {
+                log.warn("Failed to create table during DDL test: {}", resp.message);
+              }
+            } catch (Exception e) {
+              log.warn("Exception during DDL execution: {}", e.getMessage());
+            }
+          },
+          0L,
+          5L,
+          TimeUnit.SECONDS);
+    }
+
     BackupRequestParams backupParams = new BackupRequestParams();
     backupParams.setUniverseUUID(universe.getUniverseUUID());
     backupParams.backupType = TableType.PGSQL_TABLE_TYPE;
@@ -528,6 +592,11 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
       assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
+    } finally {
+      // Stop the DDL executor service after backup completes
+      if (ddlExecutorService != null) {
+        ddlExecutorService.shutdownNow();
+      }
     }
     List<Backup> backups =
         Backup.fetchByUniverseUUID(customer.getUuid(), universe.getUniverseUUID());

@@ -15,6 +15,7 @@
 
 #include <openssl/sha.h>
 
+#include <fstream>
 #include <mutex>
 #include <thread>
 
@@ -30,12 +31,16 @@
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/cql_pg_util.h"
+#include "yb/util/csv_util.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
@@ -45,11 +50,14 @@
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/util/flags.h"
 
+#include "ybgate/ybgate_cpp_util.h"
+
 using namespace std::placeholders;
 using namespace yb::size_literals;
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_int32(cql_update_system_query_cache_msecs);
+DECLARE_string(tmp_dir);
 
 DEFINE_UNKNOWN_int64(cql_service_max_prepared_statement_size_bytes, 128_MB,
              "The maximum amount of memory the CQL proxy should use to maintain prepared "
@@ -71,11 +79,43 @@ DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
 DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
             "Limit the number of unprepared statements that are being tracked.");
 
+DEFINE_test_flag(bool, ycql_use_jwt_auth, false, "Use JWT for authentication.");
+
+DEFINE_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
+    "Users that are authenticated via the local password"
+    " check instead of JWT (if ycql_use_jwt_auth=true). This is a comma separated list.");
+TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
+
+DEFINE_RUNTIME_string(ycql_jwt_options, "",
+    "The space-separated list of options to configure JWT authentication. "
+    "The format is a list of 'key=value' pairs separated by space. "
+    "Valid keys are:\n"
+    "  * jwt_jwks_url: The URL from where to fetch the Json Web Key Set of the Identity Provider "
+    "(IDP).\n"
+    "  * jwt_audiences: The list of accepted audiences. One of the items within the list must match"
+    " the 'aud' claim present in the token. Multiple values can be provided as a comma-separated "
+    "list.\n"
+    "  * jwt_issuers: The comma-separated list of issuers (IDP) that are valid. One of the items "
+    "within the list must match the 'iss' claim present in the token.\n"
+    "  * jwt_matching_claim_key: Key of the claim which represents the identity of the user on the "
+    "Identity Provider (IDP). Some common values are 'sub', 'email', 'groups', 'roles' etc. The "
+    "default value is 'sub'.");
+
+DEFINE_NON_RUNTIME_string(ycql_ident_conf_csv, "",
+    "CSV formatted line representing a list of identity mapping rules (in order). "
+    "Each line contains two fields separated by space - IDP username and YCQL username. "
+    "Only applicable in JWT authentication i.e. when ycql_use_jwt_auth=true.");
+
 namespace yb {
 namespace cqlserver {
 
 const char* const kRoleColumnNameSaltedHash = "salted_hash";
 const char* const kRoleColumnNameCanLogin = "can_login";
+const char* const kJwtAuthJwksUrl = "jwt_jwks_url";
+const char* const kJwtAudiences = "jwt_audiences";
+const char* const kJwtIssuers = "jwt_issuers";
+const char* const kJwtMatchingClaimKey = "jwt_matching_claim_key";
+const char* const kJwtIdentMapName = "YCQL_IDENT_MAPNAME";
 
 using std::shared_ptr;
 using std::string;
@@ -182,8 +222,10 @@ const std::shared_ptr<client::YBMetaDataCache>& CQLServiceImpl::metadata_cache()
   return metadata_cache_;
 }
 
-void CQLServiceImpl::CompleteInit() {
+Status CQLServiceImpl::CompleteInit() {
   stmts_mem_tracker_->AddGarbageCollector(shared_from_this());
+  RETURN_NOT_OK(InitJwtAuth());
+  return Status::OK();
 }
 
 void CQLServiceImpl::Shutdown() {
@@ -535,7 +577,7 @@ void CQLServiceImpl::UpdateStmtCounters(const ql::CQLMessage::QueryId& query_id,
   auto itr = stmts_map.find(query_id);
   if (itr == stmts_map.end()) {
     if (is_prepare) {
-      LOG(WARNING) << "Prepared Statement not found in LRU cache.";
+      LOG(WARNING) << "Prepared Statement " << b2a_hex(query_id) << " not found in LRU cache.";
     } else {
       VLOG(1) << "Unprepared Statement not found in LRU cache.";
     }
@@ -618,6 +660,120 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
       stmt_pb.set_stddev_time(stddev_time);
     }
   }
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
+  auto jwt_options = StringSplit(FLAGS_ycql_jwt_options, ' ');
+
+  for (const auto& option : jwt_options) {
+    auto option_kv = StringSplit(option, '=');
+    if (option_kv.size() != 2) {
+      return STATUS(InvalidArgument, "Invalid JWT option format");
+    }
+
+    if (option_kv[0] == kJwtAuthJwksUrl) {
+      DCHECK(jwks_url);
+      *jwks_url = option_kv[1];
+    } else if (option_kv[0] == kJwtAudiences) {
+      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_audience_));
+    } else if (option_kv[0] == kJwtIssuers) {
+      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_issuers_));
+    } else if (option_kv[0] == kJwtMatchingClaimKey) {
+      jwt_matching_claim_key_ = option_kv[1];
+    } else {
+      return STATUS_FORMAT(InvalidArgument, "Unknown JWT option $0", option_kv[0]);
+    }
+  }
+
+  VLOG(4) << "Loaded JWT Options: "
+          << "JWKS URL=" << *jwks_url << ", "
+          << "Audiences=" << CollectionToString(jwt_allowed_audience_) << ", "
+          << "Issuers=" << CollectionToString(jwt_allowed_issuers_) << ", "
+          << "Matching Claim Key=" << jwt_matching_claim_key_;
+
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadJwtJwks(const std::string& jwks_url) {
+  LOG(INFO) << "Fetching JWT JWKS from URL: " << jwks_url;
+  EasyCurl curl;
+  faststring buf_ret;
+  RETURN_NOT_OK(curl.FetchURL(jwks_url, &buf_ret));
+  jwt_jwks_ = buf_ret.ToString();
+  LOG(INFO) << "Loaded JWKS for JWT auth: " << jwt_jwks_;
+  return Status::OK();
+}
+
+Status CQLServiceImpl::LoadIdentConf() {
+  PG_RETURN_NOT_OK(YbgCreateMemoryContext(nullptr, "ycql_jwt_ident_memctx_", &jwt_ident_memctx_));
+
+  if (FLAGS_ycql_ident_conf_csv.empty()) {
+    LOG(INFO) << "Found empty ycql_ident_conf_csv";
+    return Status::OK();
+  }
+
+  std::vector<std::string> ident_conf_lines;
+  RETURN_NOT_OK(ReadCSVValues(FLAGS_ycql_ident_conf_csv, &ident_conf_lines));
+  LOG(INFO) << "Read FLAGS_ycql_ident_conf_csv lines: " << CollectionToString(ident_conf_lines);
+
+  const auto conf_path = JoinPathSegments(FLAGS_tmp_dir, "ycql_ident.conf");
+  std::ofstream conf_file;
+  conf_file.open(conf_path, std::ios_base::out | std::ios_base::trunc);
+  if (!conf_file) {
+    return STATUS_FORMAT(
+        IOError,
+        "Failed to write ycql_ident file '%s': errno=$0: $1",
+        conf_path,
+        errno,
+        ErrnoToString(errno));
+  }
+
+  conf_file << "# This is an autogenerated file, do not edit manually!" << std::endl;
+  conf_file << "# MAPNAME IDP-USERNAME YB-USERNAME" << std::endl;
+  for (const auto& line : ident_conf_lines) {
+      conf_file << kJwtIdentMapName << " " << line << std::endl;
+  }
+  conf_file.close();
+  LOG(INFO) << "Wrote ycql_ident.conf file at " << conf_path;
+
+  ScopedSetMemoryContext set_memctx(jwt_ident_memctx_);
+  YbgStatus s = YbgLoadIdent(conf_path.c_str(), jwt_ident_memctx_);
+  if (YbgStatusIsError(s)) {
+    LOG(ERROR) << "Error in loading JWT Ident file: " << YbgStatusGetMessage(s);
+    YbgDeleteMemoryContext();
+    PG_RETURN_NOT_OK(s);
+  }
+  LOG(INFO) << "Successfully loaded Ident file for JWT auth";
+  return Status::OK();
+}
+
+Status CQLServiceImpl::InitJwtAuth() {
+  if (!FLAGS_TEST_ycql_use_jwt_auth) {
+    return Status::OK();
+  }
+
+  LOG(INFO) << "Initializing JWT authentication";
+  std::string jwks_url;
+  RETURN_NOT_OK(LoadJwtOptions(&jwks_url));
+  RETURN_NOT_OK(LoadJwtJwks(jwks_url));
+  RETURN_NOT_OK(LoadIdentConf());
+  return ValidateJwtConfig();
+}
+
+Status CQLServiceImpl::ValidateJwtConfig() {
+  if (jwt_jwks_.empty()) {
+    return STATUS(InvalidArgument, Format("JWKS received from the jwt_jwks_url cannot be empty"));
+  }
+
+  if (jwt_allowed_audience_.empty()) {
+    return STATUS(InvalidArgument, "jwt_audiences cannot be empty");
+  }
+
+  if (jwt_allowed_issuers_.empty()) {
+    return STATUS(InvalidArgument, "jwt_issuers cannot be empty");
+  }
+
   return Status::OK();
 }
 

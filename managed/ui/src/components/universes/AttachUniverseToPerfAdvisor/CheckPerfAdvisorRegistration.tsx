@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from 'react-query';
-import { PerfAdvisorOverviewDashboard } from './PerfAdvisorOverviewDashboard';
-import { YBLoading } from '../../common/indicators';
-import { AppName } from '../../../redesign/features/PerfAdvisor/PerfAdvisorAnalysisDashboard';
+import { useTranslation } from 'react-i18next';
+import { YBErrorIndicator, YBLoading } from '../../common/indicators';
+import { PerfAdvisorTabs } from '../PerfAdvisor/PerfAdvisorTabs';
 import {
   PerfAdvisorAPI,
-  QUERY_KEY as TROUBLESHOOTING_QUERY_KEY
+  QUERY_KEY as PERF_ADVISOR_QUERY_KEY
 } from '../../../redesign/features/PerfAdvisor/api';
+import { AppName } from '../../../redesign/helpers/dtos';
+import { isNonEmptyString } from '@app/utils/ObjectUtils';
 
 interface CheckPerfAdvisorRegistrationProps {
   universeUuid: string;
@@ -23,14 +25,10 @@ export const CheckPerfAdvisorRegistration = ({
   apiUrl,
   tpUuid
 }: CheckPerfAdvisorRegistrationProps) => {
+  const { t } = useTranslation();
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
-  const {
-    data: universeRegistrationData,
-    isLoading: isUniverseRegistrationFetchLoading,
-    isIdle: isUniverseRegistrationFetchIdle,
-    refetch: refetchUniverseRegistration
-  } = useQuery(
-    TROUBLESHOOTING_QUERY_KEY.fetchUniverseRegistrationDetails,
+  const getUniversePaRegistrationStatus = useQuery(
+    PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
     () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(tpUuid, universeUuid),
     {
       onSuccess: (data) => {
@@ -38,26 +36,34 @@ export const CheckPerfAdvisorRegistration = ({
       },
       onError: (error: any) => {
         error.request.status === 404 && setRegistrationStatus(false);
-      }
+      },
+      enabled: isNonEmptyString(tpUuid) && isNonEmptyString(universeUuid)
     }
   );
 
   if (
-    isUniverseRegistrationFetchLoading ||
-    (isUniverseRegistrationFetchIdle && universeRegistrationData === undefined)
+    getUniversePaRegistrationStatus.isLoading ||
+    (getUniversePaRegistrationStatus.isIdle && getUniversePaRegistrationStatus.data === undefined)
   ) {
     return <YBLoading />;
   }
 
+  if (getUniversePaRegistrationStatus.isError) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={t('clusterDetail.troubleshoot.perfAdvisorRegistrationFailure')}
+      />
+    );
+  }
+
   return (
-    <PerfAdvisorOverviewDashboard
-      tpUuid={tpUuid}
-      universeUuid={universeUuid}
-      appName={appName}
-      timezone={timezone}
-      apiUrl={apiUrl}
-      registrationStatus={registrationStatus}
-      refetchUniverseRegistration={refetchUniverseRegistration}
-    />
+    getUniversePaRegistrationStatus.isSuccess && (
+      <PerfAdvisorTabs
+        universeUuid={universeUuid}
+        timezone={timezone}
+        apiUrl={apiUrl}
+        registrationStatus={registrationStatus}
+      />
+    )
   );
 };

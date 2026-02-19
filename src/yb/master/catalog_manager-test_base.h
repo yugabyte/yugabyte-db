@@ -19,6 +19,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_descriptor_test_util.h"
@@ -173,10 +174,11 @@ void SetupClusterConfig(
 
 void NewReplica(
     const TSDescriptorPtr& ts_desc, tablet::RaftGroupStatePB state, PeerRole role,
-    TabletReplica* replica) {
+    consensus::PeerMemberType member_type, TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
+  replica->member_type = member_type;
 }
 
 std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string& az) {
@@ -233,7 +235,7 @@ void SimulateSetLeaderReplicas(
       TabletReplica new_leader_replica;
       NewReplica(
           ts_descs[i], tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
-          &new_leader_replica);
+          consensus::PeerMemberType::VOTER, &new_leader_replica);
       InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
       tablets[tablet_idx++]->SetReplicaLocations(replicas);
     }

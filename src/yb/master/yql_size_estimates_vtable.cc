@@ -34,7 +34,7 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestPB& request) const {
+Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestMsg& request) const {
   auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto* catalog_manager = &this->catalog_manager();
 

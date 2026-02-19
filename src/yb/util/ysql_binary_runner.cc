@@ -14,9 +14,13 @@
 #include <fstream>
 
 #include "yb/util/env.h"
+#include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/ysql_binary_runner.h"
+
+DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
+                    "Disable connections to the cloned database during the clone process.");
 
 namespace yb {
 
@@ -65,7 +69,7 @@ Result<std::string> YsqlDumpRunner::RunAndModifyForClone(
   std::string modified_dump = ModifyDbOwnerInScript(dump_output, source_owner, target_owner);
   // Pass 2, modify the DB name in the script and disallow connection to the DB.
   std::string final_dump =
-      ModifyDbNameInScript(modified_dump, target_db_name, /* disallow_db_connections */ true);
+      ModifyDbNameInScript(modified_dump, target_db_name, FLAGS_ysql_clone_disable_connections);
   return final_dump;
 }
 
@@ -76,10 +80,11 @@ const boost::regex QUOTED_CONNECT_RE("^\\\\connect -reuse-previous=on \"dbname='
 const boost::regex UNQUOTED_CONNECT_RE("^\\\\connect\\s+(\\S+)$");
 const boost::regex TABLESPACE_RE("^\\s*SET\\s+default_tablespace\\s*=.*$");
 
-std::string MakeDisallowConnectionsString(const std::string& new_db) {
+std::string MakeAllowConnectionsString(const std::string& new_db, bool allow_connections) {
   return Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = false WHERE datname = '$0';", new_db);
+      "UPDATE pg_database SET datallowconn = $0 WHERE datname = '$1';",
+      allow_connections ? "true" : "false", new_db);
 }
 }  // namespace
 
@@ -117,9 +122,12 @@ std::string YsqlDumpRunner::ModifyDbNameInScript(
 
 std::string YsqlDumpRunner::ModifyDbNameInLine(
     std::string line, const std::string& new_db, bool disallow_db_connections) {
-  std::string disallow_db_connections_stmt = "";
+  // Add a prefix that allows connecting to the db and then a suffix that disallows connecting to
+  // the database.
+  std::string allow_connections_stmt, disallow_connections_stmt;
   if (disallow_db_connections) {
-    disallow_db_connections_stmt = MakeDisallowConnectionsString(new_db);
+    allow_connections_stmt = MakeAllowConnectionsString(new_db, true);
+    disallow_connections_stmt = MakeAllowConnectionsString(new_db, false);
   }
   std::vector<std::string> values;
   if (boost::regex_split(std::back_inserter(values), line, QUOTED_DATABASE_RE)) {
@@ -132,14 +140,14 @@ std::string YsqlDumpRunner::ModifyDbNameInLine(
   values.clear();
   if (boost::regex_split(std::back_inserter(values), line, QUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           disallow_db_connections_stmt;
+    return allow_connections_stmt + "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           disallow_connections_stmt;
   }
   values.clear();
   if (boost::regex_split(std::back_inserter(values), line, UNQUOTED_CONNECT_RE)) {
     std::string s = boost::replace_all_copy(new_db, "'", "\\'");
-    return "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
-           disallow_db_connections_stmt;
+    return allow_connections_stmt + "\\connect -reuse-previous=on \"dbname='" + s + "'\"" + "\n" +
+           disallow_connections_stmt;
   }
   return line;
 }
@@ -149,7 +157,9 @@ std::string YsqlDumpRunner::ModifyDbNameInLine(
 // ============================================================================
 
 Result<std::string> YsqlshRunner::ExecuteSqlScript(
-    const std::string& sql_script, const std::string& tmp_file_prefix) {
+    const std::string& sql_script, const std::string& tmp_file_prefix,
+    const std::string& connect_as_user,
+    const std::string& connect_to_database) {
   // Write the dump output to a file in order to execute it using ysqlsh.
   std::unique_ptr<WritableFile> script_file;
   std::string tmp_file_name;
@@ -166,6 +176,12 @@ Result<std::string> YsqlshRunner::ExecuteSqlScript(
   });
 
   std::vector<std::string> args = {"--file=" + tmp_file_name, "--set", "ON_ERROR_STOP=on"};
+  if (!connect_as_user.empty()) {
+    args.push_back("--username=" + connect_as_user);
+  }
+  if (!connect_to_database.empty()) {
+    args.push_back("--dbname=" + connect_to_database);
+  }
   return this->Run(args);
 }
 

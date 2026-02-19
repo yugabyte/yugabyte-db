@@ -64,6 +64,37 @@ class PgAshTest : public LibPqTestBase {
   }
 
  protected:
+  Status RunInsertsAndSelects(MonoDelta sleep_duration) {
+    RETURN_NOT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+
+    thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int i = 0; !stop; i++) {
+        ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
+      }
+    });
+    thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      for (int i = 0; !stop; i++) {
+        auto values = ASSERT_RESULT(
+            conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
+      }
+    });
+
+    SleepFor(sleep_duration);
+    thread_holder_.Stop();
+
+    return Status::OK();
+  }
+
+  Status StopAshSampling() {
+    // Set the sampling interval to 1 hour, should be enough time for tests to complete before
+    // the next sampling
+    RETURN_NOT_OK(cluster_->SetFlagOnTServers("ysql_yb_ash_sampling_interval_ms", "3600000"));
+    SleepFor(kSamplingIntervalMs * 2ms);
+    return Status::OK();
+  }
+
   std::optional<PGConn> conn_;
   TestThreadHolder thread_holder_;
   static constexpr int kTabletsPerServer = 1;
@@ -93,6 +124,29 @@ class PgAshSingleNode : public PgAshTest {
   int GetNumTabletServers() const override {
     return 1;
   }
+};
+
+class YbAshV2Test : public PgAshSingleNode {
+ public:
+  YbAshV2Test() : circular_buffer_size_kb_(16 * 1024) {}
+  explicit YbAshV2Test(int circular_buffer_size_kb)
+      : circular_buffer_size_kb_(circular_buffer_size_kb) {}
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(Format(
+        "--ysql_yb_ash_circular_buffer_size=$0", circular_buffer_size_kb_));
+    PgAshSingleNode::UpdateMiniClusterOptions(options);
+  }
+
+ protected:
+  static constexpr auto kWorkloadRunningTimeSecs = 10;
+  const int circular_buffer_size_kb_;
+};
+
+class YbAshV2TestWithCircularBufferSize : public YbAshV2Test,
+                                          public ::testing::WithParamInterface<int> {
+ public:
+  YbAshV2TestWithCircularBufferSize() : YbAshV2Test(GetParam()) {}
 };
 
 class PgWaitEventAuxTest : public PgAshSingleNode {
@@ -310,32 +364,13 @@ using PgCDCWaitEventAux = ConfigurableTest<kPgCDCRPCs>;
 }  // namespace
 
 TEST_F(PgAshTest, NoMemoryLeaks) {
-  ASSERT_OK(conn_->Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(RunInsertsAndSelects(10s));
 
-  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      ASSERT_OK(conn.Execute(yb::Format("INSERT INTO t (key, value) VALUES ($0, 'v-$0')", i)));
-    }
-  });
-  thread_holder_.AddThreadFunctor([this, &stop = thread_holder_.stop_flag()] {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; !stop; i++) {
-      auto values = ASSERT_RESULT(
-          conn.FetchRows<std::string>(yb::Format("SELECT value FROM t where key = $0", i)));
-    }
-  });
-
-  SleepFor(10s);
-  thread_holder_.Stop();
-
-  {
-    auto conn = ASSERT_RESULT(Connect());
-    for (int i = 0; i < 100; i++) {
-      auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
-          yb::Format("SELECT wait_event FROM yb_active_session_history")));
-      SleepFor(10ms);
-    }
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 0; i < 100; i++) {
+    auto values = ASSERT_RESULT(conn.FetchRows<std::string>(
+        yb::Format("SELECT wait_event FROM yb_active_session_history")));
+    SleepFor(10ms);
   }
 }
 
@@ -814,7 +849,9 @@ TEST_F(PgBgWorkersTest, TestBgWorkersQueryId) {
 TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   static constexpr auto kTableName = "test_table";
 
+  LOG_WITH_FUNC(INFO) << "create table";
   ASSERT_OK(conn_->Execute(Format("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName)));
+  LOG_WITH_FUNC(INFO) << "insert";
   ASSERT_OK(conn_->Execute(Format("INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
       kTableName, 1, (kIsDebug ? 100000 : 10000000))));
 
@@ -824,10 +861,12 @@ TEST_F(PgAshTest, TestTServerMetadataSerializer) {
   // Test that each tserver has the query id in ASH samples
   for (auto* ts : cluster_->tserver_daemons()) {
     auto conn = ASSERT_RESULT(ConnectToTs(*ts));
+    LOG_WITH_FUNC(INFO) << "query " << ts->uuid();
     const auto count = ASSERT_RESULT((conn.FetchRow<int64_t>(
         Format("SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id))));
     ASSERT_GT(count, 0);
   }
+  LOG_WITH_FUNC(INFO) << "done";
 }
 
 TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
@@ -1008,6 +1047,126 @@ TEST_F(PgTransactionCancelTest, TestTransactionCancel) {
       "SELECT yb_cancel_transaction('aaaaaaaa-0000-4000-8000-000000000000'::uuid)"));
   // Verify that cancel wait event is captured
   ASSERT_OK(VerifyWaitEventInASH("TransactionCancel"));
+}
+
+TEST_F(YbAshV2Test, TestStartTimeGreaterThanEndTime) {
+  ASSERT_NOK(conn_->Fetch("SELECT * FROM yb_active_session_history("
+      "current_timestamp + interval '1 minute', current_timestamp)"));
+}
+
+TEST_F(YbAshV2Test, TestRowsAreInAscendingOrderOfSampleTime) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+
+  const auto rows_in_ascending_order = [this](const std::string&& query) -> Status {
+    auto rows = VERIFY_RESULT(conn_->FetchRows<MonoDelta>(query));
+    SCHECK_GT(rows.size(), 0, IllegalState, Format("No rows found for query: $0", query));
+    for (size_t i = 1; i < rows.size(); ++i) {
+      SCHECK_GE(rows[i], rows[i - 1], IllegalState, Format(
+          "Rows are not in ascending order for query: $0", query));
+    }
+    return Status::OK();
+  };
+
+  ASSERT_OK(rows_in_ascending_order(Format(
+      "SELECT sample_time FROM yb_active_session_history("
+      "current_timestamp - interval '$0 seconds', current_timestamp)",
+      kWorkloadRunningTimeSecs)));
+
+  ASSERT_OK(rows_in_ascending_order(
+      "SELECT sample_time FROM yb_active_session_history"));
+}
+
+TEST_F(YbAshV2Test, TestStartTimeIsInclusive) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  ASSERT_OK(StopAshSampling());
+
+  auto min_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MIN(sample_time)::text FROM yb_active_session_history()")));
+
+  auto also_min_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MIN(sample_time)::text FROM yb_active_session_history('$0')",
+      min_time_str)));
+
+  ASSERT_EQ(min_time_str, also_min_time_str);
+}
+
+TEST_F(YbAshV2Test, TestEndTimeIsExclusive) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  ASSERT_OK(StopAshSampling());
+
+  auto max_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MAX(sample_time)::text FROM yb_active_session_history()")));
+
+  auto next_max_time_str = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT MAX(sample_time)::text FROM yb_active_session_history(NULL, '$0')",
+      max_time_str)));
+
+  ASSERT_GT(max_time_str, next_max_time_str);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , YbAshV2TestWithCircularBufferSize,
+    ::testing::Values(
+        1, // 1 KiB, so that the buffer wraps around
+        16 * 1024 // 16 MiB, so that the buffer doesn't wrap around
+    ));
+
+TEST_P(YbAshV2TestWithCircularBufferSize, TestYbAshFunctionAndViewReturnSameSamples) {
+  ASSERT_OK(RunInsertsAndSelects(kWorkloadRunningTimeSecs * 1s));
+  // so that we don't get additional samples between the ASH queries
+  ASSERT_OK(StopAshSampling());
+
+  auto start_time = ASSERT_RESULT(conn_->FetchRow<std::string>(Format(
+      "SELECT (current_timestamp - interval '$0 seconds')::text",
+      kWorkloadRunningTimeSecs)));
+
+  auto end_time = ASSERT_RESULT(conn_->FetchRow<std::string>(
+      "SELECT current_timestamp::text"));
+
+  const auto samples_are_equivalent = [this](
+      const std::vector<std::string>& queries) -> Status {
+    auto prev_rows = VERIFY_RESULT((conn_->FetchRows<MonoDelta, int64_t>(queries[0])));
+    SCHECK_EQ(!prev_rows.empty(), true, IllegalState, Format(
+        "No samples found for query: $0", queries[0]));
+    for (size_t i = 1; i < queries.size(); ++i) {
+      auto rows = VERIFY_RESULT((conn_->FetchRows<MonoDelta, int64_t>(queries[i])));
+      SCHECK_EQ(prev_rows, rows, IllegalState, Format(
+          "Rows are not equal for queries: $0 and $1", queries[i - 1], queries[i]));
+      std::swap(rows, prev_rows);
+    }
+    return Status::OK();
+  };
+
+  constexpr auto kView = "yb_active_session_history";
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0", kView),
+      Format("SELECT sample_time, query_id FROM $0()", kView),
+      Format("SELECT sample_time, query_id FROM $0(NULL)", kView),
+      Format("SELECT sample_time, query_id FROM $0(end_time => NULL)", kView),
+      Format("SELECT sample_time, query_id FROM $0(NULL, NULL)", kView)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time >= '$1'",
+             kView, start_time),
+      Format("SELECT sample_time, query_id FROM $0('$1')",
+             kView, start_time),
+      Format("SELECT sample_time, query_id FROM $0('$1', NULL)",
+             kView, start_time)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time < '$1'",
+             kView, end_time),
+      Format("SELECT sample_time, query_id FROM $0(end_time => '$1')",
+             kView, end_time),
+      Format("SELECT sample_time, query_id FROM $0(NULL, '$1')",
+             kView, end_time)}));
+
+  ASSERT_OK(samples_are_equivalent({
+      Format("SELECT sample_time, query_id FROM $0 WHERE sample_time >= '$1' "
+             "AND sample_time < '$2'", kView, start_time, end_time),
+      Format("SELECT sample_time, query_id FROM $0('$1', '$2')",
+             kView, start_time, end_time)}));
 }
 
 } // namespace yb::pgwrapper

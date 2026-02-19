@@ -37,8 +37,13 @@
 #include "catalog/pg_opfamily_d.h"
 #include "catalog/pg_policy_d.h"
 #include "catalog/pg_proc_d.h"
+#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_namespace_d.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_rel_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_ts_config_d.h"
 #include "catalog/pg_ts_config_map_d.h"
@@ -75,6 +80,15 @@
 #define TABLE_REWRITE_OBJID_COLUMN_ID 1
 
 static List *rewritten_table_oid_list = NIL;
+
+/* DDLs ignored for replication. */
+#define IGNORED_DDL_LIST \
+	X(CMDTAG_ALTER_PUBLICATION) \
+	X(CMDTAG_ALTER_SUBSCRIPTION) \
+	X(CMDTAG_CREATE_PUBLICATION) \
+	X(CMDTAG_CREATE_SUBSCRIPTION) \
+	X(CMDTAG_DROP_PUBLICATION) \
+	X(CMDTAG_DROP_SUBSCRIPTION)
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -165,6 +179,7 @@ static List *rewritten_table_oid_list = NIL;
 typedef struct YbNewRelMapEntry
 {
 	char	   *name;
+	char	   *namespace;
 	Oid			relfile_oid;
 	Oid			colocation_id;
 	bool		is_index;
@@ -216,6 +231,21 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag)
 	return false;
 }
 
+static bool
+IsIgnoredDdlCommand(CommandTag command_tag)
+{
+	switch (command_tag)
+	{
+#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+			IGNORED_DDL_LIST
+#undef X
+		default:
+			return false;
+	}
+
+	return false;
+}
+
 bool
 IsPassThroughDdlSupported(const char *command_tag_name)
 {
@@ -242,6 +272,32 @@ IsSequence(Oid rel_oid)
 }
 
 void
+ReplicateAssociatedIndexes(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
+{
+	Relation	rel = RelationIdGetRelation(rel_oid);
+	if (!rel)
+		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	if (IsIndex(rel))
+	{
+		/* Avoid recursion by only going table->index not also index->table. */
+		RelationClose(rel);
+		return;
+	}
+
+	List	   *indexes = RelationGetIndexList(rel);
+	ListCell   *cell;
+
+	foreach(cell, indexes)
+	{
+		Oid index_oid = lfirst_oid(cell);
+
+		ShouldReplicateNewRelation(index_oid, new_rel_list, is_table_rewrite);
+	}
+
+	RelationClose(rel);
+}
+
+void
 ReplicateInheritedRelations(Oid rel_oid, List **new_rel_list, bool is_table_rewrite)
 {
 	List	   *children = find_inheritance_children(rel_oid, NoLock);
@@ -259,10 +315,15 @@ bool
 ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_rewrite,
 							  bool include_inheritance_children)
 {
+	char       *name;
+	Oid         namespace_oid;
+	char       *namespace;
 	Relation	rel = RelationIdGetRelation(rel_oid);
-
 	if (!rel)
 		elog(ERROR, "Could not find relation with OID %u", rel_oid);
+	name = RelationGetRelationName(rel);
+	namespace_oid = RelationGetNamespace(rel);
+	namespace = get_namespace_name(namespace_oid);
 
 	/* Ignore temporary tables. */
 	if (!IsYBBackedRelation(rel))
@@ -277,17 +338,38 @@ ShouldReplicateRelationHelper(Oid rel_oid, List **new_rel_list, bool is_table_re
 		return true;
 	}
 
-	/* Add the new relation to the list of relations to replicate. */
-	YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
+	/*
+	 * Add the new relation to the list of relations to replicate if not already
+	 * present.
+	 */
+	ListCell *cell;
+	bool found = false;
+	foreach (cell, *new_rel_list)
+	{
+		YbNewRelMapEntry *existing_entry = (YbNewRelMapEntry *) lfirst(cell);
+		if (!strcmp(existing_entry->name, name) &&
+			!strcmp(existing_entry->namespace, namespace))
+		{
+			found = true;
+			break;
+		}
+	}
+	if (!found)
+	{
+		YbNewRelMapEntry *new_rel_entry = palloc(sizeof(struct YbNewRelMapEntry));
 
-	new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
-	new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
-	new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
-	new_rel_entry->is_index = IsIndex(rel);
+		new_rel_entry->name = pstrdup(RelationGetRelationName(rel));
+		new_rel_entry->namespace = pstrdup(namespace);
+		new_rel_entry->relfile_oid = YbGetRelfileNodeId(rel);
+		new_rel_entry->colocation_id = GetColocationIdFromRelation(&rel, is_table_rewrite);
+		new_rel_entry->is_index = IsIndex(rel);
 
-	*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+		*new_rel_list = lappend(*new_rel_list, new_rel_entry);
+	}
 
 	RelationClose(rel);
+
+	ReplicateAssociatedIndexes(rel_oid, new_rel_list, is_table_rewrite);
 
 	if (include_inheritance_children)
 		ReplicateInheritedRelations(rel_oid, new_rel_list, is_table_rewrite);
@@ -474,6 +556,7 @@ ProcessNewRelationsList(JsonbParseState *state, List **rel_list)
 
 		(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
 		AddStringJsonEntry(state, "rel_name", entry->name);
+		AddStringJsonEntry(state, "rel_namespace", entry->namespace);
 		AddNumericJsonEntry(state, "relfile_oid", entry->relfile_oid);
 		if (entry->colocation_id)
 			AddNumericJsonEntry(state, "colocation_id", entry->colocation_id);
@@ -716,6 +799,47 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
+void
+PushVariable(JsonbParseState *state, char *guc_name)
+{
+	char *value = GetConfigOptionByName(guc_name, NULL, false);
+	if (!value)
+		return;
+
+	AddStringJsonEntry(state, guc_name, value);
+}
+
+void
+PushVariableMap(JsonbParseState *state)
+{
+	AddJsonKey(state, "variables");
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	/*----------
+	 * To maximize safety, we always record the session variables.
+	 *
+	 * This protects us against the source and target clusters having
+	 * different defaults and changes of which DDLs use these variables.
+	 *----------
+	 */
+
+	/* This affects what tablespace a table is created in. */
+	PushVariable(state, "default_tablespace");
+	/* This affects whether a table is range or hash started. */
+	PushVariable(state, "yb_use_hash_splitting_by_default");
+
+	/* Settings that affect parsing of string literals. */
+	PushVariable(state, "standard_conforming_strings");
+	/* Settings that affect parsing of dates, times, and intervals. */
+	PushVariable(state, "DateStyle");
+	PushVariable(state, "TimeZone");
+	PushVariable(state, "IntervalStyle");
+	/* Settings that affect parsing of function bodies. */
+	PushVariable(state, "check_function_bodies");
+
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -852,6 +976,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl = !is_temporary_object;
 		}
+		else if (IsIgnoredDdlCommand(command_tag))
+		{
+			continue;
+		}
 		else
 		{
 			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag_name,
@@ -880,6 +1008,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	PushEnumLabelMap(state, "enum_label_info", enum_label_list);
 	PushNameToOidMap(state, "sequence_info", sequence_info_list);
 	PushNameToOidMap(state, "type_info", type_info_list);
+
+	/*
+	 * Record session variables that are known to meaningfully affect the DDL
+	 * execution.
+	 */
+	PushVariableMap(state);
 
 	return should_replicate_ddl;
 }
@@ -994,6 +1128,17 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			/*
+			 * Ignore logical replication objects (not replicated via xCluster).
+			 * Note: Schema-level publications (PublicationNamespaceRelationId)
+			 * and SUBSCRIPTION are not supported yet in YB.
+			 */
+			case PublicationRelationId:
+			case PublicationRelRelationId:
+			case PublicationNamespaceRelationId:
+			case SubscriptionRelationId:
+			case SubscriptionRelRelationId:
+				continue;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,

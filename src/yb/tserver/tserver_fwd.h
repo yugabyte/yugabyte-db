@@ -18,6 +18,7 @@
 #include <utility>
 
 #include "yb/tserver/backup.fwd.h"
+#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/tserver_service.fwd.h"
 
@@ -63,6 +64,7 @@ class TabletServerServiceProxy;
 class TabletServiceImpl;
 class TabletServerPathHandlers;
 class TserverXClusterContextIf;
+class YSQLLeaseManager;
 class YsqlAdvisoryLocksTable;
 
 enum class TabletServerServiceRpcMethodIndexes;
@@ -91,6 +93,32 @@ struct HasRaftConfigOpidIndex<
 
 struct PgTxnSnapshot;
 YB_STRONGLY_TYPED_UUID_DECL(PgTxnSnapshotLocalId);
+
+// Temporary typedef for lightweight protobuf migration
+using TabletConsensusInfoMsg = TabletConsensusInfoPB;
+using ReadRequestMsg = ReadRequestPB;
+using ReadResponseMsg = ReadResponsePB;
+using WriteRequestMsg = WriteRequestPB;
+using WriteResponseMsg = WriteResponsePB;
+using PgPerformRequestMsg = PgPerformRequestPB;
+using PgPerformResponseMsg = PgPerformResponsePB;
+using PgAcquireObjectLockRequestMsg = PgAcquireObjectLockRequestPB;
+using PgAcquireObjectLockResponseMsg = PgAcquireObjectLockResponsePB;
+using PgInsertSequenceTupleRequestMsg = PgInsertSequenceTupleRequestPB;
+using PgInsertSequenceTupleResponseMsg = PgInsertSequenceTupleResponsePB;
+using PgUpdateSequenceTupleRequestMsg = PgUpdateSequenceTupleRequestPB;
+using PgUpdateSequenceTupleResponseMsg = PgUpdateSequenceTupleResponsePB;
+using PgFetchSequenceTupleRequestMsg = PgFetchSequenceTupleRequestPB;
+using PgFetchSequenceTupleResponseMsg = PgFetchSequenceTupleResponsePB;
+using PgReadSequenceTupleRequestMsg = PgReadSequenceTupleRequestPB;
+using PgReadSequenceTupleResponseMsg = PgReadSequenceTupleResponsePB;
+using PgDeleteSequenceTupleRequestMsg = PgDeleteSequenceTupleRequestPB;
+using PgDeleteSequenceTupleResponseMsg = PgDeleteSequenceTupleResponsePB;
+using PgDeleteDBSequencesRequestMsg = PgDeleteDBSequencesRequestPB;
+using PgDeleteDBSequencesResponseMsg = PgDeleteDBSequencesResponsePB;
+using PgGetTableKeyRangesRequestMsg = PgGetTableKeyRangesRequestPB;
+using PgGetTableKeyRangesResponseMsg = PgGetTableKeyRangesResponsePB;
+using TabletServerErrorMsg = TabletServerErrorPB;
 
 } // namespace tserver
 } // namespace yb

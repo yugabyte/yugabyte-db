@@ -11,7 +11,7 @@ SubDocKey(DocKey(ColocationId=20000, [], []), [])
 
 intent_write:
 Wrote 3 key/value pairs to kIntents RocksDB:
- 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: READ_COMMITTED status_tablet: 0 priority: 0 start_time: { physical: 0 } locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
+ 1. PutCF: TXN META ********-****-****-****-************ => { transaction_id: ********-****-****-****-************ isolation: READ_COMMITTED status_tablet: 0 priority: 0 start_time: { physical: 0 } using_table_locks: 1 locality: GLOBAL old_status_tablet:  skip_prefix_locks: 0 }
  2. PutCF: SubDocKey(DocKey(ColocationId=20000, [], []), []) [kStrongRead, kStrongWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) WriteId(0) DEL
 
 

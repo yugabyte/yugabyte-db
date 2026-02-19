@@ -1,6 +1,5 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
--- TODO(#29072): fix output.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
@@ -128,7 +127,7 @@
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2, parent.r3, parent.p1, parent.p2
-               ->  Index Scan using child1a_pkey on public.child1a parent_1 (actual rows=3 loops=1)
+               ->  Index Scan using child1a_pkey on public.child1a parent_1 (actual rows=2 loops=1)
                      Output: parent_1.n, parent_1.r3, parent_1.p1, parent_1.r1, parent_1.r2, parent_1.p2
                      Index Cond: (parent_1.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_1.r2, parent_1.r3, parent_1.p1, parent_1.p2
@@ -136,9 +135,9 @@
                      Merge Streams: 4
                      Merge Cond: (parent_1.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
-               ->  Index Scan using child1b_pkey on public.child1b parent_2 (actual rows=1 loops=1)
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
+               ->  Index Scan using child1b_pkey on public.child1b parent_2 (actual rows=3 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_2.r2, parent_2.r3, parent_2.p1, parent_2.p2
@@ -146,8 +145,8 @@
                      Merge Streams: 4
                      Merge Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
                ->  Index Scan using child2_pkey on public.child2 parent_3 (actual rows=3 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
@@ -156,9 +155,9 @@
                      Merge Streams: 4
                      Merge Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
-               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=2 loops=1)
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
+               ->  Index Scan using child3_pkey on public.child3 parent_4 (actual rows=1 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_4.r2, parent_4.r3, parent_4.p1, parent_4.p2
@@ -166,8 +165,8 @@
                      Merge Streams: 4
                      Merge Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
 (49 rows)
 
    n   | r3 | p1 | r1 | r2 | p2 
@@ -181,11 +180,11 @@
 
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
- 86000 |  0 |  6 |  0 |  0 |  8
- 96000 |  0 |  6 |  0 |  0 |  9
- 98000 |  0 |  8 |  0 |  0 |  9
- 31100 |  1 |  1 |  0 |  0 |  3
- 43100 |  1 |  3 |  0 |  0 |  4
+ 30002 |  0 |  0 |  2 |  0 |  3
+ 52001 |  0 |  2 |  1 |  0 |  5
+ 62001 |  0 |  2 |  1 |  0 |  6
+ 14003 |  0 |  4 |  3 |  0 |  1
+ 24002 |  0 |  4 |  2 |  0 |  2
 (5 rows)
 
 -- Backward scan
@@ -237,7 +236,7 @@
          Full-sort Groups: 1  Sort Method: quicksort
          ->  Merge Append (actual rows=6 loops=1)
                Sort Key: parent.r2 DESC, parent.r3 DESC, parent.p1 DESC, parent.p2 DESC
-               ->  Index Scan Backward using child1a_pkey on public.child1a parent_1 (actual rows=2 loops=1)
+               ->  Index Scan Backward using child1a_pkey on public.child1a parent_1 (actual rows=1 loops=1)
                      Output: parent_1.n, parent_1.r3, parent_1.p1, parent_1.r1, parent_1.r2, parent_1.p2
                      Index Cond: (parent_1.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_1.r2 DESC, parent_1.r3 DESC, parent_1.p1 DESC, parent_1.p2 DESC
@@ -245,9 +244,9 @@
                      Merge Streams: 4
                      Merge Cond: (parent_1.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
-               ->  Index Scan Backward using child1b_pkey on public.child1b parent_2 (actual rows=2 loops=1)
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
+               ->  Index Scan Backward using child1b_pkey on public.child1b parent_2 (actual rows=1 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_2.r2 DESC, parent_2.r3 DESC, parent_2.p1 DESC, parent_2.p2 DESC
@@ -255,9 +254,9 @@
                      Merge Streams: 4
                      Merge Cond: (parent_2.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
-               ->  Index Scan Backward using child2_pkey on public.child2 parent_3 (actual rows=2 loops=1)
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
+               ->  Index Scan Backward using child2_pkey on public.child2 parent_3 (actual rows=3 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_3.r2 DESC, parent_3.r3 DESC, parent_3.p1 DESC, parent_3.p2 DESC
@@ -265,9 +264,9 @@
                      Merge Streams: 4
                      Merge Cond: (parent_3.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
-               ->  Index Scan Backward using child3_pkey on public.child3 parent_4 (actual rows=3 loops=1)
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
+               ->  Index Scan Backward using child3_pkey on public.child3 parent_4 (actual rows=4 loops=1)
                      Output: parent_4.n, parent_4.r3, parent_4.p1, parent_4.r1, parent_4.r2, parent_4.p2
                      Index Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Merge Sort Key: parent_4.r2 DESC, parent_4.r3 DESC, parent_4.p1 DESC, parent_4.p2 DESC
@@ -275,8 +274,8 @@
                      Merge Streams: 4
                      Merge Cond: (parent_4.r1 = ANY ('{0,1,2,3}'::integer[]))
                      Storage Table Read Requests: 1
-                     Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Read Ops: 4
+                     Storage Table Rows Scanned: 20
 (49 rows)
 
    n   | r3 | p1 | r1 | r2 | p2 
@@ -290,11 +289,11 @@
 
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
+ 48991 |  9 |  8 |  1 |  9 |  4
  48993 |  9 |  8 |  3 |  9 |  4
- 96993 |  9 |  6 |  3 |  9 |  9
- 53993 |  9 |  3 |  3 |  9 |  5
- 23993 |  9 |  3 |  3 |  9 |  2
- 18893 |  8 |  8 |  3 |  9 |  1
+ 87991 |  9 |  7 |  1 |  9 |  8
+ 37991 |  9 |  7 |  1 |  9 |  3
+ 27992 |  9 |  7 |  2 |  9 |  2
 (5 rows)
 
 --
@@ -393,12 +392,12 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Stream Key: parent_1.p2
                      Merge Streams: 4
                      Merge Cond: (parent_1.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
-                     Storage Table Rows Scanned: 807
-                     Storage Index Read Requests: 2
-                     Storage Index Read Ops: 2
-                     Storage Index Rows Scanned: 807
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 7
+                     Storage Index Read Requests: 1
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
                ->  Index Scan using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_2 (actual rows=1 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
@@ -408,10 +407,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Rows Scanned: 14
                      Storage Index Read Requests: 1
-                     Storage Index Read Ops: 1
-                     Storage Index Rows Scanned: 5
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
                ->  Index Scan using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_3 (actual rows=1 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
@@ -421,10 +420,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Rows Scanned: 11
                      Storage Index Read Requests: 1
-                     Storage Index Read Ops: 1
-                     Storage Index Rows Scanned: 5
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
 (48 rows)
 
    n   | r3 | p1 | r1 | r2 | p2 
@@ -436,13 +435,13 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
    103 |  1 |  0 |  3 |  0 |  0
 (5 rows)
 
-  n  | r3 | p1 | r1 | r2 | p2 
------+----+----+----+----+----
-   6 |  0 |  0 |  6 |  0 |  0
-   8 |  0 |  0 |  8 |  0 |  0
- 103 |  1 |  0 |  3 |  0 |  0
- 203 |  2 |  0 |  3 |  0 |  0
- 207 |  2 |  0 |  7 |  0 |  0
+   n   | r3 | p1 | r1 | r2 | p2 
+-------+----+----+----+----+----
+ 30002 |  0 |  0 |  2 |  0 |  3
+     6 |  0 |  0 |  6 |  0 |  0
+     8 |  0 |  0 |  8 |  0 |  0
+ 20009 |  0 |  0 |  9 |  0 |  2
+   103 |  1 |  0 |  3 |  0 |  0
 (5 rows)
 
 -- Backward scan
@@ -497,10 +496,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Cond: (parent_1.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Rows Scanned: 16
                      Storage Index Read Requests: 1
-                     Storage Index Read Ops: 1
-                     Storage Index Rows Scanned: 5
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
                ->  Index Scan Backward using child2_p2_r2_p1_r3_r1_idx on public.child2 parent_2 (actual rows=1 loops=1)
                      Output: parent_2.n, parent_2.r3, parent_2.p1, parent_2.r1, parent_2.r2, parent_2.p2
                      Index Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
@@ -510,10 +509,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Cond: (parent_2.p2 = ANY ('{0,1,2,3}'::double precision[]))
                      Storage Table Read Requests: 1
                      Storage Table Read Ops: 1
-                     Storage Table Rows Scanned: 5
+                     Storage Table Rows Scanned: 13
                      Storage Index Read Requests: 1
-                     Storage Index Read Ops: 1
-                     Storage Index Rows Scanned: 5
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
                ->  Index Scan Backward using child3_p2_r2_p1_r3_r1_idx on public.child3 parent_3 (actual rows=6 loops=1)
                      Output: parent_3.n, parent_3.r3, parent_3.p1, parent_3.r1, parent_3.r2, parent_3.p2
                      Index Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
@@ -521,12 +520,12 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
                      Merge Stream Key: parent_3.p2
                      Merge Streams: 4
                      Merge Cond: (parent_3.p2 = ANY ('{0,1,2,3}'::double precision[]))
-                     Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
-                     Storage Table Rows Scanned: 393
-                     Storage Index Read Requests: 2
-                     Storage Index Read Ops: 2
-                     Storage Index Rows Scanned: 393
+                     Storage Table Read Requests: 1
+                     Storage Table Read Ops: 1
+                     Storage Table Rows Scanned: 13
+                     Storage Index Read Requests: 1
+                     Storage Index Read Ops: 4
+                     Storage Index Rows Scanned: 20
 (48 rows)
 
    n   | r3 | p1 | r1 | r2 | p2 
@@ -540,11 +539,11 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 
    n   | r3 | p1 | r1 | r2 | p2 
 -------+----+----+----+----+----
+  9996 |  9 |  9 |  6 |  9 |  0
+ 29996 |  9 |  9 |  6 |  9 |  2
  39994 |  9 |  9 |  4 |  9 |  3
+ 29799 |  7 |  9 |  9 |  9 |  2
  39796 |  7 |  9 |  6 |  9 |  3
- 39690 |  6 |  9 |  0 |  9 |  3
- 39399 |  3 |  9 |  9 |  9 |  3
- 39097 |  0 |  9 |  7 |  9 |  3
 (5 rows)
 
 -- (Drop this index)

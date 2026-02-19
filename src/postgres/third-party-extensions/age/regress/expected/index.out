@@ -1,0 +1,419 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+\! cp -r regress/age_load/data regress/instance/data/age_load
+LOAD 'age';
+SET search_path TO ag_catalog;
+SET enable_mergejoin = ON;
+SET enable_hashjoin = ON;
+SET enable_nestloop = ON;
+SET enable_seqscan = false;
+SELECT create_graph('cypher_index');
+NOTICE:  graph "cypher_index" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+/*
+ * Section 1: Unique Index on Properties
+ */
+--Section 1 Setup
+SELECT create_vlabel('cypher_index', 'idx');
+NOTICE:  VLabel "idx" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+CREATE UNIQUE INDEX cypher_index_idx_props_uq ON cypher_index.idx(properties);
+--Test 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ERROR:  duplicate key value violates unique constraint "cypher_index_idx_props_uq"
+DETAIL:  Key (properties)=({"i": 1}) already exists.
+--Clean Up
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 2
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}), (:idx {i: 1}) $$) AS (a agtype);
+ERROR:  duplicate key value violates unique constraint "cypher_index_idx_props_uq"
+DETAIL:  Key (properties)=({"i": 1}) already exists.
+--Clean Up
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 3
+--Data Setup
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Query
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) SET n.i = 1$$) AS (a agtype);
+ERROR:  duplicate key value violates unique constraint "cypher_index_idx_props_uq"
+DETAIL:  Key (properties)=({"i": 1}) already exists.
+--Clean Up
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 4
+--create a vertex with i = 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--delete the vertex
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--we should be able to create a new vertex with the same value
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--data cleanup
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+/*
+ * Test 5
+ *
+ * Same queries as Test 4, only in 1 transaction
+ */
+BEGIN TRANSACTION;
+--create a vertex with i = 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--delete the vertex
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--we should be able to create a new vertex with the same value
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+COMMIT;
+--data cleanup
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 6
+--create a vertex with i = 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- change the value
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) SET n.i = 2 $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--we should be able to create a new vertex with the same value
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--validate the data
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) RETURN n $$) AS (a agtype);
+                                    a                                    
+-------------------------------------------------------------------------
+ {"id": 844424930131979, "label": "idx", "properties": {"i": 2}}::vertex
+ {"id": 844424930131980, "label": "idx", "properties": {"i": 1}}::vertex
+(2 rows)
+
+--data cleanup
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+/*
+ * Test 7
+ *
+ * Same queries as Test 6, only in 1 transaction
+ */
+BEGIN TRANSACTION;
+--create a vertex with i = 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- change the value
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) SET n.i = 2 $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--we should be able to create a new vertex with the same value
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--validate the data
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) RETURN n $$) AS (a agtype);
+                                    a                                    
+-------------------------------------------------------------------------
+ {"id": 844424930131981, "label": "idx", "properties": {"i": 2}}::vertex
+ {"id": 844424930131982, "label": "idx", "properties": {"i": 1}}::vertex
+(2 rows)
+
+COMMIT;
+--validate the data again out of the transaction, just in case
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) RETURN n $$) AS (a agtype);
+                                    a                                    
+-------------------------------------------------------------------------
+ {"id": 844424930131981, "label": "idx", "properties": {"i": 2}}::vertex
+ {"id": 844424930131982, "label": "idx", "properties": {"i": 1}}::vertex
+(2 rows)
+
+--data cleanup
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 8
+--create a vertex with i = 1
+SELECT * FROM cypher('cypher_index', $$ CREATE (:idx {i: 1}) $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- Use Merge and force an index error
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) MERGE (n)-[:e]->(:idx {i: n.i}) $$) AS (a agtype);
+ERROR:  duplicate key value violates unique constraint "cypher_index_idx_props_uq"
+DETAIL:  Key (properties)=({"i": 1}) already exists.
+--data cleanup
+SELECT * FROM cypher('cypher_index', $$ MATCH(n) DETACH DELETE n $$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+/*
+ * Section 2: Graphid Indices to Improve Join Performance
+ */
+SELECT * FROM cypher('cypher_index', $$
+    CREATE (us:Country {name: "United States", country_code: "US", life_expectancy: 78.79, gdp: 20.94::numeric}),
+        (ca:Country {name: "Canada", country_code: "CA", life_expectancy: 82.05, gdp: 1.643::numeric}),
+        (mx:Country {name: "Mexico", country_code: "MX", life_expectancy: 75.05, gdp: 1.076::numeric}),
+        (us)<-[:has_city]-(:City {city_id: 1, name:"New York", west_coast: false, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 2, name:"San Fransisco", west_coast: true, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 3, name:"Los Angeles", west_coast: true, country_code:"US"}),
+        (us)<-[:has_city]-(:City {city_id: 4, name:"Seattle", west_coast: true, country_code:"US"}),
+        (ca)<-[:has_city]-(:City {city_id: 5, name:"Vancouver", west_coast: true, country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {city_id: 6, name:"Toronto", west_coast: false, country_code:"CA"}),
+        (ca)<-[:has_city]-(:City {city_id: 7, name:"Montreal", west_coast: false, country_code:"CA"}),
+        (mx)<-[:has_city]-(:City {city_id: 8, name:"Mexico City", west_coast: false, country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {city_id: 9, name:"Monterrey", west_coast: false, country_code:"MX"}),
+        (mx)<-[:has_city]-(:City {city_id: 10, name:"Tijuana", west_coast: false, country_code:"MX"})
+$$) as (n agtype);
+ n 
+---
+(0 rows)
+
+ALTER TABLE cypher_index."Country" ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX CONCURRENTLY cntry_id_idx ON cypher_index."Country" (id);
+ALTER TABLE cypher_index."Country"  CLUSTER ON cntry_id_idx;
+ALTER TABLE cypher_index."City" ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX city_id_idx ON cypher_index."City" (id);
+ALTER TABLE cypher_index."City" CLUSTER ON city_id_idx;
+ALTER TABLE cypher_index.has_city
+ADD CONSTRAINT has_city_end_fk FOREIGN KEY (end_id)
+REFERENCES cypher_index."Country"(id) MATCH FULL;
+CREATE INDEX load_has_city_eid_idx ON cypher_index.has_city (end_id);
+CREATE INDEX load_has_city_sid_idx ON cypher_index.has_city (start_id);
+ALTER TABLE cypher_index."has_city" CLUSTER ON load_has_city_eid_idx;
+SET enable_mergejoin = ON;
+SET enable_hashjoin = OFF;
+SET enable_nestloop = OFF;
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+ count 
+-------
+    10
+(1 row)
+
+SET enable_mergejoin = OFF;
+SET enable_hashjoin = ON;
+SET enable_nestloop = OFF;
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+ count 
+-------
+    10
+(1 row)
+
+SET enable_mergejoin = OFF;
+SET enable_hashjoin = OFF;
+SET enable_nestloop = ON;
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:Country)<-[e:has_city]-()
+    RETURN e
+$$) as (n agtype);
+ count 
+-------
+    10
+(1 row)
+
+SET enable_mergejoin = ON;
+SET enable_hashjoin = ON;
+SET enable_nestloop = ON;
+--
+-- Section 3: Agtype GIN Indices to Improve WHERE clause Performance
+--
+CREATE INDEX load_city_gin_idx
+ON cypher_index."City" USING gin (properties);
+CREATE INDEX load_country_gin_idx
+ON cypher_index."Country" USING gin (properties);
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:City {city_id: 1})
+    RETURN c
+$$) as (n agtype);
+                                                                       n                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "City", "properties": {"name": "New York", "city_id": 1, "west_coast": false, "country_code": "US"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (:Country {country_code: "US"})<-[]-(city:City)
+    RETURN city
+$$) as (n agtype);
+                                                                         n                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1970324836974593, "label": "City", "properties": {"name": "New York", "city_id": 1, "west_coast": false, "country_code": "US"}}::vertex
+ {"id": 1970324836974594, "label": "City", "properties": {"name": "San Fransisco", "city_id": 2, "west_coast": true, "country_code": "US"}}::vertex
+ {"id": 1970324836974595, "label": "City", "properties": {"name": "Los Angeles", "city_id": 3, "west_coast": true, "country_code": "US"}}::vertex
+ {"id": 1970324836974596, "label": "City", "properties": {"name": "Seattle", "city_id": 4, "west_coast": true, "country_code": "US"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:City {west_coast: true})
+    RETURN c
+$$) as (n agtype);
+                                                                         n                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1970324836974594, "label": "City", "properties": {"name": "San Fransisco", "city_id": 2, "west_coast": true, "country_code": "US"}}::vertex
+ {"id": 1970324836974595, "label": "City", "properties": {"name": "Los Angeles", "city_id": 3, "west_coast": true, "country_code": "US"}}::vertex
+ {"id": 1970324836974596, "label": "City", "properties": {"name": "Seattle", "city_id": 4, "west_coast": true, "country_code": "US"}}::vertex
+ {"id": 1970324836974597, "label": "City", "properties": {"name": "Vancouver", "city_id": 5, "west_coast": true, "country_code": "CA"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:Country {life_expectancy: 82.05})
+    RETURN c
+$$) as (n agtype);
+                                                                               n                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "Country", "properties": {"gdp": 1.643::numeric, "name": "Canada", "country_code": "CA", "life_expectancy": 82.05}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_index', $$
+    MATCH (c:Country {gdp: 20.94::numeric})
+    RETURN c
+$$) as (n agtype);
+                                                                                  n                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553281, "label": "Country", "properties": {"gdp": 20.94::numeric, "name": "United States", "country_code": "US", "life_expectancy": 78.79}}::vertex
+(1 row)
+
+DROP INDEX cypher_index.load_city_gin_idx;
+DROP INDEX cypher_index.load_country_gin_idx;
+--
+-- Section 4: Index use with WHERE clause
+--
+SELECT COUNT(*) FROM cypher('cypher_index', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
+$$) as (n agtype);
+ count 
+-------
+     0
+(1 row)
+
+CREATE INDEX CONCURRENTLY cntry_ode_idx ON cypher_index."City"
+(ag_catalog.agtype_access_operator(properties, '"country_code"'::agtype));
+SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+    MATCH (a:City)
+    WHERE a.country_code = 'RS'
+    RETURN a
+$$) as (n agtype);
+ERROR:  graph "agload_test_graph" does not exist
+LINE 1: SELECT COUNT(*) FROM cypher('agload_test_graph', $$
+                                    ^
+--
+-- General Cleanup
+--
+SELECT drop_graph('cypher_index', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table cypher_index._ag_label_vertex
+drop cascades to table cypher_index._ag_label_edge
+drop cascades to table cypher_index.idx
+drop cascades to table cypher_index."Country"
+drop cascades to table cypher_index.has_city
+drop cascades to table cypher_index."City"
+NOTICE:  graph "cypher_index" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('agload_test_graph', true);
+ERROR:  graph "agload_test_graph" does not exist

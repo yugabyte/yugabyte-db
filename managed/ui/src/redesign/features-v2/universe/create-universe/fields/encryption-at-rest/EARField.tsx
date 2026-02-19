@@ -6,10 +6,12 @@ import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBLabel, YBAutoComplete } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/utils/api';
-
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
 import { KmsConfig } from '../../../../../features/universe/universe-form/utils/dto';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 const { Box } = mui;
 
@@ -45,12 +47,24 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
 
   return (
     <FieldContainer sx={{ padding: '16px 24px' }}>
-      <YBToggleField
-        name={EAR_FIELD}
-        control={control}
-        label={t('createUniverseV2.securitySettings.earField.label')}
-        dataTestId="enable-encryption-at-rest-field"
-      />
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '4px'
+        }}
+      >
+        <Box sx={{ marginBottom: '-5px' }}>
+          <YBToggleField
+            name={EAR_FIELD}
+            control={control}
+            label={t('createUniverseV2.securitySettings.earField.label')}
+            dataTestId="enable-encryption-at-rest-field"
+          />
+        </Box>
+        <InfoIcon />
+      </Box>
       {encryptionEnabled && (
         <Box
           sx={{ display: 'flex', flexDirection: 'row', width: '100%', alignItems: 'center', mt: 2 }}
@@ -63,7 +77,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
               rules={{
                 required:
                   !disabled && encryptionEnabled
-                    ? (t('universeForm.validation.required', {
+                    ? (t('createUniverseV2.validation.required', {
                         field: t('createUniverseV2.securitySettings.earField.kmsConfig')
                       }) as string)
                     : ''
@@ -100,6 +114,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
                         getOptionLabel={getOptionLabel}
                         onChange={handleChange}
                         value={(value as unknown) as never}
+                        size="large"
                       />
                     </Box>
                   </Box>

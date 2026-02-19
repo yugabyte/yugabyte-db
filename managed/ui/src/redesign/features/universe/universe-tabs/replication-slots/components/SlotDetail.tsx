@@ -33,7 +33,7 @@ import { METRIC_COLORS } from '../../../../../../components/metrics/MetricsConfi
 import { DurationUnit } from '../../../../../../components/xcluster/disasterRecovery/constants';
 import { replicationSlotStyles } from '../utils/ReplicationSlotStyles';
 //icons
-import { ReactComponent as PrometheusIcon } from '../../../../../assets/prometheus-icon.svg';
+import PrometheusIcon from '../../../../../assets/prometheus-icon.svg';
 
 interface SlotDetailProps {
   uuid: string;

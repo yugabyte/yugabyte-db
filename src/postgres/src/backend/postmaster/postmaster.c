@@ -1501,7 +1501,7 @@ PostmasterMain(int argc, char *argv[])
 		ereport(FATAL,
 				(errmsg("could not load pg_hba.conf")));
 	}
-	if (!load_ident())
+	if (!load_ident(NULL /* yb_ident_context */ ))
 	{
 		/*
 		 * We can start up without the IDENT file, although it means that you
@@ -2092,6 +2092,17 @@ initMasks(fd_set *rmask)
 	return maxsock + 1;
 }
 
+/*
+ * YB: This function is a wrapper around ProcessStartupPacket, lifting it from
+ * `static` to `extern` as it is required in postgres.c for the Authentication
+ * Passthrough mode of Connection Manager, while making minimal changes to
+ * upstream-owned code.
+ */
+int
+YbProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
+{
+	return ProcessStartupPacket(port, ssl_done, gss_done);
+}
 
 /*
  * Read a client's startup packet and do something according to it.
@@ -2130,6 +2141,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
 	bool		yb_auto_analyze_backend = false;
+	bool		yb_is_auth_via_conn_mgr = false;
 
 	pq_startmsgread();
 
@@ -2333,8 +2345,18 @@ retry1:
 	 * running backend (even after PostmasterContext is destroyed).  We need
 	 * not worry about leaking this storage on failure, since we aren't in the
 	 * postmaster process anymore.
+	 *
+	 * YB: When in auth passthrough mode, we reuse this ProcessStartupPacket
+	 * func to handle client startup packets. The specific details of the client
+	 * are not required after authentication is over. Thus, there is no need to
+	 * store startup data in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * explicit pfree's elsewhere). So, we continue allocating in the txn
+	 * MemoryContext (currently active) spawned specifically for Auth
+	 * Passthrough auth attempts.
 	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* Handle protocol version 3 startup packet */
 	{
@@ -2494,15 +2516,19 @@ retry1:
 			SendNegotiateProtocolVersion(unrecognized_protocol_options);
 	}
 
+	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
+		port->yb_is_auth_passthrough_req;
+
 	if (YBIsEnabledInPostgresEnvVar())
 	{
 		if (yb_auth_backend_remote_host != NULL)
 		{
-			if (!yb_is_auth_backend)
+			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("yb_auth_remote_host must only be provided when"
-								" yb_authonly is true")));
+						 errmsg("yb_auth_remote_host must only be provided "
+								"when yb_authonly is true or in an auth passthrough "
+								"'A' request packet")));
 
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
@@ -2521,7 +2547,7 @@ retry1:
 
 		if (yb_logical_conn_type_provided)
 		{
-			if (!yb_is_auth_backend)
+			if (!yb_is_auth_via_conn_mgr)
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("yb_logical_conn_type must only be provided "
@@ -2589,8 +2615,11 @@ retry1:
 
 	/*
 	 * Done putting stuff in TopMemoryContext.
+	 * YB: No context switch required if Auth Passthrough is in progress.
+	 * See above.
 	 */
-	MemoryContextSwitchTo(oldcontext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * If we're going to reject the connection due to database state, say so
@@ -3016,7 +3045,7 @@ SIGHUP_handler(SIGNAL_ARGS)
 			/* translator: %s is a configuration file */
 					(errmsg("%s was not reloaded", "pg_hba.conf")));
 
-		if (!load_ident())
+		if (!load_ident(NULL /* yb_ident_context */ ))
 			ereport(LOG,
 					(errmsg("%s was not reloaded", "pg_ident.conf")));
 
@@ -4828,6 +4857,14 @@ BackendInitialize(Port *port)
 	/* set these to empty in case they are needed before we set them up */
 	port->remote_host = "";
 	port->remote_port = "";
+
+	/*
+	 * YB: Initialize custom vars to avoid issue in control/auth backend startup
+	 */
+	port->yb_is_auth_passthrough_req = false;
+	port->yb_has_auth_passthrough_failed = false;
+	port->yb_is_tserver_auth_method = false;
+	port->yb_is_ssl_enabled_in_logical_conn = false;
 
 	/*
 	 * Initialize libpq and enable reporting of ereport errors to the client.

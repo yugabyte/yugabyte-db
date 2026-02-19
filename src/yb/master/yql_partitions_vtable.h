@@ -30,7 +30,7 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   explicit YQLPartitionsVTable(const TableName& table_name,
                                const NamespaceName& namespace_name,
                                Master* const master);
-  Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const;
+  Result<VTableDataPtr> RetrieveData(const QLReadRequestMsg& request) const;
   Result<VTableDataPtr> GenerateAndCacheData() const;
 
   // Remove tables from the system.partitions vtable.

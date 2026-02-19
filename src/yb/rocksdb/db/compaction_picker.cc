@@ -1373,12 +1373,13 @@ void UniversalCompactionPicker::SortedRun::DumpSizeInfo(
     char* out_buf, size_t out_buf_size, size_t sorted_run_count) const {
   if (level == 0) {
     assert(file != nullptr);
-    snprintf(out_buf, out_buf_size,
-             "file %" PRIu64 "[%" ROCKSDB_PRIszt
-             "] "
-             "with size %" PRIu64 " (compensated size %" PRIu64 ")",
-             file->fd.GetNumber(), sorted_run_count, file->fd.GetTotalFileSize(),
-             file->compensated_file_size);
+    snprintf(
+        out_buf, out_buf_size,
+        "file %" PRIu64 "[%" ROCKSDB_PRIszt "] with size %" PRIu64
+        " (metadata size %" PRIu64 ", data size %" PRIu64 ", compensated size %" PRIu64 ")",
+        file->fd.GetNumber(), sorted_run_count, file->fd.GetTotalFileSize(),
+        file->fd.GetBaseFileSize(), file->fd.GetTotalFileSize() - file->fd.GetBaseFileSize(),
+        file->compensated_file_size);
   } else {
     snprintf(out_buf, out_buf_size,
              "level %d[%" ROCKSDB_PRIszt

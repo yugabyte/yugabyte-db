@@ -38,9 +38,9 @@ std::string EntryToString(
     SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type = StorageDbType::kRegular);
 std::string EntryToString(
-    const Slice& key, const Slice& value,
-    SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    StorageDbType db_type = StorageDbType::kRegular);
+    Slice key, Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    StorageDbType db_type = StorageDbType::kRegular, const std::string& key_suffix = "",
+    AllowEmptyValue allow_empty_value = AllowEmptyValue::kFalse);
 
 // Create a debug dump of the document database. Tries to decode all keys/values despite failures.
 // Reports all errors to the output stream and returns the status of the first failed operation,

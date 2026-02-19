@@ -50,7 +50,7 @@ curl -k https://<yba_address>/api/v1/node_agents/download\?downloadType\=package
 ```
 
 - `<yba_address>` is the address of your YugabyteDB Anywhere installation.
-- `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication).
+- `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication). The user creating the API token must have [Admin role](../../../administer-yugabyte-platform/anywhere-rbac/#built-in-roles) privileges or better.
 - You can change the architecture from AMD64 to ARM64 as appropriate.
 
 Use this method if you don't have internet connectivity. This downloads the same version of node agent as the version of YugabyteDB Anywhere you are running.
@@ -109,6 +109,7 @@ The following table describes options that are changed for a typical installatio
 | `use_system_level_systemd` | Defaults to false (which uses user-level systemd for service management). |
 | `node_ip` | The fully-qualified domain name or IP address of the node you are provisioning. Must be accessible to other nodes. |
 | `tmp_directory` | The directory on the node to use for storing temporary files during provisioning. |
+| `is_configure_clockbound` | {{<tags/feature/ea idea="2133">}}Set to `true` to configure [ClockBound](https://github.com/aws/clock-bound) during provisioning. ClockBound improves clock accuracy and reduces read-restart errors in YSQL. ClockBound requires [chrony](https://chrony-project.org/) to be configured. <br/>When enabled, the provisioning script installs ClockBound as a systemd unit and configures it to communicate with chronyd. <br/>The script also configures the on-premises provider configuration (see the following options) so that universes created using the provider automatically have the [time_source](../../../../reference/configuration/yb-master/#time-source) flag set to `clockbound`. |
 
 Set the following options to have node agent create (or update) the [on-premises provider configuration](../../../configure-yugabyte-platform/on-premises-provider/) where you want to add the node. (YugabyteDB Anywhere must be installed and running.)
 
@@ -116,7 +117,7 @@ Set the following options to have node agent create (or update) the [on-premises
 | :--- | :--- |
 | `url` | The base URL of your YugabyteDB Anywhere instance. |
 | `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
-| `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. |
+| `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. The user creating the API token must have [Admin role](../../../administer-yugabyte-platform/anywhere-rbac/#built-in-roles) privileges or better. |
 | `node_name` | A name for the node. |
 | `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 

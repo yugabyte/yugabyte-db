@@ -14,27 +14,27 @@ import (
 )
 
 // ListAllTelemetryProviders fetches list of telemetry providers associated with the customer
-func (a *AuthAPIClient) ListAllTelemetryProviders() ybaclient.TelemetryProviderApiApiListAllTelemetryProvidersRequest {
-	return a.APIClient.TelemetryProviderApi.ListAllTelemetryProviders(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ListAllTelemetryProviders() ybaclient.TelemetryProviderAPIListAllTelemetryProvidersRequest {
+	return a.APIClient.TelemetryProviderAPI.ListAllTelemetryProviders(a.ctx, a.CustomerUUID)
 }
 
 // GetTelemetryProvider fetches telemetry provider associated with the customer and telemetryProviderUUID
 func (a *AuthAPIClient) GetTelemetryProvider(
 	tpUUID string,
-) ybaclient.TelemetryProviderApiApiGetTelemetryProviderRequest {
-	return a.APIClient.TelemetryProviderApi.GetTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
+) ybaclient.TelemetryProviderAPIGetTelemetryProviderRequest {
+	return a.APIClient.TelemetryProviderAPI.GetTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
 }
 
 // CreateTelemetry calls the create telemetry provider API
-func (a *AuthAPIClient) CreateTelemetry() ybaclient.TelemetryProviderApiApiCreateTelemetryRequest {
-	return a.APIClient.TelemetryProviderApi.CreateTelemetry(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) CreateTelemetry() ybaclient.TelemetryProviderAPICreateTelemetryRequest {
+	return a.APIClient.TelemetryProviderAPI.CreateTelemetry(a.ctx, a.CustomerUUID)
 }
 
 // DeleteTelemetryProvider deletes telemetry provider associated with the telemetryProviderUUID
 func (a *AuthAPIClient) DeleteTelemetryProvider(
 	tpUUID string,
-) ybaclient.TelemetryProviderApiApiDeleteTelemetryProviderRequest {
-	return a.APIClient.TelemetryProviderApi.DeleteTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
+) ybaclient.TelemetryProviderAPIDeleteTelemetryProviderRequest {
+	return a.APIClient.TelemetryProviderAPI.DeleteTelemetryProvider(a.ctx, a.CustomerUUID, tpUUID)
 }
 
 // TelemetryProviderYBAVersionCheck checks if the new TelemetryProvider management API can be used

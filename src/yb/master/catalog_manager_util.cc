@@ -22,6 +22,8 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_util.h"
 #include "yb/master/ysql_tablespace_manager.h"
 
 #include "yb/tserver/tserver_service.pb.h"
@@ -30,6 +32,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
 
 using std::string;
 using std::vector;
@@ -96,7 +99,7 @@ ReplicationInfoPB CatalogManagerUtil::GetTableReplicationInfo(
     }
   }
 
-  // For system catalog tables, return cluster config replication info.
+  // For non-system tables, return table-level replication info if available.
   if (!table->is_system() && tablespace_manager) {
     auto result = tablespace_manager->GetTableReplicationInfo(table);
     if (!result.ok()) {
@@ -406,7 +409,7 @@ Status ValidateAndAddPreferredZone(
         cloud_info_str);
   }
 
-  if (!PlacementInfoContainsCloudInfo(placement_info, cloud_info)) {
+  if (!CloudInfoMatchesPlacementInfo(cloud_info, placement_info)) {
     return STATUS_FORMAT(
         InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
         placement_info);
@@ -493,6 +496,15 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   }
 
   return Status::OK();
+}
+
+Result<bool> CatalogManagerUtil::GetIsTruncateTableDone(
+    const TableInfoPtr& table, IsTruncateTableDoneResponsePB* resp) {
+  LOG(INFO) << "Run IsTruncateTableDone for table id " << table->id();
+  TRACE("Locking table");
+  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(),
+                                                        DCHECK_NOTNULL(resp)));
+  return !table->HasTasks(server::MonitoredTaskType::kTruncateTablet);
 }
 
 void CatalogManagerUtil::FillTableInfoPB(
@@ -595,6 +607,38 @@ Status ExecutePgsqlStatements(
 bool UseRelfilenodeForTableMatch(const SnapshotInfoPB& snapshot_pb) {
   return snapshot_pb.format_version() == kUseRelfilenodeFormatVersion;
 }
+
+template <class LoadState>
+Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, LoadState* state) {
+  auto tablets = VERIFY_RESULT(table_info->GetTabletsIncludeInactive());
+
+  for (const auto& tablet : tablets) {
+    // Ignore if tablet is not running.
+    {
+      auto tablet_lock = tablet->LockForRead();
+      if (!tablet_lock->is_running()) {
+        continue;
+      }
+    }
+    auto replica_locs = tablet->GetReplicaLocations();
+
+    for (const auto& loc : *replica_locs) {
+      // Ignore replica if not present in the tserver list passed.
+      if (state->per_ts_replica_load_.count(loc.first) == 0) {
+        continue;
+      }
+      // Account for this load.
+      state->per_ts_replica_load_[loc.first]++;
+    }
+  }
+  return Status::OK();
+}
+
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMPerTableLoadState* state);
+template Status CatalogManagerUtil::FillTableLoadState(
+    const scoped_refptr<TableInfo>& table_info, CMGlobalLoadState* state);
 
 } // namespace master
 } // namespace yb

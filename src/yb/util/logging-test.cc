@@ -55,7 +55,7 @@ TEST(LoggingTest, TestThrottledLogging) {
   ScopedRegisterSink srs(&sink);
 
   for (int i = 0; i < 10000; i++) {
-    YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "test";
     SleepFor(MonoDelta::FromMilliseconds(1));
     if (sink.logged_msgs().size() >= 2) break;
   }
@@ -68,8 +68,8 @@ TEST(LoggingTest, TestThrottledLogging) {
   EXPECT_THAT(msgs[1], testing::ContainsRegex("\\[suppressed [0-9]{2,} similar messages\\]"));
 
   // Just compilation check.
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
-  YB_LOG_EVERY_N_SECS(INFO, 1) << "test" << THROTTLE_MSG;
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "test";
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "test";
 }
 
 TEST(LoggingTest, VModule) {
@@ -106,7 +106,7 @@ TEST(LoggingTest, TestThrottledOrVlogWithoutVlog) {
 
   // Log 5000 messages over a period of 5 seconds.
   for (int i = 0; i < 5000; i++) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test" << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test";
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   const vector<string>& msgs = sink.logged_msgs();
@@ -120,8 +120,8 @@ TEST(LoggingTest, TestThrottledOrVlogWithoutVlog) {
       msgs[1], testing::ContainsRegex("\\] test [suppressed [0-9]{2,} similar messages\\]$"));
 
   // Just compilation check.
-  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 2) << "test" << THROTTLE_MSG;
-  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 3) << "test" << THROTTLE_MSG;
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 2) << "test";
+  YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 3) << "test";
 }
 
 // Test the YB_LOG_EVERY_N_SECS_OR_VLOG(...) macro when vlog is on.
@@ -133,7 +133,7 @@ TEST(LoggingTest, TestThrottledOrVlogWithVlog) {
 
   // Log 2000 messages over a period of 2 seconds.
   for (int i = 0; i < 2000; i++) {
-    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test" << THROTTLE_MSG;
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 1, 1) << "test";
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
   const vector<string>& msgs = sink.logged_msgs();
@@ -141,6 +141,22 @@ TEST(LoggingTest, TestThrottledOrVlogWithVlog) {
 
   // The first log line shouldn't have a suppression count.
   EXPECT_THAT(msgs[0], testing::ContainsRegex("] vlog1: test$"));
+}
+
+// Test macros for YB-severity log levels.
+TEST(LoggingTest, TestYBLogSeverity) {
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  constexpr auto kPattern = "test";
+  LOG_DETAIL << kPattern;
+
+  const vector<string>& msgs = sink.logged_msgs();
+
+  ASSERT_EQ(msgs.size(), 1);
+
+  EXPECT_THAT(msgs[0], testing::HasSubstr(kPattern));
+  EXPECT_THAT(msgs[0], testing::HasSubstr("DETAIL: "));
 }
 
 }  // namespace yb

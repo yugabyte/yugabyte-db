@@ -92,6 +92,13 @@ class XClusterTestBase : public YBTest {
       return pgwrapper::PGConnBuilder(std::move(settings)).Connect(simple_query_protocol);
     }
 
+    Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname) {
+      auto settings = CreatePGConnSettings();
+      settings.dbname = dbname;
+      settings.replication = "database";
+      return pgwrapper::PGConnBuilder(std::move(settings)).Connect(true);
+    }
+
     pgwrapper::PGConnSettings CreatePGConnSettings() {
       pgwrapper::PGConnSettings settings;
       settings.host = pg_host_port_.host();

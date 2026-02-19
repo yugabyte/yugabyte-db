@@ -823,18 +823,35 @@ XClusterClient::InsertHistoricalColocatedSchemaPacking(
 
 Status XClusterClient::InsertPackedSchemaForXClusterTarget(
     const TableId& table_id, const SchemaPB& packed_schema_to_insert,
-    uint32_t current_schema_version, const std::optional<ColocationId>& colocation_id) {
+    uint32_t current_consumer_schema_version, const std::optional<ColocationId>& colocation_id) {
   SCHECK(!table_id.empty(), InvalidArgument, "Table id is required.");
 
   master::InsertPackedSchemaForXClusterTargetRequestPB req;
   req.set_table_id(table_id);
   req.mutable_packed_schema()->CopyFrom(packed_schema_to_insert);
-  req.set_current_schema_version(current_schema_version);
+  req.set_current_consumer_schema_version(current_consumer_schema_version);
   if (colocation_id) {
     req.set_colocation_id(*colocation_id);
   }
 
   auto resp = CALL_SYNC_LEADER_MASTER_RPC(InsertPackedSchemaForXClusterTarget, req);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Status XClusterClient::HandleNewSchemaForAutomaticXClusterTarget(
+    const TableId& table_id, const std::string& replication_group_id, const std::string& stream_id,
+    uint32_t producer_schema_version, const SchemaPB& schema) {
+  master::HandleNewSchemaForAutomaticXClusterTargetRequestPB req;
+  req.set_table_id(table_id);
+  req.set_replication_group_id(replication_group_id);
+  req.set_stream_id(stream_id);
+  req.set_producer_schema_version(producer_schema_version);
+  req.mutable_schema()->CopyFrom(schema);
+
+  auto resp = CALL_SYNC_LEADER_MASTER_RPC(HandleNewSchemaForAutomaticXClusterTarget, req);
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }

@@ -61,17 +61,6 @@ static void auth_failed(Port *port, int status, const char *logdetail,
 static char *recv_password_packet(Port *port);
 static void set_authn_id(Port *port, const char *id);
 
-/*
- * GH #19781: FATAL or ERROR packet leads to a broken physical connection. Therefore,
- * in auth passthrough, instead of FATAL/ERROR packet, WARNING packet along with
- * FatalForLogicalConnection packet is used.
- */
-static int
-YbAuthFailedErrorLevel(const bool auth_passthrough)
-{
-	return (YbIsClientYsqlConnMgr() && auth_passthrough == true) ? WARNING : FATAL;
-}
-
 /*----------------------------------------------------------------
  * Password-based authentication methods (password, md5, and scram-sha-256)
  *----------------------------------------------------------------
@@ -284,6 +273,18 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	char	   *cdetail;
 	int			errcode_return = ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION;
 
+	bool		yb_is_auth_passthrough = YbIsAuthPassthroughInProgress(port);
+
+	/*
+	 * YB: When using Auth Passthrough mode of connection manager, mark the
+	 * current auth attempt as failed so that the control backend knows to abort
+	 * auth and reset to its base state. The fact that we are in a call to
+	 * `auth_failed()` is sufficient to conclude that auth has failed.
+	 */
+
+	if (yb_is_auth_passthrough)
+		port->yb_has_auth_passthrough_failed = true;
+
 	/*
 	 * If we failed due to EOF from client, just quit; there's no point in
 	 * trying to send a message to the client, and not much point in logging
@@ -293,9 +294,22 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	 * send.  We'll get a useless log entry for every psql connection under
 	 * password auth, even if it's perfectly successful, if we log STATUS_EOF
 	 * events.)
+	 *
+	 * YB: When conn mgr is enabled and in auth passthrough mode, avoid calling
+	 * proc_exit here, instead returning a failure result via
+	 * port->yb_has_auth_passthrough_failed.
 	 */
 	if (status == STATUS_EOF)
-		proc_exit(0);
+	{
+		if (yb_is_auth_passthrough)
+		{
+			return;
+		}
+		else
+		{
+			proc_exit(0);
+		}
+	}
 
 	switch (port->hba->auth_method)
 	{
@@ -366,10 +380,10 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 	else
 		logdetail = cdetail;
 
-	if (port->yb_is_auth_passthrough_req)
+	if (yb_is_auth_passthrough)
 		YbSendFatalForLogicalConnectionPacket();
 
-	ereport(YbAuthFailedErrorLevel(port->yb_is_auth_passthrough_req),
+	ereport(YbAuthFailedErrorLevel(yb_is_auth_passthrough),
 			(errcode(errcode_return),
 			 (yb_role_is_locked_out ?
 			  errmsg("role \"%s\" is locked. Contact your database administrator.",
@@ -378,6 +392,11 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 			 (logdetail ? errdetail_log("%s", logdetail) : 0)));
 
 	/* doesn't return */
+	/*
+	 * YB: This function does in fact return when the Auth Passthrough mode of
+	 * Connection Manager is enabled. The relevant codepath changes for this
+	 * change in behaviour are all under the `yb_ai_auth_passthrough` flag.
+	 */
 }
 
 
@@ -413,7 +432,18 @@ set_authn_id(Port *port, const char *id)
 							   port->authn_id, id)));
 	}
 
-	port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
+	/*
+	 * YB: When handling an incoming auth request in Auth Passthrough mode,
+	 * the authn_id of the incoming client is not required after auth finishes.
+	 * Thus there is no need to store it in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * an explicit pfree elsewhere). So, we continue allocating in the txn
+	 * MemoryContext spawned specifically for Auth Passthrough auth attempts.
+	 */
+	if (YbIsAuthPassthroughInProgress(port))
+		port->authn_id = pstrdup(id);
+	else
+		port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
 
 	if (Log_connections)
 	{
@@ -429,6 +459,13 @@ set_authn_id(Port *port, const char *id)
 /*
  * Client authentication starts here.  If there is an error, this
  * function does not return and the backend process is terminated.
+ *
+ * YB: This function *does* return in case connection manager is active and this
+ * is a control backend being used for authentication with auth passthrough mode
+ * enabled.
+ * If auth fails, `port->yb_has_auth_passthrough_failed` is used to signal
+ * authentication failure. This is set in the call to `auth_failed()`. Else it
+ * must be set manually where auth_failed is not called before returning.
  */
 void
 ClientAuthentication(Port *port)
@@ -436,19 +473,11 @@ ClientAuthentication(Port *port)
 	int			status = STATUS_ERROR;
 	const char *logdetail = NULL;
 
-	bool		yb_auth_passthrough = port->yb_is_auth_passthrough_req;
+	bool		yb_auth_passthrough = YbIsAuthPassthroughInProgress(port);
 
+	/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 	if (yb_auth_passthrough)
-	{
-		/* Auth Passthrough can be enabled only for Ysql Connection Manager */
 		Assert(YbIsClientYsqlConnMgr());
-
-		/*
-		 * Connections from Ysql Connection Manager will never be of type
-		 * replication.
-		 */
-		Assert(am_walsender == false);
-	}
 
 	/*
 	 * Get the authentication method to use for this frontend/database
@@ -487,9 +516,10 @@ ClientAuthentication(Port *port)
 			 * authentication type of a client, if authentication type is cert,
 			 * a FATAL packet is sent back to the Ysql Connection Manager.
 			 */
-			ereport(FATAL,
-					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					 errmsg("cert authentication is not supported with connection manager")));
+			auth_failed(port, status,
+						"cert authentication is not supported with connection "
+						"manager",
+						false);
 			return;
 		}
 
@@ -557,7 +587,10 @@ ClientAuthentication(Port *port)
 				else
 				{
 					if (yb_auth_passthrough)
+					{
 						YbSendFatalForLogicalConnectionPacket();
+						port->yb_has_auth_passthrough_failed = true;
+					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
@@ -631,7 +664,10 @@ ClientAuthentication(Port *port)
 				else
 				{
 					if (yb_auth_passthrough)
+					{
 						YbSendFatalForLogicalConnectionPacket();
+						port->yb_has_auth_passthrough_failed = true;
+					}
 
 					ereport(YbAuthFailedErrorLevel(yb_auth_passthrough),
 							(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
@@ -705,12 +741,13 @@ ClientAuthentication(Port *port)
 #ifdef HAVE_UNIX_SOCKETS
 			Assert(IsYugaByteEnabled());
 
-			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+			if (YbIsAuthPassthroughInProgress(port))
 			{
-				YbSendFatalForLogicalConnectionPacket();
-				elog(WARNING,
-					 "YbTserverKey authentication is not supported "
-					 " in auth passthrough");
+				auth_failed(port, status,
+							"YbTserverKey authentication is not supported "
+							"in auth passthrough",
+							false);
+				return;
 			}
 
 			status = CheckYbTserverKeyAuth(port, &logdetail);
@@ -806,9 +843,6 @@ ClientAuthentication(Port *port)
 			if (roleid != InvalidOid)
 				YbResetFailedAttemptsIfAllowed(roleid);
 			sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
-
-			if (YbIsClientYsqlConnMgr() && yb_auth_passthrough)
-				YbCreateClientId();
 		}
 		else
 		{
@@ -824,9 +858,6 @@ ClientAuthentication(Port *port)
 	if (status == STATUS_OK)
 	{
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
-
-		if (YbIsClientYsqlConnMgr() && yb_auth_passthrough)
-			YbCreateClientId();
 	}
 	else
 		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */ );
@@ -921,11 +952,31 @@ recv_password_packet(Port *port)
 	 * this check here, to prevent an empty password from being used with
 	 * authentication methods that check the password against an external
 	 * system, like PAM, LDAP and RADIUS.
+	 *
+	 * YB: In the case of auth passthrough mode of connection manager, we want
+	 * to avoid terminating the backend process if possible. In this case, we
+	 * forward a FATAL packet through conn mgr to the client and abort auth, but
+	 * do not push an ERROR level log and kill the backend (using WARNING
+	 * instead).
 	 */
 	if (buf.len == 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PASSWORD),
-				 errmsg("empty password returned by client")));
+	{
+		if (YbIsAuthPassthroughInProgress(port))
+		{
+			YbSendFatalForLogicalConnectionPacket();
+			ereport(YbAuthFailedErrorLevel(true /* auth_passthrough */ ),
+					(errcode(ERRCODE_INVALID_PASSWORD),
+					 errmsg("empty password returned by client")));
+
+			return NULL;		/* YB: Added return NULL as per above comment */
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PASSWORD),
+					 errmsg("empty password returned by client")));
+		}
+	}
 
 	/* Do not echo password to logs, for security. */
 	elog(DEBUG5, "received password packet");

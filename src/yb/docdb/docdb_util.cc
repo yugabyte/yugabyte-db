@@ -13,6 +13,8 @@
 
 #include "yb/docdb/docdb_util.h"
 
+#include <boost/algorithm/string.hpp>
+
 #include "yb/common/entity_ids.h"
 
 #include "yb/docdb/consensus_frontier.h"
@@ -54,12 +56,22 @@ const std::string kSnapshotsDirName = "snapshots";
 const std::string kVectorIndexDirPrefix = "vi-";
 
 Status SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value, const int pg_data_type,
+    const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
-    DatumMessagePB* cdc_datum_message) {
+    DatumMessagePB& datum_message) {
   return yb::docdb::SetValueFromQLBinary(
-      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, cdc_datum_message);
+      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, datum_message);
+}
+
+Result<std::string> QLBinaryWrapperToString(
+  const QLValuePB& ql_value, int pg_data_type,
+  const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+  const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map) {
+  DatumMessagePB datum_message;
+  RETURN_NOT_OK(yb::docdb::SetValueFromQLBinary(
+      ql_value, pg_data_type, enum_oid_label_map, composite_atts_map, datum_message));
+  return yb::docdb::DatumMessageValueToString(datum_message);
 }
 
 void DeleteMemoryContextForCDCWrapper() { yb::docdb::DeleteMemoryContextIfSet(); }
@@ -622,6 +634,18 @@ std::string GetStorageCheckpointDir(const std::string& data_dir, const std::stri
 
 std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
   return kVectorIndexDirPrefix + options.id();
+}
+
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options) {
+  switch (options.idx_type()) {
+    case PgVectorIndexType::HNSW:
+      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+    case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
+    case PgVectorIndexType::IVFFLAT: [[fallthrough]];
+    case PgVectorIndexType::UNKNOWN_IDX:
+      break;
+  }
+  FATAL_INVALID_PB_ENUM_VALUE(PgVectorIndexType, options.idx_type());
 }
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child) {

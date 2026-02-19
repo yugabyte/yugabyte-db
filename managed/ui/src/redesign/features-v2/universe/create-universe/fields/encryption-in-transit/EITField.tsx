@@ -1,5 +1,6 @@
 import { FC } from 'react';
 import { useQuery } from 'react-query';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch, Controller, FieldPath } from 'react-hook-form';
 import {
@@ -11,10 +12,10 @@ import {
 } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { QUERY_KEY, api } from '../../../../../features/universe/universe-form/utils/api';
-
 import { SecuritySettingsProps } from '../../steps/security-settings/dtos';
-import { ReactComponent as NextLineIcon } from '../../../../../assets/next-line.svg';
-import { useUpdateEffect } from 'react-use';
+
+//icons
+import NextLineIcon from '../../../../../assets/next-line.svg';
 
 const { Box, Typography } = mui;
 
@@ -109,6 +110,7 @@ const CERTComponent: FC<CertCompProps> = ({
                           dataTestId: 'root-certificate-field'
                         }}
                         dataTestId="root-certificate-field-container"
+                        size="large"
                       />
                     </Box>
                   </Box>

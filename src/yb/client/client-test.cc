@@ -284,7 +284,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void InsertTestRows(YBClient* client, const TableHandle& table, int num_rows, int first_row = 0) {
     auto session = CreateSession(client);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      session->Apply(BuildTestRow(table, i));
+      session->Apply(BuildTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -298,7 +298,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void UpdateTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      session->Apply(UpdateTestRow(table, i));
+      session->Apply(UpdateTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -307,14 +307,15 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      session->Apply(DeleteTestRow(table, i));
+      session->Apply(DeleteTestRow(session->arena(), table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
   }
 
-  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int index) {
-    auto insert = table.NewInsertOp();
+  shared_ptr<YBqlWriteOp> BuildTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto insert = table.NewInsertOp(arena);
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
@@ -324,8 +325,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return insert;
   }
 
-  shared_ptr<YBqlWriteOp> UpdateTestRow(const TableHandle& table, int index) {
-    auto update = table.NewUpdateOp();
+  shared_ptr<YBqlWriteOp> UpdateTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto update = table.NewUpdateOp(arena);
     auto req = update->mutable_request();
     QLAddInt32HashValue(req, index);
     const auto& columns = table.schema().columns();
@@ -334,8 +336,9 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     return update;
   }
 
-  shared_ptr<YBqlWriteOp> DeleteTestRow(const TableHandle& table, int index) {
-    auto del = table.NewDeleteOp();
+  shared_ptr<YBqlWriteOp> DeleteTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int index) {
+    auto del = table.NewDeleteOp(arena);
     QLAddInt32HashValue(del->mutable_request(), index);
     return del;
   }
@@ -376,7 +379,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
   void DoTestScanWithKeyPredicate() {
-    auto op = client_table_.NewReadOp();
+    auto session = client_->NewSession(60s);
+    auto op = client_table_.NewReadOp(session->arena());
     auto req = op->mutable_request();
 
     auto* const condition = req->mutable_where_expr()->mutable_condition();
@@ -384,7 +388,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddInt32Condition(condition, "key", QL_OP_GREATER_THAN_EQUAL, 5);
     client_table_.AddInt32Condition(condition, "key", QL_OP_LESS_THAN_EQUAL, 10);
     client_table_.AddColumns({"key"}, req);
-    auto session = client_->NewSession(60s);
     ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -543,8 +546,8 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   Result<NamespaceId> GetPGNamespaceId() {
     master::GetNamespaceInfoResponsePB namespace_info;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
+    RETURN_NOT_OK(
+        client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &namespace_info));
     return namespace_info.namespace_().id();
   }
 
@@ -929,10 +932,10 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   // tablet, except the first which is empty.
     auto session = CreateSession();
   for (int i = 1; i < 5; i++) {
-    session->Apply(BuildTestRow(table, 2 + (i * 10)));
-    session->Apply(BuildTestRow(table, 3 + (i * 10)));
-    session->Apply(BuildTestRow(table, 5 + (i * 10)));
-    session->Apply(BuildTestRow(table, 7 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 2 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 3 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 5 + (i * 10)));
+    session->Apply(BuildTestRow(session->arena(), table, 7 + (i * 10)));
   }
   FlushSessionOrDie(session);
 
@@ -941,8 +944,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    session->Apply(UpdateTestRow(table, 2 + i * 10));
-    session->Apply(UpdateTestRow(table, 5 + i * 10));
+    session->Apply(UpdateTestRow(session->arena(), table, 2 + i * 10));
+    session->Apply(UpdateTestRow(session->arena(), table, 5 + i * 10));
   }
   FlushSessionOrDie(session);
 
@@ -951,8 +954,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    session->Apply(DeleteTestRow(table, 5 + i*10));
-    session->Apply(DeleteTestRow(table, 7 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 5 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 7 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -961,8 +964,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    session->Apply(DeleteTestRow(table, 2 + i*10));
-    session->Apply(DeleteTestRow(table, 3 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 2 + i*10));
+    session->Apply(DeleteTestRow(session->arena(), table, 3 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -1185,7 +1188,7 @@ TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   auto session = CreateSession();
   ASSERT_FALSE(session->TEST_HasPendingOperations());
 
-  auto insert = client_table_.NewInsertOp();
+  auto insert = client_table_.NewInsertOp(session->arena());
   // Try inserting without specifying a key: should fail.
   client_table_.AddInt32ColumnValue(insert->mutable_request(), "int_val", 54321);
   client_table_.AddStringColumnValue(insert->mutable_request(), "string_val", "hello world");
@@ -1208,7 +1211,7 @@ void ApplyInsertToSession(YBSession* session,
                                     int int_val,
                                     const char* string_val,
                                     std::shared_ptr<YBqlOp>* op = nullptr) {
-  auto insert = table.NewInsertOp();
+  auto insert = table.NewInsertOp(session->arena());
   QLAddInt32HashValue(insert->mutable_request(), row_key);
   table.AddInt32ColumnValue(insert->mutable_request(), "int_val", int_val);
   table.AddStringColumnValue(insert->mutable_request(), "string_val", string_val);
@@ -1219,19 +1222,19 @@ void ApplyInsertToSession(YBSession* session,
 }
 
 void ApplyUpdateToSession(YBSession* session,
-                                    const TableHandle& table,
-                                    int row_key,
-                                    int int_val) {
-  auto update = table.NewUpdateOp();
+                          const TableHandle& table,
+                          int row_key,
+                          int int_val) {
+  auto update = table.NewUpdateOp(session->arena());
   QLAddInt32HashValue(update->mutable_request(), row_key);
   table.AddInt32ColumnValue(update->mutable_request(), "int_val", int_val);
   session->Apply(update);
 }
 
 void ApplyDeleteToSession(YBSession* session,
-                                    const TableHandle& table,
-                                    int row_key) {
-  auto del = table.NewDeleteOp();
+                          const TableHandle& table,
+                          int row_key) {
+  auto del = table.NewDeleteOp(session->arena());
   QLAddInt32HashValue(del->mutable_request(), row_key);
   session->Apply(del);
 }
@@ -2488,10 +2491,10 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the YQL table.
   client::TableHandle table;
   EXPECT_OK(table.Open(yql_table_name, client_.get()));
-  std::shared_ptr<YBqlWriteOp> write_op = table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
-  QLWriteRequestPB* const req = write_op->mutable_request();
+  auto write_op = table.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
+  auto* const req = write_op->mutable_request();
   req->add_range_column_values()->mutable_value()->set_string_value("key1");
-  QLColumnValuePB* column = req->add_column_values();
+  auto* column = req->add_column_values();
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
@@ -2665,22 +2668,19 @@ TEST_F(ClientTest, GetNamespaceInfo) {
       nullptr /* txn */, true /* colocated */));
 
   // CQL non-colocated.
-  ASSERT_OK(
-      client_->GetNamespaceInfo("" /* namespace_id */, kKeyspaceName, YQL_DATABASE_CQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kKeyspaceName, YQL_DATABASE_CQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_CQL);
   ASSERT_FALSE(resp.colocated());
 
   // SQL colocated.
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kPgsqlKeyspaceName, YQL_DATABASE_PGSQL, &resp));
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
   ASSERT_TRUE(resp.colocated());
   auto namespace_id = resp.namespace_().id();
 
-  ASSERT_OK(
-      client_->GetNamespaceInfo(namespace_id, "" /* namespace_name */, YQL_DATABASE_PGSQL, &resp));
+  ASSERT_OK(client_->GetNamespaceInfo(namespace_id, &resp));
   ASSERT_EQ(resp.namespace_().id(), namespace_id);
   ASSERT_EQ(resp.namespace_().name(), kPgsqlKeyspaceName);
   ASSERT_EQ(resp.namespace_().database_type(), YQL_DATABASE_PGSQL);
@@ -3099,8 +3099,9 @@ class ClientTestWithHashAndRangePk : public ClientTest {
     ClientTest::SetUp();
   }
 
-  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int h, int r, int v) {
-    auto insert = table.NewInsertOp();
+  shared_ptr<YBqlWriteOp> BuildTestRow(
+      const ThreadSafeArenaPtr& arena, const TableHandle& table, int h, int r, int v) {
+    auto insert = table.NewInsertOp(arena);
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, h);
     const auto& columns = table.schema().columns();
@@ -3138,7 +3139,7 @@ TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
         }
         auto session = CreateSession(client_.get());
         for (int r = 0; r < num_rows_per_batch; r++) {
-          session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0));
+          session->Apply(BuildTestRow(session->arena(), client_table_, batch_hash_key, r, 0));
         }
         auto flush_future = session->FlushFuture();
         ASSERT_EQ(flush_future.wait_for(kFlushTimeout), std::future_status::ready)

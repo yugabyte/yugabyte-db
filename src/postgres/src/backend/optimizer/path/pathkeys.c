@@ -641,7 +641,7 @@ build_index_pathkeys(PlannerInfo *root,
 		 */
 		if (!(cpathkey && (EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) ||
 						   cpathkey->pk_eclass->ec_sortref != 0)) &&
-			yb_indexcol_can_saop_merge(index, indexkey, i,
+			yb_indexcol_can_saop_merge(root, index, indexkey, i,
 									   &yb_saop_merge_cardinality,
 									   yb_saop_merge_saop_cols))
 		{

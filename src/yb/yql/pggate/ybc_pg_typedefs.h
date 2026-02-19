@@ -387,6 +387,8 @@ typedef struct {
   YbcReadPointHandle (*GetCatalogSnapshotReadPoint)(YbcPgOid table_oid, bool create_if_not_exists);
   /* replication origin */
   uint16_t (*GetSessionReplicationOriginId)();
+  /* CHECK_FOR_INTERRUPTS */
+  void (*CheckForInterrupts)();
 } YbcPgCallbacks;
 
 typedef struct {
@@ -646,7 +648,18 @@ typedef struct {
   const char *yb_lsn_type;
   uint64_t active_pid;
   bool expired;
+  bool allow_tables_without_primary_key;
 } YbcReplicationSlotDescriptor;
+
+typedef struct {
+  const char *stream_id;
+  uint64_t confirmed_flush_lsn;
+  uint64_t restart_lsn;
+  uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
+  uint64_t last_pub_refresh_time;
+  uint64_t active_pid;
+} YbcSlotEntryDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
@@ -1026,6 +1039,16 @@ typedef struct {
   bool is_region_local;
   YbcPgOid tablespace_oid;
 } YbcPgTableLocalityInfo;
+
+// Merge sort key information
+typedef struct {
+  // Position of the merge sort column in the index
+  uint16_t att_idx;
+  // Position of the merge sort column in the table
+  uint16_t value_idx;
+  int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
+  void *sortstate;
+} YbcSortKey;
 
 #ifdef __cplusplus
 }  // extern "C"

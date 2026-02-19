@@ -520,12 +520,12 @@ const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
     configName: `dr-config-${generateUniqueName()}`,
     namespaceUuids: [],
     tableUuids: [],
-    // Fall back to seconds if we can't find a matching duration unit.
+    // Fall back to hours if we can't find a matching duration unit.
     pitrRetentionPeriodValue: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodValue
-      : defaultPitrRetentionPeriodSeconds,
+      : Math.max(1, Math.round(defaultPitrRetentionPeriodSeconds / 3600)),
     pitrRetentionPeriodUnit: pitrRetentionPeriodUnit
       ? pitrRetentionPeriodUnit
-      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.SECOND)
+      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.HOUR)
   };
 };

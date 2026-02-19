@@ -155,6 +155,11 @@ class XClusterManager : public XClusterManagerIf,
       InsertPackedSchemaForXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status HandleNewSchemaForAutomaticXClusterTarget(
+      const HandleNewSchemaForAutomaticXClusterTargetRequestPB* req,
+      HandleNewSchemaForAutomaticXClusterTargetResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   // If the colocated table has not yet been created, store the new schema in the replication group.
   // When the table is created, these schemas will be injected into the old_schema_packings of the
   // TableInfo and the table will start at a greater schema version. This ensures that xCluster DDL
@@ -162,7 +167,7 @@ class XClusterManager : public XClusterManagerIf,
   Status InsertHistoricalColocatedSchemaPacking(
       const InsertHistoricalColocatedSchemaPackingRequestPB* req,
       InsertHistoricalColocatedSchemaPackingResponsePB* resp, rpc::RpcContext* rpc,
-      const LeaderEpoch& epoch);
+      const LeaderEpoch& epoch) override;
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(

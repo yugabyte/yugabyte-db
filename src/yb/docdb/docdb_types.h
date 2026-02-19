@@ -20,6 +20,8 @@
 namespace yb {
 namespace docdb {
 
+YB_STRONGLY_TYPED_BOOL(AllowEmptyValue);
+
 // Used in various debug dump functions to specify whether to include binary representation in the
 // output.
 YB_STRONGLY_TYPED_BOOL(IncludeBinary);

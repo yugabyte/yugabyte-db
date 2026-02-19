@@ -83,8 +83,8 @@ void DocDBDebugDump(
 } // namespace
 
 std::string EntryToString(
-    const Slice& key, const Slice& value,
-    SchemaPackingProvider* schema_packing_provider /*null ok*/, StorageDbType db_type) {
+    const Slice key, const Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    StorageDbType db_type, const std::string& key_suffix, AllowEmptyValue allow_empty_value) {
   auto [key_res, value_res] = DumpEntryToString(key, value, schema_packing_provider, db_type);
   std::string value_str;
   auto value_copy = value;
@@ -99,10 +99,12 @@ std::string EntryToString(
     } else {
       value_str = Format("PACKED_ROW[$0]($1)", *version, value_copy.ToDebugHexString());
     }
+  } else if (value.empty() && allow_empty_value) {
+    value_str = "";
   } else {
     value_str = value_res.status().ToString();
   }
-  return Format("$0 -> $1", key_res, value_str);
+  return Format("$0$1 -> $2", key_res, key_suffix, value_str);
 }
 
 std::string EntryToString(

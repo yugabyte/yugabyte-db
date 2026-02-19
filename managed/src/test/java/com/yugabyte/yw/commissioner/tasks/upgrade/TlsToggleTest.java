@@ -315,6 +315,8 @@ public class TlsToggleTest extends UpgradeTaskTest {
     taskParams.enableNodeToNodeEncrypt = nodeToNode;
     taskParams.enableClientToNodeEncrypt = clientToNode;
     taskParams.rootAndClientRootCASame = rootAndClientRootCASame;
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
     taskParams.rootCA = rootCA;
     if (clientToNode) {
       taskParams.setClientRootCA(rootAndClientRootCASame ? rootCA : clientRootCA);
@@ -758,8 +760,6 @@ public class TlsToggleTest extends UpgradeTaskTest {
             UpgradeOption.NON_ROLLING_UPGRADE);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
-    taskParams.sleepAfterMasterRestartMillis = 5;
-    taskParams.sleepAfterTServerRestartMillis = 5;
     taskParams.creatingUser = defaultUser;
     super.verifyTaskRetries(
         defaultCustomer,

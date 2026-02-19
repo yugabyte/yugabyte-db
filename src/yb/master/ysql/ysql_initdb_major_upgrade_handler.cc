@@ -18,6 +18,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
@@ -68,6 +69,9 @@ DEFINE_test_flag(bool, ysql_fail_cleanup_previous_version_catalog, false,
 
 DEFINE_test_flag(bool, ysql_block_writes_to_catalog, false,
     "Block writes to the catalog tables like we would during a ysql major upgrade");
+
+DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_string(initial_sys_catalog_snapshot_path);
 
 using yb::pgwrapper::PgWrapper;
 
@@ -276,7 +280,7 @@ YsqlInitDBAndMajorUpgradeHandler::GetYsqlMajorCatalogUpgradeState() const {
 }
 
 bool YsqlInitDBAndMajorUpgradeHandler::IsWriteToCatalogTableAllowed(
-    const TableId& table_id, bool is_forced_update) const {
+    TableIdView table_id, bool is_forced_update) const {
   // During the upgrade only allow special updates to the catalog.
   if (IsMajorUpgradeInProgress()) {
     // Allow updates to the catalog version table only during the pg_upgrade step.

@@ -51,16 +51,18 @@ var listIncrementalBackupsCmd = &cobra.Command{
 
 		r, response, err := listIncrementalBackupRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "List Incrementals")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Backup", "List Incrementals")
 		}
 
 		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Backup", "List Incrementals - Get Storage Configuration")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				response,
+				err,
+				"Backup",
+				"List Incrementals - Get Storage Configuration",
+			)
 		}
 
 		commonbackupinfo.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)

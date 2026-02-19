@@ -58,7 +58,7 @@ DECLARE_bool(ysql_conn_mgr_optimized_extended_query_protocol);
 DECLARE_bool(ysql_conn_mgr_optimized_session_parameters);
 DECLARE_int32(ysql_conn_mgr_max_pools);
 DECLARE_uint32(ysql_conn_mgr_jitter_time);
-DECLARE_uint32(ysql_conn_mgr_max_phy_conn_percent);
+DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 
 namespace yb {
@@ -290,14 +290,14 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // Either it's multi route pooling where yb_ysql_max_connections is relevant or
   // it's non-multi route pooling where control_connection_pool_size and global_pool_size are
   // relevant. The total number of ysql connections that connection manager can create is
-  // FLAGS_ysql_conn_mgr_max_phy_conn_percent% of total ysql_max_connections. This ensures
-  // that the connection manager doesn't exceed the limit for non-replication superuser connections
-  // in postgres and client can fine tune the number of physical connections that can be created.
+  // total ysql_max_connections less FLAGS_ysql_conn_mgr_reserve_internal_conns. This ensures
+  // some connections are reserved for internal operations which will bypass the
+  // YSQL Connection Manager.
 
-  // Taking the ceil, to make sure it doesn't underallocate the connections.
+  CHECK_LE(FLAGS_ysql_conn_mgr_reserve_internal_conns, maxConnections)
+      << "ysql_conn_mgr_reserve_internal_conns must be less than or equal to maxConnections";
 
-  maxConnections = static_cast<int>(
-    std::ceil(maxConnections * FLAGS_ysql_conn_mgr_max_phy_conn_percent / 100.0));
+  maxConnections = static_cast<int>(maxConnections - FLAGS_ysql_conn_mgr_reserve_internal_conns);
 
   // Divide the pool between the global pool and control connection pool.
   global_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;

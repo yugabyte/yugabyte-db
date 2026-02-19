@@ -200,6 +200,7 @@ typedef struct SerializedSnapshotData
 	CommandId	curcid;
 	TimestampTz whenTaken;
 	XLogRecPtr	lsn;
+	YbOptionalReadPointHandle yb_read_point_handle;
 } SerializedSnapshotData;
 
 Size
@@ -249,11 +250,11 @@ SnapMgrInit(void)
 void
 YBCheckSnapshotsAllowed(bool check_isolation_level)
 {
-	if (!(*YBCGetGFlags()->ysql_enable_pg_export_snapshot))
+	if (!yb_enable_pg_export_snapshot)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot export or import snapshot when "
-						"ysql_enable_pg_export_snapshot is disabled.")));
+						"ysql_yb_enable_pg_export_snapshot is disabled.")));
 
 	if (check_isolation_level)
 	{
@@ -330,8 +331,9 @@ void
 YbLogSnapshotData(const char *msg, const SnapshotData *snap, bool log_stack_trace)
 {
 	elog(YbSnapshotMgmtLogLevel(),
-		 "%s read point: %" PRIu64 ", effective isolation level: %d. %s",
+		 "%s %s read point: %" PRIu64 ", effective isolation level: %d. %s",
 		 msg,
+		 snap->yb_is_catalog_snapshot ? "(catalog)" : "(regular)",
 		 snap->yb_read_point_handle.has_value ? snap->yb_read_point_handle.value : 0,
 		 YBGetEffectivePggateIsolationLevel(),
 		 log_stack_trace ? YBCGetStackTrace() : "");
@@ -413,6 +415,9 @@ GetTransactionSnapshot(void)
 		}
 		else
 			CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
+		elog(YbSnapshotMgmtLogLevel(),
+			"Creating first snapshot in txn (snapshot read point: %" PRIu64 ", catalog read point: %" PRIu64 ")",
+			CurrentSnapshot->yb_read_point_handle.value, CatalogSnapshotData.yb_read_point_handle.value);
 
 		FirstSnapshotSet = true;
 		return CurrentSnapshot;
@@ -425,6 +430,9 @@ GetTransactionSnapshot(void)
 	InvalidateCatalogSnapshot();
 
 	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
+	elog(YbSnapshotMgmtLogLevel(),
+		"Recreating snapshot for next statement in txn (snapshot read point: %" PRIu64 ", catalog read point: %" PRIu64 ")",
+		CurrentSnapshot->yb_read_point_handle.value, CatalogSnapshotData.yb_read_point_handle.value);
 
 	return CurrentSnapshot;
 }
@@ -536,6 +544,7 @@ GetNonHistoricCatalogSnapshot(Oid relid)
 	if (CatalogSnapshot == NULL)
 	{
 		/* Get new snapshot. */
+		CatalogSnapshotData.yb_is_catalog_snapshot = true;
 		CatalogSnapshot = GetSnapshotData(&CatalogSnapshotData);
 
 		/*
@@ -2361,6 +2370,7 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	serialized_snapshot.curcid = snapshot->curcid;
 	serialized_snapshot.whenTaken = snapshot->whenTaken;
 	serialized_snapshot.lsn = snapshot->lsn;
+	serialized_snapshot.yb_read_point_handle = snapshot->yb_read_point_handle;
 
 	/*
 	 * Ignore the SubXID array if it has overflowed, unless the snapshot was
@@ -2436,7 +2446,7 @@ RestoreSnapshot(char *start_address)
 	snapshot->whenTaken = serialized_snapshot.whenTaken;
 	snapshot->lsn = serialized_snapshot.lsn;
 	snapshot->snapXactCompletionCount = 0;
-	snapshot->yb_read_point_handle = YbBuildCurrentReadPointHandle();
+	snapshot->yb_read_point_handle = serialized_snapshot.yb_read_point_handle;
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)

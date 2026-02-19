@@ -1,6 +1,5 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
--- TODO(#29072): fix output.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
@@ -85,7 +84,7 @@
    Merge Stream Key: r5n.r1
    Merge Streams: 4
    Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
-   Storage Table Read Requests: 8
+   Storage Table Read Requests: 5
    Storage Table Read Ops: 8
    Storage Table Rows Scanned: 1983
 (10 rows)
@@ -118,16 +117,16 @@
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -141,11 +140,11 @@
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
- 86000 |  8 |  0 |  0 |  0 |  6
- 96000 |  9 |  0 |  0 |  0 |  6
- 98000 |  9 |  0 |  0 |  0 |  8
- 31100 |  3 |  1 |  0 |  0 |  1
- 43100 |  4 |  1 |  0 |  0 |  3
+ 30002 |  3 |  0 |  2 |  0 |  0
+ 52001 |  5 |  0 |  1 |  0 |  2
+ 62001 |  6 |  0 |  1 |  0 |  2
+ 14003 |  1 |  0 |  3 |  0 |  4
+ 24002 |  2 |  0 |  2 |  0 |  4
 (5 rows)
 
 -- Backward scan
@@ -183,9 +182,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 494
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -199,11 +198,11 @@
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+ 48991 |  4 |  9 |  1 |  9 |  8
  48993 |  4 |  9 |  3 |  9 |  8
- 96993 |  9 |  9 |  3 |  9 |  6
- 23993 |  2 |  9 |  3 |  9 |  3
- 53993 |  5 |  9 |  3 |  9 |  3
- 18893 |  1 |  8 |  3 |  9 |  8
+ 27992 |  2 |  9 |  2 |  9 |  7
+ 37991 |  3 |  9 |  1 |  9 |  7
+ 87991 |  8 |  9 |  1 |  9 |  7
 (5 rows)
 
 -- Partial forward scan
@@ -225,8 +224,8 @@
                Storage Table Rows Scanned: 1983
 (12 rows)
 
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -234,7 +233,8 @@
          Sort Key: r5n.r2, r5n.r3 DESC, r5n.r4, r5n.n
          Presorted Key: r5n.r2
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=43 loops=1)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=193 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2
@@ -242,9 +242,9 @@
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
-(17 rows)
+               Storage Table Read Ops: 8
+               Storage Table Rows Scanned: 1579
+(18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -258,10 +258,10 @@
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
  10900 |  1 |  9 |  0 |  0 |  0
+ 40902 |  4 |  9 |  2 |  0 |  0
+ 71903 |  7 |  9 |  3 |  0 |  1
   2900 |  0 |  9 |  0 |  0 |  2
- 82800 |  8 |  8 |  0 |  0 |  2
- 73800 |  7 |  8 |  0 |  0 |  3
- 76800 |  7 |  8 |  0 |  0 |  6
+ 32901 |  3 |  9 |  1 |  0 |  2
 (5 rows)
 
 -- Partial backward scan
@@ -283,8 +283,8 @@
                Storage Table Rows Scanned: 1983
 (12 rows)
 
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -292,7 +292,8 @@
          Sort Key: r5n.r2 DESC, r5n.r3, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r2
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_pkey on public.r5n (actual rows=45 loops=1)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_pkey on public.r5n (actual rows=177 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2 DESC
@@ -300,9 +301,9 @@
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 494
-(17 rows)
+               Storage Table Read Ops: 8
+               Storage Table Rows Scanned: 1860
+(18 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -315,11 +316,11 @@
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  7092 |  0 |  0 |  2 |  9 |  7
+ 77091 |  7 |  0 |  1 |  9 |  7
+ 46090 |  4 |  0 |  0 |  9 |  6
+ 46091 |  4 |  0 |  1 |  9 |  6
  76093 |  7 |  0 |  3 |  9 |  6
- 86093 |  8 |  0 |  3 |  9 |  6
- 65093 |  6 |  0 |  3 |  9 |  5
- 10093 |  1 |  0 |  3 |  9 |  0
- 69193 |  6 |  1 |  3 |  9 |  9
 (5 rows)
 
 -- Targets
@@ -341,8 +342,8 @@
                Storage Table Rows Scanned: 1983
 (12 rows)
 
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r5, 1, r5, r2, r3, r4, n
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -350,7 +351,8 @@
          Sort Key: r5n.r2 DESC, r5n.r3, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r2
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan Backward using r5n_pkey on public.r5n (actual rows=45 loops=1)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_pkey on public.r5n (actual rows=177 loops=1)
                Output: r5, 1, r5, r2, r3, r4, n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2 DESC
@@ -358,9 +360,9 @@
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 494
-(17 rows)
+               Storage Table Read Ops: 8
+               Storage Table Rows Scanned: 1860
+(18 rows)
 
  r5 | ?column? | r5 
 ----+----------+----
@@ -373,11 +375,11 @@
 
  r5 | ?column? | r5 
 ----+----------+----
+  0 |        1 |  0
   7 |        1 |  7
-  8 |        1 |  8
-  6 |        1 |  6
-  1 |        1 |  1
-  6 |        1 |  6
+  4 |        1 |  4
+  4 |        1 |  4
+  7 |        1 |  7
 (5 rows)
 
 -- DISTINCT
@@ -403,13 +405,13 @@
                      Storage Table Rows Scanned: 400
 (16 rows)
 
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r3
    ->  Unique (actual rows=5 loops=1)
          Output: r2, r3
-         ->  Distinct Index Scan using r5n_pkey on public.r5n (actual rows=5 loops=1)
+         ->  Distinct Index Scan using r5n_pkey on public.r5n (actual rows=17 loops=1)
                Output: r2, r3
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3
@@ -418,8 +420,8 @@
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Distinct Keys: r5n.r1, r5n.r2, r5n.r3
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
-               Storage Table Rows Scanned: 5
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (15 rows)
 
  r2 | r3 
@@ -462,14 +464,14 @@
                      Storage Table Rows Scanned: 1983
 (15 rows)
 
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: (count(*)), r2, r3
    ->  GroupAggregate (actual rows=5 loops=1)
          Output: count(*), r2, r3
          Group Key: r5n.r2, r5n.r3
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=24 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=107 loops=1)
                Output: r2, r3
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3
@@ -477,8 +479,8 @@
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 1579
 (15 rows)
 
  count | r2 | r3 
@@ -492,11 +494,11 @@
 
  count | r2 | r3 
 -------+----+----
-     3 |  0 |  0
-     5 |  0 |  1
-     4 |  0 |  2
-     5 |  0 |  3
-     6 |  0 |  4
+    20 |  0 |  0
+    25 |  0 |  1
+    20 |  0 |  2
+    20 |  0 |  3
+    21 |  0 |  4
 (5 rows)
 
 -- sort, IN
@@ -594,8 +596,8 @@
                Storage Table Rows Scanned: 1489
 (12 rows)
 
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r2, r4, r5, n, r1, r3
    ->  Incremental Sort (actual rows=5 loops=1)
@@ -603,7 +605,8 @@
          Sort Key: r5n.r2, r5n.r4, r5n.r5, r5n.n
          Presorted Key: r5n.r2
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=43 loops=1)
+         Pre-sorted Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=140 loops=1)
                Output: r2, r4, r5, n, r1, r3
                Index Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Merge Sort Key: r5n.r2
@@ -611,9 +614,9 @@
                Merge Streams: 3
                Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
-(17 rows)
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 1085
+(18 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
@@ -626,11 +629,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
+  0 |  0 |  0 |   402 |  2 |  4
   0 |  0 |  1 | 10500 |  0 |  5
   0 |  0 |  1 | 10900 |  0 |  9
+  0 |  0 |  3 | 30002 |  2 |  0
   0 |  0 |  3 | 30400 |  0 |  4
-  0 |  0 |  5 | 50700 |  0 |  7
-  0 |  1 |  1 | 11600 |  0 |  6
 (5 rows)
 
 -- IN, IN, sort...
@@ -668,9 +671,9 @@
                Merge Stream Key: r5n.r1, r5n.r2
                Merge Streams: 9
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 134
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 45
 (17 rows)
 
  r3 | r4 | r5 |   n   | r1 | r2 
@@ -685,10 +688,10 @@
  r3 | r4 | r5 |   n   | r1 | r2 
 ----+----+----+-------+----+----
   0 |  0 |  4 | 40030 |  0 |  3
-  0 |  1 |  3 | 31030 |  0 |  3
-  0 |  3 |  0 |  3030 |  0 |  3
-  0 |  4 |  0 |  4030 |  0 |  3
-  0 |  4 |  1 | 14030 |  0 |  3
+  0 |  0 |  5 | 50052 |  2 |  5
+  0 |  0 |  6 | 60041 |  1 |  4
+  0 |  0 |  6 | 60050 |  0 |  5
+  0 |  0 |  6 | 60051 |  1 |  5
 (5 rows)
 
 -- IN/=, sort...
@@ -782,9 +785,9 @@
                Merge Stream Key: r5n.r1, r5n.r3
                Merge Streams: 16
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 44
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 16
+               Storage Table Rows Scanned: 80
 (17 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -798,11 +801,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
-  1 |  1 |  0 |  1511 |  1 |  5
-  1 |  1 |  1 | 11511 |  1 |  5
-  1 |  1 |  4 | 41511 |  1 |  5
-  1 |  5 |  3 | 35511 |  1 |  5
-  1 |  5 |  8 | 85511 |  1 |  5
+  1 |  0 |  0 |   613 |  3 |  6
+  1 |  0 |  1 | 10711 |  1 |  7
+  1 |  0 |  2 | 20614 |  4 |  6
+  1 |  0 |  2 | 20812 |  2 |  8
+  1 |  0 |  3 | 30714 |  4 |  7
 (5 rows)
 
 -- IN, =, IN, sort...
@@ -840,9 +843,9 @@
                Merge Stream Key: r5n.r1, r5n.r3
                Merge Streams: 16
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 22
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 16
+               Storage Table Rows Scanned: 73
 (17 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -856,11 +859,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
-  7 |  2 |  7 | 72571 |  1 |  5
-  7 |  3 |  2 | 23571 |  1 |  5
-  7 |  4 |  1 | 14571 |  1 |  5
-  7 |  4 |  3 | 34571 |  1 |  5
-  7 |  4 |  9 | 94571 |  1 |  5
+  7 |  0 |  2 | 20872 |  2 |  8
+  7 |  0 |  4 | 40574 |  4 |  5
+  7 |  0 |  5 | 50574 |  4 |  5
+  7 |  0 |  5 | 50673 |  3 |  6
+  7 |  0 |  5 | 50674 |  4 |  6
 (5 rows)
 
 -- IN, =/sort, IN, sort...
@@ -898,9 +901,9 @@
                Merge Stream Key: r5n.r1, r5n.r3
                Merge Streams: 16
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 22
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 16
+               Storage Table Rows Scanned: 73
 (17 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -914,11 +917,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
-  7 |  2 |  7 | 72571 |  1 |  5
-  7 |  3 |  2 | 23571 |  1 |  5
-  7 |  4 |  1 | 14571 |  1 |  5
-  7 |  4 |  3 | 34571 |  1 |  5
-  7 |  4 |  9 | 94571 |  1 |  5
+  7 |  0 |  2 | 20872 |  2 |  8
+  7 |  0 |  4 | 40574 |  4 |  5
+  7 |  0 |  5 | 50574 |  4 |  5
+  7 |  0 |  5 | 50673 |  3 |  6
+  7 |  0 |  5 | 50674 |  4 |  6
 (5 rows)
 
 -- IN, =/sort, IN, sort... (out-of-order sort)
@@ -956,9 +959,9 @@
                Merge Stream Key: r5n.r1, r5n.r3
                Merge Streams: 16
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r3 = ANY ('{5,6,7,8}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 22
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 16
+               Storage Table Rows Scanned: 73
 (17 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -972,11 +975,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
-  7 |  2 |  7 | 72571 |  1 |  5
-  7 |  3 |  2 | 23571 |  1 |  5
-  7 |  4 |  1 | 14571 |  1 |  5
-  7 |  4 |  3 | 34571 |  1 |  5
-  7 |  4 |  9 | 94571 |  1 |  5
+  7 |  0 |  2 | 20872 |  2 |  8
+  7 |  0 |  4 | 40574 |  4 |  5
+  7 |  0 |  5 | 50574 |  4 |  5
+  7 |  0 |  5 | 50673 |  3 |  6
+  7 |  0 |  5 | 50674 |  4 |  6
 (5 rows)
 
 -- IN, =/sort, IN/sort, sort...
@@ -1014,9 +1017,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 22
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -1030,11 +1033,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
-  7 |  5 |  2 |  7 | 72571 |  1
-  7 |  5 |  3 |  2 | 23571 |  1
-  7 |  5 |  4 |  1 | 14571 |  1
-  7 |  5 |  4 |  3 | 34571 |  1
-  7 |  5 |  4 |  9 | 94571 |  1
+  7 |  5 |  0 |  4 | 40574 |  4
+  7 |  5 |  0 |  5 | 50574 |  4
+  7 |  5 |  0 |  7 | 70574 |  4
+  7 |  5 |  2 |  0 |  2572 |  2
+  7 |  5 |  2 |  0 |  2574 |  4
 (5 rows)
 
 -- IN, IN/=/IN, sort...
@@ -1072,9 +1075,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 7
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5,6}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 56
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 35
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -1088,11 +1091,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
-  2 |  0 |  0 |  7 | 70020 |  0
-  2 |  0 |  3 |  3 | 33020 |  0
-  2 |  0 |  5 |  5 | 55020 |  0
-  2 |  0 |  7 |  8 | 87020 |  0
-  2 |  0 |  8 |  8 | 88020 |  0
+  2 |  0 |  0 |  0 |    23 |  3
+  2 |  0 |  0 |  4 | 40021 |  1
+  2 |  0 |  0 |  5 | 50023 |  3
+  2 |  0 |  0 |  6 | 60022 |  2
+  2 |  0 |  0 |  6 | 60023 |  3
 (5 rows)
 
 -- IN/=/IN, IN, sort...
@@ -1130,9 +1133,9 @@
                Merge Stream Key: r5n.r2
                Merge Streams: 7
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 116
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 7
+               Storage Table Rows Scanned: 35
 (17 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -1147,10 +1150,10 @@
  r1 | r3 | r4 | r5 |   n   | r2 
 ----+----+----+----+-------+----
   2 |  0 |  0 |  3 | 30002 |  0
-  2 |  0 |  4 |  2 | 24002 |  0
-  2 |  0 |  4 |  3 | 34002 |  0
-  2 |  0 |  6 |  9 | 96002 |  0
-  2 |  0 |  8 |  2 | 28002 |  0
+  2 |  0 |  0 |  5 | 50052 |  5
+  2 |  0 |  0 |  6 | 60022 |  2
+  2 |  0 |  0 |  7 | 70032 |  3
+  2 |  0 |  1 |  7 | 71032 |  3
 (5 rows)
 
 -- =, IN/IN, sort...
@@ -1185,14 +1188,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r1, r3, r4, r5, n, r2
                Index Cond: ((r5n.r1 = 7) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])) AND (r5n.r2 = ANY ('{0,2,4,6,8}'::bigint[])))
-               Rows Removed by Index Recheck: 49
+               Rows Removed by Index Recheck: 5
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 195
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (18 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -1208,9 +1211,9 @@
 ----+----+----+----+-------+----
   7 |  0 |  1 |  9 | 91027 |  2
   7 |  0 |  2 |  0 |  2027 |  2
+  7 |  0 |  2 |  2 | 22047 |  4
   7 |  0 |  2 |  9 | 92027 |  2
   7 |  0 |  4 |  8 | 84027 |  2
-  7 |  0 |  5 |  8 | 85027 |  2
 (5 rows)
 
 -- =, not-IN/IN, sort...
@@ -1250,9 +1253,9 @@
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Storage Filter: (r5n.r2 <> ALL ('{0,2,4,6,8}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 195
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 106
 (18 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -1266,11 +1269,11 @@
 
  r1 | r3 | r4 | r5 |   n   | r2 
 ----+----+----+----+-------+----
+  7 |  0 |  0 |  1 | 10037 |  3
   7 |  0 |  3 |  2 | 23017 |  1
-  7 |  0 |  5 |  9 | 95017 |  1
-  7 |  0 |  6 |  0 |  6017 |  1
-  7 |  0 |  7 |  6 | 67017 |  1
-  7 |  0 |  8 |  0 |  8017 |  1
+  7 |  0 |  3 |  4 | 43037 |  3
+  7 |  0 |  3 |  6 | 63037 |  3
+  7 |  0 |  4 |  0 |  4037 |  3
 (5 rows)
 
 -- IN/>/<, sort...
@@ -1305,14 +1308,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 > 1) AND (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[])) AND (r5n.r1 < 7))
-               Rows Removed by Index Recheck: 477
+               Rows Removed by Index Recheck: 1
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::integer[]))
-               Storage Table Read Requests: 4
-               Storage Table Read Ops: 4
-               Storage Table Rows Scanned: 593
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 25
 (18 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -1326,11 +1329,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
+  0 |  0 |  0 |  0 |     6 |  6
   0 |  0 |  0 |  3 | 30002 |  2
+  0 |  0 |  1 |  3 | 31004 |  4
+  0 |  0 |  4 |  1 | 14006 |  6
   0 |  0 |  4 |  2 | 24002 |  2
-  0 |  0 |  4 |  3 | 34002 |  2
-  0 |  0 |  6 |  9 | 96002 |  2
-  0 |  0 |  8 |  2 | 28002 |  2
 (5 rows)
 
 -- Not-IN, sort...
@@ -1404,9 +1407,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 6
                Merge Cond: (r5n.r1 = ANY ('{{{0},{2}},{{4},{6}},{{8},{10}}}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 25
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -1420,11 +1423,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
-  0 |  0 |  6 |  8 | 86000 |  0
-  0 |  0 |  6 |  9 | 96000 |  0
-  0 |  0 |  8 |  9 | 98000 |  0
-  0 |  1 |  1 |  3 | 31100 |  0
-  0 |  1 |  3 |  4 | 43100 |  0
+  0 |  0 |  0 |  0 |     6 |  6
+  0 |  0 |  0 |  0 |     8 |  8
+  0 |  0 |  0 |  3 | 30002 |  2
+  0 |  0 |  1 |  3 | 31004 |  4
+  0 |  0 |  4 |  1 | 14006 |  6
 (5 rows)
 
 -- >ANY, sort...
@@ -1529,16 +1532,16 @@
          Sort Key: r5n.r2, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
                Output: r3, r2, r4, n, r1
                Index Cond: ((r5n.r1 = ANY ('{0,1,2,3,4,5}'::integer[])) AND (r5n.r3 = 2))
                Merge Sort Key: r5n.r2, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 6
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 59
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 30
 (17 rows)
 
  r3 | r2 | r4 |   n   | r1 
@@ -1552,11 +1555,11 @@
 
  r3 | r2 | r4 |   n   | r1 
 ----+----+----+-------+----
-  2 |  0 |  4 | 44200 |  0
-  2 |  0 |  4 | 54200 |  0
-  2 |  0 |  6 | 16200 |  0
-  2 |  0 |  7 |  7200 |  0
-  2 |  1 |  0 | 10210 |  0
+  2 |  0 |  0 |   203 |  3
+  2 |  0 |  0 | 90205 |  5
+  2 |  0 |  1 | 11203 |  3
+  2 |  0 |  1 | 31204 |  4
+  2 |  0 |  1 | 41202 |  2
 (5 rows)
 
 -- =, sort, IN, sort
@@ -1596,9 +1599,9 @@
                Merge Stream Key: r5n.r3
                Merge Streams: 6
                Merge Cond: (r5n.r3 = ANY ('{0,1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 70
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 30
 (17 rows)
 
 -- IN, sort, IN, sort...
@@ -1636,9 +1639,9 @@
                Merge Stream Key: r5n.r1, r5n.r3
                Merge Streams: 9
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r3 = ANY ('{3,4,5}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 130
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 45
 (17 rows)
 
  r2 | r4 | r5 |   n   | r1 | r3 
@@ -1652,11 +1655,11 @@
 
  r2 | r4 | r5 |   n   | r1 | r3 
 ----+----+----+-------+----+----
-  0 |  1 |  5 | 51300 |  0 |  3
-  0 |  2 |  8 | 82300 |  0 |  3
-  0 |  4 |  3 | 34300 |  0 |  3
-  0 |  7 |  8 | 87300 |  0 |  3
-  0 |  8 |  7 | 78300 |  0 |  3
+  0 |  0 |  0 |   402 |  2 |  4
+  0 |  0 |  1 | 10500 |  0 |  5
+  0 |  0 |  3 | 30400 |  0 |  4
+  0 |  0 |  7 | 70402 |  2 |  4
+  0 |  1 |  0 |  1402 |  2 |  4
 (5 rows)
 
 -- IN, sort, IN/sort, sort...
@@ -1694,9 +1697,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 3
                Merge Cond: (r5n.r1 = ANY ('{0,1,2}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 130
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 15
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -1710,11 +1713,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
+  0 |  3 |  1 |  4 | 41301 |  1
   0 |  3 |  1 |  5 | 51300 |  0
-  0 |  3 |  2 |  8 | 82300 |  0
-  0 |  3 |  4 |  3 | 34300 |  0
-  0 |  3 |  7 |  8 | 87300 |  0
-  0 |  3 |  8 |  7 | 78300 |  0
+  0 |  3 |  1 |  8 | 81302 |  2
+  0 |  3 |  2 |  3 | 32301 |  1
+  0 |  3 |  2 |  3 | 32302 |  2
 (5 rows)
 
 -- IN equivalence to first key non-sort column
@@ -1811,9 +1814,9 @@
                Merge Streams: 27
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 148
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 27
+               Storage Table Rows Scanned: 1070
 (18 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -1827,11 +1830,11 @@
 
  r1 | r3 | r4 | r5 |   n   | r2 
 ----+----+----+----+-------+----
+  1 |  1 |  0 |  3 | 30161 |  6
   1 |  1 |  1 |  3 | 31101 |  0
   1 |  1 |  3 |  1 | 13101 |  0
-  1 |  1 |  4 |  5 | 54101 |  0
-  1 |  1 |  5 |  3 | 35101 |  0
-  1 |  1 |  5 |  6 | 65101 |  0
+  1 |  1 |  4 |  1 | 14151 |  5
+  1 |  1 |  4 |  1 | 14161 |  6
 (5 rows)
 
 -- IN equivalence to first key sort column (v2)
@@ -1872,9 +1875,9 @@
                Merge Streams: 27
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.r3)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 148
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 27
+               Storage Table Rows Scanned: 1070
 (18 rows)
 
  r1 | r3 | r4 | r5 |   n   | r2 
@@ -1888,11 +1891,11 @@
 
  r1 | r3 | r4 | r5 |   n   | r2 
 ----+----+----+----+-------+----
+  1 |  1 |  0 |  3 | 30161 |  6
   1 |  1 |  1 |  3 | 31101 |  0
   1 |  1 |  3 |  1 | 13101 |  0
-  1 |  1 |  4 |  5 | 54101 |  0
-  1 |  1 |  5 |  3 | 35101 |  0
-  1 |  1 |  5 |  6 | 65101 |  0
+  1 |  1 |  4 |  1 | 14151 |  5
+  1 |  1 |  4 |  1 | 14161 |  6
 (5 rows)
 
 -- IN equivalence to last key sort column
@@ -1932,9 +1935,9 @@
                Merge Streams: 27
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: ((r5n.r1)::double precision = r5n.r5)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 148
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 27
+               Storage Table Rows Scanned: 1131
 (18 rows)
 
  r3 | r4 | r1 | r5 |   n   | r2 
@@ -1948,11 +1951,11 @@
 
  r3 | r4 | r1 | r5 |   n   | r2 
 ----+----+----+----+-------+----
-  1 |  3 |  1 |  1 | 13101 |  0
-  4 |  8 |  1 |  1 | 18401 |  0
-  5 |  7 |  1 |  1 | 17501 |  0
-  7 |  8 |  1 |  1 | 18701 |  0
-  7 |  9 |  1 |  1 | 19701 |  0
+  0 |  0 |  7 |  7 | 70057 |  5
+  0 |  1 |  7 |  7 | 71067 |  6
+  0 |  2 |  4 |  4 | 42064 |  6
+  0 |  3 |  6 |  6 | 63056 |  5
+  0 |  4 |  2 |  2 | 24002 |  0
 (5 rows)
 
 -- IN equivalence to last key non-sort column
@@ -1984,7 +1987,7 @@
          Sort Key: r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
                Output: r3, r4, n, r1, r5, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Merge Sort Key: r5n.r3, r5n.r4
@@ -1992,9 +1995,9 @@
                Merge Streams: 27
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: ((r5n.r1)::double precision = r5n.r5)
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 148
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 27
+               Storage Table Rows Scanned: 1131
 (18 rows)
 
  r3 | r4 |   n   | r1 | r5 | r2 
@@ -2008,11 +2011,11 @@
 
  r3 | r4 |   n   | r1 | r5 | r2 
 ----+----+-------+----+----+----
-  1 |  3 | 13101 |  1 |  1 |  0
-  4 |  8 | 18401 |  1 |  1 |  0
-  5 |  7 | 17501 |  1 |  1 |  0
-  7 |  8 | 18701 |  1 |  1 |  0
-  7 |  9 | 19701 |  1 |  1 |  0
+  0 |  0 | 70057 |  7 |  7 |  5
+  0 |  1 | 71067 |  7 |  7 |  6
+  0 |  2 | 42064 |  4 |  4 |  6
+  0 |  3 | 63056 |  6 |  6 |  5
+  0 |  4 | 24002 |  2 |  2 |  0
 (5 rows)
 
 -- IN equivalence to last non-key sort column
@@ -2052,8 +2055,8 @@
                Merge Streams: 27
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6,7,8,9}'::integer[])) AND (r5n.r2 = ANY ('{6,0,5}'::bigint[])))
                Storage Filter: (r5n.r1 = r5n.n)
-               Storage Table Read Requests: 7
-               Storage Table Read Ops: 7
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 27
                Storage Table Rows Scanned: 1364
 (18 rows)
 
@@ -2174,7 +2177,7 @@
          Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
          Presorted Key: r5n.r3, r5n.r4, r5n.r5
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[])))
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
@@ -2182,9 +2185,9 @@
                Merge Streams: 21
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3,4,5,6}'::bigint[])))
                Storage Filter: ((r5n.r1 = 2) OR (r5n.r1 = ANY ('{1,2,3}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 686
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 21
+               Storage Table Rows Scanned: 406
 (18 rows)
 
  r3 | r4 | r5 |   n   | r1 | r2 
@@ -2198,11 +2201,11 @@
 
  r3 | r4 | r5 |   n   | r1 | r2 
 ----+----+----+-------+----+----
-  0 |  2 |  5 | 52001 |  1 |  0
-  0 |  2 |  6 | 62001 |  1 |  0
-  0 |  4 |  8 | 84001 |  1 |  0
-  0 |  7 |  9 | 97001 |  1 |  0
-  0 |  8 |  9 | 98001 |  1 |  0
+  0 |  0 |  3 | 30002 |  2 |  0
+  0 |  0 |  4 | 40021 |  1 |  2
+  0 |  0 |  5 | 50052 |  2 |  5
+  0 |  0 |  6 | 60022 |  2 |  2
+  0 |  0 |  6 | 60041 |  1 |  4
 (5 rows)
 
 -- Another OR clause
@@ -2278,9 +2281,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{0,2,4,6,8}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 25
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -2294,11 +2297,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
-  0 |  0 |  6 |  8 | 86000 |  0
-  0 |  0 |  6 |  9 | 96000 |  0
-  0 |  0 |  8 |  9 | 98000 |  0
-  0 |  1 |  1 |  3 | 31100 |  0
-  0 |  1 |  3 |  4 | 43100 |  0
+  0 |  0 |  0 |  0 |     6 |  6
+  0 |  0 |  0 |  0 |     8 |  8
+  0 |  0 |  0 |  3 | 30002 |  2
+  0 |  0 |  1 |  3 | 31004 |  4
+  0 |  0 |  4 |  1 | 14006 |  6
 (5 rows)
 
 -- Cross-type SAOP: incompatible type
@@ -2683,16 +2686,16 @@
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
                Output: r5n.r2, r5n.r3, r5n.r4, r5n.n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (n = ANY ('{0,1,2,3}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
  r2 | r3 | r4 |   n   
@@ -2706,11 +2709,11 @@
 
  r2 | r3 | r4 |   n   
 ----+----+----+-------
-  0 |  0 |  6 | 86000
-  0 |  0 |  6 | 96000
-  0 |  0 |  8 | 98000
-  0 |  1 |  1 | 31100
-  0 |  1 |  3 | 43100
+  0 |  0 |  0 | 30002
+  0 |  0 |  2 | 52001
+  0 |  0 |  2 | 62001
+  0 |  0 |  4 | 14003
+  0 |  0 |  4 | 24002
 (5 rows)
 
 -- Subquery with ORDER outside
@@ -2741,16 +2744,16 @@
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
                Output: r5n.r2, r5n.r3, r5n.r4, r5n.n
                Index Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{0,1,2,3}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 477
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 20
 (17 rows)
 
  r2 | r3 | r4 |   n   
@@ -2764,11 +2767,11 @@
 
  r2 | r3 | r4 |   n   
 ----+----+----+-------
-  0 |  0 |  6 | 86000
-  0 |  0 |  6 | 96000
-  0 |  0 |  8 | 98000
-  0 |  1 |  1 | 31100
-  0 |  1 |  3 | 43100
+  0 |  0 |  0 | 30002
+  0 |  0 |  2 | 52001
+  0 |  0 |  2 | 62001
+  0 |  0 |  4 | 14003
+  0 |  0 |  4 | 24002
 (5 rows)
 
 -- NULL in IN
@@ -2807,9 +2810,9 @@
                Merge Stream Key: r5n.r1
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{1,2,NULL,3}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 492
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 15
 (17 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -2823,11 +2826,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
+  0 |  0 |  0 |  3 | 30002 |  2
   0 |  0 |  2 |  5 | 52001 |  1
   0 |  0 |  2 |  6 | 62001 |  1
-  0 |  0 |  4 |  8 | 84001 |  1
-  0 |  0 |  7 |  9 | 97001 |  1
-  0 |  0 |  8 |  9 | 98001 |  1
+  0 |  0 |  4 |  1 | 14003 |  3
+  0 |  0 |  4 |  2 | 24002 |  2
 (5 rows)
 
 -- Only NULLs in IN
@@ -3024,9 +3027,9 @@
                Merge Stream Key: r5n.r1, r5n.r2, r5n.r3
                Merge Streams: 64
                Merge Cond: ((r5n.r1 = ANY ('{0,1,2,3}'::integer[])) AND (r5n.r2 = ANY ('{0,1,2,3}'::bigint[])) AND (r5n.r3 = ANY ('{0,1,2,3}'::integer[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 83
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 64
+               Storage Table Rows Scanned: 275
 (17 rows)
 
  r4 | r5 |   n   | r1 | r2 | r3 
@@ -3040,11 +3043,11 @@
 
  r4 | r5 |   n   | r1 | r2 | r3 
 ----+----+-------+----+----+----
-  1 |  3 | 31100 |  0 |  0 |  1
-  3 |  4 | 43100 |  0 |  0 |  1
-  6 |  8 | 86000 |  0 |  0 |  0
-  6 |  9 | 96000 |  0 |  0 |  0
-  8 |  9 | 98000 |  0 |  0 |  0
+  0 |  0 |    23 |  3 |  2 |  0
+  0 |  0 |   103 |  3 |  0 |  1
+  0 |  0 |   203 |  3 |  0 |  2
+  0 |  0 |   310 |  0 |  1 |  3
+  0 |  1 | 10210 |  0 |  1 |  2
 (5 rows)
 
 -- Single IN hitting limit
@@ -3260,14 +3263,14 @@
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
                Output: r2, r3, r4, r5, n, r1
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5,6}'::integer[])) AND (r5n.r1 = ANY ('{3,4,5,6,7}'::integer[])) AND (r5n.r1 = ANY ('{5,6,7,8,9,10}'::integer[])))
-               Rows Removed by Index Recheck: 1011
+               Rows Removed by Index Recheck: 12
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{3,4,5,6,7}'::integer[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 1029
+               Storage Table Read Ops: 10
+               Storage Table Rows Scanned: 2525
 (18 rows)
 
  r2 | r3 | r4 | r5 |   n   | r1 
@@ -3281,11 +3284,11 @@
 
  r2 | r3 | r4 | r5 |   n   | r1 
 ----+----+----+----+-------+----
+  0 |  0 |  0 |  0 |     6 |  6
   0 |  0 |  1 |  8 | 81005 |  5
+  0 |  0 |  4 |  1 | 14006 |  6
   0 |  0 |  5 |  5 | 55005 |  5
   0 |  0 |  5 |  7 | 75005 |  5
-  0 |  0 |  8 |  9 | 98005 |  5
-  0 |  1 |  5 |  4 | 45105 |  5
 (5 rows)
 
 -- Duplicates in IN
@@ -3344,6 +3347,166 @@
 
 -- (Reset the limit change)
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 318
+(10 rows)
+
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Merge Stream Key: r5n.r1, r5n.r2
+   Merge Streams: 6
+   Merge Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 6
+   Storage Table Rows Scanned: 318
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3, r5n.r4, r5n.r5
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3, r5n.r4, r5n.r5
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
+:explain4
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 318
+(10 rows)
+
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan Backward using r5n_pkey on public.r5n (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+   Merge Stream Key: r5n.r1, r5n.r2
+   Merge Streams: 6
+   Merge Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 6
+   Storage Table Rows Scanned: 318
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
 --
 -- Secondary index
 --
@@ -3383,6 +3546,41 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 21
 (8 rows)
 
+-- No limit
+-- TODO(#29078): this likely should use SAOP merge.
+\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5'
+:explain2
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Sort (actual rows=2045 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Read Requests: 3
+         Storage Table Read Ops: 9
+         Storage Table Rows Scanned: 2045
+(10 rows)
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Sort (actual rows=2045 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
+         Storage Table Read Requests: 3
+         Storage Table Read Ops: 9
+         Storage Table Rows Scanned: 2045
+(10 rows)
+
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
@@ -3397,34 +3595,25 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Sort Key: r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=9 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=25 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3, r5n.r4
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 487
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
-(20 rows)
+(14 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -3439,9 +3628,9 @@ SPLIT AT VALUES (
 -------+----+----+----+----+----
      6 |  0 |  0 |  6 |  0 |  0
      8 |  0 |  0 |  8 |  0 |  0
+    23 |  0 |  0 |  3 |  2 |  0
+ 10037 |  1 |  0 |  7 |  3 |  0
  20009 |  2 |  0 |  9 |  0 |  0
- 30002 |  3 |  0 |  2 |  0 |  0
- 31004 |  3 |  0 |  4 |  0 |  1
 (5 rows)
 
 -- Backward scan
@@ -3458,34 +3647,25 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=22 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 506
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(20 rows)
+(14 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -3498,11 +3678,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  9911 |  0 |  9 |  1 |  1 |  9
+  9927 |  0 |  9 |  7 |  2 |  9
+ 19903 |  1 |  9 |  3 |  0 |  9
+ 19919 |  1 |  9 |  9 |  1 |  9
  19936 |  1 |  9 |  6 |  3 |  9
- 39931 |  3 |  9 |  1 |  3 |  9
- 39935 |  3 |  9 |  5 |  3 |  9
- 99932 |  9 |  9 |  2 |  3 |  9
- 99935 |  9 |  9 |  5 |  3 |  9
 (5 rows)
 
 -- Targets
@@ -3519,34 +3699,25 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: r5, 1, r5, r3, r4, n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r5, 1, r5, r3, r4, n
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: r5, 1, r5, r3, r4, n
          Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=22 loops=1)
                Output: r5, 1, r5, r3, r4, n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 506
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(20 rows)
+(14 rows)
 
  r5 | ?column? | r5 
 ----+----------+----
@@ -3559,13 +3730,15 @@ SPLIT AT VALUES (
 
  r5 | ?column? | r5 
 ----+----------+----
+  0 |        1 |  0
+  0 |        1 |  0
   1 |        1 |  1
-  3 |        1 |  3
-  3 |        1 |  3
-  9 |        1 |  9
-  9 |        1 |  9
+  1 |        1 |  1
+  1 |        1 |  1
 (5 rows)
 
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index scan VS SAOP merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
@@ -3594,16 +3767,16 @@ SPLIT AT VALUES (
          Sort Key: r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=9 loops=1)
                Output: r2, r3, r4, n, r1
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4,5}'::integer[])) AND (r5n.r2 = 4))
                Merge Sort Key: r5n.r3, r5n.r4
                Merge Stream Key: r5n.r1
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 51
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 25
 (17 rows)
 
  r2 | r3 | r4 |   n   | r1 
@@ -3617,11 +3790,11 @@ SPLIT AT VALUES (
 
  r2 | r3 | r4 |   n   | r1 
 ----+----+----+-------+----
+  4 |  0 |  0 |    44 |  4
+  4 |  0 |  0 | 20044 |  4
   4 |  0 |  0 | 60041 |  1
-  4 |  0 |  1 | 41041 |  1
-  4 |  0 |  4 | 14041 |  1
-  4 |  0 |  6 | 96041 |  1
-  4 |  1 |  0 | 10141 |  1
+  4 |  0 |  0 | 70045 |  5
+  4 |  0 |  1 | 11045 |  5
 (5 rows)
 
 -- SAOP merge secondary index scan VS SAOP merge PK scan
@@ -3655,16 +3828,16 @@ SPLIT AT VALUES (
          Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
          Presorted Key: r5n.r3, r5n.r4, r5n.r5
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])))
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
                Merge Stream Key: r5n.r1, r5n.r2
                Merge Streams: 16
                Merge Cond: ((r5n.r1 = ANY ('{1,2,3,4}'::integer[])) AND (r5n.r2 = ANY ('{1,2,3,4}'::bigint[])))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 202
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 16
+               Storage Table Rows Scanned: 80
 (17 rows)
 
                                        QUERY PLAN                                       
@@ -3676,7 +3849,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r3, r5n.r4, r5n.r5, r5n.n
          Presorted Key: r5n.r3, r5n.r4, r5n.r5
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=8 loops=1)
                Output: r3, r4, r5, n, r1, r2
                Index Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
@@ -3684,12 +3857,12 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{1,2,3,4}'::bigint[]))
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 541
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 541
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 4
+               Storage Table Rows Scanned: 15
+               Storage Index Read Requests: 1
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 20
 (21 rows)
 
  r3 | r4 | r5 |   n   | r1 | r2 
@@ -3703,20 +3876,20 @@ SPLIT AT VALUES (
 
  r3 | r4 | r5 |   n   | r1 | r2 
 ----+----+----+-------+----+----
-  0 |  0 |  7 | 70011 |  1 |  1
-  0 |  2 |  9 | 92011 |  1 |  1
-  0 |  3 |  3 | 33011 |  1 |  1
-  0 |  4 |  7 | 74011 |  1 |  1
-  0 |  4 |  9 | 94011 |  1 |  1
+  0 |  0 |  0 |    23 |  3 |  2
+  0 |  0 |  0 |    44 |  4 |  4
+  0 |  0 |  2 | 20013 |  3 |  1
+  0 |  0 |  2 | 20044 |  4 |  4
+  0 |  0 |  4 | 40014 |  4 |  1
 (5 rows)
 
  r3 | r4 | r5 |   n   | r1 | r2 
 ----+----+----+-------+----+----
+  0 |  0 |  0 |    23 |  3 |  2
+  0 |  0 |  0 |    44 |  4 |  4
   0 |  0 |  2 | 20013 |  3 |  1
+  0 |  0 |  2 | 20044 |  4 |  4
   0 |  0 |  4 | 40014 |  4 |  1
-  0 |  0 |  7 | 70011 |  1 |  1
-  0 |  0 |  9 | 90013 |  3 |  1
-  0 |  2 |  2 | 22012 |  2 |  1
 (5 rows)
 
 -- (Drop this index)
@@ -3854,131 +4027,13 @@ SPLIT AT VALUES (
 (8 rows)
 
 -- Forward scan
--- NOTE(#29383): the output is correct but subject to issue #29383.
--- TODO(#29072): Determine if the above note needs updating.
-\set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5'
-:explain2run2
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   ->  Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Sort Key: r5n.r3, r5n.r4 USING #<#, r5n.n
-         Sort Method: top-N heapsort
-         ->  Seq Scan on public.r5n (actual rows=2045 loops=1)
-               Output: n, r5, r3, r1, r2, r4
-               Storage Filter: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 5048
-(12 rows)
-
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Sort Key: r5n.r3, r5n.r4 USING #<#, r5n.n
-         Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=9 loops=1)
-               Output: n, r5, r3, r1, r2, r4
-               Index Cond: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Merge Sort Key: r5n.r3, r5n.r4 USING #<#
-               Merge Stream Key: r5n.r2
-               Merge Streams: 4
-               Merge Cond: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 487
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
-(20 rows)
-
-   n   | r5 | r3 | r1 | r2 | r4 
--------+----+----+----+----+----
-  1018 |  0 |  0 |  8 |  1 |  1
- 11018 |  1 |  0 |  8 |  1 |  1
- 11025 |  1 |  0 |  5 |  2 |  1
- 11028 |  1 |  0 |  8 |  2 |  1
- 31004 |  3 |  0 |  4 |  0 |  1
-(5 rows)
-
-   n   | r5 | r3 | r1 | r2 | r4 
--------+----+----+----+----+----
- 31004 |  3 |  0 |  4 |  0 |  1
- 61007 |  6 |  0 |  7 |  0 |  1
- 81005 |  8 |  0 |  5 |  0 |  1
- 91007 |  9 |  0 |  7 |  0 |  1
-     6 |  0 |  0 |  6 |  0 |  0
-(5 rows)
-
+-- TODO(#29383): the output is incorrect where it relies on DocDB order.
+-- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5'
+-- :explain2run2
 -- Backward scan
--- NOTE(#29383): the output is correct but subject to issue #29383.
--- TODO(#29072): Determine if the above note needs updating.
-\set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5'
-:explain2run2
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   ->  Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Sort Key: r5n.r3 DESC, r5n.r4 USING #>#, r5n.n
-         Sort Method: top-N heapsort
-         ->  Seq Scan on public.r5n (actual rows=2045 loops=1)
-               Output: n, r5, r3, r1, r2, r4
-               Storage Filter: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 5048
-(12 rows)
-
-                                           QUERY PLAN                                            
--------------------------------------------------------------------------------------------------
- Limit (actual rows=5 loops=1)
-   Output: n, r5, r3, r1, r2, r4
-   ->  Incremental Sort (actual rows=5 loops=1)
-         Output: n, r5, r3, r1, r2, r4
-         Sort Key: r5n.r3 DESC, r5n.r4 USING #>#, r5n.n
-         Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_r3_r4_r5_idx on public.r5n (actual rows=6 loops=1)
-               Output: n, r5, r3, r1, r2, r4
-               Index Cond: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Merge Sort Key: r5n.r3 DESC, r5n.r4 USING #>#
-               Merge Stream Key: r5n.r2
-               Merge Streams: 4
-               Merge Cond: (r5n.r2 =#= ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 506
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(20 rows)
-
-   n   | r5 | r3 | r1 | r2 | r4 
--------+----+----+----+----+----
-   906 |  0 |  9 |  6 |  0 |  0
-   912 |  0 |  9 |  2 |  1 |  0
-   914 |  0 |  9 |  4 |  1 |  0
-   935 |  0 |  9 |  5 |  3 |  0
- 10900 |  1 |  9 |  0 |  0 |  0
-(5 rows)
-
-   n   | r5 | r3 | r1 | r2 | r4 
--------+----+----+----+----+----
- 19936 |  1 |  9 |  6 |  3 |  9
- 39931 |  3 |  9 |  1 |  3 |  9
- 39935 |  3 |  9 |  5 |  3 |  9
- 99932 |  9 |  9 |  2 |  3 |  9
- 99935 |  9 |  9 |  5 |  3 |  9
-(5 rows)
-
+-- TODO(#29383): the output is incorrect where it relies on DocDB order.
+-- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5'
+-- :explain2run2
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_r4_r5_idx;
 --
@@ -4020,6 +4075,9 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 21
 (8 rows)
 
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
@@ -4035,21 +4093,18 @@ SPLIT AT VALUES (
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 7
-               Storage Index Rows Scanned: 2045
-(13 rows)
+(10 rows)
 
-                                            QUERY PLAN                                            
---------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Sort Key: r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Only Scan using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=9 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Only Scan using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=25 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3, r5n.r4
@@ -4057,10 +4112,7 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
-(18 rows)
+(15 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4075,9 +4127,9 @@ SPLIT AT VALUES (
 -------+----+----+----+----+----
      6 |  0 |  0 |  6 |  0 |  0
      8 |  0 |  0 |  8 |  0 |  0
+    23 |  0 |  0 |  3 |  2 |  0
+ 10037 |  1 |  0 |  7 |  3 |  0
  20009 |  2 |  0 |  9 |  0 |  0
- 30002 |  3 |  0 |  2 |  0 |  0
- 31004 |  3 |  0 |  4 |  0 |  1
 (5 rows)
 
 -- Backward scan
@@ -4095,21 +4147,18 @@ SPLIT AT VALUES (
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 7
-               Storage Index Rows Scanned: 2045
-(13 rows)
+(10 rows)
 
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4
          Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Only Scan Backward using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Only Scan Backward using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=22 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC
@@ -4117,10 +4166,7 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(18 rows)
+(15 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4133,11 +4179,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  9911 |  0 |  9 |  1 |  1 |  9
+  9927 |  0 |  9 |  7 |  2 |  9
+ 19903 |  1 |  9 |  3 |  0 |  9
+ 19919 |  1 |  9 |  9 |  1 |  9
  19936 |  1 |  9 |  6 |  3 |  9
- 39931 |  3 |  9 |  1 |  3 |  9
- 39935 |  3 |  9 |  5 |  3 |  9
- 99932 |  9 |  9 |  2 |  3 |  9
- 99935 |  9 |  9 |  5 |  3 |  9
 (5 rows)
 
 -- Targets
@@ -4155,21 +4201,18 @@ SPLIT AT VALUES (
                Output: n, 1, n, r3, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 7
-               Storage Index Rows Scanned: 2045
-(13 rows)
+(10 rows)
 
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, 1, n, r3, r4
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, 1, n, r3, r4
          Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r3, r5n.r4
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Only Scan Backward using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Only Scan Backward using r5n_r2_r3_r4_r5_r1_n_idx on public.r5n (actual rows=22 loops=1)
                Output: n, 1, n, r3, r4
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC
@@ -4177,10 +4220,7 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Heap Fetches: 0
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(18 rows)
+(15 rows)
 
    n   | ?column? |   n   
 -------+----------+-------
@@ -4193,13 +4233,15 @@ SPLIT AT VALUES (
 
    n   | ?column? |   n   
 -------+----------+-------
+  9911 |        1 |  9911
+  9927 |        1 |  9927
+ 19903 |        1 | 19903
+ 19919 |        1 | 19919
  19936 |        1 | 19936
- 39931 |        1 | 39931
- 39935 |        1 | 39935
- 99932 |        1 | 99932
- 99935 |        1 | 99935
 (5 rows)
 
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index only scan VS SAOP merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5'
 :explain2run2
@@ -4342,12 +4384,12 @@ SPLIT AT VALUES (
                Merge Stream Key: (GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4))
                Merge Streams: 2
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 8
-               Storage Table Rows Scanned: 50
-               Storage Index Read Requests: 2
+               Storage Table Read Requests: 1
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 9
+               Storage Index Read Requests: 1
                Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 50
+               Storage Index Rows Scanned: 10
 (20 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -4365,7 +4407,7 @@ SPLIT AT VALUES (
      8 |  0 |  0 |  8 |  0 |  0
  20009 |  2 |  0 |  9 |  0 |  0
  30002 |  3 |  0 |  2 |  0 |  0
- 21112 |  2 |  1 |  2 |  1 |  1
+ 12007 |  1 |  0 |  7 |  0 |  2
 (5 rows)
 
 -- Backward scan
@@ -4399,7 +4441,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2 DESC, r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=7 loops=1)
+         ->  Index Scan Backward using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=10 loops=1)
                Output: n, r5, r3, r1, r2, r4
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
                Merge Sort Key: r5n.r2 DESC, r5n.r3 DESC, r5n.r4 DESC
@@ -4408,10 +4450,10 @@ SPLIT AT VALUES (
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 382
+               Storage Table Rows Scanned: 421
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 382
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 432
 (20 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -4425,11 +4467,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  9996 |  0 |  9 |  6 |  9 |  9
+ 29996 |  2 |  9 |  6 |  9 |  9
+ 39994 |  3 |  9 |  4 |  9 |  9
  27992 |  2 |  9 |  2 |  9 |  7
  37991 |  3 |  9 |  1 |  9 |  7
- 57997 |  5 |  9 |  7 |  9 |  7
- 87991 |  8 |  9 |  1 |  9 |  7
- 87995 |  8 |  9 |  5 |  9 |  7
 (5 rows)
 
 -- Targets
@@ -4463,7 +4505,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2 DESC, r5n.r3 DESC, r5n.r4 DESC, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=7 loops=1)
+         ->  Index Scan Backward using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=10 loops=1)
                Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), 1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
                Merge Sort Key: r5n.r2 DESC, r5n.r3 DESC, r5n.r4 DESC
@@ -4472,10 +4514,10 @@ SPLIT AT VALUES (
                Merge Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{0,2}'::numeric[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 382
+               Storage Table Rows Scanned: 421
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 382
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 432
 (20 rows)
 
  ?column? | ?column? | ?column? 
@@ -4489,9 +4531,9 @@ SPLIT AT VALUES (
 
  ?column? | ?column? | ?column? 
 ----------+----------+----------
-        2 |        1 |        2
-        2 |        1 |        2
-        2 |        1 |        2
+        0 |        1 |        0
+        0 |        1 |        0
+        0 |        1 |        0
         2 |        1 |        2
         2 |        1 |        2
 (5 rows)
@@ -4553,7 +4595,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=7 loops=1)
                Output: (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4)), r2, r3, r4, n, r1
                Index Cond: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
@@ -4561,10 +4603,10 @@ SPLIT AT VALUES (
                Merge Streams: 5
                Merge Cond: (r5n.r1 = ANY ('{1,2,3,4,5}'::integer[]))
                Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = '4'::numeric)
-               Rows Removed by Filter: 45
+               Rows Removed by Filter: 30
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 492
+               Storage Table Read Ops: 6
+               Storage Table Rows Scanned: 2143
 (19 rows)
 
  ?column? | r2 | r3 | r4 |   n   | r1 
@@ -4587,11 +4629,11 @@ SPLIT AT VALUES (
 
  ?column? | r2 | r3 | r4 |   n   | r1 
 ----------+----+----+----+-------+----
-        4 |  0 |  0 |  4 | 84001 |  1
-        4 |  0 |  1 |  4 | 54101 |  1
-        4 |  0 |  3 |  4 | 24301 |  1
-        4 |  0 |  4 |  1 | 61401 |  1
-        4 |  0 |  4 |  4 |  4401 |  1
+        4 |  0 |  0 |  4 | 14003 |  3
+        4 |  0 |  0 |  4 | 24002 |  2
+        4 |  0 |  0 |  4 | 34002 |  2
+        4 |  0 |  0 |  4 | 44004 |  4
+        4 |  0 |  0 |  4 | 64004 |  4
 (5 rows)
 
 -- SAOP merge secondary index scan VS SAOP merge PK scan
@@ -4629,7 +4671,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_expr_r2_r3_r4_idx on public.r5n (actual rows=10 loops=1)
                Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
                Index Cond: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
@@ -4639,10 +4681,10 @@ SPLIT AT VALUES (
                Storage Filter: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
                Storage Table Read Requests: 2
                Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 257
+               Storage Table Rows Scanned: 236
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 257
+               Storage Index Read Ops: 8
+               Storage Index Rows Scanned: 1709
 (21 rows)
 
                                                                               QUERY PLAN                                                                               
@@ -4654,7 +4696,7 @@ SPLIT AT VALUES (
          Sort Key: r5n.r2, r5n.r3, r5n.r4, r5n.n
          Presorted Key: r5n.r2, r5n.r3, r5n.r4
          Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_pkey on public.r5n (actual rows=6 loops=1)
+         ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
                Output: r2, r3, r4, n, r1, (GREATEST((r2)::numeric, (r3)::numeric, r4) - LEAST((r2)::numeric, (r3)::numeric, r4))
                Index Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
                Merge Sort Key: r5n.r2, r5n.r3, r5n.r4
@@ -4662,10 +4704,10 @@ SPLIT AT VALUES (
                Merge Streams: 4
                Merge Cond: (r5n.r1 = ANY ('{1,2,3,4}'::integer[]))
                Filter: ((GREATEST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4) - LEAST((r5n.r2)::numeric, (r5n.r3)::numeric, r5n.r4)) = ANY ('{1,2,3,4}'::numeric[]))
-               Rows Removed by Filter: 2
+               Rows Removed by Filter: 12
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 2
-               Storage Table Rows Scanned: 492
+               Storage Table Read Ops: 5
+               Storage Table Rows Scanned: 1619
 (19 rows)
 
  r2 | r3 | r4 |   n   | r1 | ?column? 
@@ -4680,19 +4722,19 @@ SPLIT AT VALUES (
  r2 | r3 | r4 |   n   | r1 | ?column? 
 ----+----+----+-------+----+----------
   0 |  0 |  1 | 31004 |  4 |        1
-  0 |  1 |  0 |   103 |  3 |        1
-  0 |  1 |  0 | 50103 |  3 |        1
-  0 |  1 |  0 | 50104 |  4 |        1
-  0 |  1 |  0 | 60104 |  4 |        1
+  0 |  0 |  2 | 52001 |  1 |        2
+  0 |  0 |  2 | 62001 |  1 |        2
+  0 |  0 |  4 | 14003 |  3 |        4
+  0 |  0 |  4 | 24002 |  2 |        4
 (5 rows)
 
  r2 | r3 | r4 |   n   | r1 | ?column? 
 ----+----+----+-------+----+----------
+  0 |  0 |  1 | 31004 |  4 |        1
   0 |  0 |  2 | 52001 |  1 |        2
   0 |  0 |  2 | 62001 |  1 |        2
-  0 |  0 |  4 | 84001 |  1 |        4
-  0 |  1 |  1 | 31101 |  1 |        1
-  0 |  1 |  3 | 13101 |  1 |        3
+  0 |  0 |  4 | 14003 |  3 |        4
+  0 |  0 |  4 | 24002 |  2 |        4
 (5 rows)
 
 -- (Drop this index)
@@ -4726,16 +4768,16 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                        QUERY PLAN                                        
-------------------------------------------------------------------------------------------
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
          Sort Key: ((- r5n.r3)), ((- r5n.r4)), r5n.n
          Presorted Key: ((- r5n.r3)), ((- r5n.r4))
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan using r5n_r2_expr_expr1_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan using r5n_r2_expr_expr1_idx on public.r5n (actual rows=12 loops=1)
                Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Merge Sort Key: (- r5n.r3), (- r5n.r4)
@@ -4743,11 +4785,11 @@ SPLIT AT VALUES (
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 487
+               Storage Table Read Ops: 8
+               Storage Table Rows Scanned: 693
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 850
 (20 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -4761,11 +4803,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  9927 |  0 |  9 |  7 |  2 |  9
  19903 |  1 |  9 |  3 |  0 |  9
  29905 |  2 |  9 |  5 |  0 |  9
- 79902 |  7 |  9 |  2 |  0 |  9
- 79906 |  7 |  9 |  6 |  0 |  9
- 89906 |  8 |  9 |  6 |  0 |  9
+ 29924 |  2 |  9 |  4 |  2 |  9
+ 39925 |  3 |  9 |  5 |  2 |  9
 (5 rows)
 
 -- Backward scan
@@ -4787,16 +4829,16 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4, ((- r3)), ((- r4))
          Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
          Presorted Key: ((- r5n.r3)), ((- r5n.r4))
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=9 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=13 loops=1)
                Output: n, r5, r3, r1, r2, r4, (- r3), (- r4)
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Merge Sort Key: (- r5n.r3) DESC, (- r5n.r4) DESC
@@ -4804,11 +4846,11 @@ SPLIT AT VALUES (
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 105
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 214
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 105
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 592
 (20 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
@@ -4822,11 +4864,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+     6 |  0 |  0 |  6 |  0 |  0
+     8 |  0 |  0 |  8 |  0 |  0
     23 |  0 |  0 |  3 |  2 |  0
- 40021 |  4 |  0 |  1 |  2 |  0
- 40028 |  4 |  0 |  8 |  2 |  0
- 50023 |  5 |  0 |  3 |  2 |  0
- 60022 |  6 |  0 |  2 |  2 |  0
+ 20009 |  2 |  0 |  9 |  0 |  0
+ 30002 |  3 |  0 |  2 |  0 |  0
 (5 rows)
 
 -- Targets
@@ -4848,16 +4890,16 @@ SPLIT AT VALUES (
                Storage Table Rows Scanned: 998
 (12 rows)
 
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: ((- r4)), 1, ((- r4)), ((- r3)), n
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: ((- r4)), 1, ((- r4)), ((- r3)), n
          Sort Key: ((- r5n.r3)) DESC, ((- r5n.r4)) DESC, r5n.n
          Presorted Key: ((- r5n.r3)), ((- r5n.r4))
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=9 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_expr_expr1_idx on public.r5n (actual rows=13 loops=1)
                Output: (- r4), 1, (- r4), (- r3), n
                Index Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Merge Sort Key: (- r5n.r3) DESC, (- r5n.r4) DESC
@@ -4865,11 +4907,11 @@ SPLIT AT VALUES (
                Merge Streams: 2
                Merge Cond: (r5n.r2 = ANY ('{0,2}'::bigint[]))
                Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 105
+               Storage Table Read Ops: 9
+               Storage Table Rows Scanned: 214
                Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 105
+               Storage Index Read Ops: 4
+               Storage Index Rows Scanned: 592
 (20 rows)
 
  ?column? | ?column? | ?column? 
@@ -4932,6 +4974,9 @@ SPLIT AT VALUES (
          Storage Table Rows Scanned: 21
 (8 rows)
 
+-- Following queries send various numbers of requests/scan various number of rows
+-- due to non-deterministic order of equal rows in merge sort, hide their DIST
+\set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5'
 :explain2run2
@@ -4946,10 +4991,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
@@ -4960,20 +5002,14 @@ SPLIT AT VALUES (
          Sort Key: (((r5n.r3)::numeric + r5n.r4)), r5n.n
          Presorted Key: (((r5n.r3)::numeric + r5n.r4))
          Full-sort Groups: 1  Sort Method: top-N heapsort
-         ->  Index Scan using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=15 loops=1)
+         ->  Index Scan using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=25 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: ((r5n.r3)::numeric + r5n.r4)
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 6
-               Storage Table Rows Scanned: 487
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 487
-(20 rows)
+(14 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -4988,9 +5024,9 @@ SPLIT AT VALUES (
 -------+----+----+----+----+----
      6 |  0 |  0 |  6 |  0 |  0
      8 |  0 |  0 |  8 |  0 |  0
+    23 |  0 |  0 |  3 |  2 |  0
+ 10037 |  1 |  0 |  7 |  3 |  0
  20009 |  2 |  0 |  9 |  0 |  0
- 30002 |  3 |  0 |  2 |  0 |  0
-   103 |  0 |  1 |  3 |  0 |  0
 (5 rows)
 
 -- Forward scan (v2)
@@ -5008,10 +5044,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
@@ -5024,10 +5057,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
 -- Backward scan
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
@@ -5043,34 +5073,25 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: n, r5, r3, r1, r2, r4, (((r3)::numeric + r4))
          Sort Key: (((r5n.r3)::numeric + r5n.r4)) DESC, r5n.n
          Presorted Key: (((r5n.r3)::numeric + r5n.r4))
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=22 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: ((r5n.r3)::numeric + r5n.r4) DESC
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 506
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(20 rows)
+(14 rows)
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
@@ -5083,11 +5104,11 @@ SPLIT AT VALUES (
 
    n   | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----
+  9911 |  0 |  9 |  1 |  1 |  9
+  9927 |  0 |  9 |  7 |  2 |  9
+ 19903 |  1 |  9 |  3 |  0 |  9
+ 19919 |  1 |  9 |  9 |  1 |  9
  19936 |  1 |  9 |  6 |  3 |  9
- 39931 |  3 |  9 |  1 |  3 |  9
- 39935 |  3 |  9 |  5 |  3 |  9
- 99932 |  9 |  9 |  2 |  3 |  9
- 99935 |  9 |  9 |  5 |  3 |  9
 (5 rows)
 
 -- Backward scan (v2)
@@ -5105,10 +5126,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
@@ -5121,10 +5139,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: n, r5, r3, r1, r2, r4, ((r3)::numeric + r4)
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
 -- Targets
 \set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
@@ -5140,34 +5155,25 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: r5, 1, r5, ((r3)::numeric + r4), n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
-                                                QUERY PLAN                                                 
------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
    Output: r5, 1, r5, (((r3)::numeric + r4)), n
    ->  Incremental Sort (actual rows=5 loops=1)
          Output: r5, 1, r5, (((r3)::numeric + r4)), n
          Sort Key: (((r5n.r3)::numeric + r5n.r4)) DESC, r5n.n
          Presorted Key: (((r5n.r3)::numeric + r5n.r4))
-         Full-sort Groups: 1  Sort Method: quicksort
-         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=6 loops=1)
+         Full-sort Groups: 1  Sort Method: top-N heapsort
+         ->  Index Scan Backward using r5n_r2_expr_r21_expr1_r22_idx on public.r5n (actual rows=22 loops=1)
                Output: r5, 1, r5, ((r3)::numeric + r4), n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
                Merge Sort Key: ((r5n.r3)::numeric + r5n.r4) DESC
                Merge Stream Key: r5n.r2
                Merge Streams: 4
                Merge Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 2
-               Storage Table Read Ops: 7
-               Storage Table Rows Scanned: 506
-               Storage Index Read Requests: 2
-               Storage Index Read Ops: 2
-               Storage Index Rows Scanned: 506
-(20 rows)
+(14 rows)
 
  r5 | ?column? | r5 
 ----+----------+----
@@ -5180,11 +5186,11 @@ SPLIT AT VALUES (
 
  r5 | ?column? | r5 
 ----+----------+----
+  0 |        1 |  0
+  0 |        1 |  0
   1 |        1 |  1
-  3 |        1 |  3
-  3 |        1 |  3
-  9 |        1 |  9
-  9 |        1 |  9
+  1 |        1 |  1
+  1 |        1 |  1
 (5 rows)
 
 -- Targets (v2)
@@ -5202,10 +5208,7 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: r5, 1, r5, ((r3)::numeric + r4), r2, n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
@@ -5218,11 +5221,10 @@ SPLIT AT VALUES (
          ->  Index Scan using r5n_pkey on public.r5n (actual rows=2045 loops=1)
                Output: r5, 1, r5, ((r3)::numeric + r4), r2, n
                Index Cond: (r5n.r2 = ANY ('{0,1,2,3}'::bigint[]))
-               Storage Table Read Requests: 3
-               Storage Table Read Ops: 9
-               Storage Table Rows Scanned: 2045
-(12 rows)
+(9 rows)
 
+-- (Reset the explain change)
+\set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- (Drop this index)
 DROP INDEX r5n_r2_expr_r21_expr1_r22_idx;
 --

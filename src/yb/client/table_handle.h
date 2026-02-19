@@ -101,21 +101,28 @@ class TableHandle {
 
   Status Reopen();
 
-  std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
-
-  std::shared_ptr<YBqlWriteOp> NewInsertOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const {
+    return NewWriteOp(nullptr, type);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewUpdateOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+  // Arena is not yet used, will be used in followup diffs after migration to lightweight protobufs.
+  // Also default value nullptr will be removed.
+  std::shared_ptr<YBqlWriteOp> NewWriteOp(
+      const ThreadSafeArenaPtr& arena, QLWriteRequestPB::QLStmtType type) const;
+
+  std::shared_ptr<YBqlWriteOp> NewInsertOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_INSERT);
   }
 
-  std::shared_ptr<YBqlWriteOp> NewDeleteOp() const {
-    return NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+  std::shared_ptr<YBqlWriteOp> NewUpdateOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_UPDATE);
   }
 
-  std::shared_ptr<YBqlReadOp> NewReadOp() const;
+  std::shared_ptr<YBqlWriteOp> NewDeleteOp(const ThreadSafeArenaPtr& arena = nullptr) const {
+    return NewWriteOp(arena, QLWriteRequestPB::QL_STMT_DELETE);
+  }
+
+  std::shared_ptr<YBqlReadOp> NewReadOp(const ThreadSafeArenaPtr& arena = nullptr) const;
 
   int32_t ColumnId(std::string_view column_name) const {
     auto it = column_ids_.find(column_name);
@@ -163,7 +170,7 @@ class TableHandle {
       LWQLConditionPB* const condition, std::string_view column_name, const QLOperator op) const;
 
  private:
-  using ColumnIdsMap = UnorderedStringMap<yb::ColumnId>;
+  using ColumnIdsMap = UnorderedStringMap<std::string, yb::ColumnId>;
   using ColumnTypesMap = std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>>;
 
   YBClient* client_;

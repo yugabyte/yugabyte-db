@@ -2395,7 +2395,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use Automatic xCluster mode. {{<tags/feature/ea idea="2176">}}
+* `automatic_ddl_mode`: Use [xCluster automatic mode](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### is_xcluster_bootstrap_required
 
@@ -2669,11 +2669,11 @@ If specified, *dest-ts-uuid* becomes the new leader. If the argument is empty (`
 
 ### Cluster balancing commands
 
-For information on YB-Master cluster balancing, see [Cluster balancing](../../../architecture/yb-master/#cluster-balancing).
+YugabyteDB automatically balances the cluster via the [YB-Master](../../architecture/yb-master/) service. The following manual commands are for advanced use cases.
+
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/).
 
 For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
-
-For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/). Note that YugabyteDB automatically balances the cluster; these manual commands are for advanced use cases.
 
 #### set_load_balancer_enabled
 

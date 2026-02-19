@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V93__29194__alter_pg_stat_statements_add_metrics.sql
-{ major => '93', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V97__28160__yb_qpm.sql
+{ major => '97', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

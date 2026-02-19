@@ -105,9 +105,12 @@ var attachUniverseCmd = &cobra.Command{
 
 		rList, responseList, errList := universeListRequest.Execute()
 		if errList != nil {
-			errMessage := util.ErrorFromHTTPResponse(responseList, errList,
-				"Universe", "Attach - Check Existing Universe")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(
+				responseList,
+				errList,
+				"Universe",
+				"Attach - Check Existing Universe",
+			)
 		}
 
 		if len(rList) > 0 {

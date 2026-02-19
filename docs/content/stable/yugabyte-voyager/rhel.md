@@ -115,7 +115,7 @@ Perform the following steps to install yb-voyager using yum for RHEL 9 and CentO
 1. Install `mysql-community-release` repository using the following command:
 
     ```sh
-    sudo dnf install https://dev.mysql.com/get/mysql84-community-release-el9-1.noarch.rpm -y
+    sudo dnf install https://dev.mysql.com/get/mysql84-community-release-el9-2.noarch.rpm -y
     ```
 
 1. Install the PostgreSQL repositories using the following command:

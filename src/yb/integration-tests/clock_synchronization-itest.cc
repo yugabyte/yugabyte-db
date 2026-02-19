@@ -19,7 +19,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/column_id.h"
-#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
@@ -100,11 +100,11 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
       auto *const req = ql_write->mutable_request();
       req->set_client(QLClient::YQL_CLIENT_CQL);
       req->set_type(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT);
-      QLExpressionPB *hash_column = req->add_hashed_column_values();
+      auto *hash_column = req->add_hashed_column_values();
       int64_t val = random_.Next64();
       hash_column->mutable_value()->set_int64_value(val);
 
-      QLColumnValuePB *column = req->add_column_values();
+      auto *column = req->add_column_values();
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
       EXPECT_OK(session->TEST_ApplyAndFlush(ql_write));

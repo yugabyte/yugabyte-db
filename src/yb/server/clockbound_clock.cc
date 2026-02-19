@@ -25,6 +25,7 @@ extern "C" {
 #include "yb/gutil/port.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/hybrid_clock.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
@@ -68,9 +69,7 @@ static constexpr auto kAutoConfigNumClockboundCtxs = 0;
 // 1. Old hardware: ~500us
 // 2. New hardware, PHC, with NTP: ~100us
 // 3. New hardware, PHC, with PTP: ~40us
-//
-// Picking a conservative default of 1ms.
-DEFINE_NON_RUNTIME_uint64(clockbound_clock_error_estimate_usec, 1000,
+DEFINE_NON_RUNTIME_uint64(clockbound_clock_error_estimate_usec, 2500,
     "An estimate of the clock error in microseconds."
     " When the estimate is too low and the reported clock error exceeds the estimate,"
     " the database timestamps fall behind real time."
@@ -86,6 +85,10 @@ DEFINE_NON_RUNTIME_uint32(clockbound_num_ctxs, kAutoConfigNumClockboundCtxs,
     "Number of clockbound contexts to open."
     " When set to 0, the number of contexts is automatically determined."
     " This is a performance optimization to reduce contention on the clockbound context.");
+
+DEFINE_RUNTIME_uint64(max_wait_for_clock_sync_at_startup_ms, 120000,
+    "Timeout in milliseconds of waiting for clock synchronization at startup."
+    " When set to 0, waiting is disabled.");
 
 // Use this bound for global limit in mixed clock mode.
 DECLARE_uint64(max_clock_skew_usec);
@@ -163,9 +166,11 @@ class ClockboundClock : public PhysicalClock {
     }
 
     // Always check whether the clock went out of sync.
-    SCHECK_NE(result.clock_status, CLOCKBOUND_STA_UNKNOWN,
+    SCHECK_EQ(result.clock_status, CLOCKBOUND_STA_SYNCHRONIZED,
               ServiceUnavailable,
-              "Clock status is unknown, time cannot be trusted.");
+              result.clock_status == CLOCKBOUND_STA_FREE_RUNNING
+                  ? "Clock status is free running, time cannot be trusted."
+                  : "Clock status is unknown, time cannot be trusted.");
 
     auto earliest = MonoTime::TimespecToMicros(result.earliest);
     auto latest = MonoTime::TimespecToMicros(result.latest);
@@ -180,7 +185,7 @@ class ClockboundClock : public PhysicalClock {
         ANNOTATE_UNPROTECTED_READ(FLAGS_max_clock_skew_usec) / 2;
     SCHECK_LE(error, max_clock_error, ServiceUnavailable,
               Format("Clock error: $0 exceeds maximum allowed clock error: $1."
-                     " This indicates a serious infrastructure failure."
+                     " This indicates a node restart or an infrastructure failure."
                      " Ensure that the clocks are synchronized properly.",
                      error, max_clock_error));
 
@@ -374,18 +379,37 @@ class ClockboundClock : public PhysicalClock {
 class RealTimeAlignedClock : public PhysicalClock {
  public:
   explicit RealTimeAlignedClock(PhysicalClockPtr time_source)
-      : time_source_(time_source) {}
+      : time_source_(time_source) {
+    // Wait for clock sync
+    auto startup_timeout_ms =
+        ANNOTATE_UNPROTECTED_READ(FLAGS_max_wait_for_clock_sync_at_startup_ms);
+    if (startup_timeout_ms > 0) {
+      auto sync_result = WaitForClockSync(startup_timeout_ms);
+      if (sync_result.ok()) {
+        LOG(INFO) << "Clock in synchronized state. " << sync_result.ToString();
+      } else {
+        LOG(FATAL) << "Failed to synchronize clock. Reason: " << sync_result.status().ToString();
+      }
+    }
+  }
 
   // Returns earliest + min(clock_error, EST_ERROR).
-  // Returns an error in Unsynchronized state.
   // Also returns clock_error for metrics.
   //
   // See class comment for the correctness argument.
   Result<PhysicalTime> Now() override {
-    auto [real_time, error] = VERIFY_RESULT(time_source_->Now());
+    auto result = VERIFY_RESULT(time_source_->Now());
+
+    // Log warning if clock error exceeds estimate
+    if (result.max_error > FLAGS_clockbound_clock_error_estimate_usec) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1)
+          << "Clock error: " << result.max_error
+          << " exceeds estimate: " << FLAGS_clockbound_clock_error_estimate_usec;
+    }
+
+    auto [real_time, error] = std::move(result);
     auto earliest = real_time - error;
-    auto timepoint = earliest + std::min(
-        error, FLAGS_clockbound_clock_error_estimate_usec);
+    auto timepoint = earliest + std::min(error, FLAGS_clockbound_clock_error_estimate_usec);
     return PhysicalTime{timepoint, error};
   }
 
@@ -406,6 +430,56 @@ class RealTimeAlignedClock : public PhysicalClock {
   }
 
  private:
+  // Waits for clock synchronization by retrying when:
+  // 1. ServiceUnavailable errors occur (e.g., clock error exceeds
+  //    max_clock_skew or status is not synchronized)
+  // 2. Clock error exceeds the configured estimate
+  // Returns error immediately for non-ServiceUnavailable errors.
+  // Returns the return value of Now() when synchronized.
+  Result<PhysicalTime> WaitForClockSync(uint64_t timeout_ms) {
+    Result<PhysicalTime> last_result = STATUS(IllegalState, "Not initialized");
+
+    auto condition = [this, &last_result]() -> Result<bool> {
+      last_result = time_source_->Now();
+      if (!last_result.ok()) {
+        auto status = last_result.status();
+        if (status.IsServiceUnavailable()) {
+          // Retry on ServiceUnavailable
+          LOG(INFO) << "Retrying. Reason: " << last_result.status().ToString();
+          return false;
+        }
+
+        // Return other errors immediately
+        LOG(INFO) << "Failed. Reason: " << last_result.status().ToString();
+        return last_result.status();
+      }
+
+      auto clock_error = last_result->max_error;
+      auto estimate = FLAGS_clockbound_clock_error_estimate_usec;
+
+      // If clock error is greater than estimate, retry
+      if (clock_error > estimate) {
+        LOG(INFO) << "Retrying. Reason: Clock error: " << clock_error
+                  << " is greater than estimate: " << estimate;
+        return false;
+      }
+
+      // Success - clock is synchronized
+      return true;
+    };
+
+    auto status = WaitFor(condition, MonoDelta::FromMilliseconds(timeout_ms),
+                          "Wait for clockbound to sync", MonoDelta::FromSeconds(1));
+    if (!status.ok()) {
+      VLOG_WITH_FUNC(3) << "Failed. Reason: " << status.ToString();
+      return status;
+    }
+
+    // Log and return the last result
+    VLOG_WITH_FUNC(4) << "Returning: " << last_result.ToString();
+    return last_result;
+  }
+
   PhysicalClockPtr time_source_;
 };
 

@@ -52,12 +52,7 @@ class PgResponseCache {
   ~PgResponseCache();
 
   struct Response {
-    Response(
-        PgPerformResponsePB response_, std::vector<RefCntSlice> rows_data_)
-        : response(std::move(response_)),
-          rows_data(std::move(rows_data_)) {
-      DCHECK_EQ(response.responses_size(), rows_data.size());
-    }
+    Response(const PgPerformResponseMsg& response_, std::vector<RefCntSlice> rows_data_);
 
     PgPerformResponsePB response;
     std::vector<RefCntSlice> rows_data;

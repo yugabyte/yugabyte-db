@@ -18,6 +18,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver.messages.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
@@ -480,7 +481,7 @@ TEST_F(YSqlAsyncWriteTest, FailedInsertOnConflict) {
   sync_point->SetCallBack(
       "TabletServiceImpl::PerformWrite", [&async_write_attempt_num](void* data) {
         async_write_attempt_num++;
-        auto req = static_cast<tserver::WriteRequestPB*>(data);
+        auto req = static_cast<tserver::WriteRequestMsg*>(data);
         if (!req->use_async_write()) {
           return;
         }

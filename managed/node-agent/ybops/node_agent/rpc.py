@@ -29,8 +29,10 @@ from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 from ybops.common.exceptions import YBOpsRuntimeError
 
 CORRELATION_ID = "correlation_id"
+REQUEST_LOG_LEVEL = "node_agent_request_log_level"
 X_CORRELATION_ID = "x-correlation-id"
 X_REQUEST_ID = "x-request-id"
+X_REQUEST_LOG_LEVEL = "x-request-log-level"
 SERVER_READY_RETRY_LIMIT = 60
 PING_TIMEOUT_SEC = 10
 RPC_TIMEOUT_SEC = 900
@@ -383,10 +385,13 @@ class RpcClient(object):
         if correlation_id is None:
             correlation_id = str(uuid.uuid4())
         request_id = str(uuid.uuid4())
+        request_log_level = os.getenv(REQUEST_LOG_LEVEL, str(-1))
         logging.info("Using correlation ID: {} and request ID: {}"
                      .format(correlation_id, request_id))
         metadata.append((X_CORRELATION_ID, correlation_id))
         metadata.append((X_REQUEST_ID, request_id))
+        if int(request_log_level) >= 0:
+            metadata.append((X_REQUEST_LOG_LEVEL, request_log_level))
         return metadata
 
     def _set_request_oneof_field(self, request, field):

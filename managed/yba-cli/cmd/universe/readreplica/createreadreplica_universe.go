@@ -71,7 +71,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 		}
 
 		primaryCluster := universeutil.FindClusterByType(clusters, util.PrimaryClusterType)
-		if primaryCluster == (ybaclient.Cluster{}) {
+		if universeutil.IsClusterEmpty(primaryCluster) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf(
@@ -165,7 +165,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 			},
 		}
 
-		if len(strings.TrimSpace(tserverGFlagsString)) > 0 {
+		if !util.IsEmptyString(tserverGFlagsString) {
 			if strings.HasPrefix(strings.TrimSpace(tserverGFlagsString), "{") {
 				tserverGFlags = universeutil.ProcessGFlagsJSONString(tserverGFlagsString, "Tserver")
 			} else {
@@ -252,7 +252,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 
 			ReplicationFactor: util.GetInt32Pointer(int32(rf)),
 			NumNodes:          util.GetInt32Pointer(int32(node)),
-			RegionList:        util.StringSliceFromString(regions),
+			RegionList:        regions,
 			PreferredRegion:   util.GetStringPointer(preferredRegion),
 			AwsArnString:      primaryUserIntent.AwsArnString,
 
@@ -302,11 +302,10 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 		createRR := authAPI.CreateReadOnlyCluster(universeUUID).UniverseConfigureTaskParams(req)
 		rTask, response, err := createRR.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err,
-				"Universe", "Create Read Only Cluster")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Universe", "Create Read Only Cluster")
 		}
+
+		util.CheckTaskAfterCreation(rTask)
 
 		msg := fmt.Sprintf("The read replica for universe %s is being created",
 			formatter.Colorize(universeName, formatter.GreenColor))
@@ -325,9 +324,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 				formatter.Colorize(universeName, formatter.GreenColor), universeUUID)
 			universeData, response, err := authAPI.ListUniverses().Name(universeName).Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err,
-					"Universe", "Create - Fetch Universe")
-				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				util.FatalHTTPError(response, err, "Universe", "Create - Fetch Universe")
 			}
 
 			universesCtx := formatter.Context{
@@ -345,7 +342,7 @@ var CreateReadReplicaUniverseCmd = &cobra.Command{
 			Output:  os.Stdout,
 			Format:  ybatask.NewTaskFormat(viper.GetString("output")),
 		}
-		ybatask.Write(taskCtx, []ybaclient.YBPTask{rTask})
+		ybatask.Write(taskCtx, []ybaclient.YBPTask{*rTask})
 
 	},
 }
@@ -476,7 +473,7 @@ func getRegionsAndImageBundle(
 	if err != nil {
 		return nil, nil, "", "", err
 	}
-	if len(strings.TrimSpace(regionsString)) == 0 {
+	if util.IsEmptyString(regionsString) {
 		regions = primaryUserIntent.GetRegionList()
 	} else {
 		regions, err = universeutil.FetchRegionUUIDFromName(
@@ -493,7 +490,7 @@ func getRegionsAndImageBundle(
 	if err != nil {
 		return nil, nil, "", "", err
 	}
-	if len(strings.TrimSpace(imageBundleName)) == 0 {
+	if util.IsEmptyString(imageBundleName) {
 		imageBundle = primaryUserIntent.GetImageBundleUUID()
 	} else {
 		imageBundlesInProvider := providerUsed.GetImageBundles()

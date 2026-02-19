@@ -48,6 +48,8 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
       const YbcPgTableLocalityInfo& locality_info, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time);
 
+  Status SetNextBatchYbctids(const YbcPgExecParameters* exec_params);
+
  private:
   explicit PgSample(const PgSession::ScopedRefPtr& pg_session);
 
@@ -56,6 +58,10 @@ class PgSample final : public PgStatementLeafBase<PgDmlRead, StmtOp::kSample>  {
       const SampleRandomState& rand_state, HybridTime read_time);
 
   std::unique_ptr<SampleRowsPickerIf> sample_rows_picker_;
+  // Index of next sampled ybctid in the reservoir which should be used to fetch
+  // sampled rows.
+  size_t index_ = 0;
+  const std::vector<Slice>* ybctids_;
 };
 
 }  // namespace yb::pggate

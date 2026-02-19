@@ -112,7 +112,9 @@ One of our customers uses YCQL interface to store and retrieve about 80 TB of ev
 
 ## Operational efficiency
 
-Scaling up and down with YugabyteDB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. As YugabyteDB performs size-tiered compaction automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
+Scaling up and down with YugabyteDB doesn't result in any loss of availability and the data loader application continues to perform high ingest in parallel without any interruption. YugabyteDB automatically balances data and query load across nodes when scaling. As YugabyteDB performs size-tiered compaction automatically in the background, explicit manual compaction is not needed and there is only 10-20% space amplification overhead.
+
+For detailed information on how YugabyteDB automatically balances the cluster during scaling operations, see [Cluster balancing](../../../architecture/docdb-sharding/cluster-balancing/).
 
 ## Learn more
 

@@ -121,6 +121,7 @@ set(UTIL_SRCS
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
+  csv_util.cc
   curl_util.cc
   date_time.cc
   debug-util.cc
@@ -152,7 +153,7 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  jsonreader.cc
+  json_document.cc
   jsonwriter.cc
   jwt_util.cc
   jwtcpp_util.cc
@@ -187,6 +188,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
+  perf_util.cc
   pg_util.cc
   physical_time.cc
   port_picker.cc
@@ -371,7 +373,7 @@ ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
-ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(json_document-test)
 ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)

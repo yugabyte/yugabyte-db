@@ -44,7 +44,7 @@ class CompactionContext {
   //
   // As a concrete use case, we use this to pass the history cutoff timestamp from the DocDB
   // compaction feed into the version edit metadata. See DocDBCompactionFeed.
-  virtual UserFrontierPtr GetLargestUserFrontier() const = 0;
+  virtual yb::storage::UserFrontierPtr GetLargestUserFrontier() const = 0;
 
   // Returns a list of the ranges which should be considered "live" on this tablet. Returns an empty
   // list if the whole key range of the tablet should be considered live. Returned ranges are
@@ -61,6 +61,7 @@ struct CompactionContextOptions {
   // In YugabyteDB we use only level0, so for code simplicity pass level0 inputs only.
   const std::vector<FileMetaData*>& level0_inputs;
   BoundaryValuesExtractor* boundary_extractor;
+  CompactionReason compaction_reason;
 };
 
 }  // namespace rocksdb

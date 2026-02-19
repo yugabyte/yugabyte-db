@@ -355,16 +355,16 @@ class MemTable {
 
   const MemTableOptions* GetMemTableOptions() const { return &moptions_; }
 
-  void UpdateFrontiers(const UserFrontiers& value) {
+  void UpdateFrontiers(const yb::storage::UserFrontiers& value) {
     std::lock_guard l(frontiers_mutex_);
-    rocksdb::UpdateFrontiers(frontiers_, value);
+    yb::storage::UpdateFrontiers(frontiers_, value);
   }
 
   // Frontiers accessors might return stale frontiers if invoked after records have been written to
   // the memtable, but before frontiers are updated.
-  UserFrontierPtr GetFrontier(UpdateUserValueType type) const;
+  yb::storage::UserFrontierPtr GetFrontier(yb::storage::UpdateUserValueType type) const;
 
-  const UserFrontiers* Frontiers() const { return frontiers_.get(); }
+  const yb::storage::UserFrontiers* Frontiers() const { return frontiers_.get(); }
 
   std::string ToString() const;
 
@@ -432,7 +432,7 @@ class MemTable {
   Env* env_;
 
   mutable SpinMutex frontiers_mutex_;
-  UserFrontiersPtr frontiers_;
+  yb::storage::UserFrontiersPtr frontiers_;
 
   // Returns a heuristic flush decision
   bool ShouldFlushNow() const;

@@ -14,8 +14,8 @@ import { makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { Page, RestoreContextMethods, RestoreFormContext } from '../RestoreContext';
 import { TableType } from '../../../../../redesign/helpers/dtos';
-import LeftArrow from '../icons/LeftArrow.svg';
-import Check from '../icons/Check.svg';
+import LeftArrow from '../icons/LeftArrow.svg?img';
+import Check from '../icons/Check.svg?img';
 
 type BackupRestoreStepperProps = {
   className?: any;

@@ -13,6 +13,8 @@
 
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
+#include <sys/stat.h>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/util/async_util.h"
@@ -2313,6 +2315,52 @@ TEST_F(YsqlMajorUpgradeTest, NamespaceMapConsistencyAfterFailedUpgrade) {
   // Verify we can connect and query
   auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
   ASSERT_OK(conn.Fetch("SELECT 1"));
+}
+
+TEST_F(YsqlMajorUpgradeTest, TestQuotationIndex) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t1(col int);"));
+  ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX i1 on t1(col asc);"));
+  ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD CONSTRAINT \"c1 new check\" UNIQUE USING INDEX i1;"));
+  ASSERT_OK(UpgradeClusterToMixedMode());
+}
+
+// Test class that sets a custom pg_upgrade working directory flag.
+class YsqlMajorUpgradeWorkingDirTest : public YsqlMajorUpgradeTest {
+ public:
+  YsqlMajorUpgradeWorkingDirTest() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
+    // Create working directory inside the test data directory, which is automatically cleaned up.
+    custom_working_dir_ = JoinPathSegments(GetTestDataDirectory(), "pg_upgrade_workdir");
+    CHECK_OK(Env::Default()->CreateDir(custom_working_dir_));
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "pg_upgrade_working_dir", custom_working_dir_);
+  }
+
+  std::string custom_working_dir_;
+};
+
+// Verify pg_upgrade's working directory is set to our custom directory.
+TEST_F(YsqlMajorUpgradeWorkingDirTest, PgUpgradeSetWorkingDirectory) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto log_waiter = cluster_->GetMasterLogWaiter(
+      "You must have read and write access in the current directory");
+
+  // Make the directory non-writable.
+  // Expect upgrade to fail with "You must have read and write access in the current directory".
+  ASSERT_EQ(chmod(custom_working_dir_.c_str(), 0555), 0) << "chmod failed: " << strerror(errno);
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_TRUE(log_waiter.IsEventOccurred());
+
+  // Rollback the failed upgrade before retrying.
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  // Restore permissions and expect upgrade to now succeed.
+  ASSERT_EQ(chmod(custom_working_dir_.c_str(), 0755), 0) << "chmod failed: " << strerror(errno);
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }
 
 }  // namespace yb

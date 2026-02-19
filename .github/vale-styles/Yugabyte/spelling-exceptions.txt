@@ -341,7 +341,9 @@ Kaminari
 kanban
 kanbans
 kaniko
+Kapa
 Karma
+keepalive
 Kerberos
 Keycloak
 keyset

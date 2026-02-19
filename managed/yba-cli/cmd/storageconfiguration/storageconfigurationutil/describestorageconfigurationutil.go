@@ -27,12 +27,10 @@ func DescribeStorageConfigurationUtil(cmd *cobra.Command, commandCall string) {
 	r, response, err := storageConfigListRequest.Execute()
 	if err != nil {
 		callSite := "Storage Configuration"
-		if len(strings.TrimSpace(commandCall)) != 0 {
+		if !util.IsEmptyString(commandCall) {
 			callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 		}
-		errMessage := util.ErrorFromHTTPResponse(
-			response, err, callSite, "Describe")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Describe")
 	}
 
 	storageConfigs := make([]ybaclient.CustomerConfigUI, 0)
@@ -92,7 +90,7 @@ func DescribeStorageConfigurationValidation(cmd *cobra.Command) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(storageNameFlag)) == 0 {
+	if util.IsEmptyString(storageNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize("No storage config name found to describe\n", formatter.RedColor))

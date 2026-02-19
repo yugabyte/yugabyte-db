@@ -170,6 +170,7 @@ typedef struct Port
 	 * is invoked due to Auth Passthrough Request packet.
 	 */
 	bool		yb_is_auth_passthrough_req;
+	bool		yb_has_auth_passthrough_failed;
 
 	/*
 	 * YB: To be used for the authentication of logical connections from the

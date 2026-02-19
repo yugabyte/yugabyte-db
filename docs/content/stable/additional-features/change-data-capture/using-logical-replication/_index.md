@@ -4,8 +4,6 @@ headerTitle: CDC using PostgreSQL replication protocol
 linkTitle: PostgreSQL protocol
 description: CDC using YugabyteDB PostgreSQL replication protocol.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/
 menu:
@@ -124,3 +122,5 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 - If a row is updated or deleted in the same transaction in which it was inserted, CDC cannot retrieve the before-image values for the UPDATE / DELETE event. If the replica identity is not CHANGE, then CDC will throw an error while processing such events.
 
     To handle updates/deletes with a non-CHANGE replica identity, set the YB-TServer flag `cdc_send_null_before_image_if_not_exists` to true. With this flag enabled, CDC will send a null before-image instead of failing with an error.
+
+- Currently, to use [replication origins](./advanced-topic/#replication-origins), you must create the replication origin before you start streaming changes from a replication slot. Tracked in issue {{<issue 30068>}}.

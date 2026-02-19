@@ -26,7 +26,7 @@ func DownloadEITValidation(cmd *cobra.Command, commandType string) {
 	if err != nil {
 		logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 	}
-	if len(strings.TrimSpace(configNameFlag)) == 0 {
+	if util.IsEmptyString(configNameFlag) {
 		cmd.Help()
 		logrus.Fatalln(
 			formatter.Colorize(
@@ -39,7 +39,7 @@ func DownloadEITValidation(cmd *cobra.Command, commandType string) {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		if len(strings.TrimSpace(username)) == 0 {
+		if util.IsEmptyString(username) {
 			logrus.Fatalln(
 				formatter.Colorize("No username found to download\n", formatter.RedColor))
 		}
@@ -51,7 +51,7 @@ func DownloadRootEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	callSite := "EIT"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 
@@ -69,16 +69,11 @@ func DownloadRootEITUtil(cmd *cobra.Command, commandCall, certType string) {
 
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"Download Root Cert - Get Certificates")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Download Root Cert - Get Certificates")
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				if certType != "" {
@@ -94,7 +89,7 @@ func DownloadRootEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	}
 
 	if len(r) < 1 {
-		if len(strings.TrimSpace(certType)) > 0 {
+		if !util.IsEmptyString(certType) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf("No configurations with name: %s and type: %s found\n",
@@ -114,8 +109,7 @@ func DownloadRootEITUtil(cmd *cobra.Command, commandCall, certType string) {
 
 	download, response, err := authAPI.GetRootCert(certUUID).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Download Root Cert")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Download Root Cert")
 	}
 
 	downloads := make([]map[string]interface{}, 0)
@@ -145,7 +139,7 @@ func DownloadClientEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
 	callSite := "EIT"
-	if len(strings.TrimSpace(commandCall)) != 0 {
+	if !util.IsEmptyString(commandCall) {
 		callSite = fmt.Sprintf("%s: %s", callSite, commandCall)
 	}
 
@@ -163,16 +157,11 @@ func DownloadClientEITUtil(cmd *cobra.Command, commandCall, certType string) {
 
 	certs, response, err := authAPI.GetListOfCertificates().Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(
-			response,
-			err,
-			callSite,
-			"Download Client Cert - Get Certificates")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Download Client Cert - Get Certificates")
 	}
 
 	var r []ybaclient.CertificateInfoExt
-	if strings.TrimSpace(eitName) != "" {
+	if !util.IsEmptyString(eitName) {
 		for _, c := range certs {
 			if strings.Compare(c.GetLabel(), eitName) == 0 {
 				if certType != "" {
@@ -188,7 +177,7 @@ func DownloadClientEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	}
 
 	if len(r) < 1 {
-		if len(strings.TrimSpace(certType)) > 0 {
+		if !util.IsEmptyString(certType) {
 			logrus.Fatalf(
 				formatter.Colorize(
 					fmt.Sprintf("No configurations with name: %s and type: %s found\n",
@@ -217,12 +206,14 @@ func DownloadClientEITUtil(cmd *cobra.Command, commandCall, certType string) {
 
 	download, response, err := authAPI.GetClientCert(certUUID).Certificate(req).Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, callSite, "Download Client Cert")
-		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		util.FatalHTTPError(response, err, callSite, "Download Client Cert")
 	}
 
-	downloads := make([]ybaclient.CertificateDetails, 0)
-	downloads = append(downloads, download)
+	downloads := util.CheckAndAppend(
+		make([]ybaclient.CertificateDetails, 0),
+		download,
+		"No client certificate found",
+	)
 
 	if len(downloads) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullEITDownloadContext := *eitdownloadclient.NewFullEITDownloadClientContext()

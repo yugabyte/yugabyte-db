@@ -1,4 +1,4 @@
-import { ReactElement, useContext, useEffect } from 'react';
+import { ReactElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import { YBLabel, YBInput, mui } from '@yugabyte-ui-library/core';
@@ -7,12 +7,9 @@ import {
   getK8MemorySizeRange,
   getK8CPUCoresRange
 } from '@app/redesign/features-v2/universe/create-universe/fields/k8-node-spec/K8NodeSpecFieldHelper';
-import { NodeType } from '@app/redesign/utils/dtos';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { NodeType } from '@app/redesign/utils/dtos';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
 import {
   MASTER_K8_NODE_SPEC_FIELD,
@@ -24,20 +21,18 @@ const { Box } = mui;
 interface K8NodeSpecFieldProps {
   isMaster: boolean;
   disabled: boolean;
+  provider?: ProviderType;
 }
 
-export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): ReactElement => {
+export const K8NodeSpecField = ({
+  isMaster,
+  disabled,
+  provider
+}: K8NodeSpecFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'universeForm.instanceConfig' });
-
-  const [{ generalSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
-
-  //watchers
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = isMaster
     ? watch(MASTER_K8_NODE_SPEC_FIELD)
     : watch(TSERVER_K8_NODE_SPEC_FIELD);
@@ -87,8 +82,8 @@ export const K8NodeSpecField = ({ isMaster, disabled }: K8NodeSpecFieldProps): R
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('universeForm.validation.required', {
-          field: t('universeForm.instanceConfig.instanceType')
+        required: t('createUniverseV2.validation.required', {
+          field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
       render={() => {

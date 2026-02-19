@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/util/result.h"
@@ -33,7 +34,7 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
-                                QLReferencedColumnsPB *columns_pb) {
+                                QLReferencedColumnsMsg *columns_pb) {
   // Write a list of columns to be read before executing the statement.
   const MCSet<int32>& column_refs = tnode->column_refs();
   for (auto column_ref : column_refs) {
@@ -47,7 +48,7 @@ Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
   return Status::OK();
 }
 
-Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
 
   for (const ColumnArg& col : column_args) {
@@ -68,7 +69,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
         VLOG(3) << "Value unset for column: " << bind_pt->name()->c_str();
         if (col_desc->is_primary()) {
           VLOG(3) << "Unexpected value unset for primary key. Current request: "
-                  << req->DebugString();
+                  << req->ShortDebugString();
           return exec_context_->Error(tnode, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
         }
 
@@ -76,7 +77,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
       }
     }
 
-    QLExpressionPB *expr_pb = CreateQLExpression(req, *col_desc);
+    auto *expr_pb = CreateQLExpression(req, *col_desc);
 
     RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
 
@@ -86,7 +87,7 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
 
     // Null values not allowed for primary key: checking here catches nulls introduced by bind.
     if (col_desc->is_primary() && expr_pb->has_value() && IsNull(expr_pb->value())) {
-      LOG(INFO) << "Unexpected null value. Current request: " << req->DebugString();
+      LOG(INFO) << "Unexpected null value. Current request: " << req->ShortDebugString();
       return exec_context_->Error(tnode, ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
   }
@@ -94,12 +95,12 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<SubscriptedColumnArg>& subcol_args = tnode->subscripted_col_args();
   for (const SubscriptedColumnArg& col : subcol_args) {
     const ColumnDesc *col_desc = col.desc();
-    QLColumnValuePB *col_pb = req->add_column_values();
+    auto *col_pb = req->add_column_values();
     col_pb->set_column_id(col_desc->id());
-    QLExpressionPB *expr_pb = col_pb->mutable_expr();
+    auto *expr_pb = col_pb->mutable_expr();
     RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
     for (auto& col_arg : col.args()->node_list()) {
-      QLExpressionPB *arg_pb = col_pb->add_subscript_args();
+      auto *arg_pb = col_pb->add_subscript_args();
       RETURN_NOT_OK(PTExprToPB(col_arg, arg_pb));
     }
   }
@@ -125,12 +126,12 @@ Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
     }
 
     const ColumnDesc *col_desc = col.desc();
-    QLColumnValuePB *col_pb = req->add_column_values();
+    auto *col_pb = req->add_column_values();
     col_pb->set_column_id(col_desc->id());
     *(col_pb->mutable_expr()) = expr_pb;
 
     for (auto& col_arg : col.args()->node_list()) {
-      QLJsonOperationPB *arg_pb = col_pb->add_json_args();
+      auto *arg_pb = col_pb->add_json_args();
       RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(col_arg), arg_pb));
     }
   }

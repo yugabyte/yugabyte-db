@@ -139,6 +139,10 @@ DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_implicit_dynamic_tables_logical_r
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");
 
+DEFINE_test_flag(bool, enable_table_rewrite_for_cdcsdk_table, false,
+    "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
+    "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
+
 DEFINE_NON_RUNTIME_bool(TEST_hide_details_for_pg_regress, false,
     "For pg_regress tests, alter error messages that contain unstable items such as ybctid, oids, "
     "and catalog version numbers to hide such details or omit the message entirely.");
@@ -186,11 +190,16 @@ DEFINE_NON_RUNTIME_PG_FLAG(bool, yb_disable_ddl_transaction_block_for_read_commi
     "ysql_yb_ddl_transaction_block_enabled is true. In other words, for Read Committed, fall back "
     "to the mode when ysql_yb_ddl_transaction_block_enabled is false.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_ddl_savepoint_support, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_enable_ddl_savepoint_infra, kLocalPersisted, false, true,
+    "Auto flag that controls whether DDL savepoint support can be safely enabled "
+    "during upgrade. Both this flag and ysql_yb_enable_ddl_savepoint_support "
+    "must be true to enable the feature.");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_ddl_savepoint_support, false,
     "If true, support for savepoints for DDL statements within a transaction block will be "
     "enabled. This flag only takes effect if ysql_yb_ddl_transaction_block_enabled is set to "
     "true.");
-DEFINE_validator(TEST_ysql_yb_enable_ddl_savepoint_support,
+DEFINE_validator(ysql_yb_enable_ddl_savepoint_support,
     FLAG_REQUIRES_FLAG_VALIDATOR(ysql_yb_ddl_transaction_block_enabled));
 
 // Wait-queues: Enabling FLAGS_refresh_waiter_timeout_ms is necessary for maintaining up-to-date
@@ -243,6 +252,10 @@ DEFINE_validator(ysql_yb_ddl_transaction_block_enabled,
     FLAG_REQUIRED_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
 DEFINE_validator(refresh_waiter_timeout_ms,
     FLAG_REQUIRED_NONZERO_BY_FLAG_VALIDATOR(enable_object_locking_for_table_locks));
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_cdcsdk_stream_tables_without_primary_key, false,
+    "When set to true, allows streaming of tables without primary keys for CDCSDK logical "
+    "replication streams.");
 
 namespace {
 
@@ -339,6 +352,15 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "after a compaction. Set this to be higher than the expected maximum duration "
     "of any single transaction in your application.");
 
+DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_AUTO_bool(
+    ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
+    "Enable the infra required for Auto Analyze");
+
+DEFINE_RUNTIME_bool(
+    ysql_enable_auto_analyze, false,
+    "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
+    "which have changed more than a configurable threshold.");
 namespace yb {
 
 void InitCommonFlags() {

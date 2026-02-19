@@ -28,8 +28,8 @@ import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 //imported styles
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 //icons
-import { ReactComponent as ClockRewindIcon } from '../../../../assets/clock-rewind.svg';
-import WarningIcon from '../../../../assets/warning-triangle.svg';
+import ClockRewindIcon from '../../../../assets/clock-rewind.svg';
+import WarningIcon from '../../../../assets/warning-triangle.svg?img';
 
 interface DBRollbackModalProps {
   open: boolean;

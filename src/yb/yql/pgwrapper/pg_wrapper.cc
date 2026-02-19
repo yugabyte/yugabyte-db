@@ -36,9 +36,11 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/util/debug/sanitizer_scopes.h"
+#include "yb/util/csv_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flags.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
@@ -289,6 +291,15 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
     "Enable logical replication commands for Publication and Replication Slots");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_export_snapshot, kLocalPersisted, false, true,
+    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
+    "and SET TRANSACTION SNAPSHOT");
+
+/* Deprecated flag */
+namespace deprecated_flag_do_not_use {
+  DECLARE_bool(ysql_enable_pg_export_snapshot);
+}
+
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
@@ -303,6 +314,11 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     bool, yb_allow_dockey_bounds, kLocalVolatile, false, true,
     "If true, allow lower_bound/upper_bound fields of PgsqlReadRequestPB to be DocKeys. Only "
     "applicable for hash-sharded tables.");
+
+DEFINE_RUNTIME_AUTO_PG_FLAG(
+    bool, yb_test_make_all_ddl_statements_incrementing, kLocalVolatile, false, true,
+    "When set, all DDL statements will cause the catalog version to increment. This mainly "
+    "affects CREATE commands such as CREATE TABLE, CREATE VIEW, and CREATE SEQUENCE.");
 
 DEFINE_RUNTIME_PG_FLAG(
     string, yb_default_replica_identity, "CHANGE",
@@ -413,6 +429,12 @@ DEFINE_NON_RUNTIME_string(ysql_auth_method, AUTH_METHOD_MD5,
     "Note: Explicit auth methods in ysql_hba_conf_csv take precedence over this flag.");
 DEFINE_validator(ysql_auth_method, FLAG_IN_SET_VALIDATOR("scram-sha-256", "md5"));
 DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
+    "Ignore boolean condition for row count estimate in legacy cost model.");
+
+DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
+    "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 
 using gflags::CommandLineFlagInfo;
 using std::string;
@@ -573,6 +595,11 @@ void AppendPgGFlags(vector<string>* lines) {
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
     lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+  }
+
+  // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
+  if (deprecated_flag_do_not_use::FLAGS_ysql_enable_pg_export_snapshot) {
+    lines->push_back("yb_enable_pg_export_snapshot=true");
   }
 }
 
@@ -954,12 +981,6 @@ void PgWrapper::Shutdown() {
   Kill(SIGINT);
 }
 
-void PgWrapper::ImmediateShutdown() {
-  // We use PG's immediate shutdown mode for stopping PG when losing the lease.
-  // See https://www.postgresql.org/docs/current/server-shutdown.html
-  Kill(SIGQUIT);
-}
-
 Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
@@ -1036,7 +1057,17 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
     args.push_back("--no-statistics");
   }
 
+  // pg_upgrade checks for write access to its current working directory. We explicitly set
+  // the working directory rather than inheriting from the parent process (yb-master), because
+  // yb-master may be running in a directory without write permissions. The default is the
+  // pg_upgrade data directory. This can be overridden via the --pg_upgrade_working_dir flag.
+  const auto& working_dir =
+      FLAGS_pg_upgrade_working_dir.empty() ? param.data_dir : FLAGS_pg_upgrade_working_dir;
+  args.push_back("--yb-working-dir");
+  args.push_back(working_dir);
+
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
+
   RETURN_NOT_OK_PREPEND(
       Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");

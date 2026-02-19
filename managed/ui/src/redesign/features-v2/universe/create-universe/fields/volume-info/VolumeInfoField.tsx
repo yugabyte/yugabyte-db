@@ -1,4 +1,4 @@
-import { FC, useContext, useEffect } from 'react';
+import { FC, useEffect } from 'react';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
@@ -19,18 +19,16 @@ import {
   isEphemeralAwsStorageInstance,
   useGetZones
 } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
+import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
 import {
   CloudType,
   Placement,
   StorageType,
   VolumeType
 } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods
-} from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import {
   CPU_ARCHITECTURE_FIELD,
   DEVICE_INFO_FIELD,
@@ -38,7 +36,9 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as Close } from '@app/redesign/assets/close.svg';
+
+//icons
+import Close from '@app/redesign/assets/close.svg';
 
 const { Box, MenuItem } = mui;
 
@@ -46,6 +46,9 @@ interface VolumeInfoFieldProps {
   isMaster?: boolean;
   maxVolumeCount: number;
   disabled: boolean;
+  provider?: Partial<ProviderType>;
+  useDedicatedNodes?: boolean;
+  regions?: Region[];
 }
 
 const menuProps = {
@@ -62,19 +65,16 @@ const menuProps = {
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isMaster,
   maxVolumeCount,
-  disabled
+  disabled,
+  provider,
+  useDedicatedNodes,
+  regions
 }) => {
   const { t } = useTranslation();
   const dataTag = isMaster ? 'Master' : 'TServer';
 
   // watchers
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const [
-    { generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
-
-  const useDedicatedNodes = nodesAvailabilitySettings?.useDedicatedNodes;
-  const provider = generalSettings?.providerConfiguration;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
   const instanceType = isMaster ? watch(MASTER_INSTANCE_TYPE_FIELD) : watch(INSTANCE_TYPE_FIELD);
   const cpuArch = watch(CPU_ARCHITECTURE_FIELD);
@@ -88,7 +88,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     disableStorageType
   } = useVolumeControls();
 
-  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const { zones, isLoadingZones } = useGetZones(provider, regions);
   const zoneNames = zones.map((zone: Placement) => zone.name);
 
   //fetch run time configs
@@ -221,7 +221,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
     const fixedNumVolumes =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
-      provider &&
+      provider?.code &&
       ![CloudType.kubernetes, CloudType.gcp, CloudType.azu].includes(provider?.code);
 
     // Ephemeral instances volume information cannot be resized, refer to PLAT-16118
@@ -232,20 +232,20 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column">
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.volumeInfoPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.volumeInfoPerNode')}</YBLabel>
           </Box>
         </Box>
-        <Box display="flex">
+        <Box sx={{ gap: '16px', display: 'flex' }}>
           <Box flex={1} sx={{ width: 198 }}>
             <YBInput
               type="number"
               fullWidth
-              disabled={fixedNumVolumes ?? numVolumesDisable ?? isEphemeralStorage ?? disabled}
+              disabled={fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled}
               slotProps={{
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeInput`,
-                  disabled
+                  disabled: fixedNumVolumes || numVolumesDisable || isEphemeralStorage || disabled
                 }
               }}
               value={convertToString(fieldValue?.numVolumes ?? '')}
@@ -255,14 +255,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             />
           </Box>
 
-          <Box
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            px={1}
-            flexShrink={1}
-            sx={{ width: 48 }}
-          >
+          <Box display="flex" alignItems="center" justifyContent="center">
             <Close />
           </Box>
 
@@ -275,7 +268,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-VolumeSizeInput`,
-                  disabled
+                  disabled: isEphemeralStorage || fixedVolumeSize || volumeSizeDisable || disabled
                 }
               }}
               value={convertToString(fieldValue?.volumeSize ?? '')}
@@ -290,14 +283,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             display="flex"
             alignItems="center"
             sx={(theme) => ({
-              marginLeft: theme.spacing(2),
               alignSelf: 'flex-end',
               marginBottom: 1
             })}
           >
             {provider?.code === CloudType.kubernetes
-              ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
-              : t('universeForm.instanceConfig.volumeSizeUnit')}
+              ? t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')
+              : t('createUniverseV2.instanceSettings.volumeSizeUnit')}
           </Box>
         </Box>
       </Box>
@@ -306,7 +298,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     if (
-      (provider && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
+      (provider?.code && [CloudType.gcp, CloudType.azu].includes(provider?.code)) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
     ) {
       return (
@@ -315,8 +307,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
             fullWidth
             label={
               provider?.code === CloudType.aws
-                ? t('universeForm.instanceConfig.ebs')
-                : t('universeForm.instanceConfig.ssd')
+                ? t('createUniverseV2.instanceSettings.ebs')
+                : t('createUniverseV2.instanceSettings.ssd')
             }
             disabled={disableStorageType || disabled}
             value={fieldValue?.storageType}
@@ -367,14 +359,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         <Box flex={1}>
           <YBInput
             type="number"
-            label={t('universeForm.instanceConfig.provisionedIopsPerNode')}
+            label={t('createUniverseV2.instanceSettings.provisionedIopsPerNode')}
             fullWidth
             disabled={disableIops || disabled}
             slotProps={{
               htmlInput: {
                 min: 1,
                 'data-testid': `VolumeInfoField-${dataTag}-DiskIopsInput`,
-                disabled
+                disabled: disableIops || disabled
               }
             }}
             value={convertToString(fieldValue?.diskIops ?? '')}
@@ -405,7 +397,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       <Box display="flex" flexDirection="column" mt={2}>
         <Box display="flex">
           <Box>
-            <YBLabel>{t('universeForm.instanceConfig.provisionedThroughputPerNode')}</YBLabel>
+            <YBLabel>{t('createUniverseV2.instanceSettings.provisionedThroughputPerNode')}</YBLabel>
           </Box>
         </Box>
         <Box display="flex" width="100%">
@@ -418,7 +410,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 htmlInput: {
                   min: 1,
                   'data-testid': `VolumeInfoField-${dataTag}-ThroughputInput`,
-                  disabled
+                  disabled: disableThroughput || disabled
                 }
               }}
               value={convertToString(fieldValue?.throughput ?? '')}
@@ -437,7 +429,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               marginBottom: 1
             })}
           >
-            {t('universeForm.instanceConfig.throughputUnit')}
+            {t('createUniverseV2.instanceSettings.throughputUnit')}
           </Box>
         </Box>
       </Box>

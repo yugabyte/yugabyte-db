@@ -40,6 +40,7 @@
 #include "utils/resowner.h"
 #include "utils/tuplestore.h"
 #include "utils/typcache.h"
+#include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb_ysql_conn_mgr_helper.h"
@@ -109,6 +110,7 @@ extern void YbResetNewCatalogVersion();
 extern void YbSetNewCatalogVersion(uint64_t new_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
+extern void YbResetLogicalClientCacheVersion();
 
 extern void SendLogicalClientCacheVersionToFrontend();
 
@@ -288,6 +290,18 @@ extern bool YBIsDBCatalogVersionMode();
  */
 extern bool YBIsDBLogicalClientVersionMode();
 
+typedef enum YbObjectLockMode
+{
+	PG_OBJECT_LOCK_MODE,
+	YB_OBJECT_LOCK_DISABLED,
+	YB_OBJECT_LOCK_ENABLED
+} YbObjectLockMode;
+/*
+ * Whether object locking is enabled for the cluster (via the TServer regular
+ * gflag enable_object_locking_for_table_locks).
+ */
+extern YbObjectLockMode YBGetObjectLockMode();
+
 /*
  * Whether we need to preload additional catalog tables.
  */
@@ -355,12 +369,6 @@ extern void YBCSetActiveSubTransaction(SubTransactionId id);
 extern void YBCRollbackToSubTransaction(SubTransactionId id);
 
 /*
- * Return true if we want to allow PostgreSQL's own locking. This is needed
- * while system tables are still managed by PostgreSQL.
- */
-extern bool YBIsPgLockingEnabled();
-
-/*
  * Get the type ID of a real or virtual attribute (column).
  * Returns InvalidOid if the attribute number is invalid.
  */
@@ -426,10 +434,12 @@ const char *YBCGetSchemaName(Oid schemaoid);
 /*
  * Get the real database id of a relation. For shared relations
  * (which are meant to be accessible from all databases), it will be template1.
+ * Note that relations in yb_system database are also meant to be accessible by
+ * all databases. Naturally, for these relations, it will be yb_system.
  */
 Oid			YBCGetDatabaseOid(Relation rel);
 Oid			YBCGetDatabaseOidByRelid(Oid relid);
-Oid			YBCGetDatabaseOidFromShared(bool relisshared);
+extern Oid	YBCGetDatabaseOidFromShared(bool relisshared, bool belongs_to_yb_system_db);
 
 /*
  * Raise an unsupported feature error with the given message and
@@ -446,6 +456,8 @@ extern double PowerWithUpperLimit(double base, int exponent, double upper_limit)
  * Return whether to use wholerow junk attribute for YB relations.
  */
 extern bool YbWholeRowAttrRequired(Relation relation, CmdType operation);
+
+extern Oid YbSystemDbOid();
 
 /* ------------------------------------------------------------------------------ */
 /* YB GUC variables. */
@@ -547,6 +559,13 @@ extern bool yb_enable_base_scans_cost_model;
 extern bool yb_enable_update_reltuples_after_create_index;
 
 /*
+ * Enables index backfill column projection optimization.
+ * If true, index build/backfill only reads columns needed for the index,
+ * rather than all columns from the base table.
+ */
+extern bool yb_enable_index_backfill_column_projection;
+
+/*
  * Total timeout for waiting for backends to have up-to-date catalog version.
  */
 extern int	yb_wait_for_backends_catalog_version_timeout;
@@ -631,11 +650,11 @@ extern bool yb_debug_log_internal_restarts;
 extern bool yb_test_system_catalogs_creation;
 
 /*
- * If set to true, next DDL operation (only creating a relation for now) will fail,
- * resetting this back to false.
+ * If set to non-zero, next DDL operation will fail with the specified error level:
+ * 0 = disabled (default), 1 = ERROR, 2 = FATAL, 3 = PANIC, 4 = crash.
+ * Resets to 0 after triggering.
  */
-extern bool yb_test_fail_next_ddl;
-
+extern int yb_test_fail_next_ddl;
 /*
  * If set to true,the next DDL will update the catalog in force mode which
  * allows it to operate even during ysql major catalog upgrades.
@@ -784,6 +803,21 @@ extern bool	yb_enable_parallel_scan_system;
  */
 extern bool yb_test_make_all_ddl_statements_incrementing;
 
+/*
+ * If set to true, all DDL statements will cause the catalog version to increment.
+ * Unlike yb_test_make_all_ddl_statements_incrementing, this controls ONLY the
+ * version incrementing behavior.
+ */
+extern bool yb_always_increment_catalog_version_on_ddl;
+
+/*
+ * If set to true, negative catcache entries are enabled. A negative cache entry
+ * is created when a lookup returns no result. Unlike
+ * yb_test_make_all_ddl_statements_incrementing, this controls ONLY the negative
+ * caching behavior.
+ */
+extern bool yb_enable_negative_catcache_entries;
+
 typedef struct YBUpdateOptimizationOptions
 {
 	bool		has_infra;
@@ -815,9 +849,16 @@ extern bool yb_xcluster_automatic_mode_target_ddl;
 extern bool yb_user_ddls_preempt_auto_analyze;
 
 /*
-* If true, enable RPC execution time stats for pg_stat_statements.
+ * If true, enable RPC execution time stats for pg_stat_statements.
  */
 extern bool yb_enable_pg_stat_statements_rpc_stats;
+
+extern bool yb_enable_global_views;
+
+/*
+ * If true, enable DocDB metrics collection for pg_stat_statements.
+ */
+extern bool yb_enable_pg_stat_statements_docdb_metrics;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -978,6 +1019,7 @@ extern void YbTestGucBlockWhileIntNotEqual(int *actual, int expected,
 extern void YbTestGucFailIfStrEqual(char *actual, const char *expected);
 
 extern int	YbGetNumberOfFunctionOutputColumns(Oid func_oid);
+extern int  YbGetNumberOfFunctionInputParameters(Oid func_oid);
 
 char	   *YBDetailSorted(char *input);
 
@@ -1413,7 +1455,7 @@ extern bool YbSkipPgSnapshotManagement();
 extern YbOptionalReadPointHandle YbBuildCurrentReadPointHandle();
 extern void YbUseSnapshotReadTime(uint64_t read_time);
 extern YbOptionalReadPointHandle YbRegisterSnapshotReadTime(uint64_t read_time);
-extern YbOptionalReadPointHandle YbResetTransactionReadPoint();
+extern YbOptionalReadPointHandle YbResetTransactionReadPoint(bool is_catalog_snapshot);
 
 extern bool YbUseFastBackwardScan();
 
@@ -1479,6 +1521,32 @@ typedef enum YbTxnError
 	YB_TXN_CONFLICT_KIND_COUNT, /* Must be last value of this enum */
 } YbTxnError;
 
+typedef enum
+{
+	YB_QPM_TRACK_NONE,
+	YB_QPM_TRACK_TOP,
+	YB_QPM_TRACK_ALL
+} YbQpmTrackEnum;
+
+typedef enum
+{
+	YB_QPM_SIMPLE_CLOCK_LRU,
+	YB_QPM_TRUE_LRU
+} YbCacheReplacementAlgorithmEnum;
+
+typedef struct YbQpmConfiguration
+{
+	int track;
+	int cache_replacement_algorithm;
+	int max_cache_size;
+	bool track_catalog_queries;
+	int plan_format;
+	bool verbose_plans;
+	bool compress_text;
+} YbQpmConfiguration;
+
+extern YbQpmConfiguration yb_qpm_configuration;
+
 extern void YbResetRetryCounts();
 extern void YbIncrementRetryCount(YbTxnError kind);
 extern uint64_t YbGetRetryCount(YbTxnError kind);
@@ -1514,5 +1582,8 @@ extern YbcPgStatement YbNewTruncateColocated(Relation rel,
 
 extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 														   YbcPgTransactionSetting transaction_setting);
+
+extern const unsigned char *YbGetLocalTServerUuid();
+extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
 
 #endif							/* PG_YB_UTILS_H */

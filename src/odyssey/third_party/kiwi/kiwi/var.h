@@ -210,11 +210,11 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name,
 					   bool lowercase_name)
 {
+	if (vars->size == 0)
+		return NULL;
 	/* TODO(arpit.saxena): This looks ugly with lowercase_name branches, see if we can fix this */
 	const char *name_for_comp =
 		lowercase_name ? yb_lowercase_str(name) : name;
-	if (vars->size == 0)
-		return NULL;
 
 	for (int i = 0; i < vars->size; i++) {
 		const char *var_name_for_comp =
@@ -384,6 +384,50 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	return 0;
 }
 
+static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
+						 int name_len,
+						 bool lowercase_name)
+{
+	/* We don't support removing vars with YB_GUC_SUPPORT_VIA_SHMEM */
+#ifndef YB_GUC_SUPPORT_VIA_SHMEM
+	/* TODO(arpit.saxena): This looks ugly with lowercase_name branches, see if we can fix this */
+	if (vars->size == 0)
+		return;
+
+	char *name_for_comp = lowercase_name ? yb_lowercase_str(name) : name;
+
+	int idx_to_remove = -1;
+	for (int i = 0; i < vars->size; i++) {
+		char *var_name_for_comp =
+			lowercase_name ? yb_lowercase_str(vars->vars[i].name) :
+					 vars->vars[i].name;
+
+		int comparison_result =
+			strcmp(var_name_for_comp, name_for_comp);
+		if (lowercase_name)
+			free(var_name_for_comp);
+		if (comparison_result == 0) {
+			idx_to_remove = i;
+			break;
+		}
+	}
+
+	if (lowercase_name)
+		free(name_for_comp);
+
+	/* not found, just return */
+	if (idx_to_remove == -1)
+		return;
+
+	/* Shift elements to the left to fill the gap we have created */
+	for (int i = idx_to_remove; i + 1 < vars->size; i++) {
+		vars->vars[i] = vars->vars[i + 1];
+	}
+	vars->size--;
+	vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
+#endif
+}
+
 static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
 						 int name_len, char *value,
 						 int value_len,
@@ -489,24 +533,36 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 }
 
 /*
+ * YB: Return true if vars1 is a superset of vars2
+ */
+static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2,
+				       bool lowercase_name)
+{
+	kiwi_var_t *var2;
+	for (int i = 0; i < vars2->size; i++) {
+		var2 = &vars2->vars[i];
+		kiwi_var_t *var1;
+		var1 = yb_kiwi_vars_get(vars1, var2->name, lowercase_name);
+		if (!kiwi_var_compare(var1, var2))
+			return 0;
+	}
+	return 1;
+}
+
+/*
  * YB: Compare server state to client state to check for the need of the
  * reset phase. If no difference found, return 0 to signify no need of reset.
  */
-static inline int yb_check_reset_needed(kiwi_vars_t *client,
-					kiwi_vars_t *server,
+static inline int yb_check_reset_needed(kiwi_vars_t *client_startup_vars,
+					kiwi_vars_t *client_session_vars,
+					kiwi_vars_t *server_default_vars,
+					kiwi_vars_t *server_session_vars,
 					bool lowercase_name)
 {
-	int pos = 0;
-	kiwi_var_t *server_var;
-	for (int i = 0; i < server->size; i++) {
-		server_var = &server->vars[i];
-		kiwi_var_t *client_var;
-		client_var = yb_kiwi_vars_get(client, server_var->name,
-					      lowercase_name);
-		if (!kiwi_var_compare(client_var, server_var))
-			return 1;
-	}
-	return 0;
+	return !(yb_check_is_superset(client_startup_vars, server_default_vars,
+				      lowercase_name) &&
+		 yb_check_is_superset(client_session_vars, server_session_vars,
+				      lowercase_name));
 }
 
 static inline bool yb_only_white_space(char *value)
@@ -519,10 +575,65 @@ static inline bool yb_only_white_space(char *value)
 	return true;
 }
 
-__attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
-						     kiwi_vars_t *server,
-						     char *query, int query_len,
-						     bool lowercase_name)
+__attribute__((hot)) static inline int
+yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
+{
+	/* SET key=quoted_value; */
+	int size = 4 + (var->name_len - 1) + 1;
+	if (query_len < pos + size)
+		return -1;
+	memcpy(query + pos, "SET ", 4);
+	pos += 4;
+	memcpy(query + pos, var->name, var->name_len - 1);
+	pos += var->name_len - 1;
+	memcpy(query + pos, "=", 1);
+	pos += 1;
+
+	if (yb_is_avoid_enquoting_guc_var(var->name)) {
+		/*
+		 * YB: To avoid below deploy query string, replace the value of guc variable
+		 * with '' (empty single quotes) which is accepted in the postgres via SET stmt.
+		 * 1. var_name=; - It would lead to failure of deploy query.
+		 * 2. var_name=""; - PG will throw ERROR msg:
+		 * 			zero-length delimited identifier at or near """".
+		 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
+		 * 			which can also lead to deploy query failure.
+		*/
+		if (strlen(var->value) == 0 ||
+		    strcmp(var->value, "\"\"") == 0 ||
+		    yb_only_white_space(var->value)) {
+			memcpy(query + pos, "\'\'", 2);
+			if (query_len < pos + 2)
+				return -1;
+			pos += 2;
+		} else {
+			int copy_len = var->value_len - 1;
+			memcpy(query + pos, var->value, copy_len);
+			if (query_len < pos + copy_len)
+				return -1;
+			pos += copy_len;
+		}
+	} else {
+		int quote_len;
+		quote_len =
+			kiwi_enquote(var->value, query + pos, query_len - pos);
+		if (quote_len == -1)
+			return -1;
+		pos += quote_len;
+	}
+
+	if (query_len < pos + 1)
+		return -1;
+	memcpy(query + pos, ";", 1);
+	pos += 1;
+
+	return pos;
+}
+
+__attribute__((hot)) static inline int
+kiwi_vars_cas(kiwi_vars_t *client_session_vars,
+	      kiwi_vars_t *server_session_vars, char *query, int query_len,
+	      bool lowercase_name)
 {
 	int pos = 0;
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -530,83 +641,32 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 	type = KIWI_VAR_CLIENT_ENCODING;
 	for (; type < KIWI_VAR_MAX; type++) {
 		kiwi_var_t *var;
-		var = kiwi_vars_of(client, type);
+		var = kiwi_vars_of(client_session_vars, type);
 		/* we do not support odyssey-to-backend compression yet */
 		if (var->type == KIWI_VAR_UNDEF ||
 		    var->type == KIWI_VAR_COMPRESSION)
 			continue;
 		kiwi_var_t *server_var;
-		server_var = kiwi_vars_of(server, type);
+		server_var = kiwi_vars_of(server_session_vars, type);
 #else
 	kiwi_var_t *var;
-	for (int i = 0; i < client->size; i++) {
-		var = &client->vars[i];
+	for (int i = 0; i < client_session_vars->size; i++) {
+		var = &client_session_vars->vars[i];
 		/* we do not support odyssey-to-backend compression yet */
 
 		if (strcmp(var->name, "compression") == 0)
 			continue;
 
 		kiwi_var_t *server_var;
-		server_var =
-			yb_kiwi_vars_get(server, var->name, lowercase_name);
+		server_var = yb_kiwi_vars_get(server_session_vars, var->name,
+					      lowercase_name);
 #endif
 		if (kiwi_var_compare(var, server_var))
 			continue;
 
-		/* SET key=quoted_value; */
-		int size = 4 + (var->name_len - 1) + 1;
-		if (query_len < pos + size)
+		pos = yb_kiwi_add_var_to_query(var, query, pos, query_len);
+		if (pos == -1)
 			return -1;
-		memcpy(query + pos, "SET ", 4);
-		pos += 4;
-		memcpy(query + pos, var->name, var->name_len - 1);
-		pos += var->name_len - 1;
-		memcpy(query + pos, "=", 1);
-		pos += 1;
-
-		if (yb_is_avoid_enquoting_guc_var(var->name))
-		{
-			/*
-			 * YB: To avoid below deploy query string, replace the value of guc variable
-			 * with '' (empty single quotes) which is accepted in the postgres via SET stmt.
-			 * 1. var_name=; - It would lead to failure of deploy query.
-			 * 2. var_name=""; - PG will throw ERROR msg:
-			 * 			zero-length delimited identifier at or near """".
-			 * 3. var_name='  '; - On setting via set_config function, it returns empty white space
-			 * 			which can also lead to deploy query failure.
-			*/
-			if (strlen(var->value) == 0 ||
-				strcmp(var->value, "\"\"") == 0 ||
-				yb_only_white_space(var->value))
-			{
-				memcpy(query + pos, "\'\'", 2);
-				if (query_len < pos + 2)
-					return -1;
-				pos += 2;
-			}
-			else
-			{
-				int copy_len = var->value_len - 1;
-				memcpy(query + pos, var->value, copy_len);
-				if (query_len < pos + copy_len)
-					return -1;
-				pos += copy_len;
-			}
-		}
-		else
-		{
-			int quote_len;
-			quote_len =
-				kiwi_enquote(var->value, query + pos, query_len - pos);
-			if (quote_len == -1)
-				return -1;
-			pos += quote_len;
-		}
-
-		if (query_len < pos + 1)
-			return -1;
-		memcpy(query + pos, ";", 1);
-		pos += 1;
 	}
 
 	return pos;

@@ -33,10 +33,12 @@ OIDC is an authentication protocol that allows client applications to confirm th
 
 When OIDC is enabled, users are presented with the following options when signing in to YugabyteDB Anywhere:
 
-- **Login with SSO** redirects the user to the appropriate identity provider's sign in mechanism.
-- **Super Admin Login** allows the user to sign in to YugabyteDB Anywhere as a local super admin.
+- **Login with SSO**: Redirects users to the appropriate identity provider sign in mechanism.
+- **Local User Login**: User signs in to YugabyteDB Anywhere as a local user. You can restrict local user login to Super Admin only by setting the **Allow local login with SSO** Global Runtime Configuration option (config key `yb.security.allow_local_login_with_sso`) to false. Refer to [Manage runtime configuration settings](../../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/).
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin.
+Note that in versions earlier than v2025.2.1.0, only a Super Admin can sign in locally while OIDC is enabled.
+
+To configure YugabyteDB Anywhere for OIDC, or to set global runtime configuration parameters, you need to be signed in as a Super Admin.
 
 **Learn more**
 
@@ -63,8 +65,6 @@ To use OIDC groups, ensure the following on your identity provider (IdP):
 YugabyteDB Anywhere accepts OIDC configuration either using a discovery URL that points to the [OpenID Provider Configuration Document](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig) for your provider, or by uploading the document directly. The configuration document contains key-value pairs with details about the OIDC provider's configuration, including uniform resource identifiers of the authorization, token, revocation, user information, and public-keys endpoints. YugabyteDB Anywhere uses the metadata to discover the URLs to use for authentication and the authentication service's public signing keys.
 
 For air-gapped installations, where YugabyteDB Anywhere does not have access to the discovery URL, you need to explicitly provide the configuration document.
-
-{{<tags/feature/ea idea="1501">}}You can map groups to [fine-grained](../anywhere-rbac/#fine-grained-rbac) YugabyteDB Anywhere roles. To enable the feature in YugabyteDB Anywhere, set the **Enable RBAC for Groups** Global Runtime Configuration option (config key `yb.security.group_mapping_rbac_support`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 You configure OIDC as follows:
 

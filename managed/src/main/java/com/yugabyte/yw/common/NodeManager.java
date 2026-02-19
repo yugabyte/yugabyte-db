@@ -138,7 +138,7 @@ public class NodeManager extends DevopsBase {
   static final String BOOT_SCRIPT_PATH = "yb.universe_boot_script";
   static final String BOOT_SCRIPT_TOKEN = "39666ab2-6633-4806-9685-5134321bd0d1";
   static final String BOOT_SCRIPT_COMPLETE =
-      "\nsync\necho " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
+      "\nsync\necho -n " + BOOT_SCRIPT_TOKEN + " >/etc/yb-boot-script-complete\n";
   private static final String YB_CLOUD_COMMAND_TYPE = "instance";
   public static final String CERT_LOCATION_NODE = "node";
   public static final String CERT_LOCATION_PLATFORM = "platform";
@@ -167,13 +167,9 @@ public class NodeManager extends DevopsBase {
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject RuntimeConfGetter confGetter;
-
   @Inject ReleaseManager releaseManager;
 
   @Inject ImageBundleUtil imageBundleUtil;
-
-  @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
 
@@ -2133,7 +2129,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
 
@@ -2207,7 +2204,8 @@ public class NodeManager extends DevopsBase {
               taskParam.auditLogConfig,
               taskParam.queryLogConfig,
               taskParam.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  taskParam.queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
@@ -2631,7 +2629,8 @@ public class NodeManager extends DevopsBase {
               params.auditLogConfig,
               params.queryLogConfig,
               params.metricsExportConfig,
-              GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              GFlagsUtil.getLogLinePrefix(
+                  params.queryLogConfig, params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           if (params.useSudo) {

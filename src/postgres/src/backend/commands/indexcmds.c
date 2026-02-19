@@ -2193,6 +2193,8 @@ DefineIndex(Oid relationId,
 	}
 	else
 	{
+		bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
 		elog(LOG, "committing pg_index tuple with indislive=true");
 		if (yb_test_block_index_phase[0] != '\0')
 			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
@@ -2204,7 +2206,9 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel();
+		 if (yb_should_run_in_autonomous_transaction)
+			YBDecrementDdlNestingLevel();
+
 		CommitTransactionCommand();
 
 		/*
@@ -2222,7 +2226,10 @@ DefineIndex(Oid relationId,
 
 		StartTransactionCommand();
 
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		if (yb_should_run_in_autonomous_transaction)
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2241,7 +2248,9 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel();
+		if (yb_should_run_in_autonomous_transaction)
+			YBDecrementDdlNestingLevel();
+
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
@@ -2252,7 +2261,11 @@ DefineIndex(Oid relationId,
 										"concurrent index backfill");
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+
+		if (yb_should_run_in_autonomous_transaction)
+			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+		else
+			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
 
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
@@ -2282,7 +2295,40 @@ DefineIndex(Oid relationId,
 		 * YB: Do backfill if this is a separate DocDB table from the main
 		 * table.
 		 */
-		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+		if (YBCIsLegacyModeForCatalogOps())
+			HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+		else
+		{
+			/*
+			 * To support concurrent create index statements, change backend type
+			 * to YB_INDEX_BACKFILL_DDL. A YB_INDEX_BACKFILL_DDL backend will be
+			 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in the
+			 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend will
+			 * appear as a lagging backend when the backfill phase takes long time,
+			 * causing the other CREATE INDEX CONCURRENTLY to time out during its
+			 * WaitForYsqlBackendsCatalogVersion call.
+			 */
+
+			/* Use volatile to ensure variables survive a siglongjmp */
+			volatile BackendType old_type = MyBackendType;
+			volatile YbcStatus s = NULL;
+
+			PG_TRY();
+			{
+				MyBackendType = YB_INDEX_BACKFILL_DDL;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = MyBackendType;
+				s = YBCPgBackfillIndex(databaseId, indexRelationId);
+			}
+			PG_FINALLY();
+			{
+				MyBackendType = old_type;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = old_type;
+			}
+			PG_END_TRY();
+			HandleYBStatus(s);
+		}
 
 		Relation	yb_baserel = table_open(relationId, NoLock);
 
@@ -5214,6 +5260,8 @@ YbWaitForBackendsCatalogVersion()
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
 								 " backend_type != 'yb auto analyze backend' AND"
+								 " backend_type != 'yb index backfill' AND"
+								 " backend_type != 'yb matview refresh' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
 								 catalog_version,

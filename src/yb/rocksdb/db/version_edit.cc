@@ -122,10 +122,10 @@ void FileMetaData::UpdateBoundarySeqNo(SequenceNumber sequence_number) {
 void FileMetaData::UpdateBoundaryUserValues(
     const UserBoundaryValueRefs& source, UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
-    UpdateUserValues(source, UpdateUserValueType::kSmallest, &smallest.user_values);
+    UpdateUserValues(source, yb::storage::UpdateUserValueType::kSmallest, &smallest.user_values);
   }
   if (type != UpdateBoundariesType::kSmallest) {
-    UpdateUserValues(source, UpdateUserValueType::kLargest, &largest.user_values);
+    UpdateUserValues(source, yb::storage::UpdateUserValueType::kLargest, &largest.user_values);
   }
 }
 
@@ -133,15 +133,20 @@ void FileMetaData::UpdateBoundariesExceptKey(
     const BoundaryValues& source, UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
     smallest.seqno = std::min(smallest.seqno, source.seqno);
-    UserFrontier::Update(
-        source.user_frontier.get(), UpdateUserValueType::kSmallest, &smallest.user_frontier);
-    UpdateUserValues(source.user_values, UpdateUserValueType::kSmallest, &smallest.user_values);
+    yb::storage::UserFrontier::Update(
+        source.user_frontier.get(), yb::storage::UpdateUserValueType::kSmallest,
+        &smallest.user_frontier);
+    UpdateUserValues(
+        source.user_values, yb::storage::UpdateUserValueType::kSmallest,
+        &smallest.user_values);
   }
   if (type != UpdateBoundariesType::kSmallest) {
     largest.seqno = std::max(largest.seqno, source.seqno);
-    UserFrontier::Update(
-        source.user_frontier.get(), UpdateUserValueType::kLargest, &largest.user_frontier);
-    UpdateUserValues(source.user_values, UpdateUserValueType::kLargest, &largest.user_values);
+    yb::storage::UserFrontier::Update(
+        source.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
+        &largest.user_frontier);
+    UpdateUserValues(
+        source.user_values, yb::storage::UpdateUserValueType::kLargest, &largest.user_values);
   }
 }
 
@@ -384,7 +389,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                     << meta.largest.user_frontier->ToString()
                     << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       } else if (!flushed_frontier_->Dominates(*meta.largest.user_frontier,
-                                               UpdateUserValueType::kLargest)) {
+                                               yb::storage::UpdateUserValueType::kLargest)) {
         // The flushed frontier of this VersionEdit must already include the information provided
         // by flushed frontiers of individual files.
         LOG(DFATAL) << "Flushed frontier is present but has to be updated with data from "
@@ -394,7 +399,8 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                     << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       }
       UpdateUserFrontier(
-          &flushed_frontier_, meta.largest.user_frontier, UpdateUserValueType::kLargest);
+          &flushed_frontier_, meta.largest.user_frontier,
+          yb::storage::UpdateUserValueType::kLargest);
     }
   }
 
@@ -454,16 +460,23 @@ void VersionEdit::AddCleanedFile(int level, const FileMetaData& f) {
   new_files_.emplace_back(level, std::move(nf));
 }
 
-void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {
+void VersionEdit::UpdateFlushedFrontier(yb::storage::UserFrontierPtr value) {
   ModifyFlushedFrontier(std::move(value), FrontierModificationMode::kUpdate);
 }
 
-void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode) {
+void VersionEdit::ModifyFlushedFrontier(
+    yb::storage::UserFrontierPtr value, FrontierModificationMode mode) {
+  const bool allow_mode_change = frontier_modification_mode_ == FrontierModificationMode::kUpdate ||
+                                 frontier_modification_mode_ == mode;
+  LOG_IF(DFATAL, !allow_mode_change)
+      << "Incorrect change to flushed frontier modification mode from "
+      << frontier_modification_mode_ << " to " << mode;
+  frontier_modification_mode_ = mode;
   if (mode == FrontierModificationMode::kForce) {
     flushed_frontier_ = std::move(value);
-    force_flushed_frontier_ = true;
   } else {
-    UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+    UpdateUserFrontier(&flushed_frontier_, std::move(value),
+    yb::storage::UpdateUserValueType::kLargest);
   }
 }
 

@@ -55,6 +55,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb::pggate {
 
@@ -147,7 +148,11 @@ class ResultFuture {
   }
 
   Result Get() {
-    return std::visit([](auto& future) { return future.get(); }, variant_);
+    const auto& result = std::visit([](auto& future) { return future.get(); }, variant_);
+
+    // Check for interrupts are waiting on async RPC.
+    YBCCheckForInterrupts();
+    return result;
   }
 
  private:
@@ -165,21 +170,26 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
+  struct ProxyInitInfo {
+    rpc::ProxyCache& cache;
+    HostPort host_port;
+    MonoDelta resolve_cache_timeout;
+  };
+
   PgClient(
+      const ProxyInitInfo& proxy_init_info,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
       std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
-  Status Start(rpc::ProxyCache* proxy_cache,
-               rpc::Scheduler* scheduler,
-               const tserver::TServerSharedData& tserver_shared_object,
-               std::optional<uint64_t> session_id);
+  Status Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id);
 
-  void Shutdown();
+  void Interrupt();
 
-  void SetTimeout(MonoDelta timeout);
+  void SetTimeout(int timeout_ms);
+  void ClearTimeout();
 
-  void SetLockTimeout(MonoDelta lock_timeout);
+  void SetLockTimeout(int lock_timeout_ms);
 
   uint64_t SessionID() const;
 
@@ -301,6 +311,8 @@ class PgClient {
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
@@ -310,6 +322,7 @@ class PgClient {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
@@ -317,7 +330,8 @@ class PgClient {
       const std::string& stream_id, int64_t* lag_metric);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode);
 
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
@@ -338,6 +352,9 @@ class PgClient {
   Result<PgTxnSnapshotPB> ImportTxnSnapshot(
       std::string_view snapshot_id, tserver::PgPerformOptionsPB&& options);
   Status ClearExportedTxnSnapshots();
+
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

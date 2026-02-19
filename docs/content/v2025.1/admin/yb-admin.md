@@ -70,7 +70,7 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
-* [Rebalancing](#rebalancing-commands)
+* [Cluster balancing](#cluster-balancing-commands)
 * [Upgrade](#upgrade)
 
 ---
@@ -2667,15 +2667,17 @@ If specified, *dest-ts-uuid* becomes the new leader. If the argument is empty (`
 
 ---
 
-### Rebalancing commands
+### Cluster balancing commands
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master/#tablet-assignments).
+YugabyteDB automatically balances the cluster via the [YB-Master](../../architecture/yb-master/) service. The following manual commands are for advanced use cases.
 
-For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/).
+
+For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
 
 #### set_load_balancer_enabled
 
-Enables or disables the load balancer.
+Enables or disables the cluster balancer.
 
 **Syntax**
 
@@ -2756,7 +2758,7 @@ Returns the following percentage:
 
 #### get_is_load_balancer_idle
 
-Finds out if the load balancer is idle.
+Finds out if the cluster balancer is idle.
 
 **Syntax**
 

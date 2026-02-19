@@ -176,7 +176,7 @@ typedef struct YbScanDescData
 
 	/*
 	 * ScanKey could be one of two types:
-	 *  - key which represents the yb_hash_code function.
+	 *  - key searching on DocDB hash code (aka yb_hash_code pushdown).
 	 *  - otherwise
 	 * hash_code_keys holds the first type; keys holds the second.
 	 */
@@ -184,7 +184,10 @@ typedef struct YbScanDescData
 	/* Number of elements in the above array. */
 	int			nkeys;
 	/*
-	 * List of ScanKey for keys which represent the yb_hash_code function.
+	 * List of ScanKey for keys with YB_SK_SEARCHHASHCODE (yb_hash_code
+	 * pushdown).  Remember, YB_SK_SEARCHHASHCODE is not set for all
+	 * yb_hash_code expressions!
+	 *
 	 * Prefer List over array because this is likely to have zero or a few
 	 * elements in most cases.
 	 */
@@ -264,6 +267,17 @@ extern TableScanDesc ybc_heap_beginscan(Relation relation,
 extern HeapTuple ybc_heap_getnext(TableScanDesc scanDesc);
 extern void ybc_heap_endscan(TableScanDesc scanDesc);
 
+/*
+ * Begin a heap scan for index build/backfill that only fetches columns
+ * needed by the index (as defined in IndexInfo).
+ */
+extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
+														Snapshot snapshot,
+														int nkeys,
+														ScanKey key,
+														struct IndexInfo *indexInfo);
+
+
 extern void YbBindDatumToColumn(YbcPgStatement stmt,
 								int attr_num,
 								Oid type_id,
@@ -319,8 +333,8 @@ extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
 extern bool YbIsScanningEmbeddedIdx(Relation table, Relation index);
 
 /*
- * Used in Agg node init phase to determine whether YB preliminary check or PG
- * recheck may be needed.
+ * Used in Agg node init phase to determine whether YB recheck or PG recheck
+ * may be needed.
  */
 extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   Relation relation,
@@ -329,10 +343,8 @@ extern bool YbPredetermineNeedsRecheck(Scan *scan,
 									   ScanKey keys,
 									   int nkeys);
 
-extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir,
-									   bool *recheck);
-extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir,
-										 bool *recheck);
+extern HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir);
+extern IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir);
 extern bool ybc_getnext_aggslot(IndexScanDesc scan, YbcPgStatement handle,
 								bool index_only_scan);
 
@@ -396,6 +408,7 @@ typedef struct YbSampleData
 {
 	/* The handle for the internal YB Sample statement. */
 	YbcPgStatement handle;
+	YbcPgExecParameters exec_params;
 
 	Relation	relation;
 	int			targrows;		/* # of rows to collect */

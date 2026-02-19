@@ -92,13 +92,13 @@ void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
                   QLReadRequestPB* req);
 
 // Does this write request require reading existing data for evaluating expressions before writing?
-bool RequireReadForExpressions(const QLWriteRequestPB& request);
+bool RequireReadForExpressions(const QLWriteRequestMsg& request);
 
 // Does this write request require reading existing data in general before writing?
-bool RequireRead(const QLWriteRequestPB& request, const Schema& schema);
+bool RequireRead(const QLWriteRequestMsg& request, const Schema& schema);
 
 // Does this write request perform a range operation (e.g. range delete)?
-bool IsRangeOperation(const QLWriteRequestPB& request, const Schema& schema);
+bool IsRangeOperation(const QLWriteRequestMsg& request, const Schema& schema);
 
 #define RETURN_NOT_ENOUGH(data, sz)                         \
   do {                                                      \

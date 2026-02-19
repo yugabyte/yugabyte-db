@@ -3790,8 +3790,8 @@ SetRelationTableSpace(Relation rel,
 
 			Relation	idx_pg_class = table_open(RelationRelationId,
 												  RowExclusiveLock);
-			HeapTuple	idx_tuple = SearchSysCacheCopy1(RELOID,
-														ObjectIdGetDatum(idxOid));
+			HeapTuple	idx_tuple = SearchSysCacheLockedCopy1(RELOID,
+															  ObjectIdGetDatum(idxOid));
 
 			if (!HeapTupleIsValid(idx_tuple))
 				elog(ERROR, "cache lookup failed for relation %u", idxOid);
@@ -5615,10 +5615,6 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		}
 	}
 
-	/* YugaByte doesn't support toast tables. */
-	if (IsYugaByteEnabled())
-		return;
-
 	/* Check to see if a toast table must be added. */
 	foreach(ltab, *wqueue)
 	{
@@ -5628,6 +5624,8 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode,
 		 * If the table is source table of ATTACH PARTITION command, we did
 		 * not modify anything about it that will change its toasting
 		 * requirement, so no need to check.
+		 * YB: AlterTableCreateToastTable knows to only work on temp tables,
+		 * so we can run through this always.
 		 */
 		if (((tab->relkind == RELKIND_RELATION ||
 			  tab->relkind == RELKIND_PARTITIONED_TABLE) &&
@@ -6537,6 +6535,16 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 	ExprState  *partqualstate = NULL;
 
 	/*
+	 * YB: For xCluster targets in automatic mode, we skip rewrites / constraint
+	 * checking, since this data will be replicated from / verified on the
+	 * source. This is especially important to avoid any expression evaluations
+	 * that could cause side effects (e.g. calling nextval() for identity
+	 * columns).
+	 */
+	if (yb_xcluster_automatic_mode_target_ddl)
+		return;
+
+	/*
 	 * Open the relation(s).  We have surely already locked the existing
 	 * table.
 	 */
@@ -6639,6 +6647,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		ListCell   *lc;
 		Snapshot	snapshot;
 
+		bool		yb_oldrel_has_copied_tupdesc = false;
+
 		if (newrel)
 			ereport(DEBUG1,
 					(errmsg_internal("rewriting table \"%s\"",
@@ -6717,7 +6727,42 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		 * set up the YB scan using the old tuple desc.
 		 */
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
-			oldrel->rd_att = oldTupDesc;
+		{
+			/*
+			 * If the oldTupDesc is not reference-counted, make a copy temporarily.
+			 * This is because tuple descriptors linked with the Relation object
+			 * are meant to be reference-counted. If we don't do that, then we get
+			 * a crash while invalidating relcache entries during the processing of
+			 * invalidation messages at the time of transaction abort in case of
+			 * failures in table rewrite below. The crash happens because of the
+			 * assumption that tupledesc stored in a Relation object are
+			 * reference-counted leading to a failed assert in
+			 * RelationDestroyRelation.
+			 */
+			if (oldTupDesc->tdrefcount == -1)
+			{
+				MemoryContext oldcxt;
+
+				/* Switch to the long-lived context where the Relcache lives */
+				oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+				/*
+				 * Create a copy of the descriptor for the relation to own.
+				 * This ensures that if the relcache entry is destroyed during an
+				 * error, it doesn't free the original descriptor.
+				 */
+				oldrel->rd_att = CreateTupleDescCopy(oldTupDesc);
+				oldrel->rd_att->tdrefcount = 1;
+
+				/* Switch back to the original context */
+				MemoryContextSwitchTo(oldcxt);
+
+				/* Mark that we need to manually free this copy */
+				yb_oldrel_has_copied_tupdesc = true;
+			}
+			else
+				oldrel->rd_att = oldTupDesc;
+		}
 		scan = table_beginscan(oldrel, snapshot, 0, NULL);
 
 		/*
@@ -6870,7 +6915,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			}
 
 			/* Write the tuple out to the new relation */
-			if (newrel && !yb_xcluster_automatic_mode_target_ddl)
+			if (newrel)
 			{
 				if (IsYBRelation(newrel))
 					YBCExecuteInsert(newrel,
@@ -6891,8 +6936,16 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		UnregisterSnapshot(snapshot);
 
 		if (IsYBRelation(oldrel) && tab->rewrite & AT_REWRITE_COLUMN_REWRITE)
+		{
+			if (yb_oldrel_has_copied_tupdesc)
+			{
+				oldrel->rd_att->tdrefcount = -1;
+				FreeTupleDesc(oldrel->rd_att);
+			}
+
 			/* Revert back to the new tuple desc */
 			oldrel->rd_att = newTupDesc;
+		}
 
 		ExecDropSingleTupleTableSlot(oldslot);
 		if (newslot)
@@ -9250,6 +9303,11 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("column data type %s can only have storage PLAIN",
 						format_type_be(attrtuple->atttypid))));
+
+
+	if (IsYBRelation(rel))
+		ereport(NOTICE,
+				(errmsg("ALTER action ALTER COLUMN ... SET STORAGE has no effect on YB tables")));
 
 	CatalogTupleUpdate(attrelation, &tuple->t_self, tuple);
 
@@ -14648,6 +14706,43 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	 * constraint or index we're processing to figure out which relation to
 	 * operate on.
 	 */
+
+	/*
+	 * YB: Sort constraints so PRIMARY KEY constraints are processed first.
+	 * When a PRIMARY KEY is altered, it schedules a table rewrite which other
+	 * constraints can then detect and avoid docdb index creation during rebuild phase.
+	 */
+	List *pk_oids = NIL;
+	List *pk_defs = NIL;
+	List *other_oids = NIL;
+	List *other_defs = NIL;
+
+	forboth(oid_item, tab->changedConstraintOids,
+			def_item, tab->changedConstraintDefs)
+	{
+		Oid oldId = lfirst_oid(oid_item);
+		HeapTuple tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
+
+		if (!HeapTupleIsValid(tup))
+			elog(ERROR, "cache lookup failed for constraint %u", oldId);
+
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+		bool is_primary = (con->contype == CONSTRAINT_PRIMARY);
+		ReleaseSysCache(tup);
+
+		if (is_primary)
+		{
+			pk_oids = lappend_oid(pk_oids, oldId);
+			pk_defs = lappend(pk_defs, lfirst(def_item));
+			continue;
+		}
+		other_oids = lappend_oid(other_oids, oldId);
+		other_defs = lappend(other_defs, lfirst(def_item));
+	}
+
+	tab->changedConstraintOids = list_concat(pk_oids, other_oids);
+	tab->changedConstraintDefs = list_concat(pk_defs, other_defs);
+
 	forboth(oid_item, tab->changedConstraintOids,
 			def_item, tab->changedConstraintDefs)
 	{

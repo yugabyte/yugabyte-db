@@ -24,7 +24,7 @@ import {
   RbacValidator
 } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
-import ErrorIcon from '../../../../redesign/assets/error.svg';
+import ErrorIcon from '../../../../redesign/assets/error.svg?img';
 
 import { ValidationErrMsgDelimiter } from '../forms/utils';
 import { SupportedRegionField } from '../forms/configureRegion/types';

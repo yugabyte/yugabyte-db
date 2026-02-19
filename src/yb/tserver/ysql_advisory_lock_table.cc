@@ -31,7 +31,7 @@ DECLARE_bool(ysql_yb_enable_advisory_locks);
 namespace yb::tserver {
 namespace {
 
-void SetValue(QLExpressionPB& exp, uint32_t value) {
+void SetValue(QLExpressionMsg& exp, uint32_t value) {
   exp.mutable_value()->set_uint32_value(value);
 }
 
@@ -51,7 +51,7 @@ class LockIdHelper {
   }
 
  private:
-  PgsqlAdvisoryLockPB& lock_id_;
+  PgsqlAdvisoryLockMsg& lock_id_;
 };
 
 void SetLockId(client::YBPgsqlLockOp& op, uint32_t db_oid) {

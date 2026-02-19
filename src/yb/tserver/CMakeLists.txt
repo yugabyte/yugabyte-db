@@ -135,6 +135,7 @@ ADD_YB_LIBRARY(tserver_admin_proto
 
 YRPC_GENERATE(
   TSERVER_YRPC_SRCS TSERVER_YRPC_HDRS TSERVER_YRPC_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES tserver_service.proto)
@@ -230,6 +231,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
   backup_service.cc
+  connectivity_poller.cc
   db_server_base.cc
   full_compaction_manager.cc
   heartbeater.cc

@@ -33,8 +33,6 @@ namespace yb {
 
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
-static const char* const kVectorIndexMetricEntityName = "vector_index";
-
 static const char* const kServerLevelAggregationId = "server_level";
 
 class JsonWriter;
@@ -152,7 +150,7 @@ enum AggregationFunction {
 class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
   using MetricMap = std::map<const MetricPrototype*, scoped_refptr<Metric>>;
-  using AttributeMap = std::unordered_map<std::string, std::string>;
+  using AttributeMap = MetricAttributeMap;
   using NonPreAggregatedMetrics = std::vector<scoped_refptr<Metric>>;
 
   template<typename Metric, typename PrototypePtr, typename ...Args>

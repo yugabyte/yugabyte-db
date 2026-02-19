@@ -8,6 +8,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -36,12 +37,14 @@ import org.apache.commons.lang3.StringUtils;
 public class ApplicationLogsComponent implements SupportBundleComponent {
 
   protected final Config config;
+  private final RuntimeConfigFactory runtimeConfigFactory;
   private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public ApplicationLogsComponent(
       BaseTaskDependencies baseTaskDependencies, SupportBundleUtil supportBundleUtil) {
     this.config = baseTaskDependencies.getConfig();
+    this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
     this.supportBundleUtil = supportBundleUtil;
   }
 
@@ -143,13 +146,17 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
 
     // Filter the log files by a preliminary check of the name format
     String applicationLogsRegexPattern =
-        config.getString("yb.support_bundle.application_logs_regex_pattern");
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getString("yb.support_bundle.application_logs_regex_pattern");
     logFiles =
         supportBundleUtil.filterList(logFiles, Arrays.asList(applicationLogsRegexPattern)).stream()
             .collect(Collectors.toList());
 
     String applicationLogsSdfPattern =
-        config.getString("yb.support_bundle.application_logs_sdf_pattern");
+        runtimeConfigFactory
+            .globalRuntimeConf()
+            .getString("yb.support_bundle.application_logs_sdf_pattern");
     SimpleDateFormat sdf = new SimpleDateFormat(applicationLogsSdfPattern);
     // Filters the log files whether it is between startDate and endDate
     for (String logFile : logFiles) {

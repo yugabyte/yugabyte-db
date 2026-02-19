@@ -25,16 +25,24 @@
 #include "postgres.h"
 
 #include "access/stratnum.h"
+#include "access/table.h"
 #include "access/transam.h"
+#include "catalog/pg_operator_d.h"
+#include "catalog/pg_type_d.h"
 #include "common/int.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/paths.h"
 #include "optimizer/yb_saop_merge.h"
+#include "parser/parsetree.h"
 #include "pg_yb_utils.h"
+#include "rewrite/rewriteHandler.h"
 #include "utils/array.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 /* GUC options */
+bool		yb_enable_derived_saops;
 int			yb_max_saop_merge_streams;
 
 /*
@@ -126,12 +134,146 @@ ybIsClauseEligibleSaop(Node *clause,
 }
 
 /*
+ * Try to derive a SAOP on the given opexpr.  Currently, this only looks for
+ * operator=%(int4, int4), LHS=yb_hash_code(...), RHS=int4.
+ */
+static bool
+ybDeriveSaopFromOpExpr(OpExpr *opexpr,
+					   ScalarArrayOpExpr **best_saop,
+					   int *best_num_elems)
+{
+	Oid			oprid = opexpr->opno;
+
+	/* %(int4, int4) */
+	if (oprid != 530)
+		return false;
+
+	Expr	   *lhs = linitial(opexpr->args);
+	Expr	   *rhs = lsecond(opexpr->args);
+
+	/* Check each operand of the modulo operator. */
+	if (!(IsA(lhs, FuncExpr) && IsA(rhs, Const)))
+		return false;
+
+	FuncExpr   *funcexpr = castNode(FuncExpr, lhs);
+	Const	   *const_node = castNode(Const, rhs);
+
+	/*
+	 * For now, only allow function yb_hash_code as it has the property of
+	 * being immutable and always yields a non-null, non-negative number.
+	 */
+	if (funcexpr->funcid != F_YB_HASH_CODE)
+		return false;
+
+	int			modulus = DatumGetInt32(const_node->constvalue);
+
+	modulus = (modulus < 0) ? -modulus : modulus;
+
+	/*
+	 * No point trying to derive a SAOP that has higher cardinality than an
+	 * existing one.
+	 */
+	if (*best_num_elems >= 0 && modulus >= *best_num_elems)
+		return false;
+
+	/* Build the new SAOP */
+	ScalarArrayOpExpr *saop = makeNode(ScalarArrayOpExpr);
+
+	saop->opno = Int4EqualOperator;
+	saop->opfuncid = F_INT4EQ;
+	saop->useOr = true;
+	saop->inputcollid = InvalidOid;
+
+	saop->args = list_make1(opexpr);
+
+	Datum	   *elems = palloc(sizeof(Datum) * modulus);
+
+	for (int i = 0; i < modulus; ++i)
+		elems[i] = i;
+
+	ArrayType  *arr = construct_array(elems,
+									  modulus,
+									  INT4OID,
+									  4,
+									  true,
+									  TYPALIGN_INT);
+	Const	   *arr_const = makeConst(INT4ARRAYOID,
+									  -1,
+									  InvalidOid,
+									  -1,
+									  PointerGetDatum(arr),
+									  false,
+									  false);
+	saop->args = lappend(saop->args, arr_const);
+
+	/* Fill the out params. */
+	*best_saop = saop;
+	*best_num_elems = modulus;
+	return true;
+}
+
+/*
+ * Try to derive a SAOP on the given var.  Currently, this only looks for
+ * generated columns and tries to derive SAOP on the generation expression.
+ */
+static bool
+ybDeriveSaopFromVar(Var *var,
+					PlannerInfo *root,
+					Relids relids,
+					ScalarArrayOpExpr **best_saop,
+					int *best_num_elems)
+{
+	bool		derived = false;
+	int			i = var->varattno - 1;
+	int			rtindex;
+
+	if (!bms_get_singleton_member(relids, &rtindex))
+		return false;
+
+	RangeTblEntry *rte = planner_rt_fetch(rtindex, root);
+	Relation	rel = table_open(rte->relid, NoLock);
+	TupleDesc	tupdesc = RelationGetDescr(rel);
+
+	/* Parts taken from ExecInitStoredGenerated */
+	/* Nothing to do if no generated columns */
+	if (tupdesc->constr && tupdesc->constr->has_generated_stored)
+	{
+		if (TupleDescAttr(tupdesc, i)->attgenerated == ATTRIBUTE_GENERATED_STORED)
+		{
+			Expr	   *expr;
+
+			/* Fetch the GENERATED AS expression tree */
+			expr = (Expr *) build_column_default(rel, i + 1);
+			if (expr == NULL)
+				elog(ERROR, "no generation expression found for column number %d of table \"%s\"",
+					 i + 1, RelationGetRelationName(rel));
+
+			if (IsA(expr, OpExpr))
+			{
+				derived = ybDeriveSaopFromOpExpr(castNode(OpExpr, expr),
+												 best_saop, best_num_elems);
+				/*
+				 * Ensure var is used instead of the generated expression for
+				 * LHS of derived SAOP.
+				 */
+				if (derived)
+					linitial((*best_saop)->args) = var;
+			}
+		}
+	}
+
+	table_close(rel, NoLock);
+	return derived;
+}
+
+/*
  * Whether this index column is able to be part of SAOP merge.  If true, find
  * the best SAOP (best meaning having the smallest cardinality), and fill
  * in/out params saop_merge_cardinality and saop_merge_saop_cols.
  */
 bool
-yb_indexcol_can_saop_merge(IndexOptInfo *index,
+yb_indexcol_can_saop_merge(PlannerInfo *root,
+						   IndexOptInfo *index,
 						   Expr *expr,
 						   int indexcol,
 						   int *saop_merge_cardinality,
@@ -201,6 +343,19 @@ yb_indexcol_can_saop_merge(IndexOptInfo *index,
 		}
 	}
 
+	bool		derived = false;
+
+	if (yb_enable_derived_saops)
+	{
+		if (IsA(expr, OpExpr))
+			derived = ybDeriveSaopFromOpExpr(castNode(OpExpr, expr),
+											 &best_saop, &best_num_elems);
+		else if (IsA(expr, Var))
+			derived = ybDeriveSaopFromVar(castNode(Var, expr), root,
+										  index->rel->relids,
+										  &best_saop, &best_num_elems);
+	}
+
 	/* Abort if no eligible SAOP index clauses were found. */
 	if (best_num_elems == -1)
 		return false;
@@ -219,6 +374,7 @@ yb_indexcol_can_saop_merge(IndexOptInfo *index,
 	saop_col_info->saop = best_saop;
 	saop_col_info->indexcol = indexcol;
 	saop_col_info->num_elems = best_num_elems;
+	saop_col_info->derived = derived;
 	*saop_merge_saop_cols = lappend(*saop_merge_saop_cols, saop_col_info);
 	return true;
 }

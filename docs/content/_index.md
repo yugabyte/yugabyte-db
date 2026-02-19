@@ -22,7 +22,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Get Started"
     description="Create your first cluster and build a sample application in 15 minutes."
     buttonText="Get started"
-    buttonUrl="/preview/quick-start-yugabytedb-managed/"
+    buttonUrl="/stable/quick-start-yugabytedb-managed/"
     imageAlt="Laptop" imageUrl="/images/homepage/locally-laptop.svg"
   >}}
 
@@ -30,7 +30,7 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Modernize and Migrate"
     description="Streamline all stages of bringing a source to YugabyteDB, including analysis, conversion, migration, and cutover."
     buttonText="Get started"
-    buttonUrl="/preview/yugabyte-voyager/introduction/"
+    buttonUrl="/stable/yugabyte-voyager/introduction/"
     imageAlt="Cloud" imageUrl="/images/homepage/yugabyte-in-cloud.svg"
   >}}
 {{< /sections/2-boxes >}}
@@ -40,40 +40,40 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Explore"
     description="Explore YugabyteDB's support for cloud-native applications."
     linkText1="PostgreSQL compatibility"
-    linkUrl1="/preview/explore/ysql-language-features/"
+    linkUrl1="/stable/explore/ysql-language-features/"
     linkText2="Resilience"
-    linkUrl2="/preview/explore/fault-tolerance/"
+    linkUrl2="/stable/explore/fault-tolerance/"
     linkText3="Scalability"
-    linkUrl3="/preview/explore/linear-scalability/"
+    linkUrl3="/stable/explore/linear-scalability/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/explore/"
+    linkUrl4="/stable/explore/"
   >}}
   {{< sections/3-box-card
     title="AI"
     description="Add a scalable and highly-available database to your AI projects."
     linkText1="RAG"
-    linkUrl1="/preview/develop/tutorials/ai/hello-rag/"
+    linkUrl1="/stable/develop/ai/hello-rag/"
     linkText2="YugabyteDB MCP Server"
-    linkUrl2="/preview/develop/tutorials/ai/mcp-server/"
+    linkUrl2="/stable/develop/ai/mcp-server/"
     linkText3="Vector AI"
-    linkUrl3="/preview/develop/tutorials/ai/ai-ollama/"
+    linkUrl3="/stable/develop/ai/ai-ollama/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/develop/tutorials/ai/"
+    linkUrl4="/stable/develop/ai/"
   >}}
   {{< sections/3-box-card
     title="Under the hood"
     description="Learn about YugabyteDB's modern architecture."
     linkText1="Query layer"
-    linkUrl1="/preview/architecture/query-layer/"
+    linkUrl1="/stable/architecture/query-layer/"
     linkText2="Storage layer"
-    linkUrl2="/preview/architecture/docdb/"
+    linkUrl2="/stable/architecture/docdb/"
     linkText3="Transactions"
-    linkUrl3="/preview/architecture/transactions/"
+    linkUrl3="/stable/architecture/transactions/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/architecture/"
+    linkUrl4="/stable/architecture/"
   >}}
 {{< /sections/3-boxes >}}
 
@@ -84,21 +84,21 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Build a Hello World application"
     description="Use your favorite programming language to build an application that connects to a YugabyteDB cluster."
     buttonText="Build"
-    buttonUrl="/preview/develop/tutorials/build-apps/"
+    buttonUrl="/stable/develop/tutorials/build-apps/"
   >}}
 
   {{< sections/3-box-card
     title="Connect using drivers and ORMs"
     description="Connect applications to your database using familiar third-party divers and ORMs and YugabyteDB Smart Drivers."
     buttonText="Connect"
-    buttonUrl="/preview/develop/drivers-orms/"
+    buttonUrl="/stable/develop/drivers-orms/"
   >}}
 
   {{< sections/3-box-card
     title="Use familiar APIs"
     description="Get up to speed quickly using YugabyteDB's PostgreSQL-compatible YSQL and Cassandra-based YCQL APIs."
     buttonText="Develop"
-    buttonUrl="/preview/api/"
+    buttonUrl="/stable/api/"
   >}}
 
 {{< /sections/3-boxes >}}
@@ -109,14 +109,14 @@ YugabyteDB provides PostgreSQL without limits and is an excellent fit for new or
     title="Develop"
     description="Build global applications using familiar APIs and drivers."
     linkText1="Global applications"
-    linkUrl1="/preview/develop/build-global-apps/"
+    linkUrl1="/stable/develop/build-global-apps/"
     linkText2="Hybrid and multi-cloud"
-    linkUrl2="/preview/develop/multi-cloud/"
+    linkUrl2="/stable/develop/multi-cloud/"
     linkText3="Drivers and ORMs"
-    linkUrl3="/preview/develop/drivers-orms/"
+    linkUrl3="/stable/develop/drivers-orms/"
     linkText4="Explore more"
     linkClass4="more"
-    linkUrl4="/preview/develop/"
+    linkUrl4="/stable/develop/"
   >}}
 
 ## Introduction to YugabyteDB
@@ -133,7 +133,7 @@ Why you need Distributed PostgreSQL to truly scale.
 
 Learn the different data replication options available with YugabyteDB.
 
-##### Documentation: [YugabyteDB architecture](preview/architecture/)
+##### Documentation: [YugabyteDB architecture](stable/architecture/)
 
 Learn about the internals of query, transactions, sharding, replication, and storage layers.
 
@@ -151,7 +151,7 @@ Learn how you can migrate databases to YugabyteDB quickly and securely.
 
 Use YugabyteDB Voyager to migrate from legacy and single-cloud databases.
 
-##### Documentation: [YugabyteDB Voyager](preview/yugabyte-voyager/)
+##### Documentation: [YugabyteDB Voyager](stable/yugabyte-voyager/)
 
 Simplify migration from legacy and cloud databases to YugabyteDB.
 
@@ -173,17 +173,17 @@ Perform local reads in geo-distributed YugabyteDB databases.
 
 Learn how YugabyteDB performs swift data recovery.
 
-##### Documentation: [Resiliency, high availability, and fault tolerance](preview/explore/fault-tolerance/)
+##### Documentation: [Resiliency, high availability, and fault tolerance](stable/explore/fault-tolerance/)
 
 Learn how YugabyteDB survives and recovers from outages.
 
-##### Documentation: [Horizontal scalability](preview/explore/linear-scalability/)
+##### Documentation: [Horizontal scalability](stable/explore/linear-scalability/)
 
 Handle larger workloads by adding nodes to your cluster.
 
 ## Develop resilient applications
 
-##### Documentation: [Hello world](preview/develop/tutorials/build-apps/)
+##### Documentation: [Hello world](stable/develop/tutorials/build-apps/)
 
 Use your favorite programming language to build a Hello world application.
 
@@ -191,15 +191,15 @@ Use your favorite programming language to build a Hello world application.
 
 Learn the essentials of building scalable and fault-tolerant applications.
 
-##### Documentation: [Build global applications](preview/develop/build-global-apps/)
+##### Documentation: [Build global applications](stable/develop/build-global-apps/)
 
 Learn how to design globally distributed applications using patterns.
 
-##### Documentation: [Best practices](preview/develop/best-practices-ysql/)
+##### Documentation: [Best practices](stable/develop/best-practices-ysql/)
 
 Tips and tricks to build applications for high performance and availability.
 
-##### Documentation: [Drivers and ORMs](preview/develop/drivers-orms/)
+##### Documentation: [Drivers and ORMs](stable/develop/drivers-orms/)
 
 Connect applications with your database.
 

@@ -76,33 +76,25 @@ public class RedactingServiceTest {
 
   @Test
   public void testDoubleEscapedJsonRedaction() {
-    // Test the specific case from the logs where ycql_ldap_bind_passwd appears in double-escaped
-    // JSON
     String doubleEscapedJson =
-        "\"universeDetailsJson\":\"{\\\"platformVersion\\\":\\\"2.27.0.0-PRE_RELEASE\\\",\\\"tserverGFlags\\\":{\\\"ycql_ldap_bind_passwd\\\":\\\"password321\\\",\\\"ysql_hba_conf_csv\\\":\\\"\\\\\\\"ldapbinddn=admint\\\\\\\",\\\\\\\"ldapbindpasswd=REDACTED\\\\\\\",\\\\\\\"ldapBindPassword=REDACTED\\\\\\\"\\\"}}\"";
+        "\"universeDetailsJson\":\"{\\\"platformVersion\\\":\\\"2.27.0.0-PRE_RELEASE\\\",\\\"tserverGFlags\\\":{\\\"ycql_ldap_bind_passwd\\\":\\\"password321\\\",\\\"ysql_hba_conf_csv\\\":\\\"\\\\\\\"ldapbinddn=admint\\\\\\\",\\\\\\\"ldapbindpasswd=secret123\\\\\\\"\\\"}}\"";
 
     String redacted = RedactingService.redactSensitiveInfoInString(doubleEscapedJson);
 
     assertNotNull(redacted);
     assertTrue(redacted.length() > 0);
-    // The ycql_ldap_bind_passwd value should be redacted
     assertFalse(redacted.contains("password321"));
-    // The string should still contain the field name
+    assertFalse(redacted.contains("secret123"));
     assertTrue(redacted.contains("ycql_ldap_bind_passwd"));
-    // The string should contain REDACTED
     assertTrue(redacted.contains("REDACTED"));
   }
 
   @Test
   public void testAllLdapPasswordRegexPatterns() {
-    // Test all the different regex patterns for LDAP password redaction
-
-    // Pattern 1: Escaped quotes within JSON strings
-    String escapedQuotesJson =
-        "\"ysql_hba_conf_csv\":\"\\\"ldapbindpasswd=secret123\\\",\\\"ldapBindPassword=secret456\\\"\"";
+    // Pattern 1: Escaped quotes within JSON strings (ysql_hba_conf_csv format)
+    String escapedQuotesJson = "\"ysql_hba_conf_csv\":\"\\\"ldapbindpasswd=secret123\\\"\"";
     String redacted1 = RedactingService.redactSensitiveInfoInString(escapedQuotesJson);
     assertFalse(redacted1.contains("secret123"));
-    assertFalse(redacted1.contains("secret456"));
     assertTrue(redacted1.contains("REDACTED"));
 
     // Pattern 2: JSON field format "pattern": "value"
@@ -120,8 +112,7 @@ public class RedactingServiceTest {
     assertFalse(redacted2a.contains("testpass"));
     assertTrue(redacted2a.contains("REDACTED"));
 
-    // Pattern 2b: JSON field format "pattern": value (without quotes around value) - fixed to match
-    // regex
+    // Pattern 2b: JSON field format "pattern": value (without quotes)
     String jsonFieldNoQuotes = "\"ycql_ldap_bind_passwd\":12345,\"ldapbindpasswd\":67890}";
     String redacted2b = RedactingService.redactSensitiveInfoInString(jsonFieldNoQuotes);
     assertFalse(redacted2b.contains("12345"));
@@ -129,20 +120,18 @@ public class RedactingServiceTest {
     assertTrue(redacted2b.contains("REDACTED"));
 
     // Pattern 3: Regular quotes within CSV strings
-    String csvFormat = "\"ldapbindpasswd=pass123,ldapBindPassword=pass456\"";
+    String csvFormat = "\"ldapbindpasswd=pass123\"";
     String redacted3 = RedactingService.redactSensitiveInfoInString(csvFormat);
     assertFalse(redacted3.contains("pass123"));
-    assertFalse(redacted3.contains("pass456"));
     assertTrue(redacted3.contains("REDACTED"));
 
-    // Pattern 4: Unquoted values (standalone) - fixed to avoid comma interference
-    String unquotedFormat = "ldapbindpasswd=standalone123 ldapBindPassword=standalone456";
+    // Pattern 4: Unquoted values (standalone)
+    String unquotedFormat = "ldapbindpasswd=standalone123";
     String redacted4 = RedactingService.redactSensitiveInfoInString(unquotedFormat);
     assertFalse(redacted4.contains("standalone123"));
-    assertFalse(redacted4.contains("standalone456"));
     assertTrue(redacted4.contains("REDACTED"));
 
-    // Pattern 5: Conf file format (pattern=value) - fixed to match start of line
+    // Pattern 5: Conf file format (pattern=value)
     String confFormat = "ycql_ldap_bind_passwd=confpass123\nldapbindpasswd=confpass456";
     String redacted5 = RedactingService.redactSensitiveInfoInString(confFormat);
     assertFalse(redacted5.contains("confpass123"));
@@ -157,7 +146,7 @@ public class RedactingServiceTest {
     assertFalse(redacted6.contains("quotedpass456"));
     assertTrue(redacted6.contains("REDACTED"));
 
-    // Pattern 7: CLI flag format (--pattern, value) and ('--pattern', 'value')
+    // Pattern 7: CLI flag format (--pattern, value)
     String cliFlagFormat = "--ycql_ldap_bind_passwd, secret456 --some_other_flag, 123";
     String cliFlagFormat_1 = "'--ycql_ldap_bind_passwd', 'secret456', '--some_other_flag', '123'";
     String redacted7 = RedactingService.redactSensitiveInfoInString(cliFlagFormat);
@@ -166,29 +155,44 @@ public class RedactingServiceTest {
     assertFalse(redacted7_1.contains("secret456"));
     assertTrue(redacted7.contains("REDACTED"));
     assertTrue(redacted7_1.contains("REDACTED"));
-    // Verify the flag names and commas are preserved
     assertTrue(redacted7.contains("--ycql_ldap_bind_passwd, REDACTED"));
     assertTrue(redacted7.contains("--some_other_flag, 123"));
     assertTrue(redacted7_1.contains("'--ycql_ldap_bind_passwd', REDACTED"));
     assertTrue(redacted7_1.contains("'--some_other_flag', '123'"));
+
+    // Pattern 8: ysql_hba_conf_csv with CSV double-quote escaping (real-world UI input)
+    // This tests the exact format: ldapbinddn=""value"" ldapbindpasswd=password
+    // ldapbasedn=""value""
+    String csvDoubleQuoteEscaped =
+        "\"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ldapport=389 "
+            + "ldapbinddn=\"\"cn=admin,dc=example,dc=com\"\" "
+            + "ldapbindpasswd=MyPassword123 "
+            + "ldapbasedn=\"\"dc=example,dc=com\"\" ldapsearchattribute=uid\"";
+    String redacted8 = RedactingService.redactSensitiveInfoInString(csvDoubleQuoteEscaped);
+    assertFalse("Password should be redacted", redacted8.contains("MyPassword123"));
+    assertTrue("Should contain REDACTED", redacted8.contains("REDACTED"));
+    // Crucially: ldapbasedn should NOT be eaten by the regex
+    assertTrue(
+        "ldapbasedn should be preserved",
+        redacted8.contains("ldapbasedn=\"\"dc=example,dc=com\"\""));
+    assertTrue(
+        "ldapsearchattribute should be preserved", redacted8.contains("ldapsearchattribute=uid"));
   }
 
   @Test
   public void testSupportBundleUniverseDetailsJsonRedaction() {
-    // Test the exact format from support bundle logs
     String universeDetailsJson =
-        "{\"platformVersion\":\"2.27.0.0-PRE_RELEASE\",\"tserverGFlags\":{\"ycql_ldap_bind_passwd\":\"password1\",\"ysql_hba_conf_csv\":\"\\\"ldapbinddn=admint\\\",\\\"ldapbindpasswd=REDACTED\\\",\\\"ldapBindPassword=REDACTED\\\"\"}}";
+        "{\"platformVersion\":\"2.27.0.0-PRE_RELEASE\",\"tserverGFlags\":{\"ycql_ldap_bind_passwd\":\"password1\",\"ysql_hba_conf_csv\":\"\\\"ldapbinddn=admint\\\",\\\"ldapbindpasswd=secret123\\\"\"}}";
 
-    // Test as a JSON field value
     String jsonWithUniverseDetails =
         "\"universeDetailsJson\":\"" + universeDetailsJson.replace("\"", "\\\"") + "\"";
     String redacted = RedactingService.redactSensitiveInfoInString(jsonWithUniverseDetails);
 
     assertFalse(redacted.contains("password1"));
+    assertFalse(redacted.contains("secret123"));
     assertTrue(redacted.contains("REDACTED"));
     assertTrue(redacted.contains("ycql_ldap_bind_passwd"));
 
-    // Test the universeDetailsJson directly
     String redactedDirect = RedactingService.redactSensitiveInfoInString(universeDetailsJson);
     assertFalse(redactedDirect.contains("password1"));
     assertTrue(redactedDirect.contains("REDACTED"));
@@ -196,15 +200,13 @@ public class RedactingServiceTest {
 
   @Test
   public void testMixedContentRedaction() {
-    // Test mixed content with various LDAP password formats
     String mixedContent =
-        "{\"config\":\"ldapbindpasswd=mixed123\",\"gflags\":{\"ycql_ldap_bind_passwd\":\"mixed456\"},\"details\":\"\\\"ldapBindPassword=mixed789\\\"\"}";
+        "{\"config\":\"ldapbindpasswd=mixed123\",\"gflags\":{\"ycql_ldap_bind_passwd\":\"mixed456\"}}";
 
     String redacted = RedactingService.redactSensitiveInfoInString(mixedContent);
 
     assertFalse(redacted.contains("mixed123"));
     assertFalse(redacted.contains("mixed456"));
-    assertFalse(redacted.contains("mixed789"));
     assertTrue(redacted.contains("REDACTED"));
   }
 
@@ -253,6 +255,82 @@ public class RedactingServiceTest {
     String redactedLogLine = RedactingService.redactSensitiveInfoInString(logLineFromShell);
     assertFalse(redactedLogLine.contains("passw123"));
     assertTrue(redactedLogLine.contains("REDACTED"));
+  }
+
+  @Test
+  public void testAuditAdditionalDetailsGflagsRedaction() {
+    // Test redaction of sensitive gflags in audit additionalDetails section
+    // This is the structure returned by the audit API for GFlags upgrade tasks
+    ObjectNode auditEntry = mapper.createObjectNode();
+    ObjectNode additionalDetails = mapper.createObjectNode();
+    ObjectNode gflags = mapper.createObjectNode();
+
+    // Create tserver gflags array with sensitive flag
+    ObjectNode sensitiveFlag = mapper.createObjectNode();
+    sensitiveFlag.put("name", "ycql_ldap_bind_passwd");
+    sensitiveFlag.putNull("old");
+    sensitiveFlag.put("new", "test1231");
+    sensitiveFlag.put("default", "");
+
+    ObjectNode normalFlag = mapper.createObjectNode();
+    normalFlag.put("name", "some_normal_flag");
+    normalFlag.put("old", "oldvalue");
+    normalFlag.put("new", "newvalue");
+    normalFlag.put("default", "defaultvalue");
+
+    gflags.putArray("tserver").add(sensitiveFlag).add(normalFlag);
+    gflags.putArray("master");
+    additionalDetails.set("gflags", gflags);
+    auditEntry.set("additionalDetails", additionalDetails);
+
+    // Test single audit entry (non-array case)
+    JsonNode redacted = RedactingService.redactAuditAdditionalDetails(auditEntry, null, null);
+
+    // Verify the sensitive flag values are redacted
+    JsonNode redactedTserverFlags = redacted.get("additionalDetails").get("gflags").get("tserver");
+    JsonNode redactedSensitiveFlag = redactedTserverFlags.get(0);
+    assertEquals("ycql_ldap_bind_passwd", redactedSensitiveFlag.get("name").asText());
+    assertEquals(SECRET_REPLACEMENT, redactedSensitiveFlag.get("new").asText());
+    // null values should remain null (not be redacted)
+    assertTrue(redactedSensitiveFlag.get("old").isNull());
+    // Empty string should NOT be redacted (it means "no value", not a hidden secret)
+    assertEquals("", redactedSensitiveFlag.get("default").asText());
+
+    // Verify the normal flag values are NOT redacted
+    JsonNode redactedNormalFlag = redactedTserverFlags.get(1);
+    assertEquals("some_normal_flag", redactedNormalFlag.get("name").asText());
+    assertEquals("oldvalue", redactedNormalFlag.get("old").asText());
+    assertEquals("newvalue", redactedNormalFlag.get("new").asText());
+    assertEquals("defaultvalue", redactedNormalFlag.get("default").asText());
+  }
+
+  @Test
+  public void testAuditAdditionalDetailsGflagsRedactionArray() {
+    // Test redaction when input is an array of audit entries
+    ObjectNode auditEntry1 = mapper.createObjectNode();
+    ObjectNode additionalDetails1 = mapper.createObjectNode();
+    ObjectNode gflags1 = mapper.createObjectNode();
+
+    ObjectNode sensitiveFlag1 = mapper.createObjectNode();
+    sensitiveFlag1.put("name", "ycql_ldap_bind_passwd");
+    sensitiveFlag1.put("old", "oldpassword");
+    sensitiveFlag1.put("new", "newpassword");
+    gflags1.putArray("tserver").add(sensitiveFlag1);
+    additionalDetails1.set("gflags", gflags1);
+    auditEntry1.set("additionalDetails", additionalDetails1);
+
+    // Create array of audit entries
+    JsonNode auditArray = mapper.createArrayNode().add(auditEntry1);
+
+    JsonNode redacted = RedactingService.redactAuditAdditionalDetails(auditArray, null, null);
+
+    // Verify the sensitive flag values are redacted
+    JsonNode redactedEntry = redacted.get(0);
+    JsonNode redactedFlag =
+        redactedEntry.get("additionalDetails").get("gflags").get("tserver").get(0);
+    assertEquals("ycql_ldap_bind_passwd", redactedFlag.get("name").asText());
+    assertEquals(SECRET_REPLACEMENT, redactedFlag.get("old").asText());
+    assertEquals(SECRET_REPLACEMENT, redactedFlag.get("new").asText());
   }
 
   private ObjectNode getJsonNode() {

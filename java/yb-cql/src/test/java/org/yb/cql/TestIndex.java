@@ -2704,4 +2704,78 @@ public class TestIndex extends BaseCQLTest {
 
     session.execute("create index i1 on test_create_index (s1)");
   }
+
+  public int doCreateDropCreateTable() throws Exception {
+    // We need >3 tservers for the test.
+    int expectedTServers = miniCluster.getTabletServers().size() + 2;
+    miniCluster.startTServer(getTServerFlags());
+    miniCluster.startTServer(getTServerFlags());
+    assertTrue(miniCluster.waitForTabletServers(expectedTServers));
+
+    session.execute("create table test_tbl (h int primary key, a int, b float) " +
+                    "with transactions = { 'enabled' : true }");
+    session.execute("create index on test_tbl(a) ");
+    for (int i = 1; i <= 1000; ++i) {
+      session.execute("insert into test_tbl (h, a, b) values" +
+                      " (" + String.valueOf(i) +                     // h
+                      ", " + String.valueOf(100 + i) +               // a
+                      ", " + String.valueOf(2.14 + (float)i) + ")"); // b
+    }
+
+    session.execute("drop table test_tbl");
+    session.execute("create table test_tbl (h int primary key, a int, b float) " +
+                    "with transactions = { 'enabled' : true }");
+    session.execute("create index on test_tbl(a) ");
+    Thread.sleep(1000); // Let index backfilling finish.
+    return expectedTServers;
+  }
+
+  @Test
+  public void testDropCreateTable() throws Exception {
+    int numTServers = doCreateDropCreateTable();
+    // Test the index 'test_tbl_a_idx' against all TSes twice.
+    for (int i = 1; i <= 2*numTServers; ++i) {
+      // This SELECT statement returns expected empty result. It should not fail.
+      assertQuery("select a from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where a=1", "");
+    }
+  }
+
+  @Test
+  public void testDropCreateTableWithOrderBy() throws Exception {
+    int numTServers = doCreateDropCreateTable();
+    // Test the index 'test_tbl_a_idx' against all TSes twice.
+    for (int i = 1; i <= 2*numTServers; ++i) {
+      // This SELECT statement should return the error. It should not crash.
+      runInvalidStmt(
+          "select a from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where a=1 ORDER BY a ASC",
+          "Order by clause should only contain clustering columns");
+    }
+  }
+
+  @Test
+  public void testTruncate() throws Exception {
+    session.execute("create table test_tbl (k int primary key, v int) " +
+                    "with transactions = {'enabled' : true} and tablets = 1;");
+    for (int i = 1; i <= 9; ++i) {
+      session.execute("create index test_tbl_idx" + String.valueOf(i) +
+                      " on test_tbl(v) with tablets = 32;");
+    }
+
+    waitForReadPermsOnAllIndexes("test_tbl");
+
+    for (int i = 1; i <= 1000; ++i) {
+      session.execute("insert into test_tbl (k, v) values" +
+                      " (" + String.valueOf(i) +             // k
+                      ", " + String.valueOf(100 + i) + ")"); // v
+    }
+
+    session.execute("truncate table test_tbl");
+
+    // Verify the rows.
+    for (int i = 9; i >= 1; --i) {
+      assertQuery("select count(*) from test_tbl_idx" + String.valueOf(i), "Row[0]");
+    }
+
+    assertQuery("select count(*) from test_tbl", "Row[0]");
+  }
 }

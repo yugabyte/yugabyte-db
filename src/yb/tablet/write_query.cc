@@ -98,7 +98,7 @@ namespace {
 // Separate Redis / QL / row operations write batches from write_request in preparation for the
 // write transaction. Leave just the tablet id behind. Return Redis / QL / row operations, etc.
 // in batch_request.
-void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB* out_request) {
+void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWritePB* out_request) {
   out_request->ref_unused_tablet_id(""); // Backward compatibility.
   auto& out_write_batch = *out_request->mutable_write_batch();
   if (client_request.has_write_batch()) {
@@ -184,8 +184,8 @@ void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_ba
 // When reset_ops is true, the operations in the provided 'doc_ops' are reset with the current
 // schema version.
 Status CqlPopulateDocOps(
-    const TabletPtr& tablet, const tserver::WriteRequestPB* client_request,
-    docdb::DocOperations* doc_ops, tserver::WriteResponsePB* resp, bool reset_ops = false) {
+    const TabletPtr& tablet, const tserver::WriteRequestMsg* client_request,
+    docdb::DocOperations* doc_ops, tserver::WriteResponseMsg* resp, bool reset_ops = false) {
   const auto& ql_write_batch = client_request->ql_write_batch();
   doc_ops->reserve(ql_write_batch.size());
 
@@ -226,7 +226,7 @@ WriteQuery::WriteQuery(
     WriteQueryContext* context,
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
-    tserver::WriteResponsePB* response)
+    tserver::WriteResponseMsg* response)
     : tablet_(tablet),
       operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
@@ -362,13 +362,13 @@ WriteQuery::~WriteQuery() {
   }
 }
 
-void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
+void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestMsg> req) {
   client_request_ = &req.get();
   read_time_ = ReadHybridTime::FromReadTimePB(req.get());
   allow_immediate_read_restart_ = !read_time_;
 }
 
-void WriteQuery::set_client_request(std::unique_ptr<tserver::WriteRequestPB> req) {
+void WriteQuery::set_client_request(std::unique_ptr<tserver::WriteRequestMsg> req) {
   set_client_request(*req);
   client_request_holder_ = std::move(req);
 }
@@ -442,6 +442,8 @@ void WriteQuery::InvokeCallback(const Status& status) {
 }
 
 void WriteQuery::ExecuteDone(const Status& status) {
+  VLOG_WITH_FUNC(4) << "status: " << status;
+
   docdb_locks_ = std::move(prepare_result_.lock_batch);
   scoped_read_operation_.Reset();
   // Reset request_scope_ using RAII here to prevent it from blocking transaction cleanup.
@@ -544,7 +546,7 @@ Result<bool> WriteQuery::SimplePrepareExecute() {
 Result<bool> WriteQuery::CqlRePrepareExecuteIfNecessary() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   auto& metadata = *tablet->metadata();
-  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+  VLOG_WITH_FUNC(2) << "Schema version for " << metadata.table_name() << ": "
                     << metadata.primary_table_schema_version();
   // Check if the schema version set in client_request_->ql_write_batch() is compatible with
   // the current schema pointed to by the tablet's metadata.
@@ -583,7 +585,7 @@ Result<bool> WriteQuery::CqlPrepareExecute() {
   RETURN_NOT_OK(InitExecute(ExecuteMode::kCql));
 
   auto& metadata = *tablet->metadata();
-  VLOG_WITH_FUNC(2) << "Schema version for  " << metadata.table_name() << ": "
+  VLOG_WITH_FUNC(2) << "Schema version for " << metadata.table_name() << ": "
                     << metadata.primary_table_schema_version();
 
   if (!VERIFY_RESULT(CqlCheckSchemaVersion())) {
@@ -615,7 +617,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   bool colocated = metadata.colocated() || tablet->is_sys_catalog();
 
   for (const auto& req : pgsql_write_batch) {
-    PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
+    auto* resp = response_->add_pgsql_response_batch();
     // Table-level tombstones should not be requested for non-colocated tables.
     if ((req.stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) && !colocated) {
       LOG(WARNING) << "cannot create table-level tombstone for a non-colocated table";
@@ -662,16 +664,16 @@ Result<bool> WriteQuery::PgsqlPrepareLock() {
   doc_ops_.reserve(pgsql_lock_batch.size());
 
   TransactionOperationContext txn_op_ctx;
-  VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().DebugString();
+  VLOG_WITH_FUNC(2) << "transaction=" << write_batch.transaction().ShortDebugString();
   for (const auto& req : pgsql_lock_batch) {
-    VLOG_WITH_FUNC(4) << req.DebugString();
+    VLOG_WITH_FUNC(4) << req.ShortDebugString();
     if (doc_ops_.empty()) {
       txn_op_ctx = VERIFY_RESULT(tablet->CreateTransactionOperationContext(
           write_batch.transaction(),
           /* is_ysql_catalog_table */ false,
           &write_batch.subtransaction()));
     }
-    PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
+    auto* resp = response_->add_pgsql_response_batch();
     auto lock_op = std::make_unique<docdb::PgsqlLockOperation>(
         req,
         txn_op_ctx);
@@ -717,6 +719,8 @@ void WriteQuery::Execute(std::unique_ptr<WriteQuery> query) {
   query_ptr->self_ = std::move(query);
 
   auto prepare_result = query_ptr->PrepareExecute();
+  VLOG_WITH_FUNC(4)
+      << "Request: " << AsString(query_ptr->client_request_) << ", result: " << prepare_result;
 
   if (!prepare_result.ok()) {
     query_ptr->ExecuteDone(prepare_result.status());
@@ -1108,6 +1112,8 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
       doc_op->ClearResponse();
     }
   }
+  VLOG_WITH_FUNC(4)
+      << "Write batch: " << AsString(write_batch) << ", doc ops: " << AsString(doc_ops_);
 
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
@@ -1195,6 +1201,7 @@ Result<bool> WriteQuery::CqlCheckSchemaVersion() {
     if (!CheckSchemaVersion(
             table_info.get(), req.schema_version(), req.is_compatible_with_previous_version(),
             error_code, index, &resp_batch)) {
+      VLOG_WITH_FUNC(4) << "Schema version mismatch for: " << AsString(req);
       ++num_mismatches;
     }
     ++index;
@@ -1313,7 +1320,7 @@ struct UpdateQLIndexesTask {
   client::YBClient* client = nullptr;
   client::YBTransactionPtr txn;
   client::YBSessionPtr session;
-  const ChildTransactionDataPB* child_transaction_data = nullptr;
+  const ChildTransactionDataMsg* child_transaction_data = nullptr;
   client::YBMetaDataCache* metadata_cache;
 
   std::mutex mutex;
@@ -1372,7 +1379,7 @@ struct UpdateQLIndexesTask {
   }
 
   void TableResolved(
-      QLWriteRequestPB* index_request, docdb::QLWriteOperation* write_op,
+      QLWriteRequestMsg* index_request, docdb::QLWriteOperation* write_op,
       const Result<client::GetTableResult>& index_table) {
     if (!index_table.ok()) {
       std::lock_guard lock(mutex);
@@ -1578,7 +1585,7 @@ void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
   }
 }
 
-std::pair<PgsqlResponsePB*, PgsqlMetricsCaptureType>
+std::pair<PgsqlResponseMsg*, PgsqlMetricsCaptureType>
     WriteQuery::GetPgsqlResponseAndMetricsCapture() const {
   if (!pgsql_write_ops_.empty()) {
     auto& write_op = pgsql_write_ops_.at(0);

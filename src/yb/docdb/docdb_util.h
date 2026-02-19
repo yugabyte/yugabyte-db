@@ -38,11 +38,15 @@ extern const std::string kIntentsDirName;
 extern const std::string kSnapshotsDirName;
 
 Status SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value,
-    const int pg_data_type,
+    const QLValuePB& ql_value, int pg_data_type,
     const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
     const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map,
-    DatumMessagePB* cdc_datum_message = NULL);
+    DatumMessagePB& datum_message);
+
+Result<std::string> QLBinaryWrapperToString(
+    const QLValuePB& ql_value, int pg_data_type,
+    const std::unordered_map<uint32_t, std::string>& enum_oid_label_map,
+    const std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>& composite_atts_map);
 
 void DeleteMemoryContextForCDCWrapper();
 
@@ -328,6 +332,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 std::string GetStorageDir(const std::string& data_dir, const std::string& storage);
 std::string GetStorageCheckpointDir(const std::string& data_dir, const std::string& storage);
 std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options);
+std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options);
 
 Status MoveChild(Env& env, const std::string& data_dir, const std::string& child);
 Status MoveChildren(Env& env, const std::string& db_dir, IncludeIntents include_intents);

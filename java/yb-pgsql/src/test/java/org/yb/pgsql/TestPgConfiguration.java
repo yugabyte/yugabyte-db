@@ -310,14 +310,11 @@ public class TestPgConfiguration extends BasePgSQLTest {
       );
 
       // Root setting value was set properly, but was overridden by JDBC client.
-      // With YSQL Connection Manager, certain SET statements are executed before the transaction
-      // begins. This causes changing the "source" value of the TimeZone session parameter
-      // in pg_settings.
 
       assertQuery(
           statement,
           "SELECT source, boot_val FROM pg_settings WHERE name='TimeZone'",
-          new Row(isTestRunningWithConnectionManager() ? "session":"client", "GMT")
+          new Row("client", "GMT")
       );
     }
   }

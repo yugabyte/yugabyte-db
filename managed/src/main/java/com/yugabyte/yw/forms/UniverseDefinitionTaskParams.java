@@ -1680,6 +1680,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     this.clientRootCA = clientRootCA;
   }
 
+  @JsonIgnore
   public UUID getRawClientRootCA() {
     return clientRootCA;
   }

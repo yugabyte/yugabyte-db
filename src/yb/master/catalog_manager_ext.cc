@@ -20,7 +20,6 @@
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -52,9 +51,11 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -66,7 +67,6 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
@@ -144,6 +144,11 @@ DEFINE_RUNTIME_bool(
 DEFINE_RUNTIME_AUTO_bool(
     enable_export_snapshot_using_relfilenode, kExternal, false, true,
     "Enable exporting snapshots with the new format version = 3 that uses relfilenodes.");
+
+DECLARE_bool(enable_ysql);
+DECLARE_string(initial_sys_catalog_snapshot_path);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+
 namespace yb {
 
 using google::protobuf::RepeatedPtrField;
@@ -708,6 +713,29 @@ Status CatalogManager::RepackSnapshotsForBackup(
             }
           }
           pg_schema_name_to_set = pg_schema_name;
+
+          // Repair schema version skew between the snapshotted SysTablesEntryPB and the current
+          // in-memory state. The snapshot coordinator may have captured an older schema version
+          // for the table while tablets later advanced to a newer version due to an ALTER TABLE
+          // that raced with CREATE_ON_TABLET snapshot operations. At restore time, we rely on
+          // the invariant that the latest schema version in the snapshot is at least as large as
+          // the schema versions persisted on tablets. To restore this invariant for backups, if
+          // the in-memory schema version is greater than the snapshotted version, override the
+          // version fields in the snapshotted SysTablesEntryPB.
+          SysTablesEntryPB snapshotted_table_pb =
+              VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
+          const auto current_version = l->pb.version();
+          const auto snapshotted_version = snapshotted_table_pb.version();
+          if (current_version > snapshotted_version) {
+            LOG(INFO) << Format(
+                "Overriding snapshotted schema version for table $0 from $1 to $2 "
+                "during snapshot repack for backup",
+                table_info->id(), snapshotted_version, current_version);
+            snapshotted_table_pb.set_version(current_version);
+            std::string serialized;
+            snapshotted_table_pb.AppendToString(&serialized);
+            entry.set_data(serialized);
+          }
         }
       } else if (!tables_to_skip.empty() && entry.type() == SysRowEntryType::TABLET) {
         // Note: Ordering here is important, we expect tablet entries only after their table entry.
@@ -761,70 +789,10 @@ Status CatalogManager::RestoreSnapshot(
   }
   LOG(INFO)
       << "Servicing RestoreSnapshot request: " << txn_snapshot_id
-      << (ht ? Format(" to restore to time ", ht) : "");
+      << (ht ? Format(" to restore to time $0 ", ht) : "");
   TxnSnapshotRestorationId id = VERIFY_RESULT(
       master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
   resp->set_restoration_id(id.data(), id.size());
-  return Status::OK();
-}
-
-Status CatalogManager::RestoreEntry(
-    const SysRowEntry& entry, const SnapshotId& snapshot_id, const LeaderEpoch& epoch) {
-  switch (entry.type()) {
-    case SysRowEntryType::NAMESPACE: { // Restore NAMESPACES.
-      TRACE("Looking up namespace");
-      scoped_refptr<NamespaceInfo> ns = FindPtrOrNull(namespace_ids_map_, entry.id());
-      if (ns == nullptr) {
-        // Restore Namespace.
-        // TODO: implement
-        LOG(INFO) << "Restoring: NAMESPACE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring namespace: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLE: { // Restore TABLES.
-      TRACE("Looking up table");
-      scoped_refptr<TableInfo> table = tables_->FindTableOrNull(entry.id());
-      if (table == nullptr) {
-        // Restore Table.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLE id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring table: id=$0", entry.type()));
-      }
-      break;
-    }
-    case SysRowEntryType::TABLET: { // Restore TABLETS.
-      TRACE("Looking up tablet");
-      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
-      if (tablet == nullptr) {
-        // Restore Tablet.
-        // TODO: implement
-        LOG(INFO) << "Restoring: TABLET id = " << entry.id();
-
-        return STATUS(NotSupported, Substitute(
-            "Not implemented: restoring tablet: id=$0", entry.type()));
-      } else {
-        TRACE("Locking tablet");
-        auto l = tablet->LockForRead();
-
-        LOG(INFO) << "Sending RestoreTabletSnapshot to tablet: " << tablet->ToString();
-        // Send RestoreSnapshot requests to all TServers (one tablet - one request).
-        auto task = CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET,
-            epoch, TabletSnapshotOperationCallback());
-        ScheduleTabletSnapshotOp(task);
-      }
-      break;
-    }
-    default:
-      return STATUS_FORMAT(
-          InternalError, "Unexpected entry type in the snapshot: $0", entry.type());
-  }
-
   return Status::OK();
 }
 
@@ -3177,6 +3145,7 @@ void CatalogManager::CleanupHiddenTables(
   }
 
   std::vector<TableInfoPtr> expired_tables;
+  std::unordered_set<TableId> expired_table_ids;
   for (auto& table : tables) {
     if (table->IsSecondaryTable()) {
       // Table is colocated or a vector index and still registered with its hosting tablet(s).
@@ -3187,10 +3156,12 @@ void CatalogManager::CleanupHiddenTables(
     if (table->IsHiddenButNotDeleting()) {
       auto tablets_deleted_result = table->AreAllTabletsDeleted();
       if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_table_ids.insert(table->id());
         expired_tables.push_back(std::move(table));
       }
     }
   }
+
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
   // acquisition order for tables.
   std::sort(
@@ -3224,6 +3195,19 @@ void CatalogManager::CleanupHiddenTables(
   }
   for (auto& lock : locks) {
     lock.Commit();
+  }
+
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    // A hidden table, with all the tablets deleted can be removed from the stream metadata of
+    // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
+    // task will remove the tables from such streams' metadata.
+    Status s = DropCDCSDKStreams(expired_table_ids);
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Failed to mark CDC streams as DELETING_METADATA for expired tables: "
+          << AsString(expired_table_ids) << ", Status: " << s;
+      return;
+    }
   }
 }
 
@@ -3314,7 +3298,9 @@ Status CatalogManager::RestoreSnapshotSchedule(
   auto deadline = rpc->GetClientDeadline();
 
   RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
-
+  LOG(INFO)
+      << "Servicing RestoreSnapshotSchedule request. id: " << id
+      << " restore_ht: " << ht;
   return master_->snapshot_coordinator().RestoreSnapshotSchedule(
       id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3510,6 +3496,21 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   restoring_sys_catalog_ = true;
   sys_catalog_->IncrementPitrCount();
+}
+
+Status CatalogManager::GetYsqlYbSystemTableInfo(
+    const GetYsqlYbSystemTableInfoRequestPB* req, GetYsqlYbSystemTableInfoResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  DCHECK(req->has_namespace_oid());
+  DCHECK(req->has_table_name());
+
+  PgOid oid = kPgInvalidOid;
+  PgOid relfilenode = kPgInvalidOid;
+  RETURN_NOT_OK(sys_catalog_->GetYsqlYbSystemTableInfo(
+      req->namespace_oid(), req->table_name(), &oid, &relfilenode));
+  resp->set_table_oid(oid);
+  resp->set_relfilenode(relfilenode);
+  return Status::OK();
 }
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(

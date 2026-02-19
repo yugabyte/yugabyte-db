@@ -1022,6 +1022,7 @@ typedef struct PLpgSQL_function
 	/* YB */
 	uint64		yb_catalog_version; /* Catalog version when this function was
 									 * compiled */
+	bool		yb_invalid; /* this function is now invalid */
 } PLpgSQL_function;
 
 /*

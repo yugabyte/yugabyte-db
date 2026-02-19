@@ -23,6 +23,9 @@ export const CPU_ARCHITECTURE_FIELD = 'arch';
 export const MASTER_PLACEMENT_FIELD = 'masterPlacement';
 export const MASTER_TSERVER_SAME_FIELD = 'keepMasterTserverSame';
 
+export const ENABLE_EBS_CONFIG_FIELD = 'enableEbsVolumeEncryption';
+export const EBS_KMS_CONFIG_FIELD = 'ebsKmsConfigUUID';
+
 export const ENABLE_PROXY_SERVER_FIELD = 'enableProxyServer';
 export const SECURE_WEB_PROXY_FIELD = 'secureWebProxy';
 export const SECURE_WEB_PROXY_SERVER_FIELD = 'secureWebProxyServer';

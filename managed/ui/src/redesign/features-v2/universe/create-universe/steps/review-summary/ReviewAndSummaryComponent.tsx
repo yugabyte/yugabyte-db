@@ -10,7 +10,9 @@ import {
   YBMaps
 } from '@yugabyte-ui-library/core';
 import { Region } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { ReactComponent as Money } from '../../../../../assets/money.svg';
+
+//icons
+import Money from '../../../../../assets/money.svg';
 
 const { styled } = mui;
 

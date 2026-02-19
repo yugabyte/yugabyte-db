@@ -23,10 +23,12 @@ test: yb.orig.saop_merge_setup
 # This test reads r5n.
 test: yb.orig.saop_merge_temp
 
-# These tests touch different tables.
+# These tests each touch different tables.
 test: yb.orig.saop_merge_range
 test: yb.orig.saop_merge_hash
 test: yb.orig.saop_merge_partition
+test: yb.orig.saop_merge_colocated
 
-# This test touches all tables.
+# These tests touch multiple tables.
 test: yb.orig.saop_merge_join
+test: yb.orig.saop_merge_derive

@@ -22,7 +22,7 @@ xCluster Replication is an asynchronous replication feature in YugabyteDB that a
 
 ![xCluster asynchronous replication](/images/architecture/replication/active-standby-deployment-new.png)
 
-You can use xCluster Replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions available, or the higher write latency of a [global database](/preview/develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. xCluster Disaster Recovery (DR) adds high-level orchestration workflows to xCluster Replication to make end-to-end setup, switchover, and failover for disaster recovery simple and turnkey. For more details on using xCluster for disaster recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
+You can use xCluster Replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions available, or the higher write latency of a [global database](/stable/develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. xCluster Disaster Recovery (DR) adds high-level orchestration workflows to xCluster Replication to make end-to-end setup, switchover, and failover for disaster recovery simple and turnkey. For more details on using xCluster for disaster recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
 xCluster Replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB universes used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB universe.
 
@@ -30,8 +30,8 @@ You can use YugabyteDB Anywhere to set up xCluster Replication, monitor the stat
 
 - For more information on how YugabyteDB xCluster Replication works, see [xCluster Replication architecture](../../../architecture/docdb-replication/async-replication/).
 - For a comparison between xCluster DR and xCluster Replication in YugabyteDB Anywhere, see [xCluster DR vs xCluster Replication](../../back-up-restore-universes/disaster-recovery/#xcluster-dr-vs-xcluster-replication).
-- For an example of unidirectional (master-follower) xCluster Replication, see [Active-active single-master](/preview/develop/build-global-apps/active-active-single-master/).
-- For an example of bidirectional (multi-master) xCluster Replication, see [Active-active multi-master](/preview/develop/build-global-apps/active-active-multi-master/).
+- For an example of unidirectional (master-follower) xCluster Replication, see [Active-active single-master](/stable/develop/build-global-apps/active-active-single-master/).
+- For an example of bidirectional (multi-master) xCluster Replication, see [Active-active multi-master](/stable/develop/build-global-apps/active-active-multi-master/).
 
 ## xCluster configurations
 

@@ -5,8 +5,6 @@
 package slack
 
 import (
-	"strings"
-
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/alert/channel/channelutil"
@@ -62,7 +60,7 @@ var updateSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(newName)) > 0 {
+		if !util.IsEmptyString(newName) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel name\n")
 			alert.SetName(newName)
@@ -72,7 +70,7 @@ var updateSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(username)) > 0 {
+		if !util.IsEmptyString(username) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel username\n")
 			params.SetUsername(username)
@@ -82,7 +80,7 @@ var updateSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(webhookURL)) > 0 {
+		if !util.IsEmptyString(webhookURL) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel webhook URL\n")
 			params.SetWebhookUrl(webhookURL)
@@ -92,7 +90,7 @@ var updateSlackChannelAlertCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(strings.TrimSpace(iconURL)) > 0 {
+		if !util.IsEmptyString(iconURL) {
 			hasUpdates = true
 			logrus.Debug("Updating alert channel icon URL\n")
 			params.SetIconUrl(iconURL)

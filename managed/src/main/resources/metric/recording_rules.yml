@@ -199,20 +199,56 @@ groups:
         labels:
           saved_name: process_user_cpu_seconds_rate
 
+      - record: process_user_cpu_seconds_rate
+        expr: 'sum without (process) (rate(yb_process_cpu_seconds_total{type="user"}[120s]))'
+        labels:
+          saved_name: process_user_cpu_seconds_rate
+          process: total_count
+
       - record: process_system_cpu_seconds_rate
         expr: 'rate(yb_process_cpu_seconds_total{type="system"}[120s])'
         labels:
           saved_name: process_system_cpu_seconds_rate
+
+      - record: process_system_cpu_seconds_rate
+        expr: 'sum without (process) (rate(yb_process_cpu_seconds_total{type="system"}[120s]))'
+        labels:
+          saved_name: process_system_cpu_seconds_rate
+          process: total_count
 
       - record: process_io_read_rate
         expr: 'rate(yb_process_io_kb_total{type="read"}[120s])'
         labels:
           saved_name: process_io_read_rate
 
+      - record: process_io_read_rate
+        expr: 'sum without (process) (rate(yb_process_io_kb_total{type="read"}[120s]))'
+        labels:
+          saved_name: process_io_read_rate
+          process: total_count
+
       - record: process_io_write_rate
         expr: 'rate(yb_process_io_kb_total{type="write"}[120s])'
         labels:
           saved_name: process_io_write_rate
+
+      - record: process_io_write_rate
+        expr: 'sum without (process) (rate(yb_process_io_kb_total{type="write"}[120s]))'
+        labels:
+          saved_name: process_io_write_rate
+          process: total_count
+
+      - record: yb_process_memory_kb
+        expr: 'sum without (process) (yb_process_memory_kb{process!~"total_count"})'
+        labels:
+          saved_name: yb_process_memory_kb
+          process: total_count
+
+      - record: yb_process_open_files
+        expr: 'sum without (process) (yb_process_open_files{process!~"total_count"})'
+        labels:
+          saved_name: yb_process_open_files
+          process: total_count
 
       - record: ysql_conn_mgr_clients_total
         expr: 'sum without (saved_name) (avg_over_time({saved_name=~"ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_waiting_clients"}[30s]))'

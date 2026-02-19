@@ -159,8 +159,7 @@ class TSCallExecutor {
     return Status::OK();
   }
 
-  Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+  Result<bool> Exec(const dockv::PgTableRow& row, DocPgExprExecutor::Results* results) {
     // early exit if there are no operations to process
     if(where_clause_.empty() && targets_.empty()) {
       return true;
@@ -256,7 +255,7 @@ class TSCallExecutor {
     return true;
   }
 
-  Status EvalTargetExprCalls(std::vector<qlexpr::QLExprResult>* results) {
+  Status EvalTargetExprCalls(DocPgExprExecutor::Results* results) {
     results->reserve(targets_.size());
     for (const auto& target : targets_) {
       auto [datum, is_null] = VERIFY_RESULT(DocPgEvalExpr(target.first, expr_ctx_));
@@ -343,7 +342,7 @@ class DocPgExprExecutor::State {
   }
 
   Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+      const dockv::PgTableRow& row, Results* results) {
     return (!condition_filter_ || VERIFY_RESULT(condition_filter_->IsMatch(row))) &&
            (!tscall_executor_ || VERIFY_RESULT(tscall_executor_->Exec(row, results)));
   }
@@ -390,8 +389,7 @@ DocPgExprExecutor::DocPgExprExecutor(std::unique_ptr<State> state)
 
 DocPgExprExecutor::~DocPgExprExecutor() = default;
 
-Result<bool> DocPgExprExecutor::Exec(
-    const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results) {
+Result<bool> DocPgExprExecutor::Exec(const dockv::PgTableRow& row, Results* results) {
   return state_->Exec(row, results);
 }
 

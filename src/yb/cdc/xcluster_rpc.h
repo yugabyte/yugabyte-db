@@ -20,6 +20,8 @@
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc.h"
 
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -43,7 +45,9 @@ class GetCompatibleSchemaVersionResponsePB;
 
 namespace rpc::xcluster {
 
-typedef std::function<void(const Status&, tserver::WriteResponsePB&&)> XClusterWriteCallback;
+using XClusterWriteCallback = std::function<
+    void(const Status&, std::shared_ptr<tserver::WriteResponseMsg>)>;
+
 typedef std::function<void(
     const Status&, tserver::GetCompatibleSchemaVersionRequestPB&&,
     tserver::GetCompatibleSchemaVersionResponsePB&&)>
@@ -56,7 +60,8 @@ typedef std::function<void(
 MUST_USE_RESULT rpc::RpcCommandPtr CreateXClusterWriteRpc(
     CoarseTimePoint deadline, client::internal::RemoteTablet* tablet,
     const std::shared_ptr<client::YBTable>& table, client::YBClient* client,
-    tserver::WriteRequestPB* req, XClusterWriteCallback callback, bool use_local_tserver);
+    std::shared_ptr<tserver::WriteRequestMsg> req, XClusterWriteCallback callback,
+    bool use_local_tserver);
 
 MUST_USE_RESULT rpc::RpcCommandPtr CreateGetCompatibleSchemaVersionRpc(
     CoarseTimePoint deadline, client::internal::RemoteTablet* tablet, client::YBClient* client,

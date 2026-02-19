@@ -24,11 +24,10 @@
 #include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_tools.h"
-#include "yb/yql/pggate/pg_ybctid_reader_provider.h"
+#include "yb/yql/pggate/pg_ybctid_reader.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
-
 namespace {
 
 template<class Container, class Key>
@@ -43,9 +42,8 @@ void Erase(Container& container, const Key& key) {
 
 class PgFKReferenceCache::Impl {
  public:
-  Impl(YbctidReaderProvider& reader_provider, const BufferingSettings& buffering_settings)
-      : reader_provider_(reader_provider), buffering_settings_(buffering_settings) {
-  }
+  Impl(const PgSessionPtr& pg_session, const BufferingSettings& buffering_settings)
+      : ybctid_reader_(pg_session), buffering_settings_(buffering_settings) {}
 
   void Clear() {
     references_.clear();
@@ -126,18 +124,17 @@ class PgFKReferenceCache::Impl {
   Status ReadBatch(
       PgOid database_id, const MemoryOptimizedTableYbctidSet::iterator& mandatory_intent_it) {
     DCHECK(!intents_->empty() && mandatory_intent_it != intents_->end());
-    auto reader = reader_provider_();
     const auto read_count_limit =
         std::min<size_t>(intents_->size(), buffering_settings_.max_batch_size);
-    reader.Reserve(read_count_limit);
-    reader.Add(*mandatory_intent_it);
+    auto batch = ybctid_reader_.StartNewBatch(read_count_limit);
+    batch.Add(*mandatory_intent_it);
     size_t requested_read_count = 1;
 
     auto it = intents_->begin();
     auto* mandatory_intent_it_ptr_for_separate_handling = &mandatory_intent_it;
     for (auto end = intents_->end(); it != end && requested_read_count < read_count_limit; ++it) {
       if (it != mandatory_intent_it) {
-        reader.Add(*it);
+        batch.Add(*it);
         ++requested_read_count;
       } else {
         mandatory_intent_it_ptr_for_separate_handling = nullptr;
@@ -151,7 +148,7 @@ class PgFKReferenceCache::Impl {
             intents_->erase(*mandatory_intent_it_ptr_for_separate_handling);
           }
     });
-    const auto ybctids = VERIFY_RESULT(reader.Read(
+    const auto ybctids = VERIFY_RESULT(batch.Read(
         database_id, table_locality_map_,
         make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
     // In case all FK has been read successfully it is reasonable to move requested intents into
@@ -176,7 +173,7 @@ class PgFKReferenceCache::Impl {
     return intents_ == &deferred_intents_;
   }
 
-  YbctidReaderProvider& reader_provider_;
+  YbctidReader ybctid_reader_;
   const BufferingSettings& buffering_settings_;
   MemoryOptimizedTableYbctidSet references_;
   MemoryOptimizedTableYbctidSet regular_intents_;
@@ -187,9 +184,9 @@ class PgFKReferenceCache::Impl {
 };
 
 PgFKReferenceCache::PgFKReferenceCache(
-    YbctidReaderProvider& reader_provider,
+    const PgSessionPtr& pg_session,
     std::reference_wrapper<const BufferingSettings> buffering_settings)
-    : impl_(new Impl(reader_provider, buffering_settings)) {}
+    : impl_(new Impl(pg_session, buffering_settings)) {}
 
 PgFKReferenceCache::~PgFKReferenceCache() = default;
 

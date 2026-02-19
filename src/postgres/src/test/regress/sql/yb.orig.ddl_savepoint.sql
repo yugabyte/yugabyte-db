@@ -176,3 +176,60 @@ ROLLBACK TO SAVEPOINT s1_start;
 INSERT INTO schema_version_mismatch_table (val) VALUES ('f');
 SELECT id FROM schema_version_mismatch_table WHERE val = 'f';
 ROLLBACK;
+
+-- #29881
+CREATE TABLE _33_s_1_data (id INT PRIMARY KEY);
+CREATE TABLE _33_s_1_audit (
+    log_id SERIAL PRIMARY KEY,
+    data_id INT,
+    notes TEXT
+);
+CREATE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V1');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER _33_trig_data
+AFTER INSERT ON _33_s_1_data
+FOR EACH ROW EXECUTE FUNCTION _33_func_audit();
+CREATE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+    INSERT INTO _33_s_1_data (id) VALUES (val);
+$$;
+CALL _33_sp_insert(1);
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+BEGIN;
+SAVEPOINT s1_start;
+CREATE OR REPLACE FUNCTION _33_func_audit() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO _33_s_1_audit (data_id, notes) VALUES (NEW.id, 'V2');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE _33_sp_insert(val INT) LANGUAGE SQL AS $$
+    INSERT INTO _33_s_1_data (id) VALUES (val * 100);
+$$;
+CALL _33_sp_insert(2);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 200;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+SAVEPOINT s2_v2_created;
+DROP TRIGGER _33_trig_data ON _33_s_1_data;
+CALL _33_sp_insert(3);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 300;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+ROLLBACK TO SAVEPOINT s2_v2_created;
+SELECT COUNT(*) FROM pg_trigger WHERE tgname = '_33_trig_data';
+CALL _33_sp_insert(4);
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+ROLLBACK TO SAVEPOINT s1_start;
+SELECT COUNT(*) FROM _33_s_1_data WHERE id > 1;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';
+CALL _33_sp_insert(5);
+SELECT COUNT(*) FROM _33_s_1_data WHERE id = 5;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+select * from _33_s_1_audit;
+select * from _33_s_1_audit;
+COMMIT;
+SELECT id FROM _33_s_1_data ORDER BY id;
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V1';
+SELECT COUNT(*) FROM _33_s_1_audit WHERE notes = 'V2';

@@ -38,6 +38,14 @@ For information on modifying or scaling an existing universe, refer to [Modify u
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
 
+### Configure ClockBound (optional)
+
+{{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy and reduces read-restart errors in YSQL. To enable ClockBound for [cloud provider](../../configure-yugabyte-platform/aws/) universes, set the provider's `yb.provider.configure_clockbound_cloud_provisioning` runtime configuration flag to `true` (before creating the universe). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
+
+ClockBound is supported on AWS and GCP. Azure and Kubernetes deployments are not supported.
+
 ## Create a universe
 
 To create a universe:
@@ -95,8 +103,8 @@ Specify the instance to use for the universe nodes:
 
 #### Additional AWS fields
 
-- Choose the AWS **EBS Type** between IO1, GP2, and GP3.
-- Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
+- Choose the AWS **EBS Type** between IO1, IO2, GP2, and GP3.
+- Specify the **Provisioned IOPS** (IO1, IO2, and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
 - {{<tags/feature/ea idea="2329">}}Enable **EBS Volume Encryption** (AWS only) to create a universe with AWS EBS volume-level encryption, using a custom AWS Key Management Service (KMS) configuration.
 
   Select the **Key Management Service Config** you created. See [Create a KMS configuration](../../security/create-kms-config/aws-kms/#create-a-kms-configuration).
@@ -156,10 +164,10 @@ Enhanced Postgres Compatibility
 : For new universes running v2025.2 or later, note that the following features are _enabled by default_ when you deploy using YugabyteDB Anywhere:
 
 - [Read committed](../../../architecture/transactions/read-committed/)
-- [Cost based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
+- [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/)
 - [Auto Analyze](../../../additional-features/auto-analyze/)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan)
-- [Parallel query](../../../additional-features/parallel-query/)
+- [Parallel append](../../../additional-features/parallel-query/)
 
 Enable Connection Pooling
 : {{<tags/feature/ea idea="1368">}}If database version is v2024.2 or later, you can enable [Built-in connection pooling](../../../additional-features/connection-manager-ysql/).

@@ -14,6 +14,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -103,6 +105,27 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       setCheckNodesAreSafeToTakeDown(mockClient);
       when(mockGFlagsAuditHandler.constructGFlagAuditPayload(any()))
           .thenReturn(new ObjectMapper().createObjectNode());
+      // CheckNodeDataDirDiskSpace precheck runs df; return sufficient KB so it passes.
+      // CheckNodeCommandExecution runs echo "command-execution-test"; return that output.
+      org.mockito.stubbing.Answer<ShellResponse> runCommandAnswer =
+          inv -> {
+            @SuppressWarnings("unchecked")
+            List<String> cmd = inv.getArgument(2);
+            if (cmd != null && cmd.toString().contains("df")) {
+              return ShellResponse.create(0, "104004792");
+            }
+            if (cmd != null
+                && cmd.toString().contains("echo")
+                && cmd.toString().contains("command-execution-test")) {
+              return ShellResponse.create(
+                  0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + " command-execution-test");
+            }
+            return ShellResponse.create(0, "Command output: Linux x86_64");
+          };
+      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+          .thenAnswer(runCommandAnswer);
+      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), anyBoolean()))
+          .thenAnswer(runCommandAnswer);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -148,6 +171,22 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     MockUpgrade mockUpgrade = initMockUpgrade(GFlagsUpgrade.class);
     mockUpgrade.setUpgradeContext(UpgradeTaskBase.RUN_BEFORE_STOPPING);
     return mockUpgrade;
+  }
+
+  @Override
+  protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    return getPrecheckTasks(hasRollingRestarts, hasRollingRestarts);
+  }
+
+  @Override
+  protected TaskType[] getPrecheckTasks(
+      boolean hasRollingRestarts, boolean includeNodeComprehensivePrechecks) {
+    List<TaskType> types =
+        new ArrayList<>(
+            Arrays.asList(
+                super.getPrecheckTasks(hasRollingRestarts, includeNodeComprehensivePrechecks)));
+    types.add(TaskType.CheckNodeDataDirDiskSpace);
+    return types.toArray(new TaskType[0]);
   }
 
   @Test
@@ -500,7 +539,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
     initMockUpgrade()
         // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(true, changedNodes.size(), getPrecheckTasks(false, true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToCluster(clusterId)
@@ -591,7 +630,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
 
       initMockUpgrade()
           // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
-          .precheckTasks(getPrecheckTasks(false))
+          .precheckTasks(true, changedNodes.size(), getPrecheckTasks(false, true))
           .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
           .task(TaskType.AnsibleConfigureServers)
           .applyToCluster(clusterId)
@@ -871,7 +910,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     }
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(
+            true, az1PrimaryNodeNames.size() + az1RRNodeNames.size(), getPrecheckTasks(true))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToNodes(az1PrimaryNodeNames, az1PrimaryNodeNames)
@@ -1158,10 +1198,31 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
 
     TaskType[] precheckTasks = getPrecheckTasks(true);
-    assertEquals(precheckTasks.length, subTasks.size());
-    int i = 0;
-    for (TaskType precheckTask : precheckTasks) {
-      assertEquals(precheckTask, subTasks.get(i++).getTaskType());
+    // Build expected task counts (when runOnlyPrechecks=true, all tasks are at position 0,
+    // so order may vary - we check counts instead)
+    Map<TaskType, Integer> expectedTaskCounts = new HashMap<>();
+    int nodeCount = defaultUniverse.getUniverseDetails().nodeDetailsSet.size();
+    for (TaskType task : precheckTasks) {
+      if (MockUpgrade.NODE_LEVEL_PRECHECK_TASKS.contains(task)) {
+        expectedTaskCounts.put(task, nodeCount);
+      } else {
+        expectedTaskCounts.put(task, 1);
+      }
+    }
+
+    // Count actual tasks
+    Map<TaskType, Integer> actualTaskCounts = new HashMap<>();
+    for (TaskInfo subTask : subTasks) {
+      actualTaskCounts.merge(subTask.getTaskType(), 1, Integer::sum);
+    }
+
+    // Verify counts match
+    assertEquals(expectedTaskCounts.size(), actualTaskCounts.size());
+    for (Map.Entry<TaskType, Integer> entry : expectedTaskCounts.entrySet()) {
+      assertEquals(
+          "Task count mismatch for " + entry.getKey(),
+          entry.getValue(),
+          actualTaskCounts.getOrDefault(entry.getKey(), 0));
     }
   }
 

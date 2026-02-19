@@ -22,6 +22,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 
@@ -156,6 +157,10 @@ class UsearchIndex :
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
+    static std::once_flag log_once;
+    std::call_once(log_once, [index = &index_]() {
+      LOG(INFO) << "Usearch metric: " << index->metric().isa_name();
+    });
     return Status::OK();
   }
 

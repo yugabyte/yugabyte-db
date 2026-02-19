@@ -49,6 +49,9 @@
       "collapse": "Collapse",
       "formFieldRequired": "Required.",
       "every": "Every",
+      "actions": "Actions",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -330,13 +333,13 @@
         }
       },
       "paUniverseStatus": {
-        "enableTitle": "Enable Perf Advisor",
-        "disableTitle": "Disable Perf Advisor",
-        "enablePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "enablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "disbalePaUniverseSuccess": "Successfully enabled Perf Advisor to the universe",
-        "disablePaUniverseFailure": "Failed to enable Perf Advisor to the universe",
-        "subText": "Are you sure you want to {{action}} Perf Advisor for the universe <strong>{{universeName}}</strong>?"
+        "enableTitle": "Enable Performance Monitoring",
+        "disableTitle": "Disable Performance Monitoring",
+        "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
+        "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
+        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -626,6 +629,7 @@
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
         "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes",
@@ -765,6 +769,7 @@
             "SQLIssue ": "SQL ISSUE"
           }
         },
+        "perfAdvisorClusterLoadTab": "Cluster Load",
         "perfAdvisorAnomaliesTab": "Anomalies",
         "perfAdvisorInsightsTab": "Insights",
         "perfAdvisorQueriesTab": "Queries",
@@ -772,11 +777,11 @@
         "tpServiceUrlHelperText": "Please do not append '/' at the end of the URL",
         "registrationSuccess": "Registered to Perf Advisor service successfully",
         "registrationFailed": "Failed to register to Perf Advisor service",
-        "tpServiceUrlLabel": "Perf Advisor Service URL",
+        "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
         "apiTokenLabel": "YBA API Token",
-        "tpApiTokenLabel": "TP API Token",
+        "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
         "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
@@ -788,6 +793,7 @@
         "urlRequired": "Platform Url required",
         "apiTokenRequired": "API Token required",
         "enablePerfAdvisorMsg": "Select <bold> 'More' </bold> from <bold>Actions</bold> dropdown menu on the top right corner of the page to <bold>'Enable Perf Advisor'</bold> for this universe.",
+        "perfAdvisorRegistrationFailure": "Failed to fetch Perf Advisor registration status, please try again",
         "editDialog": {
           "title": "Update Perf Advisor Configuration",
           "updateButton": "Update",
@@ -1196,6 +1202,7 @@
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
             },
             "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "currentRetentionPeriod": "Current: {{retentionPeriod}}",
             "retentionPeriod": {
               "label": "Snapshot Retention Period",
               "tooltip": "A longer snapshot retention period requires more disk space."
@@ -2918,6 +2925,26 @@
         "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
         "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
       },
+      "otlp": {
+        "endpoint": "Endpoint URL",
+        "endpointTooltip": "OTLP receiver endpoint (e.g. https://otlp-gateway.example.com/otlp). For HTTP, /v1/logs and /v1/metrics are used when optional endpoints are not set.",
+        "protocol": "Protocol",
+        "protocolGrpc": "gRPC",
+        "protocolHttp": "HTTP",
+        "logsEndpoint": "Logs endpoint",
+        "logsEndpointTooltip": "Optional. HTTP only. Override URL for logs; if empty, main endpoint is used.",
+        "logsEndpointPlaceholder": "https://example.com:4318/v1/logs",
+        "metricsEndpoint": "Metrics endpoint",
+        "metricsEndpointTooltip": "Optional. HTTP only. Override URL for metrics; if empty, main endpoint is used.",
+        "metricsEndpointPlaceholder": "https://example.com:4318/v1/metrics",
+        "timeoutSeconds": "Timeout (seconds)",
+        "timeoutSecondsPlaceholder": "Optional",
+        "compression": "Compression",
+        "bearerToken": "Bearer Token",
+        "validationEndpointRequired": "Endpoint is required",
+        "validationProtocolRequired": "Protocol is required",
+        "validationFieldRequired": "This field is required"
+      },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
       "deleteModalSubmitLabel": "Delete Export Configuration",
@@ -3117,10 +3144,14 @@
           },
           "backupObjects": {
             "advancedConfig": "Advanced Configuration",
+            "rolesConfig": "Backup roles and grants",
             "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
             "selectDB": "Databases/Keyspaces",
             "backupTablespace": "Backup tablespaces information",
+            "backupRoles": "Backup global roles",
             "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "backupRolesSubText": "Back up roles and grants to preserve database access controls after restore.",
+            "backupRolesSubText2": "<b>Note:</b> Applies to full and incremental backups.",
             "allTables": "Select all tables in this Keyspace",
             "subSetOfTables": "Select a subset of tables",
             "selectTables": "Select Tables",
@@ -3205,6 +3236,7 @@
           "scope": "Scope",
           "keyspace": "Keyspace",
           "tables": "Tables",
+          "rolesAndGrants": "Roles and Grants",
           "lastBackup": "Last Backup",
           "nextBackup": "Next Backup",
           "fullBackup": "Full Backup",
@@ -3254,6 +3286,10 @@
           "tables": "Tables",
           "allTables": "All Tables",
           "restoreTo": "Restore to",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesNotApplicable": "N/A",
+          "restoreRolesOff": "Off",
+          "restoreRolesOn": "On",
           "restoreSize": "Restore Size",
           "targetUniverse": "Target Universe",
           "kmsConfig": "KMS Config",
@@ -3261,7 +3297,15 @@
         },
         "source": {
           "selectKeyspace": "Select the keyspace(s) you want to restore",
-          "selectTime": "Select time to restore to",
+          "selectDatabase": "Select the database(s) you want to restore",
+          "selectTime": "Choose restore point",
+          "restoreRoles": "Restore roles and grants",
+          "restoreRolesHelpText": "Restore roles and grants to preserve database access controls after restore.",
+          "restoreRolesTooltip1": "Roles and grants not available",
+          "restoreRolesTooltip2": "This backup was created without roles and grants. Select a different backup to restore access controls.",
+          "restoreRolesOnMsg1": "Note:",
+          "restoreRolesOnMsg2": "Roles are restored Universe-wide; grants are limited to selected databases.",
+          "restoreRolesOnMsg3": "Existing destination roles are not overwritten (including credentials and attributes). We only add missing role memberships and object grants from the backup.",
           "mostRecentIncremental": "Most recent incremental backup",
           "backupTime": "Backup time",
           "earlierPointInTime": "An earlier point in time ",
@@ -3285,6 +3329,7 @@
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "activeKMS": "Active",
           "usedDuringBackup": "Used during backup",
+          "restoreRoles": "Restore global roles",
           "parallelThreads": "Parallel threads (Optional)",
           "tablespacePlacementConflict": "<b>Tablespace Placement Conflict.</b> Some tablespaces in the backup have a placement policy that conflicts with the target universe. <a>View logs for details.</a><br/>If you proceed, the restore may fail. if it does, you can retry the restore without tablespaces. <a2>Learn more about restoring tablespaces.</a2>",
           "tablespaceNameConflict": "<b>Tablespace Name Conflict.</b> The target universe has tablespaces with the same name as tablespaces in the backup. In cases where the placement policy differs between the target and backup tablespaces, <b>the target policy will be used.</b> <a>View logs for details</a>"
@@ -3331,7 +3376,7 @@
         "title": "General Settings",
         "universeName": "Universe Name",
         "universeNamePlaceholder": "Enter Universe Name",
-        "cloudProvider": "Cloud Provider",
+        "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
         "databaseVersion": "Database Version",
@@ -3359,7 +3404,9 @@
         "singleNode": {
           "availabilityZone": "Availability Zone",
           "chooseAvailabilityZone": "Choose Availability Zone",
-          "node": "Node"
+          "node": "Node",
+          "caution": "Caution!",
+          "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
         "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
@@ -3374,10 +3421,13 @@
           "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
           "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
           "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
-          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed."
+          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed.",
+          "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
+          "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
+          "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster",
+          "instruction": "Set the resilience for your cluster.",
           "helpText": "What is this?",
           "faultTolerance": "Fault Tolerance",
           "REGION_LEVEL": {
@@ -3425,12 +3475,17 @@
         "guidedMode": {
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
+          "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
           "totalNodes": "Total Nodes"
         },
         "availabilityZones": {
           "title": "Availability Zones",
           "region": "Region {{region_count}}",
-          "add_button": "Add Availability Zone"
+          "add_button": "Add Availability Zone",
+          "errMsg": {
+            "selectedAz": "Selected availability zones: <b>{{count}}</b>",
+            "requiredAz": "Required availability zones: <b>{{count}}</b>"
+          }
         },
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
@@ -3438,9 +3493,12 @@
           "title": "Advanced Configuration",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
+          "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
+          "helpText2": "<b>Recommended</b> for deployments with many databases or very large table counts.",
           "totalNodes": "Total Nodes",
           "totalTServer": "Total T-Server Nodes",
-          "totalMaster": "Total Master Nodes"
+          "totalMaster": "Total Master Server Nodes",
+          "tooltip": "Master node count is system-assigned and is equal to the cluster’s replication factor. This is to maintain consensus and fault tolerance.<br><br> <a>Learn more</a>"
         },
         "replicationFactorCard": {
           "title": "Setup Requirements",
@@ -3474,7 +3532,7 @@
           "prefferedQues": "What is the preferred availability zone?",
           "prefferedAns": "The preferred availability zones handle all read and write requests from your client application. For lower latencies and best performance, set the availability zones closest to your application as preferred.",
           "links": "<a1>Learn more about preferred availability zone</a1> and <a2>how to select ranking.</a2>",
-          "note": "<b>Note:</b><br/> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
+          "note": "<b>Note:</b><br><br> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
         },
         "errMsg": {
           "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
@@ -3492,7 +3550,43 @@
           "invalidStorageClass": "Invalid storage class",
           "invalidMountPoint": "Mount point must be a valid path starting with '/'",
           "invalidStorageType": "Invalid storage type",
-          "required": "field is required"
+          "required": "{{field}} is required"
+        },
+        "assignPublicIP": "Assign Public IP",
+        "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
+        "dedicatedNodes": "Use dedicated nodes for processes",
+        "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
+        "ebs": "EBS Type",
+        "instanceType": "Instance Type",
+        "k8NumCores": "Number of Cores",
+        "k8Memory": "Memory (Gib)",
+        "useSpotInstance": "Use Spot Instances",
+        "kmsConfig": "Key Management Service Config",
+        "kmsConfigPlaceHolder": "Select Configuration",
+        "provisionedIopsPerNode": "Provisioned IOPS / Node ",
+        "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "ssd": "Storage Type (SSD)",
+        "useTimeSync": "Use {{provider}} Time Sync",
+        "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
+        "volumeInfoPerNode": "Volume Info / Node",
+        "volumeSizeUnit": "GB",
+        "throughputUnit": "MB/s",
+        "k8VolumeSizeUnit": "Gib",
+        "cpuArch": "CPU Architecture",
+        "x86_64": "x86 (Intel)",
+        "aarch64": "AArch6 (ARM)",
+        "cpuArchNotSupported": "This CPU Architecture is not supported by current provider.",
+        "linuxVersion": "Linux Version",
+        "spotInstance": "{{cloudType}} Spot Instance",
+        "useAwsSpotInstance": "Use {{cloudType}} spot instances",
+        "clusterInstance": "Cluster Instance",
+        "tserver": "T-Server Instance",
+        "master": "Master Server Instance (Optional)",
+        "keepMasterTserverSame": "Keep master server instance settings same as T-Server instance settings.",
+        "cantChangeLater": "This CANNOT be changed after creation",
+        "masterNote": "<1>Note!</1> CPU Architecture, Linux version, {{ebs}} and {{cloudType}} Spot instance usage are global settings and can not be overridden. You can change these settings from the \"Default Instance Configuration\".",
+        "EBSVolume": {
+          "title": "EBS Volume Encryption"
         }
       },
       "databaseSettings": {
@@ -3514,7 +3608,7 @@
         },
         "conPool": {
           "label": "Enable Connection Pooling",
-          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.",
+          "helperMsg": "Use built-in YSQL service for maximizing the number of simultaneous<br /> connections to your database.  <1>Learn more</1>",
           "versionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
           "YSQLWarn": "Enable YSQL first to use connection pooling.",
           "dbVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
@@ -3606,6 +3700,7 @@
           "addTag": "Add User Tag"
         },
         "accessKeyLabel": "Access Key",
+        "accessKeyRequired": "Access Key is required",
         "arnField": "Instance Profile ARN"
       },
       "reviewAndSummary": {
@@ -3640,7 +3735,9 @@
         "tablespaceName": "Tablespace Name",
         "tablespaceNameHelpText": "Tablespace name <b>CANNOT</b> be modified after geo partition creation.",
         "existingRegions": "Existing Regions",
-        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>"
+        "helpText": "Use Geo-partitioning to optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "tablespaceNameRequiredError": "Tablespace name is required",
+        "displayNameRequiredError": "Geo Partition Name is required"
       },
       "geoPartitionNodesAndAvailability": {
         "instanceType": "Instance Type",
@@ -3649,6 +3746,180 @@
         "iops": "IOPS",
         "throughput": "Throughput",
         "nodes": "Node Size"
+      }
+    },
+    "editUniverse": {
+      "totalNodes": "{{total}} Nodes",
+      "readReplica": "Read Replica",
+      "preferredRank": "Preferred Rank {{rank}}",
+      "tabs": {
+        "general": "General",
+        "placement": "Placement",
+        "hardware": "Hardware",
+        "security": "Security",
+        "database": "Database",
+        "advanced": "Advanced"
+      },
+      "general": {
+        "title": "General",
+        "databaseVersion": "Database Version",
+        "clusterId": "Cluster ID",
+        "provider": "Provider",
+        "providerConfig": "Provider Config",
+        "totalNodes": "Total Nodes",
+        "faultTolerance": "Fault Tolerance",
+        "encryption": "Encryption",
+        "dateCreated": "Date Created",
+        "inTransit": "In-Transit",
+        "atRest": "at-Rest",
+        "regionResilient": "Resilient to {{count}} Region outage",
+        "azResilient": "Resilient to {{count}} Availability Zone outage",
+        "nodeResilient": "Resilient to {{count}} Node outage",
+        "notResilient": "Not Resilient to outages",
+        "primaryCluster": "Primary Cluster",
+        "asyncCluster": "Async Cluster",
+        "cpuArch": "CPU Architecture",
+        "linuxVersion": "Linux Version",
+        "defaultInstanceType": "Default Instance Type",
+        "region": "Region",
+        "primary": "Primary",
+        "readReplica": "Read Replica",
+        "preferredRank1": "Preferred Rank 1",
+        "allLocation": "All Locations",
+        "geoPartition": "Geo Partition"
+      },
+      "placement": {
+        "actions": "Actions",
+        "editResilienceAndRegions": "Edit Resilience and Regions",
+        "editNodesAndAvailabilityZones": "Edit Nodes and Availability Zones",
+        "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "clusterPlacement": "Cluster Placement",
+        "addReadReplica": "Add Read Replica",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addGeoPartition": "Add Geo Partition",
+        "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
+        "faultTolerance": "Fault Tolerance",
+        "replicationFactor": "Replication Factor",
+        "totalNodes": "Total Nodes",
+        "totalNodesTServerMaster": "{{total_nodes}} ({{tservers}} T-Servers | {{masters}} Masters)",
+        "tServers": "T-Servers",
+        "masters": "Masters",
+        "region": "Region",
+        "availabilityZone": "Availability Zone",
+        "noOfNodes": "No. of Nodes",
+        "reviewChanges": "Review Changes",
+        "editPlacementConfirmModal": {
+          "title": "Review Changes",
+          "summary": "Summary of instance configuration changes:",
+          "current": "Current",
+          "new": "New",
+          "faultTolerance": "Fault Tolerance:",
+          "totalNodes": "Total Nodes:",
+          "node": "node",
+          "rank": "Rank {{rank}}",
+          "notPreferred": "Not Preferred",
+          "confirmAndApply": "Confirm and Apply",
+          "faultToleranceTypes": {
+            "REGION_LEVEL": "{{count}} Region outage",
+            "AZ_LEVEL": "{{count}} Availability Zone outage",
+            "NODE_LEVEL": "{{count}} Node outage",
+            "NONE": "None"
+          }
+        },
+        "geoParitionPlacementView": {
+          "title": "Geo Partitions",
+          "addGeoPartition": "Add Geo Partition"
+        }
+      },
+      "editResilienceAndRegions": {
+        "title": "Edit Placement"
+      },
+      "hardware": {
+        "totalClusterNodes": "Total Cluster Nodes",
+        "clusterInstance": "Cluster Instance",
+        "instanceType": "Instance Type",
+        "volumeAndNode": "volume / node",
+        "volumeAndNodeValue": "{{nodeCount}} X {{volumeSize}} GB",
+        "ebsType": "ebs type",
+        "iops": "provisioned IOPS / Node",
+        "throughput": "provisioned throughput / Node",
+        "throughtputValue": "{{throughput}} MB/s",
+        "tServerInstance": "T-Server Instance",
+        "masterServerInstance": "Master Server Instance",
+        "editHardwareModal": {
+          "title": "Cluster Instance",
+          "submitLabel": "Review Changes"
+        }
+      },
+      "security": {
+        "publicIPAssignment": "Public IP Assignment",
+        "encryptionInTransit": "Encryption In Transit",
+        "encryptionAtRest": "Encryption At Rest",
+        "nodeToNode": "Node to Node Encryption",
+        "clientToNode": "Client to Node Encryption",
+        "encryption": "Encryption"
+      },
+      "database": {
+        "ysql": "YSQL",
+        "ycql": "YCQL",
+        "connectionPooling": "Connection Pooling",
+        "postgresCompatibility": "Postgres Compatibility",
+        "ysqlAuthentication": "YSQL Authentication",
+        "ycqlAuthentication": "YCQL Authentication",
+        "interface": "Interface",
+        "features": "Features",
+        "advancedConfigFlags": "Advanced Config Flags",
+        "editYSQLSettings": "Edit YSQL Settings",
+        "editYCQLSettings": "Edit YCQL Settings",
+        "editConnectionPooling": "Edit Connection Pooling Settings",
+        "editPostgresCompatibility": "Edit Postgres Compatibility Settings"
+      },
+      "advanced": {
+        "proxyConfiguration": "Proxy Configuration",
+        "proxyServer": "Proxy Server",
+        "secureWebProxy": "Secure Web Proxy (HTTPS)",
+        "webProxy": "Web Proxy (HTTP)",
+        "bypassProxyList": "Bypass Proxy List",
+        "editProxyConfiguration": "Edit Proxy Configuration"
+      },
+      "masterServerNodeAllocationModal": {
+        "title": "Master Server Node Allocation",
+        "editMasterServer": "Edit Master Server Instance  (Optional)",
+        "subText": "You can change master server instance settings at any time by going to:",
+        "settingsAndHardware": "Settings > Hardware"
+      }
+    },
+    "readReplica": {
+      "addRR": {
+        "title": "Add Read Replica",
+        "placement": "Placement",
+        "regionsAndAZ": "Regions and Availability Zones",
+        "hardware": "Hardware",
+        "instanceSettings": "Instance Settings",
+        "database": "Database",
+        "databaseSettings": "Database Settings",
+        "review": "Review",
+        "summaryAndCost": "Summary and Cost",
+        "instanceOptional": "Instance Settings (Optional)",
+        "advancedFlags": "Advanced Config Flags",
+        "advancedFlagLabel": "Customize Database Config Flags for Read Replica",
+        "advancedFlagSubText": "By default, T-Server flags from the primary cluster are applied to Read Replicas.",
+        "advancedFlagNote": "<strong>Note:</strong> Read replicas do not include Master servers.",
+        "regionAZHelpText": "Enhance read scalability and availability with geographically distributed replicas. <a>Learn more</a>",
+        "rrInstance": "Read Replica Instance",
+        "primaryRRInstanceSame": "Keep read replica instance settings same as primary cluster instance settings.",
+        "primaryClusterInstSettings": "Primary Cluster Instance Settings",
+        "kmsConfig": "Key Management Service Config",
+        "validation": {
+          "invalidArchitecture": "Invalid CPU Architecture",
+          "positiveNumber": "{{field}} must be a positive number",
+          "minValue": "{{field}} must be at least {{min}}",
+          "maxValue": "{{field}} must be at most {{max}}",
+          "invalidStorageClass": "Invalid storage class",
+          "invalidMountPoint": "Mount point must be a valid path starting with '/'",
+          "invalidStorageType": "Invalid storage type",
+          "required": "{{field}} is required"
+        }
       }
     }
   }

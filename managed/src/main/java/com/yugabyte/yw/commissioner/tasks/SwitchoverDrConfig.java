@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Objects;
 import java.util.Set;
 import javax.inject.Inject;
@@ -73,6 +74,9 @@ public class SwitchoverDrConfig extends EditDrConfig {
         // Lock the target universe.
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+
+        // It will be used by the BootstrapProducer subtask to clean up stale streams.
+        taskParams().updatingTask = TaskType.SwitchoverDrConfig;
 
         if (Objects.nonNull(currentXClusterConfig)) {
           if (switchoverXClusterConfig.getStatus() == XClusterConfigStatusType.Initialized) {

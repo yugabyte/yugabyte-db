@@ -245,6 +245,25 @@ func GetSelfSignedCertsDir() string {
 	return filepath.Join(GetYBAInstallerDataDir(), "certs")
 }
 
+// GetPerfAdvisorBaseDataDir returns the perf-advisor directory under baseInstall (config, certs, etc.).
+func GetPerfAdvisorBaseDataDir() string {
+	return filepath.Join(GetBaseInstall(), "perf-advisor")
+}
+
+// GetPerfAdvisorCertsDir returns the directory for Perf Advisor TLS certs (e.g. tls.p12).
+func GetPerfAdvisorCertsDir() string {
+	return filepath.Join(GetPerfAdvisorBaseDataDir(), "certs")
+}
+
+// GetPlatformServerCertPaths returns the paths to the platform server cert and key (YBA TLS).
+// Uses viper server_cert_path/server_key_path when set, otherwise self-signed cert paths.
+func GetPlatformServerCertPaths() (certPath, keyPath string) {
+	if k := viper.GetString("server_key_path"); k != "" {
+		return viper.GetString("server_cert_path"), k
+	}
+	return GetSelfSignedServerCertPath(), GetSelfSignedServerKeyPath()
+}
+
 func GetReplicatedBaseDir() string {
 	return dm.ReplicatedBaseDir()
 }

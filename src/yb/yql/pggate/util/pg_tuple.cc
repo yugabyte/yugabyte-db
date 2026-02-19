@@ -18,22 +18,26 @@
 
 #include "yb/yql/pggate/util/ybc-internal.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-PgTuple::PgTuple(uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols)
+PgTuple::PgTuple(uint64_t* datums, bool* isnulls, YbcPgSysColumns* syscols, size_t nattrs)
     : datums_(datums), isnulls_(isnulls), syscols_(syscols) {
+  DEBUG_ONLY(nattrs_ = nattrs);
 }
 
-void PgTuple::WriteNull(int index) {
-  isnulls_[index] = true;
-  datums_[index] = 0;
+void PgTuple::CopyFrom(const PgTuple& other, size_t nattrs) {
+  DEBUG_ONLY(DCHECK_LE(nattrs, nattrs_)  << "PgTuple index is out of bounds");
+  memcpy(datums_, other.datums_, nattrs * sizeof(*datums_));
+  memcpy(isnulls_, other.isnulls_, nattrs * sizeof(*isnulls_));
+  if (syscols_ && other.syscols_) {
+    memcpy(syscols_, other.syscols_, sizeof(YbcPgSysColumns));
+  }
 }
 
-void PgTuple::WriteDatum(int index, uint64_t datum) {
-  isnulls_[index] = false;
+void PgTuple::DoWrite(int index, bool isnull, uint64_t datum) {
+  DEBUG_ONLY(DCHECK_LT(index, nattrs_) << "PgTuple index is out of bounds");
+  isnulls_[index] = isnull;
   datums_[index] = datum;
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

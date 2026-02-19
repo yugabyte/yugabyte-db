@@ -1,9 +1,9 @@
 ---
-title: Connection Manager in YSQL
+title: Built-in connection pooling in YSQL
 headerTitle: Built-in connection pooling
 linkTitle: Built-in connection pooling
-description: Built-in server-side connection pooler for YSQL
-headcontent: Built-in server-side connection pooler for YSQL
+description: YSQL Connection Manager 
+headcontent: YSQL Connection Manager
 tags:
   feature: tech-preview
 menu:
@@ -22,7 +22,7 @@ However, connection poolers have some limitations:
 - Added complexity. Deploying and maintaining a connection pooler adds complexity to your application stack.
 - They don't support all PostgreSQL features. For example, neither PgBouncer nor Odyssey supports SET statements in the transaction pooling mode.
 
-To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/preview/develop/drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
+To provide the advantages of connection pooling, but without the limitations, YugabyteDB includes a built-in connection pooler, YSQL Connection Manager. Because the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections without additional third-party tools. When combined with [smart drivers](/stable/develop/drivers-orms/smart-drivers/), YugabyteDB simplifies application architecture and enhances developer productivity.
 
 ![Connection manager](/images/explore/ysql-connection-manager.png)
 

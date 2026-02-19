@@ -1178,6 +1178,12 @@ replorigin_session_setup(RepOriginId node)
 		session_replication_state->roident = node;
 	}
 
+	if (YbIsClientYsqlConnMgr())
+	{
+		elog(LOG, "Incrementing sticky object count for setting replication origin in session");
+		increment_sticky_object_count();
+	}
+
 
 	Assert(session_replication_state->roident != InvalidRepOriginId);
 

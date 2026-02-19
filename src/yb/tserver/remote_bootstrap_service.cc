@@ -108,12 +108,8 @@ DEFINE_test_flag(double, fault_crash_on_handle_rb_fetch_data, 0.0,
                  "Fraction of the time when the tablet will crash while "
                  "servicing a RemoteBootstrapService FetchData() RPC call.");
 
-DEFINE_test_flag(uint64, inject_latency_before_change_role_secs, 0,
-                 "Number of seconds to sleep before we call ChangeRole.");
-
-DEFINE_test_flag(bool, skip_change_role, false,
-                 "When set, we don't call ChangeRole after successfully finishing a remote "
-                 "bootstrap.");
+DEFINE_test_flag(uint64, delay_end_rbs_session_ms, 0,
+                 "Number of seconds to sleep before we return from end rbs request.");
 
 DEFINE_test_flag(uint64, inject_latency_before_fetch_data_secs, 0,
                  "Number of seconds to sleep before we call FetchData.");
@@ -123,8 +119,15 @@ DEFINE_test_flag(
     "Fraction of the time when the peer will crash while "
     "servicing a RemoteBootstrapServiceImpl::RegisterLogAnchor() RPC call.");
 
-DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
-              "Timeout for change role operation during remote bootstrap.");
+DEFINE_test_flag(double, fault_crash_leader_while_handling_end_rbs_request, 0.0,
+    "The rbs source will crash while handling EndRemoteBootstrapSessionRequestPB i.e. "
+    "after successfully serving all data (SSTs & WALs) when the rbs client makes an rpc "
+    "to intimate success and request to keep the log anchor alive for its local bootstrap. "
+    "Note that this happens when the new peer is in PRE_VOTER state, and hence it gets "
+    "tombstoned and re-attemots rbs later.");
+
+DEFINE_test_flag(double, fault_fail_rbs_fetch_data_prob, 0.0,
+    "Fraction of the time when the node would fail RemoteBootstrapService::FetchData() RPC call.");
 
 METRIC_DEFINE_gauge_int32(server, num_remote_bootstrap_sessions_serving_data,
     "Number of active Remote Bootstrap Sessions transferring data", yb::MetricUnit::kUnits,
@@ -268,6 +271,12 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_fetch_data_secs)) {
     LOG(INFO) << "Injecting FetchData latency for test";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_fetch_data_secs));
+  }
+
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_fault_fail_rbs_fetch_data_prob))) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::IO_ERROR, "TEST_fault_fail_rbs_fetch_data_prob",
+        STATUS_FORMAT(NetworkError, "TEST_fault_fail_rbs_fetch_data_prob"));
   }
 
   const string& session_id = req->session_id();
@@ -553,33 +562,10 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
         << "(Total ms: " << session->crc_compute_timer().elapsed().wall_millis() << ")";
     }
 
-    if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
-      LOG(INFO) << "Injecting latency for test";
-      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_change_role_secs));
-    }
-
-    if (PREDICT_FALSE(FLAGS_TEST_skip_change_role)) {
-      LOG(INFO) << "Not changing role for " << session->requestor_uuid()
-                << " because flag FLAGS_TEST_skip_change_role is set";
-      return Status::OK();
-    }
-
-    if (session->ShouldChangeRole()) {
-      MonoTime deadline = MonoTime::Now() + MonoDelta::FromMilliseconds(
-                                                FLAGS_remote_bootstrap_change_role_timeout_ms);
-      Status status;
-      do {
-        status = session->ChangeRole();
-        if (status.ok()) {
-          LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-          break;
-        }
-        LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
-                     << ", error : " << status;
-      } while (MonoTime::Now() < deadline && status.IsLeaderHasNoLease());
-      RemoteBootstrapErrorPB::Code app_error;
-      return it->second.ResetExpiration(&app_error);
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_end_rbs_session_ms);
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_while_handling_end_rbs_request);
+    RemoteBootstrapErrorPB::Code app_error;
+    return it->second.ResetExpiration(&app_error);
   } else {
     num_sessions_serving_data_->Decrement();
     LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
@@ -738,7 +724,9 @@ void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
 
 void RemoteBootstrapServiceImpl::ChangePeerRole(
     const ChangePeerRoleRequestPB* req, ChangePeerRoleResponsePB* resp, rpc::RpcContext context) {
-  VLOG_WITH_FUNC(4) << req->ShortDebugString();
+  // Promotion of the new peer from PRE_VOTER to VOTER is deferred to the leader and is no more
+  // done on the RBS path. The behavior was introduced in https://phorge.dev.yugabyte.com/D50025.
+  LOG_WITH_FUNC(WARNING) << "method deprecated.";
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   {
@@ -755,10 +743,8 @@ void RemoteBootstrapServiceImpl::ChangePeerRole(
     it->second->ResetExpiration(true /* ChangeRole is only called for successful rbs sessions */);
   }
 
-  RPC_RETURN_NOT_OK(
-      tablet_peer->ChangeRole(req->requestor_uuid()),
-      RemoteBootstrapErrorPB::REMOTE_CHANGE_PEER_ROLE_FAILURE,
-      Substitute("Cannot ChangePeerRole for peer $0", req->requestor_uuid()));
+  // The leader would promote the new PRE_VOTER peer to VOTER on realizing it on
+  // heartbeats/consensus requests anyways. There's no need for us to do it here.
   context.RespondSuccess();
 }
 

@@ -31,9 +31,11 @@
 #include "nodes/primnodes.h"
 
 /* GUC options */
+extern PGDLLIMPORT bool yb_enable_derived_saops;
 extern PGDLLIMPORT int yb_max_saop_merge_streams;
 
-extern bool yb_indexcol_can_saop_merge(IndexOptInfo *index,
+extern bool yb_indexcol_can_saop_merge(PlannerInfo *root,
+									   IndexOptInfo *index,
 									   Expr *expr,
 									   int indexcol,
 									   int *saop_merge_cardinality,

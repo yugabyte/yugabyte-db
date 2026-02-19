@@ -61,11 +61,7 @@ var getKeyCmd = &cobra.Command{
 
 		r, response, err := authAPI.GetConfigurationKey(scopeName, keyName).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response,
-				err,
-				"Runtime Configuration Scope Key", "Get")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Runtime Configuration Scope Key", "Get")
 		}
 
 		keys := []key.Key{}

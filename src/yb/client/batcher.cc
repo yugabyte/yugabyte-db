@@ -67,6 +67,9 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/tserver/tserver.messages.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -137,14 +140,16 @@ Batcher::Batcher(
     YBTransactionPtr transaction,
     ConsistentReadPoint* read_point,
     bool force_consistent_read,
-    int64_t leader_term)
+    int64_t leader_term,
+    ThreadSafeArenaPtr arena)
     : client_(client),
       weak_session_(session),
       async_rpc_metrics_(session->async_rpc_metrics()),
       transaction_(std::move(transaction)),
       read_point_(read_point),
       force_consistent_read_(force_consistent_read),
-      leader_term_(leader_term) {}
+      leader_term_(leader_term),
+      arena_(std::move(arena)) {}
 
 Batcher::~Batcher() {
   LOG_IF_WITH_PREFIX(DFATAL, outstanding_rpcs_ != 0)
@@ -812,7 +817,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
           << "Received a per_row_error for an out-of-bound op index " << row_index
           << " (sent only " << rpc.ops().size() << " ops)\n"
           << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-          << rpc.resp().DebugString();
+          << rpc.resp().ShortDebugString();
       continue;
     }
     shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;

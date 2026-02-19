@@ -3861,9 +3861,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     if (ybcBackup) {
-      createTableBackupTasksYbc(backupTableParams, backupRequestParams.parallelDBBackups)
-          .setSubTaskGroupType(subTaskGroupType)
-          .setShouldRunPredicate(predicate);
+      createTableBackupTasksYbc(
+          backupTableParams, backupRequestParams.parallelDBBackups, subTaskGroupType, predicate);
     } else {
       // Creating encrypted universe key file only needed for non-ybc backups.
       backupTableParams.backupList.forEach(
@@ -4238,9 +4237,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  public SubTaskGroup createTableBackupTasksYbc(
-      BackupTableParams backupParams, int parallelDBBackups) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc");
+  public void createTableBackupTasksYbc(
+      BackupTableParams backupParams,
+      int parallelDBBackups,
+      SubTaskGroupType subTaskGroupType,
+      Predicate<ITask> predicate) {
+    SubTaskGroup doneGroup = createSubTaskGroup("BackupTableYBC", subTaskGroupType);
+    doneGroup.setShouldRunPredicate(predicate);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("BackupTableYbc", subTaskGroupType);
+    subTaskGroup.setShouldRunPredicate(predicate);
     Universe universe = Universe.getOrBadRequest(backupParams.getUniverseUUID());
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(universe, parallelDBBackups, backupParams.backupDBStates);
@@ -4255,7 +4260,45 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             paramsEntry ->
                 !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                     .alreadyScheduled)
+        .filter(
+            /* Filter out the entries that have gotten a node ip*/
+            paramsEntry ->
+                !Strings.isNullOrEmpty(
+                    backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp))
         .forEach(
+            /* Create the subtasks */
+            paramsEntry -> {
+              BackupTableYbc task = createTask(BackupTableYbc.class);
+              log.debug("creating backup table task for entry with nodeip");
+              BackupTableYbc.Params backupYbcParams =
+                  new BackupTableYbc.Params(paramsEntry, nodeRetriever, universe);
+              backupYbcParams.previousBackup = previousBackup;
+              backupYbcParams.nodeIp =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp;
+              backupYbcParams.taskID =
+                  backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                      .currentYbcTaskId;
+              backupYbcParams.scheduleRetention = scheduleRetention;
+              backupYbcParams.setRevertToPreRolesBehaviour(
+                  backupParams.getRevertToPreRolesBehaviour());
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
+              task.initialize(backupYbcParams);
+              task.setUserTaskUUID(getUserTaskUUID());
+              doneGroup.addSubTask(task);
+            });
+    getRunnableTask().addSubTaskGroup(doneGroup);
+    backupParams.backupList.stream()
+        .filter(
+            paramsEntry ->
+                !backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
+                    .alreadyScheduled)
+        .filter(
+            /* Filter out the entries that have not gotten a node ip*/
+            paramsEntry ->
+                Strings.isNullOrEmpty(
+                    backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier).nodeIp))
+        .forEach(
+            /* Create the subtasks */
             paramsEntry -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams =
@@ -4275,7 +4318,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               subTaskGroup.addSubTask(task);
             });
     getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
   }
 
   public SubTaskGroup createSetBackupHiddenStateTask(
@@ -4940,6 +4982,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
       }
     }
+  }
+
+  /**
+   * Disables master on non-master nodes after validating that they are not in the master config.
+   *
+   * @param nodes List of nodes to disable master on.
+   * @param subTaskGroupType Sub task group type for tasks.
+   */
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    Universe universe = getUniverse();
+    // Filter out all nodes that are not masters according to both YBA and YBDB.
+    nodes =
+        nodes.stream()
+            .filter(node -> !node.isMaster)
+            .filter(node -> !nodeInMasterConfig(universe, node))
+            .collect(Collectors.toList());
+
+    if (nodes.isEmpty()) {
+      log.info("No non-master nodes to disable master on");
+      return;
+    }
+    log.info("Disabling master on non-master nodes: {}", nodes);
+    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+        .setSubTaskGroupType(subTaskGroupType);
   }
 
   /**

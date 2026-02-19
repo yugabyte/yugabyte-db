@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { Button, ButtonGroup } from 'react-bootstrap';
 
 import { MetricMeasure } from '../../metrics/constants';
-import treeIcon from '../../metrics/images/tree-icon.svg';
+import TreeIcon from '../../metrics/images/tree-icon.svg?img';
 import './MetricsMeasureSelector.scss';
 
 interface MetricMeasureSelectorData {
@@ -28,7 +28,7 @@ export const MetricsMeasureSelector: FC<MetricMeasureSelectorData> = ({
     <div className="metrics-measure-container">
       <img
         className="downright-arrow"
-        src={treeIcon}
+        src={TreeIcon}
         alt="Indicator towards metric measure to use"
       />
       <span className="metrics-measure-content">

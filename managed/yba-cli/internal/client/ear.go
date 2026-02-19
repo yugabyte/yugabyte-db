@@ -12,36 +12,36 @@ import (
 )
 
 // ListKMSConfigs fetches list of kms configs associated with the customer
-func (a *AuthAPIClient) ListKMSConfigs() ybaclient.EncryptionAtRestApiApiListKMSConfigsRequest {
-	return a.APIClient.EncryptionAtRestApi.ListKMSConfigs(a.ctx, a.CustomerUUID)
+func (a *AuthAPIClient) ListKMSConfigs() ybaclient.EncryptionAtRestAPIListKMSConfigsRequest {
+	return a.APIClient.EncryptionAtRestAPI.ListKMSConfigs(a.ctx, a.CustomerUUID)
 }
 
 // DeleteKMSConfig deletes kms config
 func (a *AuthAPIClient) DeleteKMSConfig(
 	configUUID string,
-) ybaclient.EncryptionAtRestApiApiDeleteKMSConfigRequest {
-	return a.APIClient.EncryptionAtRestApi.DeleteKMSConfig(a.ctx, a.CustomerUUID, configUUID)
+) ybaclient.EncryptionAtRestAPIDeleteKMSConfigRequest {
+	return a.APIClient.EncryptionAtRestAPI.DeleteKMSConfig(a.ctx, a.CustomerUUID, configUUID)
 }
 
 // CreateKMSConfig creates kms config
 func (a *AuthAPIClient) CreateKMSConfig(
 	providerType string,
-) ybaclient.EncryptionAtRestApiApiCreateKMSConfigRequest {
-	return a.APIClient.EncryptionAtRestApi.CreateKMSConfig(a.ctx, a.CustomerUUID, providerType)
+) ybaclient.EncryptionAtRestAPICreateKMSConfigRequest {
+	return a.APIClient.EncryptionAtRestAPI.CreateKMSConfig(a.ctx, a.CustomerUUID, providerType)
 }
 
 // EditKMSConfig edits kms config
 func (a *AuthAPIClient) EditKMSConfig(
 	configUUID string,
-) ybaclient.EncryptionAtRestApiApiEditKMSConfigRequest {
-	return a.APIClient.EncryptionAtRestApi.EditKMSConfig(a.ctx, a.CustomerUUID, configUUID)
+) ybaclient.EncryptionAtRestAPIEditKMSConfigRequest {
+	return a.APIClient.EncryptionAtRestAPI.EditKMSConfig(a.ctx, a.CustomerUUID, configUUID)
 }
 
 // RefreshKMSConfig refreshes kms config
 func (a *AuthAPIClient) RefreshKMSConfig(
 	configUUID string,
-) ybaclient.EncryptionAtRestApiApiRefreshKMSConfigRequest {
-	return a.APIClient.EncryptionAtRestApi.RefreshKMSConfig(a.ctx, a.CustomerUUID, configUUID)
+) ybaclient.EncryptionAtRestAPIRefreshKMSConfigRequest {
+	return a.APIClient.EncryptionAtRestAPI.RefreshKMSConfig(a.ctx, a.CustomerUUID, configUUID)
 }
 
 // GetListOfKMSConfigs gets list of kms configs

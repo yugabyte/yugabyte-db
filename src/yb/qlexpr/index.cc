@@ -323,7 +323,7 @@ Result<const IndexInfo*> IndexMap::FindIndex(TableIdView index_id) const {
 
 bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
   // We can't use std::unordered_map's == because IndexInfo does not define ==.
-  using MapType = UnorderedStringMap<IndexInfo>;
+  using MapType = UnorderedStringMap<TableId, IndexInfo>;
   return util::MapsEqual(static_cast<const MapType&>(lhs),
                          static_cast<const MapType&>(rhs),
                          &IndexInfo::TEST_Equals);

@@ -47,11 +47,11 @@ sudo bash ./bin/configure_ptp.sh
 
 ### Configure ClockBound
 
-{{<tags/feature/tp idea="1807">}} [ClockBound](https://github.com/aws/clock-bound) is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location. ClockBound provides a strict interval in which the reference time (true time) exists.
+{{<tags/feature/ea idea="1807">}} [ClockBound](https://github.com/aws/clock-bound) is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location. ClockBound provides a strict interval in which the reference time (true time) exists.
 
 Although optional, configuring ClockBound improves clock accuracy by several orders of magnitude. ClockBound requires chrony and can be used in conjunction with PTP.
 
-Clockbound is supported on AWS and GCP. Azure is not supported.
+ClockBound is supported on AWS and GCP. Azure is not supported.
 
 Configure ClockBound using the `configure_clockbound.sh` script in the bin directory of your YugabyteDB home directory as follows:
 

@@ -24,7 +24,7 @@ For new universes running v2025.2 or later, the following features are enabled b
 - [Cost-based optimizer](#cost-based-optimizer) (ysql_pg_conf_csv=yb_enable_cbo=on)
 - [Auto Analyze](../../../additional-features/auto-analyze/) (ysql_enable_auto_analyze=true)
 - [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) (yb_enable_bitmapscan=true)
-- [Parallel query](#parallel-query) (yb_enable_parallel_append=true)
+- [Parallel append](#parallel-query) (yb_enable_parallel_append=true)
 
 In addition, if you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
 
@@ -34,7 +34,7 @@ In addition, if you upgrade to v2025.2 and the universe already has cost-based o
 
 Otherwise, upgrading from earlier versions does not change the defaults for any of these features.
 
-For versions earlier than v2025.2, to test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use the following features developed for feature and performance parity. EPCM is available in [v2024.1](/stable/releases/ybdb-releases/v2024.1/) and later.
+For versions earlier than v2025.2, to test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use the following features developed for feature and performance parity. EPCM is available in {{<release "2024.1">}} and later.
 
 The following features are part of EPCM.
 
@@ -42,12 +42,12 @@ The following features are part of EPCM.
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | {{<release "2024.2.2">}} |
 | [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1">}} | {{<release "2025.1">}} |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1">}} | {{<release "2025.1">}} |
 | [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2025.1">}} |
 | [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
-| [Parallel query](#parallel-query) | [yb_enable_parallel_append](../../../additional-features/parallel-query/) | {{<release "2024.2.3">}} | {{<release "2025.1">}} |
+| [Parallel query](#parallel-query)<br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3">}} | {{<release "2025.1">}} |
 
 Note that Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.
 
@@ -69,7 +69,7 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 
 If you upgrade a universe with EPCM to v2025.2 or later, YugabyteDB will automatically enable all EPCM features. Going forward, use individual flags to set features.
 
-When upgrading a universe that does not have EPCM, YugabyteDB does not enable features automatically. If the universe has the [cost based optimizer](#cost-based-optimizer) enabled, however, YugabyteDB will enable the following features:
+When upgrading a universe that does not have EPCM, YugabyteDB does not enable features automatically. If the universe has the [cost-based optimizer](#cost-based-optimizer) enabled, however, YugabyteDB will enable the following features:
 
 - Auto Analyze: ysql_enable_auto_analyze is set to true.
 - Bitmap scans: yb_enable_bitmapscan is set to true.
@@ -89,11 +89,11 @@ Read Committed isolation level handles serialization errors and avoids the need 
 To learn about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
-### Cost based optimizer
+### Cost-based optimizer
 
 Configuration parameter: `yb_enable_cbo=on`
 
-[Cost based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
+[Cost-based optimizer (CBO)](../../../architecture/query-layer/planner-optimizer/) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
 For information on configuring CBO, refer to [Enable cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/).
 
@@ -153,29 +153,32 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 {{< note title="Note" >}}
 
-Parallel query is {{<tags/feature/ea>}} in v2024.2.3 but has not yet been added to EPCM.
+Parallel query has not been added to EPCM.
 
 {{< /note >}}
 
-Configuration parameters: `yb_enable_parallel_append=true` `yb_parallel_range_rows`
+Configuration parameters:
+
+- Parallel query - `yb_parallel_range_rows`
+- Parallel append - `yb_enable_parallel_append=true`
 
 Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
 
 {{<lead link="../../../additional-features/parallel-query/">}}
-To learn about parallel queries, see [Parallel queries](../../../additional-features/parallel-query/).
+To learn about using parallel queries, see [Parallel queries](../../../additional-features/parallel-query/).
 {{</lead>}}
 
 ## Enable EPCM
 
-In v2025.2 and later, most of the features in EPCM are enabled by default in new universes when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon. Use individual flags to set features.
+In v2025.2 and later, most of the features in EPCM are enabled by default in new universes when you deploy using [yugabyted](../yugabyted/), YugabyteDB Anywhere, or YugabyteDB Aeon. Use individual flags to set features.
 
 For versions prior to v2025.2 (or when deploying manually), you can enable EPCM as follows.
 
 ### YugabyteDB
 
-To enable EPCM in YugabyteDB:
+To enable EPCM when deploying using yugabyted (versions earlier than v2025.2 only):
 
-- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../yugabyted/) when starting your cluster.
+- Pass the `enable_pg_parity_early_access` flag to yugabyted when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 

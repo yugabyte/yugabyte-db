@@ -224,6 +224,8 @@ public class UniverseCRUDHandler {
                 PlacementInfoUtil.getDefaultRegion(taskParams))
             || PlacementInfoUtil.didAffinitizedLeadersChange(
                 currentCluster.placementInfo, cluster.placementInfo)
+            || PlacementInfoUtil.areReplicasChanged(
+                currentCluster.placementInfo, cluster.placementInfo)
             || isRegionListUpdate(cluster, currentCluster)
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
@@ -1380,6 +1382,12 @@ public class UniverseCRUDHandler {
     return Universe.maybeGetUniverseByName(customer.getId(), name)
         .map(value -> Collections.singletonList(UniverseResp.create(value, null, confGetter)))
         .orElseGet(Collections::emptyList);
+  }
+
+  public UniverseResp findByUUID(Customer customer, UUID universeUUID) {
+    return Universe.maybeGet(universeUUID)
+        .map(value -> UniverseResp.create(value, null, confGetter))
+        .orElse(null);
   }
 
   public UUID destroy(
@@ -2638,7 +2646,9 @@ public class UniverseCRUDHandler {
               "true",
               "split_respects_tablet_replica_limits",
               "true"));
-      newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+      if (primaryCluster.userIntent.enableYSQL) {
+        newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+      }
     }
 
     // Add new flags for versions >= 2.29.0.0 or 2025.2.0.0

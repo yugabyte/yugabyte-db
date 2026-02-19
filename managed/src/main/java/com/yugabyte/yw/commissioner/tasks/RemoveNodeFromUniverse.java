@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -105,6 +106,13 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
       performPrecheck();
     }
     addBasicPrecheckTasks();
+    if (isFirstTry()) {
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(
+              UpgradeTaskBase.MastersAndTservers.from(currentNode, currentNode.getAllProcesses())),
+          null,
+          false);
+    }
     // Pick new only on first try.
     replacementMasterName = findReplacementMasterIfApplicable(universe, currentNode, isFirstTry());
   }

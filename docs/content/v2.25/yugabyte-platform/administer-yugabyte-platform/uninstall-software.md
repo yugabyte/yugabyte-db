@@ -39,7 +39,7 @@ You can remove YugabyteDB components and configuration from on-premises provider
     ./bin/yb-server-ctl.sh controller stop
     ```
 
-    For user systemd universes, run the following commands:
+    For systemd universes (user-level services), run the following commands:
 
     ```sh
     systemctl --user stop yb-master
@@ -47,7 +47,7 @@ You can remove YugabyteDB components and configuration from on-premises provider
     systemctl --user stop yb-controller
     ```
 
-    For user systemd universes, run the following commands:
+    For systemd universes (system-level services), run the following commands:
 
     ```sh
     sudo systemctl stop yb-master

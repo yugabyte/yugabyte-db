@@ -24,10 +24,9 @@ part_drop_index_locking_idx                  |AccessExclusiveLock|t
 part_drop_index_locking_subpart              |AccessExclusiveLock|t      
 part_drop_index_locking_subpart_child        |AccessExclusiveLock|f      
 part_drop_index_locking_subpart_child        |AccessShareLock    |t      
-part_drop_index_locking_subpart_child        |AccessShareLock    |t      
 part_drop_index_locking_subpart_child_id_idx |AccessShareLock    |t      
 part_drop_index_locking_subpart_child_id_idx1|AccessShareLock    |t      
-(8 rows)
+(7 rows)
 
 step s1commit: COMMIT;
 step s2drop: <... completed>
@@ -72,11 +71,10 @@ relname                                      |mode               |granted
 part_drop_index_locking_subpart              |AccessExclusiveLock|t      
 part_drop_index_locking_subpart_child        |AccessExclusiveLock|f      
 part_drop_index_locking_subpart_child        |AccessShareLock    |t      
-part_drop_index_locking_subpart_child        |AccessShareLock    |t      
 part_drop_index_locking_subpart_child_id_idx |AccessShareLock    |t      
 part_drop_index_locking_subpart_child_id_idx1|AccessShareLock    |t      
 part_drop_index_locking_subpart_idx          |AccessExclusiveLock|t      
-(7 rows)
+(6 rows)
 
 step s1commit: COMMIT;
 step s2dropsub: <... completed>

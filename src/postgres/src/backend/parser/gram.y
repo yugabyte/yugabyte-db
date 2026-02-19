@@ -1131,12 +1131,12 @@ stmt:
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| IndexStmt
 			| InsertStmt
-			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
+			| ListenStmt
 			| RefreshMatViewStmt
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LockStmt
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
+			| NotifyStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
 			| ReindexStmt
@@ -1151,7 +1151,7 @@ stmt:
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
-			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
+			| UnlistenStmt
 			| UpdateStmt
 			| VacuumStmt
 			| VariableResetStmt
@@ -2588,7 +2588,6 @@ alter_table_cmd:
 			/* ALTER TABLE <name> ALTER [COLUMN] <colname> SET STORAGE <storagemode> */
 			| ALTER opt_column ColId SET STORAGE ColId
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER action ALTER COLUMN ... SET STORAGE", 1124);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_SetStorage;
@@ -4349,11 +4348,7 @@ TableLikeOptionList:
 
 TableLikeOption:
 				COMMENTS			{ $$ = CREATE_TABLE_LIKE_COMMENTS; }
-				| COMPRESSION
-					{
-						parser_ybc_signal_unsupported(@1, "LIKE COMPRESSION", 1129);
-						$$ = CREATE_TABLE_LIKE_COMPRESSION;
-					}
+				| COMPRESSION		{ $$ = CREATE_TABLE_LIKE_COMPRESSION; }
 				| CONSTRAINTS		{ $$ = CREATE_TABLE_LIKE_CONSTRAINTS; }
 				| DEFAULTS			{ $$ = CREATE_TABLE_LIKE_DEFAULTS; }
 				| IDENTITY_P		{ $$ = CREATE_TABLE_LIKE_IDENTITY; }
@@ -5536,6 +5531,10 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->extname = $3;
 					n->if_not_exists = false;
 					n->options = $5;
+					if (strcmp(n->extname, "pg_stat_monitor") == 0)
+					{
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
+					}
 					$$ = (Node *) n;
 				}
 				| CREATE EXTENSION IF_P NOT EXISTS name opt_with create_extension_opt_list
@@ -5545,6 +5544,10 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->extname = $6;
 					n->if_not_exists = true;
 					n->options = $8;
+					if (strcmp(n->extname, "pg_stat_monitor") == 0)
+					{
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
+					}
 					$$ = (Node *) n;
 				}
 		;

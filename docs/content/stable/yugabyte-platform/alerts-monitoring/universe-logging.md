@@ -20,6 +20,8 @@ Note that YugabyteDB v2025.1 and later are based on PostgreSQL 15 and use pgaudi
 
 ## Prerequisites
 
+- To configure metrics export on Kubernetes, ensure the OpenTelemetry Operator is installed. Refer to [OpenTelemetry Operator for Kubernetes](https://opentelemetry.io/docs/platforms/kubernetes/operator/#getting-started) in the OpenTelemetry documentation.
+
 - Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 
 - If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/15/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#ysql-log-min-messages) flag accordingly.

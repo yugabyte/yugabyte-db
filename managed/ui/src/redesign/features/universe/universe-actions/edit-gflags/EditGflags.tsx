@@ -43,7 +43,7 @@ import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 
-import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg?img';
 
 interface EditGflagsModalProps {
   open: boolean;

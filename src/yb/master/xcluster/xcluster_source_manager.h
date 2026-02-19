@@ -187,7 +187,7 @@ class XClusterSourceManager {
   struct HiddenTabletInfo {
     TableId table_id;
     TabletId parent_tablet_id;
-    std::array<TabletId, kNumSplitParts> split_tablets;
+    std::vector<TabletId> split_tablets;
   };
 
   // Get all the outbound replication groups. Shared pointer are guaranteed not to be null.

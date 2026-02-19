@@ -58,13 +58,13 @@ GET     /customers/:cUUID/providers/:pUUID/initialize                          c
 # End Start UI only
 
 # These methods are handled by new Provider API controller
-POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID, validate:Boolean ?= false, ignoreValidationErrors:Boolean ?= false, request: Request)
+POST    /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.create(cUUID: java.util.UUID, validate:Boolean ?= true, ignoreValidationErrors:Boolean ?= false, request: Request)
 GET     /customers/:cUUID/providers                                            com.yugabyte.yw.controllers.CloudProviderApiController.list(cUUID: java.util.UUID, name: String ?= null, providerCode: String ?= null)
 GET     /customers/:cUUID/providers/region_metadata/:code                            com.yugabyte.yw.controllers.CloudProviderApiController.fetchRegionMetadata(cUUID: java.util.UUID, code: String, subType: String ?= null)
 # This route should come after /suggested_kubernetes_config to avoid conflict.
 GET     /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.index(cUUID: java.util.UUID, pUUID: java.util.UUID)
 DELETE  /customers/:cUUID/providers/:pUUID                                     com.yugabyte.yw.controllers.CloudProviderApiController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
-PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, validate:Boolean ?= false, ignoreValidationErrors:Boolean ?= false, request: Request)
+PUT     /customers/:cUUID/providers/:pUUID/edit                                com.yugabyte.yw.controllers.CloudProviderApiController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, validate:Boolean ?= true, ignoreValidationErrors:Boolean ?= false, request: Request)
 PUT     /customers/:cUUID/providers/:pUUID/refresh_pricing                     com.yugabyte.yw.controllers.CloudProviderApiController.refreshPricing(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation                 com.yugabyte.yw.controllers.CloudProviderApiController.accessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/providers/:pUUID/access_key_rotation/schedule        com.yugabyte.yw.controllers.CloudProviderApiController.scheduledAccessKeysRotation(cUUID:java.util.UUID, pUUID: java.util.UUID, request: Request)

@@ -23,11 +23,9 @@
 
 namespace yb::XClusterTestUtils {
 
-Result<NamespaceId> GetNamespaceId(
-    client::YBClient& client, const NamespaceName& ns_name) {
+Result<NamespaceId> GetNamespaceId(client::YBClient& client, const NamespaceName& ns_name) {
   master::GetNamespaceInfoResponsePB resp;
-  RETURN_NOT_OK(
-      client.GetNamespaceInfo({} /* namespace_id */, ns_name, YQL_DATABASE_PGSQL, &resp));
+  RETURN_NOT_OK(client.GetNamespaceInfo(ns_name, YQL_DATABASE_PGSQL, &resp));
   return resp.namespace_().id();
 }
 

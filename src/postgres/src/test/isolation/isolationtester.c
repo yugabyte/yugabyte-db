@@ -1110,6 +1110,15 @@ try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
 		PQclear(res);
 	}
 
+	/*
+	 * YB: It takes longer to deliver the notifications in YB, hence, sleep
+	 * before checking for notifications. This is required to match the
+	 * PG's expected output for isolation test async-notify.
+	 */
+	const char *yb_wait_for_notifs = getenv("YB_ISOLATION_TEST_WAIT_FOR_NOTIFS_MS");
+	if (yb_wait_for_notifs != NULL)
+		pg_usleep(atol(yb_wait_for_notifs) * 1000);
+
 	/* Report any available NOTIFY messages, too */
 	PQconsumeInput(conn);
 	while ((notify = PQnotifies(conn)) != NULL)

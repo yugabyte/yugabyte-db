@@ -74,15 +74,14 @@ namespace {
 void HandleRedisReadRequestAsync(
     tablet::AbstractTablet* tablet,
     const docdb::ReadOperationData& read_operation_data,
-    const RedisReadRequestPB& redis_read_request,
-    RedisResponsePB* response,
-    const std::function<void(const Status& s)>& status_cb
-) {
+    const RedisReadRequestMsg& redis_read_request,
+    RedisResponseMsg* response,
+    const std::function<void(const Status& s)>& status_cb) {
   status_cb(tablet->HandleRedisReadRequest(read_operation_data, redis_read_request, response));
 }
 
 Result<IsolationLevel> GetIsolationLevel(
-    const ReadRequestPB& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
+    const ReadRequestMsg& req, TabletServerIf* server, TabletPeerTablet* peer_tablet) {
   if (!req.has_transaction()) {
     return IsolationLevel::NON_TRANSACTIONAL;
   }
@@ -106,8 +105,8 @@ Result<IsolationLevel> GetIsolationLevel(
 class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::ThreadPoolTask {
  public:
   ReadQuery(
-      TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestPB* req,
-      ReadResponsePB* resp, rpc::RpcContext context)
+      TabletServerIf* server, ReadTabletProvider* read_tablet_provider, const ReadRequestMsg* req,
+      ReadResponseMsg* resp, rpc::RpcContext context)
       : server_(*server),
         read_tablet_provider_(*read_tablet_provider),
         req_(req),
@@ -181,8 +180,8 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
 
   TabletServerIf& server_;
   ReadTabletProvider& read_tablet_provider_;
-  const ReadRequestPB* req_;
-  ReadResponsePB* resp_;
+  const ReadRequestMsg* req_;
+  ReadResponseMsg* resp_;
   rpc::RpcContext context_;
 
   std::shared_ptr<tablet::AbstractTablet> abstract_tablet_;
@@ -528,8 +527,7 @@ Status ReadQuery::Complete() {
     const auto result = VERIFY_RESULT(DoRead());
     if (allow_retry_ && read_time_ && read_time_ == result.restart_time) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5)
-          << __func__ << ", restarting read with the same read time: " << result.restart_time
-          << THROTTLE_MSG;
+          << __func__ << ", restarting read with the same read time: " << result.restart_time;
       allow_retry_ = false;
     }
     read_time_ = result.restart_time;
@@ -698,8 +696,8 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
   if (!req_->ql_batch().empty()) {
     // Assert the primary table is a YQL table.
     DCHECK_EQ(abstract_tablet_->table_type(), TableType::YQL_TABLE_TYPE);
-    ReadRequestPB* mutable_req = const_cast<ReadRequestPB*>(req_);
-    for (QLReadRequestPB& ql_read_req : *mutable_req->mutable_ql_batch()) {
+    auto* mutable_req = const_cast<ReadRequestMsg*>(req_);
+    for (auto& ql_read_req : *mutable_req->mutable_ql_batch()) {
       // Update the remote endpoint.
       ql_read_req.set_allocated_remote_endpoint(&host_port_pb_);
       ql_read_req.set_allocated_proxy_uuid(mutable_req->mutable_proxy_uuid());
@@ -763,7 +761,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
 void PerformRead(
     TabletServerIf* server, ReadTabletProvider* read_tablet_provider,
-    const ReadRequestPB* req, ReadResponsePB* resp, rpc::RpcContext context) {
+    const ReadRequestMsg* req, ReadResponseMsg* resp, rpc::RpcContext context) {
   auto read_query = std::make_shared<ReadQuery>(
       server, read_tablet_provider, req, resp, std::move(context));
   read_query->Perform();

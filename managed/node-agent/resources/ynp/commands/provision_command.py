@@ -27,13 +27,21 @@ class OSFamily(Enum):
 
 class ProvisionCommand(Command):
 
-    cloud_only_modules = ['Preprovision', 'MountEpemeralDrive', 'InstallPackages']
+    cloud_only_modules = ['Preprovision', 'MountEphemeralDrive', 'InstallPackages']
     onprem_only_modules = ['RebootNode']
+    required_os_packages = {
+        OSFamily.REDHAT.value: ['openssl', 'policycoreutils'],
+        OSFamily.DEBIAN.value: ['openssl', 'policycoreutils'],
+        OSFamily.SUSE.value: ['openssl'],
+        OSFamily.ARCH.value: ['openssl', 'policycoreutils'],
+    }
 
     def __init__(self, config):
         super().__init__(config)
         self.base_package = "modules"
         self._module_registry = mbm.BaseYnpModule.registry
+        self._discover_os_info()
+        self._discover_package_manager()
         self._load_modules()
         logger.info(self._module_registry)
         logger.info("initialized")
@@ -55,7 +63,7 @@ class ProvisionCommand(Command):
                 full_module_name = f"{module_base}.{module_name}"
                 importlib.import_module(full_module_name)
 
-    def _build_script(self, all_templates, phase):
+    def _build_script(self, all_templates, phase, create_subshell=False):
         key = next(iter(self.config), None)
         context = self.config[key]
         with tempfile.NamedTemporaryFile(mode="w+", dir=context.get('tmp_directory'),
@@ -64,13 +72,33 @@ class ProvisionCommand(Command):
             loglevel = context.get('loglevel')
             if loglevel == "DEBUG":
                 temp_file.write("set -x\n")
-            self.add_results_helper(temp_file)
+            if create_subshell:
+                # Initialize parent exit code and errors array.
+                temp_file.write("parent_exit_code=0\n")
+                temp_file.write("errors=()\n")
+            else:
+                # add_result_helper works only in the same shell.
+                self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
                 temp_file.write(f"\n######## BEGIN {key} #########\n")
-                temp_file.write(all_templates[key][phase])
+                template = all_templates[key][phase]
+                if template is not None and template.strip():
+                    if create_subshell:
+                        temp_file.write("(\n")
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
+                        temp_file.write(template)
+                        temp_file.write("\n)\n")
+                        self.add_exit_code_check(temp_file, key)
+                    else:
+                        temp_file.write(f"echo \"Executing module {key}\"\n")
+                        temp_file.write(template)
                 temp_file.write(f"\n######## END {key} #########\n")
-            self.print_results_helper(temp_file)
+            if create_subshell:
+                temp_file.write("\n######## Summary #########\n")
+                self.print_exit_errors(temp_file)
+            else:
+                self.print_results_helper(temp_file)
 
         os.chmod(temp_file.name, 0o755)
         logger.info("Temp file for " + phase + " is: " + temp_file.name)
@@ -83,6 +111,31 @@ class ProvisionCommand(Command):
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
         return result
+
+    def add_exit_code_check(self, file, key):
+        file.write(
+            f"""
+            exit_code=$?
+            if [ $exit_code -ne 0 ]; then
+                parent_exit_code=$exit_code
+                err="Module {key} failed with code $exit_code"
+                errors+=("$err")
+                echo "$err"
+            fi
+            """
+        )
+
+    def print_exit_errors(self, file):
+        file.write(
+            """
+            if [ ${#errors[@]} -ne 0 ]; then
+                for err in "${errors[@]}"; do
+                    echo "$err"
+                done
+            fi
+            exit $parent_exit_code
+            """
+        )
 
     def add_results_helper(self, file):
         file.write(
@@ -140,7 +193,6 @@ class ProvisionCommand(Command):
         file.write("fi\n")
 
     def _generate_template(self, specific_module=None):
-        os_distribution, os_family, os_version = self._get_os_info()
         all_templates = {}
 
         for key in self.config:
@@ -152,6 +204,10 @@ class ProvisionCommand(Command):
                 continue
             if key in self.cloud_only_modules and \
                     self.config[key].get('is_cloud', 'False') == 'False':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
+                continue
+            if key in self.onprem_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'True':
                 print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
             if key == 'InstallNodeAgent' and \
@@ -171,20 +227,20 @@ class ProvisionCommand(Command):
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
-            context["os_family"] = os_family
-            context["os_version"] = os_version
-            context["os_distribution"] = os_distribution
+            context["os_family"] = self.os_family
+            context["os_version"] = self.os_version
+            context["os_distribution"] = self.os_distribution
             module_instance = module[0]()
             rendered_template = module_instance.render_templates(context)
             if rendered_template is not None:
                 all_templates[key] = rendered_template
 
         precheck_combined_script = self._build_script(all_templates, "precheck")
-        run_combined_script = self._build_script(all_templates, "run")
+        run_combined_script = self._build_script(all_templates, "run", create_subshell=True)
 
         return run_combined_script, precheck_combined_script
 
-    def _get_os_info(self):
+    def _discover_os_info(self):
         os_release_file = '/etc/os-release'
 
         # Check if the os-release file exists
@@ -201,73 +257,70 @@ class ProvisionCommand(Command):
                     os_release_info[key] = value.strip('"')
 
         # Extract distribution and version
-        distribution = os_release_info.get("ID", "").lower()
+        self.os_distribution = os_release_info.get("ID", "").lower()
         version = os_release_info.get("VERSION_ID", "")
-        major_version = version.split('.')[0] if version else ""
-
+        self.os_version = version.split('.')[0] if version else ""
         # Determine OS family
-        if distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
-            os_family = OSFamily.REDHAT.value
-        elif distribution in {"ubuntu", "debian"}:
-            os_family = OSFamily.DEBIAN.value
-        elif distribution in {"suse", "opensuse", "sles"}:
-            os_family = OSFamily.SUSE.value
-        elif distribution == "arch":
-            os_family = OSFamily.ARCH.value
-        else:
-            os_family = OSFamily.UNKNOWN.value
+        self.os_family = OSFamily.UNKNOWN.value
+        if self.os_distribution in {"rhel", "centos", "almalinux", "ol", "fedora"}:
+            self.os_family = OSFamily.REDHAT.value
+        elif self.os_distribution in {"ubuntu", "debian"}:
+            self.os_family = OSFamily.DEBIAN.value
+        elif self.os_distribution in {"suse", "opensuse", "sles"}:
+            self.os_family = OSFamily.SUSE.value
+        elif self.os_distribution == "arch":
+            self.os_family = OSFamily.ARCH.value
+        logger.info(f"Detected OS Distribution: {self.os_distribution}, "
+                    f"Version: {self.os_version}, Family: {self.os_family}")
 
-        return distribution, os_family, major_version
-
-    def _check_package(self, package_manager, package_name):
+    def _check_package(self, package_name):
         """Check if a package is installed."""
         try:
-            if package_manager == 'rpm':
+            if self.package_manager == 'rpm':
                 subprocess.run(['rpm', '-q', package_name], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            elif package_manager == 'deb':
+            elif self.package_manager == 'deb':
                 subprocess.run(['dpkg', '-s', package_name], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
-            sys.exit()
+            sys.exit(1)
 
-    def _get_package_manager(self):
+    def _discover_package_manager(self):
         package_manager = None
         try:
             subprocess.run(['rpm', '--version'], check=True,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            package_manager = 'rpm'
+            self.package_manager = 'rpm'
         except FileNotFoundError:
             try:
                 subprocess.run(['dpkg', '--version'], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                package_manager = 'deb'
+                self.package_manager = 'deb'
             except FileNotFoundError:
                 logger.info(
                     "Unsupported package manager. Cannot determine package installation status.")
                 sys.exit(1)
 
-        if package_manager is None:
+        if self.package_manager is None:
             logger.info(
                 "Unsupported package manager. Cannot determine package installation status.")
             sys.exit(1)
 
-        return package_manager
+        logger.info(f"Detected package manager: {self.package_manager}")
 
     def _validate_required_packages(self):
-        package_manager = self._get_package_manager()
-        packages = ['openssl', 'policycoreutils']
-        cloud_only_packages = ['gzip']
+        packages = self.required_os_packages.get(self.os_family, [])
         for package in packages:
-            self._check_package(package_manager, package)
+            self._check_package(package)
         key = next(iter(self.config), None)
         context = self.config[key]
-        is_cloud = context.get('is_cloud')
-        if is_cloud:
+        is_cloud = context.get('is_cloud', 'False')
+        if is_cloud == 'True':
+            cloud_only_packages = ['gzip']
             for package in cloud_only_packages:
-                self._check_package(package_manager, package)
+                self._check_package(package)
 
     def _copy_templates_files_for_ybm(self, context):
         ynp_dir = context.get('ynp_dir')
@@ -307,10 +360,13 @@ class ProvisionCommand(Command):
                 # Define the full path to the ynp_version file
                 ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
+                current_user_id = os.getuid()
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
-                if uid == 0:
+                if current_user_id == 0 and current_user_id != uid:
+                    # Change ownership only if running as root and yb_user is different
+                    # from current user.
                     os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")

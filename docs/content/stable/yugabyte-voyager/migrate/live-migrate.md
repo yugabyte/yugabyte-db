@@ -9,12 +9,19 @@ menu:
     identifier: migrate-live
     parent: migration-types
     weight: 103
-tags:
-  feature: tech-preview
 type: docs
 ---
 
 The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
+
+## Feature availability
+
+Live migration availability varies by the source database type as described in the following table:
+
+| Source database | Feature Maturity |
+| :---- | :---- |
+| PostgreSQL | {{<tags/feature/ga>}} |
+| Oracle | {{<tags/feature/tp>}} |
 
 ## Live migration workflow
 
@@ -79,6 +86,8 @@ Create a new database user, and assign the necessary user permissions.
 </ul>
 <div class="tab-content">
   <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+Live migration is {{<tags/feature/tp>}} for Oracle source databases.
 
 {{< tabpane text=true >}}
 
@@ -366,11 +375,13 @@ You can use only one of the following arguments in the `source` parameter (confi
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
+Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
+
 {{< tabpane text=true >}}
 
   {{% tab header="Standalone PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. You can check this using following the steps:
 
     1. Run the command `SHOW wal_level` on the database to check the value.
 
@@ -386,9 +397,18 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    The script does the following:
+
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
+
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
@@ -408,7 +428,7 @@ You can use only one of the following arguments in the `source` parameter (confi
 
   {{% tab header="RDS PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
 
     1. Run the command `SHOW rds.logical_replication` on the database to check whether the parameter is set.
 
@@ -424,9 +444,18 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    The script does the following:
+
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
+
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
@@ -1354,12 +1383,15 @@ DROP USER ybvoyager;
 
 ## Limitations
 
+- Special characters in the schema name and table name are not supported.
 - Schema changes on the source database will not be recognized during the live migration.
 - Adding or deleting partitions of a partitioned table is not supported during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
 - Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
+- Some PostgreSQL data types are unsupported - POINT, LINE, LSEG, BOX, PATH, POLYGON, CIRCLE, GEOMETRY, GEOGRAPHY, BOX2D, BOX3D, TOPOGEOMETRY, RASTER, PG_LSN, TXID_SNAPSHOT, XML, LO, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - For Oracle source databases, schema, table, and column names with more than 30 characters are not supported.
 - Sequences that are not associated with any column or are attached to columns of non-integer types are not supported for resuming value generation. These sequences must be manually resumed during the cutover phase.
 - For Oracle, only the values of identity columns on the migrating tables will be restored. The user will have to resume other sequences manually.
+

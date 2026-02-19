@@ -30,7 +30,7 @@
 
 #include "yb/tablet/tablet.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
@@ -44,16 +44,16 @@ namespace master {
 
 namespace {
 
-void SetBinaryValue(const Slice& binary_value, QLExpressionPB* expr_pb) {
+void SetBinaryValue(Slice binary_value, QLExpressionMsg* expr_pb) {
   expr_pb->mutable_value()->set_binary_value(binary_value.cdata(), binary_value.size());
 }
 
-void SetInt8Value(const int8_t int8_value, QLExpressionPB* expr_pb) {
+void SetInt8Value(const int8_t int8_value, QLExpressionMsg* expr_pb) {
   expr_pb->mutable_value()->set_int8_value(int8_value);
 }
 
 Status SetColumnId(
-    const Schema& schema_with_ids, const std::string& column_name, QLColumnValuePB* col_pb) {
+    const Schema& schema_with_ids, const std::string& column_name, QLColumnValueMsg* col_pb) {
   auto column_id = VERIFY_RESULT(schema_with_ids.ColumnIdByName(column_name));
   col_pb->set_column_id(column_id.rep());
   return Status::OK();
@@ -89,7 +89,7 @@ bool IsWrite(QLWriteRequestPB::QLStmtType op_type) {
 }
 
 SysCatalogWriter::SysCatalogWriter(const Schema& schema_with_ids, int64_t leader_term)
-    : schema_with_ids_(schema_with_ids), req_(std::make_unique<tserver::WriteRequestPB>()),
+    : schema_with_ids_(schema_with_ids), req_(std::make_unique<tserver::WriteRequestMsg>()),
       leader_term_(leader_term) {
 }
 
@@ -132,7 +132,7 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
                                              const Schema& target_schema,
                                              const uint32_t target_schema_version,
                                              bool is_upsert) {
-  PgsqlWriteRequestPB* pgsql_write = req_->add_pgsql_write_batch();
+  auto* pgsql_write = req_->add_pgsql_write_batch();
 
   pgsql_write->set_client(YQL_CLIENT_PGSQL);
   if (is_upsert) {
@@ -157,7 +157,7 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
   for (size_t i = source_schema.num_range_key_columns(); i < source_schema.num_columns(); i++) {
     const auto& value = source_row.GetValue(source_schema.column_id(i));
     if (value) {
-      PgsqlColumnValuePB* column_value = pgsql_write->add_column_values();
+      auto* column_value = pgsql_write->add_column_values();
       column_value->set_column_id(target_schema.column_id(i));
       column_value->mutable_expr()->mutable_value()->CopyFrom(*value);
     }
@@ -170,7 +170,7 @@ Status SysCatalogWriter::DeleteYsqlTableRow(const Schema& schema,
                                             const qlexpr::QLTableRow& row,
                                             const TableId& table_id,
                                             const uint32_t schema_version) {
-  PgsqlWriteRequestPB* pgsql_write = req_->add_pgsql_write_batch();
+  auto* pgsql_write = req_->add_pgsql_write_batch();
   pgsql_write->set_client(YQL_CLIENT_PGSQL);
   pgsql_write->set_stmt_type(PgsqlWriteRequestPB::PGSQL_DELETE);
   pgsql_write->set_table_id(table_id);
@@ -190,10 +190,10 @@ Status SysCatalogWriter::DeleteYsqlTableRow(const Schema& schema,
 
 Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const Slice& data,
-    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestMsg* req) {
   if (IsWrite(op_type)) {
     // Add the metadata column.
-    QLColumnValuePB* metadata = req->add_column_values();
+    auto* metadata = req->add_column_values();
     RETURN_NOT_OK(SetColumnId(schema_with_ids, kSysCatalogTableColMetadata, metadata));
     SetBinaryValue(data, metadata->mutable_expr());
   }
@@ -211,7 +211,7 @@ Status FillSysCatalogWriteRequest(
 
 Status FillSysCatalogWriteRequest(
     int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
-    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestMsg* req) {
   req->set_type(op_type);
 
   if (IsWrite(op_type)) {

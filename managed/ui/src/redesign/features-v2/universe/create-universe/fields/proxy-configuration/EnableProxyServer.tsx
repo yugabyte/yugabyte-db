@@ -15,7 +15,9 @@ import {
   BYPASS_PROXY_LIST_FIELD,
   BYPASS_PROXY_LIST_VALUES_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
-import { ReactComponent as NextLineIcon } from '@app/redesign/assets/next-line.svg';
+
+//icons
+import NextLineIcon from '@app/redesign/assets/next-line.svg';
 
 const { Box, Typography, styled } = mui;
 
@@ -37,7 +39,7 @@ const StyledSubText = styled(Typography)(() => ({
   fontSize: 11.5,
   fontWeight: 400,
   lineHeight: '18px',
-  marginLeft: '40px'
+  marginLeft: '48px'
 }));
 
 export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
@@ -61,7 +63,7 @@ export const EnableProxyServer: FC<EnableProxyServerProps> = ({ disabled }) => {
           label={t('toggleLabel')}
           dataTestId="enable-proxy-server-field"
         />
-        <StyledSubText>
+        <StyledSubText sx={{ mt: 0.5 }}>
           {t('toggleHelper')}&nbsp;
           <StyledLink>{t('learnMore')}</StyledLink>
         </StyledSubText>

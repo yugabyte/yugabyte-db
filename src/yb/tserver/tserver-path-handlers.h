@@ -93,6 +93,7 @@ class TabletServerPathHandlers {
   std::string ConsensusStatePBToHtml(const consensus::ConsensusStatePB& cstate) const;
   std::string GetDashboardLine(const std::string& link,
                                const std::string& text, const std::string& desc);
+  void OutputConnectivity(std::ostream& output);
 
   TabletServer* const tserver_;
 

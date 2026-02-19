@@ -51,6 +51,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& user,
       bool simple_query_protocol = false);
   Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
+  Result<PGConn> ConnectToTsForDB(const ExternalTabletServer& pg_ts, const std::string& db_name);
   Result<PGConn> ConnectToTsAsUser(
       const ExternalTabletServer& pg_ts,
       const std::string& user);
@@ -72,6 +73,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::vector<YsqlMetric>& metrics,
       const std::string& metric_name);
   static void WaitForCatalogVersionToPropagate();
+  Result<int64_t> GetCatCacheTableMissMetric(const std::string& table_name);
 };
 
 Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);

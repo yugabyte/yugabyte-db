@@ -35,6 +35,12 @@
 
 namespace yb::pggate {
 
+// Enumeration representing results of PgDmlRead::IsMergeSortColumn function
+// kNone - column does not participate in merge sort
+// kStreamKey - column defines merge stream and must have equality or SAOP condition on it
+// kSortKey - column is a merge sort key
+YB_DEFINE_ENUM(MergeSortColumnType, (kNone)(kStreamKey)(kSortKey));
+
 //--------------------------------------------------------------------------------------------------
 // DML_READ
 //--------------------------------------------------------------------------------------------------
@@ -106,6 +112,8 @@ class PgDmlRead : public PgDml {
   Status AddRowUpperBound(
       YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
 
+  Status SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys);
+
   // Execute.
   Status Exec(const YbcPgExecParameters* exec_params);
   void SetRequestedYbctids(std::reference_wrapper<const std::vector<Slice>> ybctids);
@@ -171,11 +179,34 @@ class PgDmlRead : public PgDml {
 
   Status InitDocOp(const YbcPgExecParameters* params);
 
+  // Check if the column at specified position participates in merge sort
+  [[nodiscard]] MergeSortColumnType IsMergeSortColumn(size_t index) const {
+    if (!merge_sort_keys_) {
+      return MergeSortColumnType::kNone;
+    }
+    // merge_sort_keys_ must be ordered by the att_idx, the order of the columns in the key
+    for (const auto& key : *merge_sort_keys_) {
+      if (index < key.att_idx) {
+        return MergeSortColumnType::kStreamKey;
+      } else if (index == key.att_idx) {
+        return MergeSortColumnType::kSortKey;
+      }
+    }
+    return MergeSortColumnType::kNone;
+  }
+
+  // Collects the IN and equality conditions on the hash and range key columns and sets up
+  // the permutations generator. Each permutation corresponds to a set of conditions on a request
+  // making a stream of rows to merge sort with the other streams.
+  InPermutationGenerator MergeStreamPermutations();
+
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
 
   bool primary_binds_processed_ = false;
+
+  MergeSortKeysPtr merge_sort_keys_;
 };
 
 }  // namespace yb::pggate

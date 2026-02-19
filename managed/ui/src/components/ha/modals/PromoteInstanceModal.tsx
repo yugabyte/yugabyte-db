@@ -14,7 +14,7 @@ import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { YBLoading } from '../../common/indicators';
 import { YBCheckBox, YBFormSelect } from '../../common/forms/fields';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
-import InfoIcon from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg?img';
 import { YBInput, YBTooltip } from '../../../redesign/components';
 import { formatDatetime, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
 import {
@@ -22,7 +22,7 @@ import {
   getIsHaBackupOld,
   HA_BACKUP_OLD_THRESHOLD_HOURS
 } from '../utils';
-import { ReactComponent as WarningIcon } from '@app/redesign/assets/alert.svg';
+import WarningIcon from '@app/redesign/assets/alert.svg';
 
 import './PromoteInstanceModal.scss';
 

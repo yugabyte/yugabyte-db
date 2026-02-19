@@ -71,6 +71,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
     builder.addCommonTServerFlag("ysql_conn_mgr_superuser_sticky",
       Boolean.toString(ysql_conn_mgr_superuser_sticky));
+    builder.addCommonTServerFlag("ysql_conn_mgr_reserve_internal_conns", "0");
     if (warmup_random_mode) {
       builder.addCommonTServerFlag(
       "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
@@ -112,7 +113,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     return warmup_random_mode;
   }
 
-  private void restartClusterWithAdditionalFlags(
+  protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
@@ -215,18 +216,39 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   }
 
   protected JsonObject getPool(String db_name, String user_name) throws Exception {
+    // Specifically fetches a non logical replication pool. Use `getRepPool()` for replication pool.
     JsonObject obj = getConnectionStats();
-    assertNotNull("Got a null response from the connections endpoint",
-        obj);
+    assertNotNull("Got a null response from the connections endpoint", obj);
     JsonArray pools = obj.getAsJsonArray("pools");
     assertNotNull("Got empty pool", pools);
     for (int i = 0; i < pools.size(); ++i) {
       JsonObject pool = pools.get(i).getAsJsonObject();
       String databaseName = pool.get("database_name").getAsString();
       String userName = pool.get("user_name").getAsString();
+      Boolean logicalRep = pool.get("logical_rep").getAsBoolean();
 
-      if (db_name.equals(databaseName) && user_name.equals(userName)) {
-          return pool;
+      if (db_name.equals(databaseName) && user_name.equals(userName) && !logicalRep) {
+        return pool;
+      }
+    }
+
+    return null;
+  }
+
+  protected JsonObject getRepPool(String db_name, String user_name) throws Exception {
+    // Specifically fetches a logical replication pool. Use `getPool()` for non-rep pool.
+    JsonObject obj = getConnectionStats();
+    assertNotNull("Got a null response from the connections endpoint", obj);
+    JsonArray pools = obj.getAsJsonArray("pools");
+    assertNotNull("Got empty pool", pools);
+    for (int i = 0; i < pools.size(); ++i) {
+      JsonObject pool = pools.get(i).getAsJsonObject();
+      String databaseName = pool.get("database_name").getAsString();
+      String userName = pool.get("user_name").getAsString();
+      Boolean logicalRep = pool.get("logical_rep").getAsBoolean();
+
+      if (db_name.equals(databaseName) && user_name.equals(userName) && logicalRep) {
+        return pool;
       }
     }
 

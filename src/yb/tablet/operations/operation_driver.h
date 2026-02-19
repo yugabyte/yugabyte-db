@@ -277,8 +277,6 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // This is used for debugging only, not any actual operation ordering.
   MicrosecondsInt64 prepare_physical_hybrid_time_ = 0;
 
-  TableType table_type_;
-
   MvccManager* mvcc_ = nullptr;
   HybridTime propagated_safe_time_;
 

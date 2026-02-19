@@ -107,6 +107,8 @@ struct TransactionalBatchData {
 
 class FastModeTransactionScope;
 
+YB_STRONGLY_TYPED_BOOL(OnlyAbortTxnsNotUsingTableLocks);
+
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
 // appropriate tablet. Since this class manages transactions of tablet there is separate class
 // instance per tablet.
@@ -126,7 +128,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   // Adds new running transaction.
   // Returns true if transaction was added, false if transaction already present.
-  Result<bool> Add(const TransactionMetadata& metadata);
+  Result<bool> Add(const TransactionMetadata& metadata, HybridTime batch_write_ht);
 
   Result<TransactionMetadata> PrepareMetadata(const LWTransactionMetadataPB& pb) override;
   Result<TransactionMetadata> PrepareMetadata(const TransactionMetadataPB& pb);
@@ -187,9 +189,9 @@ class TransactionParticipant : public TransactionStatusManager {
 
   TransactionParticipantContext* context() const;
 
-  void SetMinReplayTxnStartTimeLowerBound(HybridTime start_ht);
+  void SetMinReplayTxnFirstWriteTimeLowerBound(HybridTime hybrid_time);
 
-  HybridTime MinReplayTxnStartTime() const;
+  HybridTime MinReplayTxnFirstWriteTime() const;
 
   HybridTime MinRunningHybridTime() const override;
 
@@ -214,7 +216,8 @@ class TransactionParticipant : public TransactionStatusManager {
   // After this call, there should be no active (non-aborted/committed) txn that
   // started before cutoff which is active on this tablet.
   Status StopActiveTxnsPriorTo(
-      HybridTime cutoff, CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
+      OnlyAbortTxnsNotUsingTableLocks only_abort_txns_not_using_table_locks, HybridTime cutoff,
+      CoarseTimePoint deadline, TransactionId* exclude_txn_id = nullptr);
 
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
@@ -246,7 +249,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   size_t GetNumRunningTransactions() const;
 
-  void SetMinReplayTxnStartTimeUpdateCallback(std::function<void(HybridTime)> callback);
+  void SetMinReplayTxnFirstWriteTimeUpdateCallback(std::function<void(HybridTime)> callback);
 
   struct CountIntentsResult {
     size_t num_intents;

@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet_peer.h"
@@ -770,12 +771,13 @@ Status CDCSDKYsqlTest::DeleteRows(
 Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluster* cluster) {
   yb::master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster->mini_cluster_->GetSplitFactor());
   yb::master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(30.0) * kTimeMultiplier);
   auto& cm = cluster->mini_cluster_->mini_master()->catalog_manager();
   RETURN_NOT_OK(cm.SplitTablet(
-      tablet_id, master::ManualSplit::kTrue,
+      tablet_id, master::ManualSplit::kTrue, cluster->mini_cluster_->GetSplitFactor(),
       cm.GetLeaderEpochInternal()));
 
   if (resp.has_error()) {
@@ -1471,9 +1473,52 @@ void CDCSDKYsqlTest::CheckRecord(
   }
 }
 
+void CDCSDKYsqlTest::CheckRecordTuples(
+    const CDCSDKProtoRecordPB& record, const std::vector<std::string>& expected_new_tuples_cols,
+    const std::vector<std::string>& expected_old_tuples_cols) {
+  // If 1st old tuple is empty, then all old tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all old tuples are populated empty or all of them are non-empty.
+  bool all_old_tuples_empty = !record.row_message().old_tuple(0).has_column_name();
+  // If all old tuples are empty, then expected_old_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_old_tuples_empty) {
+    ASSERT_TRUE(expected_old_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().old_tuple_size(), expected_old_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().old_tuple_size(); ++i) {
+    if (all_old_tuples_empty) {
+      ASSERT_FALSE(record.row_message().old_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().old_tuple(i).column_name(), expected_old_tuples_cols[i]);
+  }
+
+  // If 1st new tuple is empty, then all new tuples should be empty. This is because, in
+  // CDCSDKProtoRecordPB either all new tuples are populated empty or all of them are non-empty.
+  bool all_new_tuples_empty = !record.row_message().new_tuple(0).has_column_name();
+  // If all new tuples are empty, then expected_new_tuples_cols should also be empty, else their
+  // sizes should match.
+  if (all_new_tuples_empty) {
+    ASSERT_TRUE(expected_new_tuples_cols.empty());
+  } else {
+    ASSERT_EQ(record.row_message().new_tuple_size(), expected_new_tuples_cols.size());
+  }
+
+  for (int i = 0; i < record.row_message().new_tuple_size(); ++i) {
+    if (all_new_tuples_empty) {
+      ASSERT_FALSE(record.row_message().new_tuple(i).has_column_name());
+      continue;
+    }
+    ASSERT_EQ(record.row_message().new_tuple(i).column_name(), expected_new_tuples_cols[i]);
+  }
+}
+
 Status CDCSDKYsqlTest::InitVirtualWAL(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-    const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
+    const uint64_t session_id, const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
+    bool include_oid_to_relfilenode) {
   InitVirtualWALForCDCRequestPB init_req;
   init_req.set_stream_id(stream_id.ToString());
   init_req.set_session_id(session_id);
@@ -1485,6 +1530,10 @@ Status CDCSDKYsqlTest::InitVirtualWAL(
     auto slot_hash_range_req = init_req.mutable_slot_hash_range();
     slot_hash_range_req->set_start_range(slot_hash_range->start_range);
     slot_hash_range_req->set_end_range(slot_hash_range->end_range);
+  }
+
+  if (include_oid_to_relfilenode) {
+    RETURN_NOT_OK(PopulateOidToRelfileNode(table_ids, init_req.mutable_oid_to_relfilenode()));
   }
 
   RETURN_NOT_OK(WaitFor(
@@ -1572,7 +1621,7 @@ Result<GetConsistentChangesResponsePB> CDCSDKYsqlTest::GetConsistentChangesFromC
 
 Status CDCSDKYsqlTest::UpdatePublicationTableList(
     const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-    uint64_t session_id) {
+    uint64_t session_id, bool include_oid_to_relfilenode) {
   UpdatePublicationTableListRequestPB req;
   UpdatePublicationTableListResponsePB resp;
 
@@ -1581,6 +1630,10 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
     req.add_table_id(table_id);
   }
   req.set_session_id(session_id);
+
+  if (include_oid_to_relfilenode) {
+    RETURN_NOT_OK(PopulateOidToRelfileNode(table_ids, req.mutable_oid_to_relfilenode()));
+  }
 
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -1603,6 +1656,19 @@ Status CDCSDKYsqlTest::UpdatePublicationTableList(
       MonoDelta::FromSeconds(kRpcTimeout),
       "UpdatePublicationTableList failed due to RPC timeout"));
 
+  return Status::OK();
+}
+
+Status CDCSDKYsqlTest::PopulateOidToRelfileNode(
+    const std::vector<TableId>& table_ids,
+    google::protobuf::Map<uint32_t, uint32_t>* oid_to_relfilenode_map) {
+  for (const auto& table_id : table_ids) {
+    auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager();
+    auto table_info = VERIFY_RESULT(cm.FindTableById(table_id));
+    auto relfilenode = VERIFY_RESULT(table_info->GetPgRelfilenodeOid());
+    auto oid = VERIFY_RESULT(table_info->GetPgTableOid());
+    oid_to_relfilenode_map->emplace(oid, relfilenode);
+  }
   return Status::OK();
 }
 
@@ -1977,7 +2043,8 @@ Result<CDCSDKYsqlTest::GetAllPendingChangesResponse>
 CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
     const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
     bool init_virtual_wal, const uint64_t session_id, bool allow_sending_feedback,
-    const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range) {
+    const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range,
+    std::vector<TableId> new_table_ids) {
   // We will keep on consuming changes until we get the entire txn i.e COMMIT record of the
   // last txn. This indicates that even though we might have received the expecpted DML
   // records, we might still continue calling GetConsistentChanges until we receive the
@@ -2016,6 +2083,11 @@ CDCSDKYsqlTest::GetAllPendingTxnsFromVirtualWAL(
         change_resp.has_publication_refresh_time() &&
         change_resp.publication_refresh_time() > 0) {
           resp.has_publication_refresh_indicator = true;
+          if (!new_table_ids.empty()) {
+            RETURN_NOT_OK(UpdatePublicationTableList(
+                stream_id, new_table_ids, kVWALSessionId1,
+                true /* include_oid_to_relfilenode */));
+          }
         }
 
         for (int i = 0; i < change_resp.cdc_sdk_proto_records_size(); i++) {
@@ -2164,6 +2236,57 @@ Result<GetChangesResponsePB> CDCSDKYsqlTest::GetChangesFromCDCWithExplictCheckpo
   return change_resp;
 }
 
+Status CDCSDKYsqlTest::PollTillRestartTimeExceedsTableHideTime(
+    const xrepl::StreamId& stream_id, const YBTableName& old_table, const YBTableName& new_table) {
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  RETURN_NOT_OK(test_client()->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets));
+  if (old_tablets.empty()) {
+    return STATUS_FORMAT(NotFound, "No tablets found for table $0", old_table.table_name());
+  }
+
+  // Get the hide time of the old_table's tablet using CatalogManager::GetTabletHideTime().
+  auto& catalog_mgr = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+  HybridTime hide_time = VERIFY_RESULT(catalog_mgr.GetTabletHideTime(old_tablets[0].tablet_id()));
+
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto change_resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+
+        if (change_resp.cdc_sdk_proto_records_size() > 0) {
+          bool found_commit = false;
+          uint64_t commit_lsn;
+          for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+            if (record.row_message().op() == RowMessage_Op_COMMIT) {
+              found_commit = true;
+              commit_lsn = record.row_message().pg_lsn();
+            }
+          }
+
+          if (found_commit) {
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
+          }
+        }
+
+        if (change_resp.has_needs_publication_table_list_refresh() &&
+            change_resp.needs_publication_table_list_refresh() &&
+            change_resp.has_publication_refresh_time() &&
+            change_resp.publication_refresh_time() > 0) {
+          if (!new_table.empty()) {
+            RETURN_NOT_OK(UpdatePublicationTableList(
+                stream_id, {new_table.table_id()}, kVWALSessionId1,
+                true /* include_oid_to_relfilenode */));
+          }
+        }
+
+        auto slot_row = VERIFY_RESULT(ReadSlotEntryFromStateTable(stream_id));
+        return slot_row->record_id_commit_time > hide_time;
+      },
+      MonoDelta::FromSeconds(60),
+      Format(
+          "Timed out waiting for restart time to exceed the hide time $0 of hidden table $1",
+          hide_time, old_table.table_name()));
+}
+
 bool CDCSDKYsqlTest::DeleteCDCStream(const xrepl::StreamId& db_stream_id) {
   RpcController delete_rpc;
   delete_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -2250,6 +2373,7 @@ void CDCSDKYsqlTest::TestIntentGarbageCollectionFlag(
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 3;
 
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -2460,7 +2584,8 @@ Result<GetCDCDBStreamInfoResponsePB> CDCSDKYsqlTest::GetDBStreamInfo(
 void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
     const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
     const std::string& timeout_msg,
-    const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids) {
+    const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids,
+    bool include_catalog_tables) {
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto get_resp = GetDBStreamInfo(stream_id);
@@ -2469,13 +2594,22 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
           bool unqualified_tables_matched =
               expected_unqualified_table_ids.has_value() ? false : true;
 
+          auto all_expected_table_ids = expected_table_ids;
+          if (include_catalog_tables) {
+            auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+            const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+                Format("SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+            all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+          }
           const uint64_t table_info_size = get_resp->table_info_size();
-          if (table_info_size == expected_table_ids.size()) {
+
+          if (table_info_size == all_expected_table_ids.size()) {
             std::unordered_set<std::string> table_ids;
             for (auto entry : get_resp->table_info()) {
               table_ids.insert(entry.table_id());
             }
-            if (expected_table_ids == table_ids) {
+            if (all_expected_table_ids == table_ids) {
               qualified_tables_matched = true;
             }
           }
@@ -2798,10 +2932,15 @@ void CDCSDKYsqlTest::WaitUntilSplitIsSuccesful(
 
 void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
     const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
-    const xrepl::StreamId& stream_id, const std::string timeout_msg) {
+    const xrepl::StreamId& stream_id, const std::string timeout_msg, bool include_catalog_tables) {
   auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
+
+  auto all_expected_tablet_ids = expected_tablet_ids;
+  if (include_catalog_tables) {
+    all_expected_tablet_ids.insert(master::kSysCatalogTabletId);
+  }
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -2824,7 +2963,8 @@ void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
         RETURN_NOT_OK(s);
 
         return (
-            expected_tablet_ids == seen_tablet_ids && seen_rows == expected_tablet_ids.size());
+            all_expected_tablet_ids == seen_tablet_ids &&
+            seen_rows == all_expected_tablet_ids.size());
       },
       MonoDelta::FromSeconds(60), timeout_msg));
 }

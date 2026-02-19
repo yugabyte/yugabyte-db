@@ -56,11 +56,11 @@ If you want to use [YSQL Connection Manager](../../../additional-features/connec
 
 After installing YugabyteDB, if you want to use backup and restore, you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-For example, if you installed v{{< yb-version version="stable">}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+For example, if you installed v{{< yb-version version="stable">}}, extract the `ybc-2.2.0.3-b14-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
 ```sh
 cd yugabyte-{{< yb-version version="stable" >}}
-mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+mkdir ybc | tar -xvf share/ybc-2.2.0.3-b14-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
 ## PostgreSQL compatibility
@@ -68,10 +68,10 @@ mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-co
 For _new universes_ running v2025.2 or later, the following features are enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon:
 
 - [Read committed](../../../architecture/transactions/read-committed/) (yb_enable_read_committed_isolation=true)
-- [Cost based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
+- [Cost-based optimizer](../../../best-practices-operations/ysql-yb-enable-cbo/) (yb_enable_cbo=on)
 - [Auto Analyze](../../../additional-features/auto-analyze/) (ysql_enable_auto_analyze=true)
 - [YugabyteDB bitmap scan](../../../reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan) (yb_enable_bitmapscan=true)
-- [Parallel query](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
+- [Parallel append](../../../additional-features/parallel-query/) (yb_enable_parallel_append=true)
 
 ## Deploy a multi-zone cluster
 

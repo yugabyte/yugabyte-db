@@ -637,6 +637,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  @Override
+  protected boolean maybeRunOnlyPrechecks() {
+    try {
+      return super.maybeRunOnlyPrechecks();
+    } finally {
+      releaseReservedNodes();
+    }
+  }
+
   public SelectMastersResult selectAndApplyMasters() {
     return selectMasters(null, true);
   }
@@ -795,16 +804,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void ensureRemoteProcessState(
       Universe universe, NodeDetails node, String processName, boolean ensureRunning) {
-    List<String> command =
-        ImmutableList.<String>builder()
-            .add("pgrep")
-            .add("-flu")
-            .add("yugabyte")
-            .add(processName)
-            .add("2>/dev/null")
-            .add("||")
-            .add("true")
-            .build();
+    List<String> command = Util.getCheckProcessStatusCommand("yugabyte", processName);
     log.debug(
         "Ensuring {} process running state={} for {} using command {}",
         processName,
@@ -814,12 +814,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     ShellResponse response = nodeUniverseManager.runCommand(node, universe, command);
     String message = response.processErrors().getMessage();
     log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
-    boolean isProcessRunning = StringUtils.isNotBlank(message) && message.contains(processName);
-    if (isProcessRunning ^ ensureRunning) {
+    boolean isProcessRunningOrEnabled =
+        StringUtils.isNotBlank(message)
+            && (message.contains(processName) || message.contains("enabled"));
+    if (isProcessRunningOrEnabled != ensureRunning) {
       String errMsg =
           String.format(
               "Process %s must be %s on node %s but it is not",
-              processName, ensureRunning ? "running" : "stopped", node.nodeName);
+              processName, ensureRunning ? "running/enabled" : "stopped/disabled", node.nodeName);
       log.error(errMsg);
       throw new IllegalStateException(errMsg);
     }
@@ -2366,6 +2368,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
           }
           params.nodeName = n.nodeName;
+          params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
@@ -2417,6 +2420,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
           params.deviceInfo = userIntent.getDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
+          params.azUuid = n.azUuid;
           params.customerUuid = customer.getUuid();
           params.setUniverseUUID(universe.getUniverseUUID());
           params.nodeAgentInstallDir = installPath;
@@ -3638,31 +3642,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException("Unknown server type " + serverType);
     }
     // Command is run in shell. Make it return 0 even if pgrep returns non-zero on pattern mismatch.
-    List<String> command =
-        ImmutableList.<String>builder()
-            .add("pgrep")
-            .add("-xlu")
-            .add("yugabyte")
-            .add(processName)
-            .add("2>/dev/null")
-            .add("||")
-            .add("true")
-            .build();
+    List<String> command = Util.getCheckProcessStatusCommand("yugabyte", processName);
     log.debug("Creating task to run command {}", command);
     BiConsumer<NodeDetails, ShellResponse> consumer =
         (node, response) -> {
           String message = response.processErrors().getMessage();
           log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
-          boolean isProcessRunning =
-              StringUtils.isNotBlank(message) && message.contains(processName);
-          if (isProcessRunning ^ ensureRunning) {
+          boolean isProcessRunningOrEnabled =
+              StringUtils.isNotBlank(message)
+                  && (message.contains(processName) || message.contains("enabled"));
+          if (isProcessRunningOrEnabled != ensureRunning) {
             if (failedNodeCallback != null) {
               failedNodeCallback.accept(node);
             } else {
               String errMsg =
                   String.format(
                       "Process %s must be %s on node %s but it is not",
-                      processName, ensureRunning ? "running" : "stopped", node.nodeName);
+                      processName,
+                      ensureRunning ? "running/enabled" : "stopped/disabled",
+                      node.nodeName);
               throw new RuntimeException(errMsg);
             }
           }

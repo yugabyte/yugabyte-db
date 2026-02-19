@@ -120,10 +120,9 @@ public class PlatformInstanceController extends AuthenticatedController {
                       config, formData.getCleanAddress(), formData.is_leader, formData.is_local);
 
               // Mark this instance as "failed over to" initially since it is a leader instance.
-              if (i.getIsLeader()) {
+              if (i.isLeader()) {
                 config.updateLastFailover();
               }
-
               // Reload from DB.
               config.refresh();
               // Save the local HA config before DB record is replaced in backup-restore during
@@ -165,7 +164,7 @@ public class PlatformInstanceController extends AuthenticatedController {
           if (!instanceUUIDValid) {
             throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
           }
-          if (instanceToDelete.get().getIsLocal()) {
+          if (instanceToDelete.get().isLocal()) {
             throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
           }
           // Clear metrics for remote instance
@@ -249,12 +248,12 @@ public class PlatformInstanceController extends AuthenticatedController {
             throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
           }
 
-          if (!instance.get().getIsLocal()) {
+          if (!instance.get().isLocal()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a remote platform instance");
           }
 
-          if (instance.get().getIsLeader()) {
+          if (instance.get().isLeader()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a leader platform instance");
           }
@@ -305,19 +304,22 @@ public class PlatformInstanceController extends AuthenticatedController {
             // promotion.
             replicationManager.saveLocalHighAvailabilityConfig(config);
           }
-
           log.info("Restoring YBA DB using backup {}", backup);
-          // Restore the backup.
-          // For K8s, restore Yba DB inline instead of restoring after restart.
-          if (!replicationManager.restoreBackup(backup, false /* k8sRestoreYbaDbOnRestart */)) {
-            throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+          // Restart should clear this flag also.
+          HighAvailabilityConfig.setSwitchOverInProgress(true);
+          try {
+            // Restore the backup.
+            if (!replicationManager.restoreBackupOnStandby(config, backup)) {
+              throw new PlatformServiceException(BAD_REQUEST, "Could not restore backup");
+            }
+            // Handle any incomplete tasks that may be leftover from the backup that was restored.
+            taskManager.handleAllPendingTasks();
+            // Promote the local instance.
+            PlatformInstance.getByAddress(localInstanceAddr)
+                .ifPresent(replicationManager::promoteLocalInstance);
+          } finally {
+            HighAvailabilityConfig.setSwitchOverInProgress(false);
           }
-          // Handle any incomplete tasks that may be leftover from the backup that was restored.
-          taskManager.handleAllPendingTasks();
-
-          // Promote the local instance.
-          PlatformInstance.getByAddress(localInstanceAddr)
-              .ifPresent(replicationManager::promoteLocalInstance);
           return null;
         });
     auditService()

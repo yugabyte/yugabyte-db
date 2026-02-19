@@ -66,24 +66,29 @@ PgDml::PgDml(const PgSession::ScopedRefPtr& pg_session)
 
 PgDml::~PgDml() = default;
 
-Status PgDml::AppendTarget(PgExpr* target) {
-  // Except for base_ctid, all targets should be appended to this DML.
-  // base_ctid goes to the index_query.
-  auto* secondary_index_query = SecondaryIndexQuery();
-  return target_ && (!secondary_index_query || !target->is_ybbasetid())
-      ? AppendTargetPB(target) : secondary_index_query->AppendTargetPB(target);
+Status PgDml::AppendTarget(PgExpr* target, bool is_for_secondary_index) {
+  if (is_for_secondary_index) {
+    return DCHECK_NOTNULL(SecondaryIndexQuery())->AppendTargetPB(target);
+  }
+  return AppendTargetPB(target);
 }
 
 Status PgDml::AddBaseYbctidTarget() {
-  RETURN_NOT_OK(PrepareColumnForRead(
-      static_cast<int>(PgSystemAttrNum::kYBIdxBaseTupleId), AllocTargetPB()));
+  auto& col = VERIFY_RESULT_REF(target_.ColumnForAttr(
+      std::to_underlying(PgSystemAttrNum::kYBIdxBaseTupleId)));
+  if (!col.read_requested()) {
+    auto* target_pb = AllocTargetPB();
+    target_pb->set_column_id(col.id());
+    col.set_read_requested(true);
+  }
   return Status::OK();
 }
 
 Status PgDml::AppendTargetPB(PgExpr* target) {
   // Append to targets_.
   bool is_aggregate = target->is_aggregate();
-  if (targets_.empty()) {
+  if (!targets_) {
+    targets_ = std::make_shared<FetchedTargets>();
     has_aggregate_targets_ = is_aggregate;
   } else {
     RSTATUS_DCHECK_EQ(has_aggregate_targets_, is_aggregate,
@@ -92,10 +97,10 @@ Status PgDml::AppendTargetPB(PgExpr* target) {
 
   if (is_aggregate) {
     auto aggregate = down_cast<PgAggregateOperator*>(target);
-    aggregate->set_index(narrow_cast<int>(targets_.size()));
-    targets_.push_back(aggregate);
+    aggregate->set_index(narrow_cast<int>(targets_->size()));
+    targets_->push_back(aggregate);
   } else {
-    targets_.push_back(down_cast<PgColumnRef*>(target));
+    targets_->push_back(down_cast<PgColumnRef*>(target));
   }
 
   // Prepare expression. Except for constants and place_holders, all other expressions can be
@@ -351,8 +356,8 @@ Status PgDml::Fetch(
 
   // Keep reading until we either reach the end or get some rows.
   *has_data = true;
-  PgTuple pg_tuple(values, isnulls, syscols);
-  while (!VERIFY_RESULT(doc_op_->ResultStream().GetNextRow(targets_, &pg_tuple))) {
+  PgTuple pg_tuple(values, isnulls, syscols, natts);
+  while (!VERIFY_RESULT(doc_op_->ResultStream().GetNextRow(&pg_tuple))) {
     // Find out if there are more ybctids to fetch
     if (!VERIFY_RESULT(ProcessProvidedYbctids())) {
       *has_data = false;

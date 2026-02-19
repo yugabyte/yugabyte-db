@@ -59,6 +59,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_pool.h"
 #include "yb/util/yb_partition.h"
 
 #include "yb/yql/pggate/pg_expr.h"
@@ -82,8 +83,6 @@ DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
 DECLARE_int32(num_connections_to_server);
 
 DECLARE_int32(delay_alter_sequence_sec);
-
-DECLARE_int32(client_read_write_timeout_ms);
 
 DEPRECATE_FLAG(bool, ysql_disable_per_tuple_memory_context_in_update_relattrs, "06_2023");
 
@@ -173,12 +172,15 @@ inline std::optional<Bound> MakeBound(YbcPgBoundType type, uint16_t value) {
 
 Status InitPgGateImpl(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks& pg_callbacks,
-    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info) {
+    YbcPgAshConfig& ash_config, const YbcPgInitPostgresInfo& init_postgres_info,
+    YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
   server::SkewedClock::Register();
   server::RegisterClockboundClockProvider();
+
+  YBThreadPool::DisableDetailedLogging();
 
   InitThreading();
 
@@ -191,18 +193,12 @@ Status InitPgGateImpl(
 #endif
 
   pgapi_shutdown_done.exchange(false);
-  pgapi = new PgApiImpl(type_entities, pg_callbacks, init_postgres_info, ash_config);
-  RETURN_NOT_OK(pgapi->StartPgApi(init_postgres_info));
+  pgapi = VERIFY_RESULT(PgApiImpl::Make(
+      type_entities, pg_callbacks, init_postgres_info, ash_config, session_stats,
+      is_binary_upgrade)).release();
 
   VLOG(1) << "PgGate open";
   return Status::OK();
-}
-
-Status PgInitSessionImpl(YbcPgExecStatsState& session_stats, bool is_binary_upgrade) {
-  return WithMaskedYsqlSignals([&session_stats, is_binary_upgrade] {
-    pgapi->InitSession(session_stats, is_binary_upgrade);
-    return static_cast<Status>(Status::OK());
-  });
 }
 
 // ql_value is modified in-place.
@@ -501,10 +497,14 @@ extern "C" {
 
 YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks *pg_callbacks,
-    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config) {
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig *ash_config,
+    YbcPgExecStatsState *session_stats, bool is_binary_upgrade) {
   return ToYBCStatus(WithMaskedYsqlSignals(
-      [&type_entities, pg_callbacks, init_postgres_info, ash_config]() -> Status {
-        return InitPgGateImpl(type_entities, *pg_callbacks, *ash_config, *init_postgres_info);
+      [&type_entities, pg_callbacks, init_postgres_info, ash_config, session_stats,
+       is_binary_upgrade] {
+        return InitPgGateImpl(
+            type_entities, *pg_callbacks, *ash_config, *init_postgres_info, *session_stats,
+            is_binary_upgrade);
   }));
 }
 
@@ -587,10 +587,6 @@ void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data) {
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data) {
   CHECK_NOTNULL(pgapi);
   pgapi->RestoreSessionState(*session_data);
-}
-
-YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade) {
-  return ToYBCStatus(PgInitSessionImpl(*session_stats, is_binary_upgrade));
 }
 
 void YBCPgIncrementIndexRecheckCount() {
@@ -1392,8 +1388,9 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // DML Statements.
 //--------------------------------------------------------------------------------------------------
 
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target) {
-  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index) {
+  return ToYBCStatus(pgapi->DmlAppendTarget(handle, target, is_for_secondary_index));
 }
 
 YbcStatus YbPgDmlAppendQual(
@@ -1488,6 +1485,11 @@ YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
             Slice(upper_bound, upper_bound_len), false));
 }
 
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys) {
+  return ToYBCStatus(pgapi->DmlSetMergeSortKeys(handle, num_keys, sort_keys));
+}
+
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
@@ -1565,14 +1567,16 @@ YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more) {
   return ExtractValueFromResult(pgapi->SampleNextBlock(handle), has_more);
 }
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle) {
-  return ToYBCStatus(pgapi->ExecSample(handle));
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params) {
+  return ToYBCStatus(pgapi->ExecSample(handle, exec_params));
 }
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows) {
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows) {
   return ExtractValueFromResult(
       pgapi->GetEstimatedRowCount(handle),
-      [liverows, deadrows](const auto& count) {
+      [sampledrows, liverows, deadrows](const auto& count) {
+        *sampledrows = count.sampledrows;
         *liverows = count.live;
         *deadrows = count.dead;
       });
@@ -1886,8 +1890,8 @@ YbcStatus YBCPgRestartTransaction() {
   return ToYBCStatus(pgapi->RestartTransaction());
 }
 
-YbcStatus YBCPgResetTransactionReadPoint() {
-  return ToYBCStatus(pgapi->ResetTransactionReadPoint());
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot) {
+  return ToYBCStatus(pgapi->ResetTransactionReadPoint(is_catalog_snapshot));
 }
 
 double YBCGetTransactionPriority() {
@@ -1942,6 +1946,10 @@ YbcStatus YBCPgSetEnableTracing(bool tracing) {
 
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable) {
   return ToYBCStatus(pgapi->SetTransactionDeferrable(deferrable));
+}
+
+void YBCPgSetClampUncertaintyWindow(bool clamp) {
+  return pgapi->SetClampUncertaintyWindow(clamp);
 }
 
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk) {
@@ -2212,6 +2220,11 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
   return YBCStatusOK();
 }
 
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode) {
+  return ToYBCStatus(pgapi->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode));
+}
+
 uint64_t YBCGetSharedAuthKey() {
   return pgapi->GetSharedAuthKey();
 }
@@ -2224,29 +2237,37 @@ bool YBCPgIsYugaByteEnabled() {
   return pgapi;
 }
 
-static int GetTimeoutValue(int timeout_ms) {
-  DCHECK_GE(timeout_ms, 0) << "Timeout value should be non-negative";
-  const auto default_client_timeout_ms = client::YsqlClientReadWriteTimeoutMs();
-  // If the timeout is 0, it means no timeout in Postgres, so we use the default value.
-  if (timeout_ms == 0) {
-    return default_client_timeout_ms;
-  }
-  // Otherwise, return the minimum of the provided timeout and the default timeout.
-  return std::min(timeout_ms, default_client_timeout_ms);
-}
-
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra) {
   if (!pgapi || lock_timeout_ms < 0) {
     return;
   }
-  pgapi->SetLockTimeout(GetTimeoutValue(lock_timeout_ms));
+  pgapi->SetLockTimeout(lock_timeout_ms);
 }
 
-void YBCSetTimeout(int timeout_ms, void* extra) {
-  if (!pgapi || timeout_ms < 0) {
+void YBCSetTimeout(int timeout_ms) {
+  if (!pgapi || timeout_ms <= 0) {
     return;
   }
-  pgapi->SetTimeout(GetTimeoutValue(timeout_ms));
+  pgapi->SetTimeout(timeout_ms);
+}
+
+void YBCClearTimeout() {
+  if (!pgapi) {
+    return;
+  }
+  pgapi->ClearTimeout();
+}
+
+void YBCCheckForInterrupts() {
+  LOG_IF(FATAL, !is_main_thread())
+      << __PRETTY_FUNCTION__ << " should only be invoked from the main thread";
+
+  // If we're in the midst of shutting down, do not bother checking for interrupts.
+  if (!pgapi) {
+    return;
+  }
+
+  pgapi->pg_callbacks()->CheckForInterrupts();
 }
 
 YbcStatus YBCNewGetLockStatusDataSRF(YbcPgFunction *handle) {
@@ -2487,6 +2508,41 @@ char GetReplicaIdentity(yb::tserver::PgReplicaIdentityPB replica_identity_pb) {
   }
 }
 
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries) {
+  const auto result = pgapi->ListSlotEntries();
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  VLOG(4) << "The ListSlotEntries response: " << result->DebugString();
+
+  const auto& slot_entries_info = result.get().slot_entries();
+  *DCHECK_NOTNULL(num_slot_entries) = slot_entries_info.size();
+  *DCHECK_NOTNULL(slot_entries) = nullptr;
+
+  if (slot_entries_info.empty()) {
+    return YBCStatusOK();
+  }
+
+  *slot_entries = static_cast<YbcSlotEntryDescriptor*>(
+      YBCPAlloc(sizeof(YbcSlotEntryDescriptor) * slot_entries_info.size()));
+  YbcSlotEntryDescriptor* dest = *slot_entries;
+
+  for (const auto& info : slot_entries_info) {
+    new (dest) YbcSlotEntryDescriptor{
+        .stream_id = YBCPAllocStdString(info.stream_id()),
+        .confirmed_flush_lsn = info.confirmed_flush_lsn(),
+        .restart_lsn = info.restart_lsn(),
+        .xmin = info.xmin(),
+        .record_id_commit_time_ht = info.record_id_commit_time_ht(),
+        .last_pub_refresh_time = info.last_pub_refresh_time(),
+        .active_pid = info.active_pid(),
+    };
+    ++dest;
+  }
+
+  return YBCStatusOK();
+}
+
 YbcStatus YBCPgListReplicationSlots(
     YbcReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots) {
   const auto result = pgapi->ListReplicationSlots();
@@ -2537,6 +2593,7 @@ YbcStatus YBCPgListReplicationSlots(
           .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
           .active_pid = info.active_pid(),
           .expired = info.expired(),
+          .allow_tables_without_primary_key = info.allow_tables_without_primary_key(),
       };
       ++dest;
     }
@@ -2593,6 +2650,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .yb_lsn_type = YBCPAllocStdString(lsn_type_result.get()),
       .active_pid = slot_info.active_pid(),
       .expired = slot_info.expired(),
+      .allow_tables_without_primary_key = slot_info.allow_tables_without_primary_key(),
   };
 
   return YBCStatusOK();
@@ -2659,11 +2717,13 @@ YbcStatus YBCPgInitVirtualWalForCDC(
     size_t num_relations, const YbcReplicationSlotHashRange *slot_hash_range, uint64_t active_pid,
     YbcPgOid *publications, size_t num_publications, bool yb_is_pub_all_tables) {
   std::vector<PgObjectId> tables;
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
     PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
+    oid_to_relfilenode[relations[i]] = relfilenodes[i];
   }
 
   std::vector<PgOid> publications_oid_list;
@@ -2674,8 +2734,8 @@ YbcStatus YBCPgInitVirtualWalForCDC(
   }
 
   const auto result = pgapi->InitVirtualWALForCDC(
-      std::string(stream_id), tables, slot_hash_range, active_pid, publications_oid_list,
-      yb_is_pub_all_tables);
+      std::string(stream_id), tables, oid_to_relfilenode, slot_hash_range, active_pid,
+      publications_oid_list, yb_is_pub_all_tables);
   if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
@@ -2695,15 +2755,18 @@ YbcStatus YBCPgUpdatePublicationTableList(
     const char* stream_id, const YbcPgOid database_oid, YbcPgOid* relations, YbcPgOid* relfilenodes,
     size_t num_relations) {
   std::vector<PgObjectId> tables;
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
   tables.reserve(num_relations);
 
   for (size_t i = 0; i < num_relations; i++) {
     PgObjectId table_id(database_oid, relfilenodes[i]);
     tables.push_back(std::move(table_id));
+    oid_to_relfilenode[relations[i]] = relfilenodes[i];
   }
 
-  const auto result = pgapi->UpdatePublicationTableList(std::string(stream_id), tables);
-  if(!result.ok()) {
+  const auto result =
+      pgapi->UpdatePublicationTableList(std::string(stream_id), tables, oid_to_relfilenode);
+  if (!result.ok()) {
     return ToYBCStatus(result.status());
   }
 

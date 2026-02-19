@@ -10,7 +10,7 @@ import { YBSelectField } from '@app/redesign/components';
 import { TelemetryProvider } from '../dtos';
 import { TelemetryProviderType } from '../types';
 import { TP_FRIENDLY_NAMES } from '../constants';
-import { ReactComponent as AddIcon } from '../../../assets/add.svg';
+import AddIcon from '../../../assets/add.svg';
 
 import { usePillStyles } from '@app/redesign/styles/styles';
 

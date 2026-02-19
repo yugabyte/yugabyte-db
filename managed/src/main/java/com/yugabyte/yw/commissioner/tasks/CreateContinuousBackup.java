@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
-import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -49,7 +48,6 @@ public class CreateContinuousBackup extends AbstractTaskBase {
   private final StorageUtilFactory storageUtilFactory;
   private final PlatformReplicationHelper replicationHelper;
   private final PlatformReplicationManager replicationManager;
-  private final ReleaseManager releaseManager;
 
   private static Gauge CONT_BACKUP_FAILING_GAUGE =
       Gauge.builder()
@@ -67,13 +65,11 @@ public class CreateContinuousBackup extends AbstractTaskBase {
       BaseTaskDependencies baseTaskDependencies,
       PlatformReplicationHelper replicationHelper,
       PlatformReplicationManager replicationManager,
-      StorageUtilFactory storageUtilFactory,
-      ReleaseManager releaseManager) {
+      StorageUtilFactory storageUtilFactory) {
     super(baseTaskDependencies);
     this.replicationHelper = replicationHelper;
     this.replicationManager = replicationManager;
     this.storageUtilFactory = storageUtilFactory;
-    this.releaseManager = releaseManager;
   }
 
   public static class Params extends AbstractTaskParams {

@@ -8,6 +8,8 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2100
+rightNav:
+  hideH4: true
 type: docs
 body_class: configuration
 ---
@@ -52,10 +54,10 @@ yb-tserver [ flags ]
 
 ```sh
 ./bin/yb-tserver \
---tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
---rpc_bind_addresses 172.151.17.130 \
---enable_ysql \
---fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
+    --tserver_master_addrs 172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100 \
+    --rpc_bind_addresses 172.151.17.130 \
+    --enable_ysql \
+    --fs_data_dirs "/home/centos/disk1,/home/centos/disk2" &
 ```
 
 **Online help**
@@ -66,7 +68,7 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ./bin/yb-tserver --help
 ```
 
-Use `--helpon` to displays help on modules named by the specified flag value.
+Use `--helpon` to display help on modules named by the specified flag value.
 
 ## All flags
 
@@ -287,22 +289,36 @@ YugabyteDB uses [PostgreSQL server configuration parameters](https://www.postgre
 
 ### How to modify configuration parameters
 
-You can modify these parameters in the following ways:
+The methods for setting configurations are listed in order of precedence, from lowest to highest. That is, explicitly setting values for a configuration parameter using methods further down the following list have higher precedence than earlier methods.
 
-- If a flag is available with the same name and `ysql_` prefix, then set the flag directly.
+For example, if you set a parameter explicitly using both the YSQL flag (`ysql_<parameter>`), and in the PostgreSQL server configuration flag (`ysql_pg_conf_csv`), the YSQL flag takes precedence.
 
-- Use the [ysql_pg_conf_csv](#ysql-pg-conf-csv) flag.
+#### Methods
+
+- Use the PostgreSQL server configuration flag [ysql_pg_conf_csv](#ysql-pg-conf-csv).
+
+    For example, `--ysql_pg_conf_csv=yb_bnl_batch_size=512`.
+
+- If a flag is available with the same parameter name and the `ysql_` prefix, then set the flag directly.
+
+    For example, `--ysql_yb_bnl_batch_size=512`.
 
 - Set the option per-database:
 
     ```sql
-    ALTER DATABASE database_name SET temp_file_limit=-1;
+    ALTER DATABASE database_name SET yb_bnl_batch_size=512;
     ```
 
 - Set the option per-role:
 
     ```sql
-    ALTER ROLE yugabyte SET temp_file_limit=-1;
+    ALTER ROLE yugabyte SET yb_bnl_batch_size=512;
+    ```
+
+- Set the option for a specific database and role:
+
+    ```sql
+    ALTER ROLE yugabyte IN DATABASE yugabyte SET yb_bnl_batch_size=512;
     ```
 
     Parameters set at the role or database level only take effect on new sessions.
@@ -310,9 +326,9 @@ You can modify these parameters in the following ways:
 - Set the option for the current session:
 
     ```sql
-    SET temp_file_limit=-1;
+    SET yb_bnl_batch_size=512;
     --- alternative way
-    SET SESSION temp_file_limit=-1;
+    SET SESSION yb_bnl_batch_size=512;
     ```
 
     If `SET` is issued in a transaction that is aborted later, the effects of the SET command are reverted when the transaction is rolled back.
@@ -322,7 +338,13 @@ You can modify these parameters in the following ways:
 - Set the option for the current transaction:
 
     ```sql
-    SET LOCAL temp_file_limit=-1;
+    SET LOCAL yb_bnl_batch_size=512;
+    ```
+
+- Set the option within the scope of a function or procedure:
+
+    ```sql
+    ALTER FUNCTION add_new SET yb_bnl_batch_size=512;
     ```
 
 For information on available PostgreSQL server configuration parameters, refer to [Server Configuration](https://www.postgresql.org/docs/15/runtime-config.html) in the PostgreSQL documentation.
@@ -551,10 +573,16 @@ Turn this setting `ON/TRUE/1` to make all the transactions in the current sessio
 {{% tags/wrap %}}
 
 
-Default: `read committed`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
@@ -1603,6 +1631,8 @@ Default: `0`
 
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
+For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+
 ##### --default_memory_limit_to_ram_ratio
 
 {{% tags/wrap %}}
@@ -1613,6 +1643,8 @@ Default: `0.85`
 The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
 #### Flags controlling the split of memory within a TServer
 
@@ -2644,14 +2676,14 @@ Some connections are reserved for superusers. The total number of superuser conn
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `READ COMMITTED`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 

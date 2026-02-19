@@ -630,6 +630,9 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 	List	   *tlist;
 	Plan	   *plan;
 
+	/* YB */
+	char	   *ybScannedObjectName = NULL;
+
 	/*
 	 * Extract the relevant restriction clauses from the parent relation. The
 	 * executor must apply all these restrictions during the scan, except for
@@ -647,8 +650,14 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 		case T_IndexScan:
 		case T_IndexOnlyScan:
 			scan_clauses = castNode(IndexPath, best_path)->indexinfo->indrestrictinfo;
+
+			if (IsYugaByteEnabled())
+				ybScannedObjectName = castNode(IndexPath, best_path)->indexinfo->ybIndexName;
 			break;
 		default:
+			if (IsYugaByteEnabled())
+				if (rel != NULL && rel->ybRelationName != NULL)
+					ybScannedObjectName = rel->ybRelationName;
 			scan_clauses = rel->baserestrictinfo;
 			break;
 	}
@@ -858,6 +867,15 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 				 (int) best_path->pathtype);
 			plan = NULL;		/* keep compiler quiet */
 			break;
+	}
+
+	if (IsYugaByteEnabled())
+	{
+		if (ybScannedObjectName != NULL)
+		{
+			Scan *scan = (Scan *) plan;
+			scan->ybScannedObjectName = pstrdup(ybScannedObjectName);
+		}
 	}
 
 	/*
@@ -4574,6 +4592,12 @@ create_indexscan_plan(PlannerInfo *root,
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
 
+	if (IsYugaByteEnabled())
+	{
+		Assert(indexinfo->ybIndexName != NULL);
+		scan_plan->ybScannedObjectName = pstrdup(indexinfo->ybIndexName);
+	}
+
 	return scan_plan;
 }
 
@@ -4688,6 +4712,11 @@ create_bitmap_scan_plan(PlannerInfo *root,
 									 baserelid);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+	if (IsYugaByteEnabled())
+	{
+		Assert(best_path->path.parent->ybRelationName != NULL);
+		scan_plan->scan.ybScannedObjectName = pstrdup(best_path->path.parent->ybRelationName);
+	}
 
 	return scan_plan;
 }
@@ -4868,6 +4897,11 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 										 ((Path *) best_path)->yb_plan_info);
 
 	copy_generic_path_info(&scan_plan->scan.plan, &best_path->path);
+	if (IsYugaByteEnabled())
+	{
+		Assert(best_path->path.parent->ybRelationName != NULL);
+		scan_plan->scan.ybScannedObjectName = pstrdup(best_path->path.parent->ybRelationName);
+	}
 
 	return scan_plan;
 }
@@ -5105,6 +5139,13 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		*qual = subquals;
 		*indexqual = subindexquals;
 		*indexECs = subindexECs;
+
+		if (IsYugaByteEnabled())
+		{
+			Assert(ipath->indexinfo->ybIndexName != NULL);
+			Scan *scan = (Scan *) plan;
+			scan->ybScannedObjectName = pstrdup(ipath->indexinfo->ybIndexName);
+		}
 	}
 	else
 	{
@@ -6531,6 +6572,9 @@ create_hashjoin_plan(PlannerInfo *root,
 	hashclauses = get_switched_clauses(best_path->path_hashclauses,
 									   best_path->jpath.outerjoinpath->parent->relids);
 
+	/* YB */
+	char *ybSkewTableName = NULL;
+
 	/*
 	 * If there is a single join clause and we can identify the outer variable
 	 * as a simple column reference, supply its identity for possible use in
@@ -6559,6 +6603,9 @@ create_hashjoin_plan(PlannerInfo *root,
 				skewTable = rte->relid;
 				skewColumn = var->varattno;
 				skewInherit = rte->inh;
+
+				if (IsYugaByteEnabled())
+					ybSkewTableName = rte->ybScannedObjectName;
 			}
 		}
 	}
@@ -6589,6 +6636,12 @@ create_hashjoin_plan(PlannerInfo *root,
 						  skewTable,
 						  skewColumn,
 						  skewInherit);
+
+	if (IsYugaByteEnabled())
+	{
+		if (ybSkewTableName != NULL)
+			hash_plan->ybSkewTableName = pstrdup(ybSkewTableName);
+	}
 
 	yb_assign_unique_plan_node_id(root, (Plan *) hash_plan);
 
@@ -6932,6 +6985,28 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 			stripped_indexquals = lappend(stripped_indexquals, clause);
 			clause = fix_indexqual_clause(root, index, iclause->indexcol,
 										  clause, iclause->indexcols);
+			fixed_indexquals = lappend(fixed_indexquals, clause);
+		}
+	}
+
+	/*
+	 * YB: Besides indexclauses, there could be derived clauses in
+	 * yb_index_path_info.saop_merge_saop_cols.  Add these to ..._indexquals as
+	 * well.
+	 */
+	foreach(lc, index_path->yb_index_path_info.saop_merge_saop_cols)
+	{
+		YbSaopMergeSaopColInfo *info = lfirst_node(YbSaopMergeSaopColInfo, lc);
+
+		if (info->derived)
+		{
+			Node	   *clause;
+
+			stripped_indexquals = lappend(stripped_indexquals, info->saop);
+			/* For now, row-array-compare SAOP merge is not supported. */
+			clause = fix_indexqual_clause(root, index, info->indexcol,
+										  (Node *) info->saop,
+										  list_make1_int(info->indexcol));
 			fixed_indexquals = lappend(fixed_indexquals, clause);
 		}
 	}

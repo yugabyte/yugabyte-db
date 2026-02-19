@@ -12,7 +12,7 @@
 // under the License.
 
 #include "yb/common/redis_constants_common.h"
-#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"

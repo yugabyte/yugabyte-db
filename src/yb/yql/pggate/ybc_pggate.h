@@ -47,7 +47,8 @@ typedef struct {
 // functions in this API are called.
 YbcStatus YBCInitPgGate(
     YbcPgTypeEntities type_entities, const YbcPgCallbacks* pg_callbacks,
-    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config);
+    const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config,
+    YbcPgExecStatsState *session_stats, bool is_binary_upgrade);
 
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
@@ -57,8 +58,6 @@ void YBCInterruptPgGate();
 void YBCDumpCurrentPgSessionState(YbcPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YbcPgSessionState* session_data);
-
-YbcStatus YBCPgInitSession(YbcPgExecStatsState* session_stats, bool is_binary_upgrade);
 
 void YBCPgIncrementIndexRecheckCount();
 
@@ -112,6 +111,9 @@ YbcStatus YBCGetTserverCatalogMessageLists(
 YbcStatus YBCPgSetTserverCatalogMessageList(
     YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
     const YbcCatalogMessageList *message_list);
+
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode);
 
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
@@ -492,7 +494,8 @@ YbcStatus YBCPgWaitVectorIndexReady(
 // This function is for specifying the selected or returned expressions.
 // - SELECT target_expr1, target_expr2, ...
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
-YbcStatus YBCPgDmlAppendTarget(YbcPgStatement handle, YbcPgExpr target);
+YbcStatus YBCPgDmlAppendTarget(
+    YbcPgStatement handle, YbcPgExpr target, bool is_for_secondary_index);
 
 // Add a WHERE clause condition to the statement.
 // Currently only SELECT statement supports WHERE clause conditions.
@@ -574,6 +577,9 @@ YbcStatus YBCPgDmlAddRowUpperBound(YbcPgStatement handle, int n_col_values,
 YbcStatus YBCPgDmlAddRowLowerBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);
 
+YbcStatus YBCPgDmlSetMergeSortKeys(YbcPgStatement handle, int num_keys,
+                                   const YbcSortKey *sort_keys);
+
 // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
 YbcStatus YBCPgDmlBindTable(YbcPgStatement handle);
 
@@ -628,9 +634,10 @@ YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
 
 YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more);
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle);
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params);
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows);
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 
@@ -728,7 +735,7 @@ YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 YbcStatus YBCPgBeginTransaction(int64_t start_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
-YbcStatus YBCPgResetTransactionReadPoint();
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
@@ -739,6 +746,7 @@ YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable);
+void YBCPgSetClampUncertaintyWindow(bool clamp);
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
@@ -856,9 +864,12 @@ void YBCInitFlags();
 bool YBCPgIsYugaByteEnabled();
 
 // Sets the specified timeout in the rpc service.
-void YBCSetTimeout(int timeout_ms, void* extra);
+void YBCSetTimeout(int timeout_ms);
+void YBCClearTimeout();
 
 void YBCSetLockTimeout(int lock_timeout_ms, void* extra);
+
+void YBCCheckForInterrupts();
 
 //--------------------------------------------------------------------------------------------------
 // Thread-Local variables.
@@ -952,6 +963,8 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
+
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries);
 
 YbcStatus YBCPgListReplicationSlots(
     YbcReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);

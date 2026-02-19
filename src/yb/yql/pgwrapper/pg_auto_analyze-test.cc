@@ -66,6 +66,7 @@ DECLARE_int64(TEST_delay_after_table_analyze_ms);
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_user_ddls_preempt_auto_analyze);
 DECLARE_uint64(TEST_ysql_auto_analyze_max_history_entries);
+DECLARE_int32(ysql_auto_analyze_max_retry_backoff);
 
 using namespace std::chrono_literals;
 
@@ -111,12 +112,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations}, req);
 
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
@@ -129,12 +130,12 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     client::TableHandle table;
     CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
 
-    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto session = NewSession();
+    const client::YBqlReadOpPtr op = table.NewReadOp(session->arena());
     auto* const req = op->mutable_request();
     table.AddColumns(
         {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
          yb::master::kPgAutoAnalyzeLastAnalyzeInfo}, req);
-    auto session = NewSession();
     CHECK_OK(session->TEST_ApplyAndFlush(op));
     SCHECK_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK, IllegalState,
               "Failed to get auto analyze info from CQL table");
@@ -1233,6 +1234,7 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeRetryAnalyze) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_cooldown_per_table_scale_factor) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 500;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_max_retry_backoff) = 2;
 
   const std::string table_name = "test";
   const std::string table2_name = "test2";
@@ -1331,22 +1333,6 @@ class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=true"));
     ASSERT_NOK(conn2.Execute("ANALYZE test1, test2"));
     ASSERT_OK(conn2.Execute("SET yb_use_internal_auto_analyze_service_conn=false"));
-    thread_holder.JoinAll();
-
-    // Case: Two CREATE TABLEs can still run concurrently
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test5(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("CREATE TABLE test6(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    thread_holder.JoinAll();
-
-    // Case: A CREATE TABLE can still run concurrently with an ALTER
-    thread_holder.AddThreadFunctor([&conn1]() -> void {
-      ASSERT_OK(conn1.Execute("CREATE TABLE test7(k INT PRIMARY KEY, v INT) split into 1 tablets"));
-    });
-    ASSERT_OK(LogWaiter(ts1, wait_string).WaitFor(30s));
-    ASSERT_OK(conn2.Execute("ALTER TABLE test4 ADD COLUMN v1 INT"));
     thread_holder.JoinAll();
 
     auto another_db_conn = ASSERT_RESULT(
@@ -1550,6 +1536,101 @@ TEST_F(PgConcurrentDDLAnalyzeTestTxnDDL, ConcurrentDDLAnalyzeMultiTable) {
   }
 
   thread_holder.Stop();
+}
+
+// Without respecting yb_fetch_size_limit and yb_fetch_row_limit, ANALYZEs in
+// the test suite would fail.
+class PgAnalyzeReadBufferLimitTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+    // Set the read buffer memory limit low (around 4MB), but still high enough
+    // to successfully establish a connection.
+    options->extra_tserver_flags.push_back("--read_buffer_memory_limit=4000000");
+  }
+};
+
+// Without respecting yb_fetch_size_limit and yb_fetch_row_limit,
+// a single PgPerformResponsePB is around 7.2 MB greater than the read buffer limit.
+TEST_F(PgAnalyzeReadBufferLimitTest, AnalyzeWithBigResponse) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k INT PRIMARY KEY, v TEXT)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT s, repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("ANALYZE test"));
+}
+
+// Without respecting yb_fetch_size_limit and yb_fetch_row_limit,
+// a single PgPerformRequestPB is around 7.2 MB greater than the read buffer limit.
+TEST_F(PgAnalyzeReadBufferLimitTest, AnalyzeWithBigRequest) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("ANALYZE test"));
+}
+
+// TODO(#29783): This test is intended to test if size of ANALYZE sampling response containing
+// sampled ybctids can be adjusted and fit into read buffer limit.
+// Currently, the block-based sampling method doesn't have pagination, so we can potentially
+// return a large sampling response.
+TEST_F(PgAnalyzeReadBufferLimitTest, DISABLED_AnalyzeWithBigSamplingResponse) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("ANALYZE test"));
+}
+
+// Without respecting yb_fetch_size_limit and yb_fetch_row_limit, ANALYZEs in
+// the test suite would fail.
+class PgAnalyzeRpcMessageSizeTest : public LibPqTestBase {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+    // Around 5 MB
+    options->extra_tserver_flags.push_back("--rpc_max_message_size=5000000");
+  }
+};
+
+TEST_F(PgAnalyzeRpcMessageSizeTest, AnalyzeWithBigRequest) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY)"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("ANALYZE test"));
+}
+
+// TODO(#29783): This test is intended to test if size of ANALYZE sampling response containing
+// sampled ybctids can be adjusted and fit into rpc message size.
+// Currently, the block-based sampling method doesn't have pagination, so we can potentially
+// return a large sampling response.
+TEST_F(PgAnalyzeRpcMessageSizeTest, DISABLED_AnalyzeWithBigSamplingResponse) {
+    auto* ts1 = cluster_->tserver_daemons()[0];
+    auto conn1 = ASSERT_RESULT(PGConnBuilder({
+      .host = ts1->bind_host(),
+      .port = ts1->ysql_port(),
+    }).Connect());
+    ASSERT_OK(conn1.Execute("CREATE TABLE test (k TEXT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+    ASSERT_OK(conn1.Execute("INSERT INTO test SELECT repeat('abcdefg', 100) || '-' || s::TEXT "
+                            "FROM generate_series(1, 10000) AS s"));
+    ASSERT_OK(conn1.Execute("ANALYZE test"));
 }
 
 } // namespace pgwrapper

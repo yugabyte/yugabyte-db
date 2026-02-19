@@ -1,7 +1,6 @@
 --
 -- See yb_saop_merge_schedule for details about the test.  Do not sort on the
 -- r5n.n column because that ruins the plans.
--- TODO(#29072): fix output.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
@@ -74,7 +73,7 @@
    Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
    ->  Unique (actual rows=5 loops=1)
          Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
-         ->  YB Batched Nested Loop Join (actual rows=3817 loops=1)
+         ->  YB Batched Nested Loop Join (actual rows=4294 loops=1)
                Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
                Join Filter: (a.r3 = b.r1)
                Sort Keys: a.r3, a.r4
@@ -86,7 +85,7 @@
                      Merge Streams: 3
                      Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
                      Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
+                     Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
                ->  Index Scan using r5n_pkey on public.r5n b (actual rows=2762 loops=2)
                      Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
@@ -131,10 +130,10 @@
    Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
    ->  Unique (actual rows=5 loops=1)
          Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
-         ->  Merge Join (actual rows=3340 loops=1)
+         ->  Merge Join (actual rows=4294 loops=1)
                Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
                Merge Cond: (a.r3 = b.r1)
-               ->  Index Scan using r5n_pkey on public.r5n a (actual rows=8 loops=1)
+               ->  Index Scan using r5n_pkey on public.r5n a (actual rows=10 loops=1)
                      Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
                      Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: a.r3, a.r4
@@ -142,9 +141,9 @@
                      Merge Streams: 3
                      Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
                      Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
+                     Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
-               ->  Materialize (actual rows=3340 loops=1)
+               ->  Materialize (actual rows=4294 loops=1)
                      Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
                      ->  Index Scan using r5n_pkey on public.r5n b (actual rows=478 loops=1)
                            Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
@@ -153,7 +152,38 @@
                            Storage Table Rows Scanned: 969
 (24 rows)
 
-ERROR:  mergejoin input data is out of order
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+   ->  Unique (actual rows=5 loops=1)
+         Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+         ->  Sort (actual rows=4294 loops=1)
+               Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+               Sort Key: a.r3, a.r4
+               Sort Method: external merge
+               ->  Merge Join (actual rows=82301 loops=1)
+                     Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                     Merge Cond: (b.r1 = a.r3)
+                     ->  Index Scan using r5n_pkey on public.r5n b (actual rows=5048 loops=1)
+                           Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                           Storage Table Read Requests: 11
+                           Storage Table Read Ops: 11
+                           Storage Table Rows Scanned: 5048
+                     ->  Materialize (actual rows=81805 loops=1)
+                           Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
+                           ->  Index Scan using r5n_pkey on public.r5n a (actual rows=163 loops=1)
+                                 Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
+                                 Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
+                                 Merge Sort Key: a.r3, a.r4
+                                 Merge Stream Key: a.r2
+                                 Merge Streams: 3
+                                 Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 3
+                                 Storage Table Rows Scanned: 163
+(28 rows)
+
 -- Basic join with order
 -- TODO(pg16): PG commit b592422095655a64d638f541df784b19b8ecf8ad enables
 -- incremental sort over MergeJoin.
@@ -208,7 +238,7 @@ ERROR:  mergejoin input data is out of order
                            Merge Streams: 3
                            Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
                            Storage Table Read Requests: 1
-                           Storage Table Read Ops: 1
+                           Storage Table Read Ops: 3
                            Storage Table Rows Scanned: 163
                      ->  Index Scan using r5n_pkey on public.r5n b (actual rows=5048 loops=1)
                            Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
@@ -247,8 +277,88 @@ ERROR:  mergejoin input data is out of order
                                  Storage Table Rows Scanned: 5048
 (25 rows)
 
-ERROR:  mergejoin input data is out of order
-ERROR:  mergejoin input data is out of order
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+   ->  Unique (actual rows=5 loops=1)
+         Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+         ->  Sort (actual rows=4294 loops=1)
+               Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+               Sort Key: a.r3, a.r4, a.n, b.n
+               Sort Method: external merge
+               ->  Merge Join (actual rows=82301 loops=1)
+                     Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                     Merge Cond: (a.r3 = b.r1)
+                     ->  Index Scan using r5n_pkey on public.r5n a (actual rows=163 loops=1)
+                           Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
+                           Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
+                           Merge Sort Key: a.r3, a.r4
+                           Merge Stream Key: a.r2
+                           Merge Streams: 3
+                           Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                           Storage Table Read Requests: 1
+                           Storage Table Read Ops: 3
+                           Storage Table Rows Scanned: 163
+                     ->  Materialize (actual rows=82288 loops=1)
+                           Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                           ->  Index Scan using r5n_pkey on public.r5n b (actual rows=5048 loops=1)
+                                 Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                                 Storage Table Read Requests: 11
+                                 Storage Table Read Ops: 11
+                                 Storage Table Rows Scanned: 5048
+(28 rows)
+
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------------------------------------
+ Limit (actual rows=5 loops=1)
+   Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+   ->  Unique (actual rows=5 loops=1)
+         Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+         ->  Sort (actual rows=4294 loops=1)
+               Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+               Sort Key: a.r3, a.r4, a.n, b.n
+               Sort Method: external merge
+               ->  Merge Join (actual rows=82301 loops=1)
+                     Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4, b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                     Merge Cond: (b.r1 = a.r3)
+                     ->  Index Scan using r5n_pkey on public.r5n b (actual rows=5048 loops=1)
+                           Output: b.n, b.r5, b.r3, b.r1, b.r2, b.r4
+                           Storage Table Read Requests: 11
+                           Storage Table Read Ops: 11
+                           Storage Table Rows Scanned: 5048
+                     ->  Materialize (actual rows=81805 loops=1)
+                           Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
+                           ->  Index Scan using r5n_pkey on public.r5n a (actual rows=163 loops=1)
+                                 Output: a.n, a.r5, a.r3, a.r1, a.r2, a.r4
+                                 Index Cond: ((a.r1 = 9) AND (a.r2 = ANY ('{3,4,5}'::bigint[])))
+                                 Merge Sort Key: a.r3, a.r4
+                                 Merge Stream Key: a.r2
+                                 Merge Streams: 3
+                                 Merge Cond: (a.r2 = ANY ('{3,4,5}'::bigint[]))
+                                 Storage Table Read Requests: 1
+                                 Storage Table Read Ops: 3
+                                 Storage Table Rows Scanned: 163
+(28 rows)
+
+   n   | r5 | r3 | r1 | r2 | r4 | n  | r5 | r3 | r1 | r2 | r4 
+-------+----+----+----+----+----+----+----+----+----+----+----
+ 11049 |  1 |  0 |  9 |  4 |  1 | 60 |  0 |  0 |  0 |  6 |  0
+  2049 |  0 |  0 |  9 |  4 |  2 | 60 |  0 |  0 |  0 |  6 |  0
+ 23049 |  2 |  0 |  9 |  4 |  3 | 60 |  0 |  0 |  0 |  6 |  0
+ 64039 |  6 |  0 |  9 |  3 |  4 | 60 |  0 |  0 |  0 |  6 |  0
+  6049 |  0 |  0 |  9 |  4 |  6 | 60 |  0 |  0 |  0 |  6 |  0
+(5 rows)
+
+   n   | r5 | r3 | r1 | r2 | r4 | n  | r5 | r3 | r1 | r2 | r4 
+-------+----+----+----+----+----+----+----+----+----+----+----
+ 11049 |  1 |  0 |  9 |  4 |  1 | 60 |  0 |  0 |  0 |  6 |  0
+  2049 |  0 |  0 |  9 |  4 |  2 | 60 |  0 |  0 |  0 |  6 |  0
+ 23049 |  2 |  0 |  9 |  4 |  3 | 60 |  0 |  0 |  0 |  6 |  0
+ 64039 |  6 |  0 |  9 |  3 |  4 | 60 |  0 |  0 |  0 |  6 |  0
+  6049 |  0 |  0 |  9 |  4 |  6 | 60 |  0 |  0 |  0 |  6 |  0
+(5 rows)
+
    n   | r5 | r3 | r1 | r2 | r4 | n  | r5 | r3 | r1 | r2 | r4 
 -------+----+----+----+----+----+----+----+----+----+----+----
  11049 |  1 |  0 |  9 |  4 |  1 | 60 |  0 |  0 |  0 |  6 |  0
@@ -276,8 +386,6 @@ ERROR:  mergejoin input data is out of order
   6049 |  0 |  0 |  9 |  4 |  6 | 60 |  0 |  0 |  0 |  6 |  0
 (5 rows)
 
-ERROR:  mergejoin input data is out of order
-ERROR:  mergejoin input data is out of order
 -- Non-const equivalence prefix
 -- SAOP merge should not be used.
 \set query 'SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r3, r5n.r4, r5n.r5, r5n.r2, r5n.r1, h3r2n.r1 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 WHERE r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5'
@@ -433,11 +541,11 @@ ERROR:  mergejoin input data is out of order
    Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
          Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
-         ->  Nested Loop (actual rows=218 loops=1)
+         ->  Nested Loop (actual rows=280 loops=1)
                Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                Join Filter: (r5n.r3 = h3r2n.h3)
-               Rows Removed by Join Filter: 2492
-               ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
+               Rows Removed by Join Filter: 3198
+               ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      Index Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: r5n.r3, r5n.r4
@@ -445,9 +553,9 @@ ERROR:  mergejoin input data is out of order
                      Merge Streams: 3
                      Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
                      Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
+                     Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
-               ->  Materialize (actual rows=339 loops=8)
+               ->  Materialize (actual rows=348 loops=10)
                      Output: h3r2n.r1, h3r2n.h3
                      ->  Distinct Index Scan using h3r2n_pkey on public.h3r2n (actual rows=384 loops=1)
                            Output: h3r2n.r1, h3r2n.h3
@@ -500,10 +608,10 @@ ERROR:  mergejoin input data is out of order
    Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
          Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
-         ->  Merge Join (actual rows=218 loops=1)
+         ->  Merge Join (actual rows=280 loops=1)
                Output: r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                Merge Cond: (r5n.r3 = h3r2n.h3)
-               ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
+               ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      Index Cond: ((r5n.r1 = 9) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                      Merge Sort Key: r5n.r3, r5n.r4
@@ -511,9 +619,9 @@ ERROR:  mergejoin input data is out of order
                      Merge Streams: 3
                      Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
                      Storage Table Read Requests: 2
-                     Storage Table Read Ops: 2
+                     Storage Table Read Ops: 6
                      Storage Table Rows Scanned: 163
-               ->  Sort (actual rows=218 loops=1)
+               ->  Sort (actual rows=280 loops=1)
                      Output: h3r2n.r1, h3r2n.h3
                      Sort Key: h3r2n.h3
                      Sort Method: quicksort
@@ -573,11 +681,11 @@ ERROR:  mergejoin input data is out of order
 
  r1 | r1 | r3 | r4 | r5 | r2 
 ----+----+----+----+----+----
+  9 |  9 |  0 |  1 |  1 |  4
   9 |  9 |  0 |  2 |  2 |  3
-  9 |  9 |  0 |  3 |  7 |  3
+  9 |  9 |  0 |  3 |  2 |  4
   9 |  9 |  0 |  4 |  6 |  3
-  9 |  9 |  0 |  7 |  1 |  3
-  9 |  9 |  0 |  8 |  1 |  3
+  9 |  9 |  0 |  6 |  0 |  4
 (5 rows)
 
  r1 | r1 | r3 | r4 | r5 | r2 
@@ -591,11 +699,11 @@ ERROR:  mergejoin input data is out of order
 
  r1 | r1 | r3 | r4 | r5 | r2 
 ----+----+----+----+----+----
+  9 |  9 |  0 |  1 |  1 |  4
   9 |  9 |  0 |  2 |  2 |  3
-  9 |  9 |  0 |  3 |  7 |  3
+  9 |  9 |  0 |  3 |  2 |  4
   9 |  9 |  0 |  4 |  6 |  3
-  9 |  9 |  0 |  7 |  1 |  3
-  9 |  9 |  0 |  8 |  1 |  3
+  9 |  9 |  0 |  6 |  0 |  4
 (5 rows)
 
  r1 | r1 | r3 | r4 | r5 | r2 
@@ -713,11 +821,11 @@ ERROR:  mergejoin input data is out of order
    Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
          Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
-         ->  Nested Loop (actual rows=260 loops=1)
+         ->  Nested Loop (actual rows=334 loops=1)
                Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
-               ->  Nested Loop (actual rows=260 loops=1)
+               ->  Nested Loop (actual rows=334 loops=1)
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2, h3r2n.r1, h3r2n.h1
-                     ->  Index Scan using r5n_pkey on public.r5n (actual rows=8 loops=1)
+                     ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
                            Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                            Index Cond: ((r5n.r1 = 6) AND (r5n.r2 = ANY ('{3,4,5}'::bigint[])))
                            Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
@@ -725,9 +833,9 @@ ERROR:  mergejoin input data is out of order
                            Merge Streams: 3
                            Merge Cond: (r5n.r2 = ANY ('{3,4,5}'::bigint[]))
                            Storage Table Read Requests: 2
-                           Storage Table Read Ops: 2
+                           Storage Table Read Ops: 6
                            Storage Table Rows Scanned: 168
-                     ->  Materialize (actual rows=32 loops=8)
+                     ->  Materialize (actual rows=33 loops=10)
                            Output: h3r2n.r1, h3r2n.h1
                            ->  Distinct Index Scan using h3r2n_pkey on public.h3r2n (actual rows=37 loops=1)
                                  Output: h3r2n.r1, h3r2n.h1
@@ -736,7 +844,7 @@ ERROR:  mergejoin input data is out of order
                                  Storage Table Read Requests: 3
                                  Storage Table Read Ops: 12
                                  Storage Table Rows Scanned: 4020
-               ->  Materialize (actual rows=1 loops=260)
+               ->  Materialize (actual rows=1 loops=334)
                      Output: parent.p1
                      ->  Unique (actual rows=1 loops=1)
                            Output: parent.p1
@@ -802,11 +910,11 @@ ERROR:  mergejoin input data is out of order
 
  r1 | r1 | p1 | r3 | r4 | r5 | r2 
 ----+----+----+----+----+----+----
+  6 |  6 |  6 |  0 |  0 |  1 |  4
   6 |  6 |  6 |  0 |  2 |  6 |  3
+  6 |  6 |  6 |  0 |  3 |  6 |  5
   6 |  6 |  6 |  0 |  5 |  1 |  3
-  6 |  6 |  6 |  0 |  6 |  3 |  3
-  6 |  6 |  6 |  1 |  3 |  9 |  3
-  6 |  6 |  6 |  1 |  4 |  5 |  3
+  6 |  6 |  6 |  0 |  6 |  3 |  4
 (5 rows)
 
  r1 | r1 | p1 | r3 | r4 | r5 | r2 

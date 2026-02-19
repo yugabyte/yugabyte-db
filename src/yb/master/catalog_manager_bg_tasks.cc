@@ -33,6 +33,7 @@
 
 #include <memory>
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/cdcsdk_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
@@ -43,7 +44,10 @@
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
+#include "yb/master/scoped_leader_shared_lock.h"
+
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"

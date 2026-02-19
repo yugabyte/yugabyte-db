@@ -87,7 +87,7 @@ class ApiService {
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Attach universe to Troubleshooting Platform service
+  // Enable Perf Advisor for current universe
   attachUniverseToPerfAdvisor = (tpUuid: string, universeUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
     return axios.put(requestUrl).then((resp) => resp.data);

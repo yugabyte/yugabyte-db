@@ -21,6 +21,9 @@ namespace yb::pggate {
 namespace {
 YbcPallocFn g_palloc_fn = nullptr;
 YbcCstringToTextWithLenFn g_cstring_to_text_with_len_fn = nullptr;
+YbcSwitchMemoryContextFn g_switch_mem_context_fn = nullptr;
+YbcCreateMemoryContextFn g_create_mem_context_fn = nullptr;
+YbcDeleteMemoryContextFn g_delete_mem_context_fn = nullptr;
 }  // anonymous namespace
 
 void YBCSetPAllocFn(YbcPallocFn palloc_fn) {
@@ -41,6 +44,36 @@ void YBCSetCStringToTextWithLenFn(YbcCstringToTextWithLenFn fn) {
 void* YBCCStringToTextWithLen(const char* c, int size) {
   CHECK_NOTNULL(g_cstring_to_text_with_len_fn);
   return g_cstring_to_text_with_len_fn(c, size);
+}
+
+void YBCSetSwitchMemoryContextFn(YbcSwitchMemoryContextFn switch_mem_context_fn) {
+  CHECK_NOTNULL(switch_mem_context_fn);
+  g_switch_mem_context_fn = switch_mem_context_fn;
+}
+
+void* YBCSwitchMemoryContext(void* context) {
+  CHECK_NOTNULL(g_switch_mem_context_fn);
+  return g_switch_mem_context_fn(context);
+}
+
+void YBCSetCreateMemoryContextFn(YbcCreateMemoryContextFn create_mem_context_fn) {
+  CHECK_NOTNULL(create_mem_context_fn);
+  g_create_mem_context_fn = create_mem_context_fn;
+}
+
+void* YBCCreateMemoryContext(void* parent, const char* name) {
+  CHECK_NOTNULL(g_create_mem_context_fn);
+  return g_create_mem_context_fn(parent, name);
+}
+
+void YBCSetDeleteMemoryContextFn(YbcDeleteMemoryContextFn delete_mem_context_fn) {
+  CHECK_NOTNULL(delete_mem_context_fn);
+  g_delete_mem_context_fn = delete_mem_context_fn;
+}
+
+void YBCDeleteMemoryContext(void* context) {
+  CHECK_NOTNULL(g_delete_mem_context_fn);
+  g_delete_mem_context_fn(context);
 }
 
 YbcStatus ToYBCStatus(const Status& status) {

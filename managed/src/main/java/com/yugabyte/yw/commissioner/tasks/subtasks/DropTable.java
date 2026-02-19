@@ -5,8 +5,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.YcqlQueryExecutor;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -22,9 +20,6 @@ public class DropTable extends UniverseTaskBase {
   }
 
   private static long WAIT_TIME_IN_MILLIS = 5000;
-
-  @Inject YsqlQueryExecutor ysqlQueryExecutor;
-  @Inject YcqlQueryExecutor ycqlQueryExecutor;
 
   public static class Params extends UniverseTaskParams {
     public String dbName;

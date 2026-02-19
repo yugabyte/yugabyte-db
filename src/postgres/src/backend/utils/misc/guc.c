@@ -128,6 +128,7 @@
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
+#include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 #include "yb_tcmalloc_utils.h"
 
@@ -295,7 +296,7 @@ static void assign_yb_enable_cbo(int new_value, void *extra);
 static void assign_yb_enable_optimizer_statistics(bool new_value, void *extra);
 static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
-
+static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
@@ -692,6 +693,30 @@ static const struct config_enum_entry yb_cost_model_options[] = {
 	{NULL, 0, false}
 };
 
+static const struct config_enum_entry yb_qpm_track_options[] =
+{
+	{"none", YB_QPM_TRACK_NONE, false},
+	{"top", YB_QPM_TRACK_TOP, false},
+	{"all", YB_QPM_TRACK_ALL, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_cache_replacement_algorithm_options[] =
+{
+	{"simple_clock_lru", YB_QPM_SIMPLE_CLOCK_LRU, false},
+	{"true_lru", YB_QPM_TRUE_LRU, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry yb_qpm_plan_format_options[] =
+{
+	{"text", EXPLAIN_FORMAT_TEXT, false},
+	{"xml", EXPLAIN_FORMAT_XML, false},
+	{"json", EXPLAIN_FORMAT_JSON, false},
+	{"yaml", EXPLAIN_FORMAT_YAML, false},
+	{NULL, 0, false}
+};
+
 /*
  * Options for enum values stored in other modules
  */
@@ -730,6 +755,7 @@ bool		session_auth_is_superuser;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
+int			yb_log_min_backtraces = FATAL;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -819,6 +845,7 @@ static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
+static bool yb_conn_mgr_modifying_defaults = false;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -2591,6 +2618,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_pg_export_snapshot", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Enable pg_export_snapshot and SET TRANSACTION SNAPSHOT for synchronizing snapshots across transactions."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_export_snapshot,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
@@ -2626,6 +2664,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_ddl_savepoint_infra", PGC_SIGHUP, LOCK_MANAGEMENT,
+			gettext_noop("Allow enabling ddl savepoint support."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_ddl_savepoint_infra,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_allow_replication_slot_lsn_types", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow specifying LSN type while creating replication slot"),
 			NULL,
@@ -2655,6 +2704,18 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_consistent_replication_from_hash_range,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_cdcsdk_stream_tables_without_primary_key", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable streaming of tables without primary key in CDC logical "
+						 "replication streams."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_cdcsdk_stream_tables_without_primary_key,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2714,18 +2775,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_system_catalogs_creation,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"yb_test_fail_next_ddl", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("When set, the next DDL will fail right before "
-						 "commit."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&yb_test_fail_next_ddl,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2983,6 +3032,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_derived_saops", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("If true, derives additional scalar array operation "
+						 "conditions from table constraints and adds them to "
+						 "queries to improve performance."),
+			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_saops,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_enable_upsert_mode", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the boolean flag to enable or disable upsert mode for writes."),
 			NULL
@@ -3083,6 +3145,18 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_is_client_ysqlconnmgr,
 		false,
 		yb_is_client_ysqlconnmgr_check_hook, yb_is_client_ysqlconnmgr_assign_hook, NULL
+	},
+
+	{
+		{"yb_enable_derived_equalities", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable derivation of additional equalities for"
+						 " generated columns and expression indexes"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_enable_derived_equalities,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -3274,6 +3348,19 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_inplace_index_update,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_index_backfill_column_projection", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enables index backfill column projection optimization. "
+						 "If true, index build/backfill only reads columns needed for the index, "
+						 "rather than all columns from the base table."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_index_backfill_column_projection,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3609,7 +3696,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_rpc_stats,
-		false,
+		true,
 		NULL, assign_yb_enable_pg_stat_statements_rpc_stats, NULL
 	},
 
@@ -3680,11 +3767,43 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("When set, all DDL statements will cause the "
 						 "catalog version to increment. This mainly affects "
 						 "CREATE commands such as CREATE TABLE, CREATE VIEW, "
-						 "and CREATE SEQUENCE."),
+						 "and CREATE SEQUENCE. This also enables negative "
+						 "catcache entries."),
 			NULL
 		},
 		&yb_test_make_all_ddl_statements_incrementing,
-		false,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should be enabled first on all the nodes in a cluster
+	 * before enabling yb_enable_negative_catcache_entries.
+	 */
+	{
+		{"yb_always_increment_catalog_version_on_ddl", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, all DDL statements will cause the "
+						 "catalog version to increment. Unlike "
+						 "yb_test_make_all_ddl_statements_incrementing, this "
+						 "only controls the version incrementing behavior."),
+			NULL
+		},
+		&yb_always_increment_catalog_version_on_ddl,
+		true,
+		NULL, NULL, NULL
+	},
+
+	/*
+	 * This flag should only be enabled after enabling
+	 * yb_test_make_all_ddl_statements_incrementing.
+	 */
+	{
+		{"yb_enable_negative_catcache_entries", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When set, negative catcache entries are enabled. "),
+			NULL
+		},
+		&yb_enable_negative_catcache_entries,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3728,6 +3847,73 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_disable_pg_snapshot_mgmt_in_repeatable_read", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("[Deprecated - This GUC is valid only in older releases. It is present here"
+						 "just to avoid a failure in case you forgot to remove it from your configuration.]"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_disable_pg_snapshot_mgmt_in_repeatable_read,
+		false,
+		check_yb_disable_pg_snapshot_mgmt_in_repeatable_read, NULL, NULL
+	},
+
+	{
+		{"yb_enable_pg_stat_statements_docdb_metrics", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("If true, enable DocDB metrics collection for pg_stat_statements."),
+			gettext_noop("This enables collection of the following metrics: "
+									"docdb_seeks, docdb_nexts, docdb_prevs, "
+									"docdb_read_time, docdb_write_time and "
+									"docdb_obsolete_rows_scanned"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_pg_stat_statements_docdb_metrics,
+	},
+
+	{
+		{"yb_enable_global_views", PGC_SUSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables querying of global views."),
+			NULL
+		},
+		&yb_enable_global_views,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_track_catalog_queries", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("When set, QPM tracks plans for queries referencing catalog tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.track_catalog_queries,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_verbose_plans", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Generate verbose plans in QPM."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.verbose_plans,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_qpm_compress_text", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Compress QPM plan and hint text if necessary."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.compress_text,
+		true,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -3758,6 +3944,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&PostAuthDelay,
 		0, 0, INT_MAX / 1000000,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_test_fail_next_ddl", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("When set to non-zero, the next DDL will fail: "
+						 "1=ERROR, 2=FATAL, 3=PANIC, 4=crash."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_ddl,
+		0, 0, 4,
 		NULL, NULL, NULL
 	},
 	{
@@ -4308,7 +4505,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&StatementTimeout,
 		0, 0, INT_MAX,
-		NULL, YBCSetTimeout, NULL
+		NULL, NULL, NULL
 	},
 
 
@@ -5689,6 +5886,15 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_fk_references_cache_limit,
 		65535, 0, INT_MAX,
+	},
+
+	{
+		{"yb_pg_stat_plans_max_cache_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Max number of query/plan pairs stored by QPM."),
+			NULL
+		},
+		&yb_qpm_configuration.max_cache_size,
+		5000, 1, 50000,
 		NULL, NULL, NULL
 	},
 		{
@@ -5702,8 +5908,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		/* TODO(#29072): switch to PGC_USERSET when results become correct. */
-		{"yb_max_saop_merge_streams", PGC_SUSET, QUERY_TUNING_METHOD,
+		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
 						 "scalar array operation merge."),
 			gettext_noop("For YB LSM index scans, when multiple "
@@ -5712,8 +5917,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "cartesian product's cardinality reaches this limit. "
 						 "Scalar array operation merge is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
-						 "to 0 to disable. WARNING(#29072): results are not "
-						 "sorted correctly."),
+						 "to 0 to disable."),
 		},
 		&yb_max_saop_merge_streams,
 		0, 0, 1024,
@@ -7145,6 +7349,16 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
+		{"yb_log_min_backtraces", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Sets the minimum message level for including a backtrace in the log."),
+			gettext_noop("Errors at or above this level will have a call stack attached. Each level includes all the levels that follow it.")
+		},
+		&yb_log_min_backtraces,
+		FATAL, server_message_level_options,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"log_statement", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Sets the type of statements logged."),
 			NULL
@@ -7460,8 +7674,9 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Read only statements/transactions do not see read restart errors but"
-						 " may miss recent updates with staleness bounded by clock skew."
+						 " relaxed. Do not see read restart errors but may miss recent updates with"
+						 " staleness bounded by clock skew. This mode does not apply to"
+						 " serializable isolation level and fast path writes."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),
@@ -7496,6 +7711,37 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&yb_enable_cbo, YB_COST_MODEL_LEGACY, yb_cost_model_options,
 		NULL, assign_yb_enable_cbo, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_track", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Selects which statements are tracked by QPM."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_qpm_configuration.track, YB_QPM_TRACK_NONE, yb_qpm_track_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_plan_format", PGC_POSTMASTER, QUERY_TUNING_METHOD,
+			gettext_noop("Plan format for QPM."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_qpm_configuration.plan_format, EXPLAIN_FORMAT_JSON, yb_qpm_plan_format_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_pg_stat_plans_cache_replacement_algorithm", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Enable true LRU in Query Plan Management."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_qpm_configuration.cache_replacement_algorithm, YB_QPM_SIMPLE_CLOCK_LRU,
+		yb_cache_replacement_algorithm_options,
+		NULL, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -7642,6 +7888,12 @@ string_field_used(struct config_string *conf, char *strval)
 		strval == conf->reset_val ||
 		strval == conf->boot_val)
 		return true;
+
+	/* YB: also check if value has been saved by connection manager */
+	if (conf->gen.ysql_conn_mgr_saved_default &&
+		strval == conf->gen.ysql_conn_mgr_saved_default->prior.val.stringval)
+		return true;
+
 	for (stack = conf->gen.stack; stack; stack = stack->prev)
 	{
 		if (strval == stack->prior.val.stringval ||
@@ -7679,6 +7931,12 @@ extra_field_used(struct config_generic *gconf, void *extra)
 
 	if (extra == gconf->extra)
 		return true;
+
+	/* YB: Check if extra field has been used by conn mgr to save default */
+	if (gconf->ysql_conn_mgr_saved_default &&
+		extra == gconf->ysql_conn_mgr_saved_default->prior.extra)
+		return true;
+
 	switch (gconf->vartype)
 	{
 		case PGC_BOOL:
@@ -8721,13 +8979,121 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 static bool
 yb_should_report_guc(struct config_generic *record)
 {
-	/* TODO(arpit.saxena): Use narrower sending criteria for correctness */
-	return ((record->flags & GUC_REPORT) && !YbIsClientYsqlConnMgr()) ||
-		(YbIsClientYsqlConnMgr() && record->context > PGC_BACKEND);
+	bool		shouldReportGUC = record->flags & GUC_REPORT;
+
+	if (YbIsClientYsqlConnMgr())
+	{
+		shouldReportGUC =
+			shouldReportGUC ||
+			(record->status & (YB_GUC_VALUE_RESET | YB_GUC_DEFAULT_RESET)) ||
+			(record->context >= PGC_SU_BACKEND &&
+			 (record->source == PGC_S_CLIENT ||
+			  record->source == PGC_S_SESSION));
+		/*
+		 * A special case has been added here for auth passthrough mode where we do
+		 * not want to report GUC variables to connection manager in case auth
+		 * passthrough has failed.
+		 * Specifically, we do not want to send back ParameterStatus packets for
+		 * GUCs like session_authorization, client_encoding that are set during the
+		 * authentication phase of Auth Passthrough as this causes certain
+		 * sync issues due to the final RFQ sent by the server to conn mgr.
+		 */
+		shouldReportGUC =
+			shouldReportGUC &&
+			(MyProcPort == NULL || !MyProcPort->yb_has_auth_passthrough_failed);
+	}
+	return shouldReportGUC;
+}
+
+/*
+ * YB: Clear default value of GUC set by connection manager and restore
+ * the original reset value
+ */
+static void
+yb_reset_conn_mgr_default(struct config_generic *gconf)
+{
+	/* Early return in case there's no default saved by conn mgr */
+	if (!gconf->ysql_conn_mgr_saved_default)
+		return;
+
+	GucStack   *stack = gconf->ysql_conn_mgr_saved_default;
+
+	gconf->reset_source = stack->source;
+	gconf->reset_scontext = stack->scontext;
+	gconf->reset_srole = stack->srole;
+
+	switch (gconf->vartype)
+	{
+		case PGC_BOOL:
+			{
+				struct config_bool *conf = (struct config_bool *) gconf;
+
+				conf->reset_val = stack->prior.val.boolval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_INT:
+			{
+				struct config_int *conf = (struct config_int *) gconf;
+
+				conf->reset_val = stack->prior.val.intval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_OID:
+			{
+				struct yb_config_oid *conf = (struct yb_config_oid *) gconf;
+
+				conf->reset_val = stack->prior.val.oidval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_REAL:
+			{
+				struct config_real *conf = (struct config_real *) gconf;
+
+				conf->reset_val = stack->prior.val.realval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_STRING:
+			{
+				struct config_string *conf = (struct config_string *) gconf;
+
+				set_string_field(conf, &conf->reset_val, stack->prior.val.stringval);
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+		case PGC_ENUM:
+			{
+				struct config_enum *conf = (struct config_enum *) gconf;
+
+				conf->reset_val = stack->prior.val.enumval;
+				set_extra_field(gconf, &conf->reset_extra, stack->prior.extra);
+				break;
+			}
+	}
+
+	discard_stack_value(gconf, &stack->prior);
+
+	/*
+	 * Note: we don't set the actual value of the variable since that will
+	 * be done by the caller
+	 */
+
+	gconf->status |= YB_GUC_DEFAULT_RESET;
+	report_needed = true;
+
+	pfree(stack);
+	gconf->ysql_conn_mgr_saved_default = NULL;
 }
 
 /*
  * Reset all options to their saved default values (implements RESET ALL)
+ *
+ * YB: When yb_conn_mgr_modifying_defaults is true, it will also reset the
+ * default values saved by connection manager and then proceed to restore
+ * the actual default values.
  */
 void
 ResetAllOptions(void)
@@ -8742,12 +9108,32 @@ ResetAllOptions(void)
 		if (gconf->context != PGC_SUSET &&
 			gconf->context != PGC_USERSET)
 			continue;
-		/* Don't reset if special exclusion from RESET ALL */
-		if (gconf->flags & GUC_NO_RESET_ALL)
-			continue;
-		/* No need to reset if wasn't SET */
-		if (gconf->source <= PGC_S_OVERRIDE)
-			continue;
+
+		/* YB: Reset defaults set by connection manager */
+		if (yb_conn_mgr_modifying_defaults)
+			yb_reset_conn_mgr_default(gconf);
+
+		/*
+		 * YB: When conn mgr is attempting to reset the default values it had
+		 * saved, allow it bypass RESET ALL restriction. Also, source check
+		 * needs to be changed since conn mgr sets PGC_S_CLIENT sources as
+		 * well in a session
+		 */
+		if (yb_conn_mgr_modifying_defaults)
+		{
+			if (gconf->source <= PGC_S_OVERRIDE &&
+				gconf->source != PGC_S_CLIENT)
+				continue;
+		}
+		else
+		{
+			/* Don't reset if special exclusion from RESET ALL */
+			if (gconf->flags & GUC_NO_RESET_ALL)
+				continue;
+			/* No need to reset if wasn't SET */
+			if (gconf->source <= PGC_S_OVERRIDE)
+				continue;
+		}
 
 		/* Save old value to support transaction abort */
 		push_old_value(gconf, GUC_ACTION_SET);
@@ -8831,6 +9217,9 @@ ResetAllOptions(void)
 		gconf->source = gconf->reset_source;
 		gconf->scontext = gconf->reset_scontext;
 		gconf->srole = gconf->reset_srole;
+		/* YB: Add YB_GUC_VALUE_RESET for relaying back to Connection Manager */
+		if (YbIsClientYsqlConnMgr())
+			gconf->status |= YB_GUC_VALUE_RESET;
 
 		if (yb_should_report_guc(gconf))
 		{
@@ -8840,6 +9229,76 @@ ResetAllOptions(void)
 	}
 }
 
+/* YB: Set GUC variables using same source as startup packet */
+void
+YbSetYsqlConnMgrGucDefaults(const char *data, int len)
+{
+	const char *ptr = data;
+	const char *end = data + len;
+
+	while (ptr < end)
+	{
+		const char *name;
+		const char *value;
+
+		/* Get the key (GUC name) */
+		name = ptr;
+		while (ptr < end && *ptr != '\0')
+			ptr++;
+		if (ptr >= end)
+			break;
+		ptr++;					/* skip null terminator */
+
+		/* Get the value */
+		value = ptr;
+		while (ptr < end && *ptr != '\0')
+			ptr++;
+		if (ptr >= end)
+			break;
+		ptr++;					/* skip null terminator */
+
+		GucContext	gucctx = superuser() ? PGC_SU_BACKEND : PGC_BACKEND;
+
+		/*
+		 * Wrap in try/finally so that yb_conn_mgr_modifying_defaults can be reset
+		 * even in the case of an error
+		 */
+		PG_TRY();
+		{
+			yb_conn_mgr_modifying_defaults = true;
+			SetConfigOption(name, value, gucctx, PGC_S_CLIENT);
+		}
+		PG_FINALLY();
+		{
+			yb_conn_mgr_modifying_defaults = false;
+		}
+		PG_END_TRY();
+	}
+}
+
+/*
+ * YB: Reset GUC defaults that were overridden by YSQL Connection Manager and
+ * also reset all GUC variables to their defaults. Basically does a RESET of GUC
+ * defaults to backend defaults and then performs RESET ALL
+ */
+void
+YbResetYsqlConnMgrGucDefaults(void)
+{
+	/*
+	 * Wrap in try/finally so that yb_conn_mgr_modifying_defaults can be reset
+	 * even in the case of an error
+	 */
+	PG_TRY();
+	{
+		yb_conn_mgr_modifying_defaults = true;
+		ResetAllOptions();
+	}
+	PG_FINALLY();
+	{
+		yb_conn_mgr_modifying_defaults = false;
+	}
+	PG_END_TRY();
+}
 
 /*
  * push_old_value
@@ -9004,6 +9463,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
 			bool		changed;
+			bool		yb_needs_report;
 
 			/*
 			 * In this next bit, if we don't set either restorePrior or
@@ -9086,6 +9546,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			}
 
 			changed = false;
+			yb_needs_report = false;
 
 			if (restorePrior || restoreMasked)
 			{
@@ -9243,6 +9704,19 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				set_extra_field(gconf, &(stack->prior.extra), NULL);
 				set_extra_field(gconf, &(stack->masked.extra), NULL);
 
+				/*
+				 * YB: Connection manager needs to be informed if any variable
+				 * set by the user is rolled back
+				 */
+				if (YbIsClientYsqlConnMgr() && changed &&
+					(gconf->context == PGC_SUSET ||
+					 gconf->context == PGC_USERSET) &&
+					gconf->source == PGC_S_SESSION)
+				{
+					gconf->status |= YB_GUC_VALUE_RESET;
+					yb_needs_report = true;
+				}
+
 				/* And restore source information */
 				gconf->source = newsource;
 				gconf->scontext = newscontext;
@@ -9254,7 +9728,7 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			pfree(stack);
 
 			/* Report new value if we changed it */
-			if (changed && yb_should_report_guc(gconf))
+			if (changed && (yb_needs_report || yb_should_report_guc(gconf)))
 			{
 				gconf->status |= GUC_NEEDS_REPORT;
 				report_needed = true;
@@ -9307,13 +9781,7 @@ BeginReportingGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		/*
-		 * YB_TODO(#27725): Replace with a tighter reporting that is needed for
-		 * connection manager
-		 */
-		if ((conf->flags & GUC_REPORT) ||
-			(conf->context >= PGC_SU_BACKEND &&
-			 (conf->source == PGC_S_CLIENT || conf->source == PGC_S_SESSION)))
+		if (yb_should_report_guc(conf))
 			ReportGUCOption(conf);
 	}
 
@@ -9359,7 +9827,8 @@ ReportChangedGUCOptions(void)
 	{
 		struct config_generic *conf = guc_variables[i];
 
-		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) && (conf->status & GUC_NEEDS_REPORT))
+		if (((conf->flags & GUC_REPORT) || YbIsClientYsqlConnMgr()) &&
+			(conf->status & GUC_NEEDS_REPORT))
 			ReportGUCOption(conf);
 	}
 
@@ -9382,6 +9851,11 @@ ReportGUCOption(struct config_generic *record)
 {
 	char	   *val = _ShowOption(record, false);
 
+	/*
+	 * YB: record->last_reported doesn't make sense for connection manager
+	 * since the backend can be attached to another client which would need
+	 * ParameterStatus of a variable it sets
+	 */
 	if (YbIsClientYsqlConnMgr() ||
 		record->last_reported == NULL ||
 		strcmp(val, record->last_reported) != 0)
@@ -9394,6 +9868,12 @@ ReportGUCOption(struct config_generic *record)
 
 			if (record->flags & GUC_REPORT)
 				flags |= YB_PARAM_STATUS_REPORT_ENABLED;
+
+			if (record->status & YB_GUC_VALUE_RESET)
+				flags |= YB_PARAM_STATUS_SESSION_VAL_RESET;
+
+			if (record->status & YB_GUC_DEFAULT_RESET)
+				flags |= YB_PARAM_STATUS_DEFAULT_VAL_RESET;
 
 			switch (record->context)
 			{
@@ -9414,21 +9894,15 @@ ReportGUCOption(struct config_generic *record)
 					 */
 
 					if (record->source == PGC_S_CLIENT)
-						flags |= YB_PARAM_STATUS_CONTEXT_BACKEND;
+						flags |= YB_PARAM_STATUS_SOURCE_STARTUP;
 					break;
 				case PGC_SUSET:
 				case PGC_USERSET:
 					if (record->source == PGC_S_CLIENT)
-						flags |=
-							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP;
+						flags |= YB_PARAM_STATUS_SOURCE_STARTUP;
 					else if (record->source == PGC_S_SESSION)
 						flags |=
 							YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION;
-
-					/*
-					 * TODO(#28445): Populate
-					 * YB_PARAM_STATUS_USERSET_SOURCE_RESET
-					 */
 					break;
 			}
 
@@ -9459,6 +9933,12 @@ ReportGUCOption(struct config_generic *record)
 	pfree(val);
 
 	record->status &= ~GUC_NEEDS_REPORT;
+	/* YB: Reset flags that were set for Connection Manager */
+	if (YbIsClientYsqlConnMgr())
+	{
+		record->status &= ~YB_GUC_VALUE_RESET;
+		record->status &= ~YB_GUC_DEFAULT_RESET;
+	}
 }
 
 /*
@@ -10165,6 +10645,71 @@ parse_and_validate_value(struct config_generic *record,
 	return true;
 }
 
+static void
+yb_conn_mgr_save_default_value(struct config_generic *gconf)
+{
+	if (gconf->ysql_conn_mgr_saved_default)
+	{
+		elog(WARNING,
+			 "ysql_conn_mgr_saved_default already set for GUC \"%s\", not "
+			 "clearing it. This is a bug",
+			 gconf->name);
+		return;
+	}
+
+	/* TODO: Might be better to have a separate context here? */
+	GucStack   *stack =
+		MemoryContextAllocZero(TopMemoryContext, sizeof(GucStack));
+
+	stack->source = gconf->reset_source;
+	stack->scontext = gconf->reset_scontext;
+	stack->srole = gconf->reset_srole;
+
+	/*
+	 * This is copied from set_stack_value, except we are using reset_val and
+	 * reset_extra from the record
+	 */
+	switch (gconf->vartype)
+	{
+		case PGC_BOOL:
+			stack->prior.val.boolval = ((struct config_bool *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_bool *) gconf)->reset_extra);
+			break;
+		case PGC_INT:
+			stack->prior.val.intval = ((struct config_int *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_int *) gconf)->reset_extra);
+			break;
+		case PGC_OID:
+			stack->prior.val.oidval =
+				((struct yb_config_oid *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct yb_config_oid *) gconf)->reset_extra);
+			break;
+		case PGC_REAL:
+			stack->prior.val.realval =
+				((struct config_real *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_real *) gconf)->reset_extra);
+			break;
+		case PGC_STRING:
+			set_string_field((struct config_string *) gconf,
+							 &(stack->prior.val.stringval),
+							 ((struct config_string *) gconf)->reset_val);
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_string *) gconf)->reset_extra);
+			break;
+		case PGC_ENUM:
+			stack->prior.val.enumval =
+				((struct config_enum *) gconf)->reset_val;
+			set_extra_field(gconf, &(stack->prior.extra),
+							((struct config_enum *) gconf)->reset_extra);
+			break;
+	}
+
+	gconf->ysql_conn_mgr_saved_default = stack;
+}
 
 /*
  * set_config_option: sets option `name' to given value.
@@ -10258,6 +10803,7 @@ set_config_option_ext(const char *name, const char *value,
 	void	   *newextra = NULL;
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
+	bool		gucReset = value == NULL && source == PGC_S_SESSION;
 
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
@@ -10291,6 +10837,18 @@ set_config_option_ext(const char *name, const char *value,
 				 source == PGC_S_USER ||
 				 source == PGC_S_DATABASE_USER)
 			elevel = WARNING;
+		else if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req)
+			/*
+			 * YB: In the Auth Passthrough mode of Connection Manager, we want
+			 * to abort auth in case of error while setting GUC values. Ideally,
+			 * we should forward a FatalForLogicalConnection Packet, but
+			 * forwarding a FATAL would also stop auth.
+			 *
+			 * TODO (vikram.damle) (#29818): Add a mechanism to forward a
+			 * FatalForLogicalConection to preserve this backend instead of
+			 * forwarding a FATAL directly and terminating the backend.
+			 */
+			elevel = FATAL;
 		else
 			elevel = ERROR;
 	}
@@ -10517,6 +11075,24 @@ set_config_option_ext(const char *name, const char *value,
 		((value != NULL) || source == PGC_S_DEFAULT);
 
 	/*
+	 * YB: When in Auth Passthrough mode of conn mgr, avoid setting defaults on
+	 * the control backend (auth_passthrough_req == true) when parsing startup
+	 * packet GUC opts (source == PGC_S_CLIENT).
+	 * We do not wish to set defaults in this case as GUCs on the control
+	 * backend need to be reverted to their original defaults in preparation for
+	 * the next authentication attempt. Changes made via makeDefault are
+	 * non-transactional in nature and cannot be uniformly reverted. The setting
+	 * of defaults serves no purpose during authentication either as conn mgr is
+	 * responsible for tracking client session defaults during the deploy phase
+	 * on txn backends.
+	 */
+	if (MyProcPort != NULL && MyProcPort->yb_is_auth_passthrough_req &&
+		source >= PGC_S_CLIENT)
+	{
+		makeDefault = false;
+	}
+
+	/*
 	 * Ignore attempted set if overridden by previously processed setting.
 	 * However, if changeVal is false then plow ahead anyway since we are
 	 * trying to find out if the value is potentially good, not actually use
@@ -10538,6 +11114,10 @@ set_config_option_ext(const char *name, const char *value,
 		}
 		changeVal = false;
 	}
+
+	/* YB: Save default value if connection manager is trying to set defaults */
+	if (YbIsClientYsqlConnMgr() && yb_conn_mgr_modifying_defaults)
+		yb_conn_mgr_save_default_value(record);
 
 	/*
 	 * Evaluate value and set variable.
@@ -10606,6 +11186,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10704,6 +11287,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10797,6 +11383,9 @@ set_config_option_ext(const char *name, const char *value,
 									newextra);
 					conf->gen.source = source;
 					conf->gen.scontext = context;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -10893,6 +11482,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -11020,6 +11612,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 
 					/*
 					 * Ugly hack: during SET session_authorization, forcibly
@@ -11167,6 +11762,9 @@ set_config_option_ext(const char *name, const char *value,
 					conf->gen.source = source;
 					conf->gen.scontext = context;
 					conf->gen.srole = srole;
+					/* YB: Mark value as been reset for connection manager */
+					if (gucReset)
+						conf->gen.status |= YB_GUC_VALUE_RESET;
 				}
 				if (makeDefault)
 				{
@@ -16478,6 +17076,15 @@ yb_set_neg_catcache_ids(const char *newval, void *extra)
 		YbSetAdditionalNegCacheIds(neg_cache_ids_list);
 		list_free(neg_cache_ids_list);
 	}
+}
+
+static bool
+check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source)
+{
+	ereport(WARNING,
+			(errmsg("the parameter \"yb_disable_pg_snapshot_mgmt_in_repeatable_read\" is deprecated, "
+					"remove it from your configuration.")));
+	return true;				/* still allow usage, but warn */
 }
 
 static bool

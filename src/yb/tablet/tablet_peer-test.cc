@@ -63,7 +63,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
@@ -300,13 +300,13 @@ class TabletPeerTest : public YBTabletTest {
     tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
     CHECK(!resp.has_error())
-        << "\nResp:\n" << resp.DebugString() << "Req:\n" << req.DebugString();
+        << "\nResp:\n" << resp.ShortDebugString() << "Req:\n" << req.ShortDebugString();
   }
 
   template<class Callback>
   std::unique_ptr<WriteQuery> CreateQuery(TabletPeer* tablet_peer,
-                                          const WriteRequestPB& req,
-                                          WriteResponsePB* resp,
+                                          const tserver::WriteRequestMsg& req,
+                                          tserver::WriteResponseMsg* resp,
                                           const Callback& cb) {
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
@@ -708,7 +708,7 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
   tablet_peer->WriteAsync(std::move(query));
   latch.Wait();
 
-  ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.DebugString();
+  ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.ShortDebugString();
 }
 
 class TabletBootstrapStateFlusherTest : public TabletPeerTest {

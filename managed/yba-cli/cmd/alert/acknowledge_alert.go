@@ -5,6 +5,7 @@
 package alert
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -46,13 +47,14 @@ var acknowledgeAlertCmd = &cobra.Command{
 
 		rAcknowledge, response, err := authAPI.Acknowledge(alertUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Alert", "Acknowledge")
-			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+			util.FatalHTTPError(response, err, "Alert", "Acknowledge")
 		}
 
-		r := make([]ybaclient.Alert, 0)
-		r = append(r, rAcknowledge)
+		r := util.CheckAndAppend(
+			make([]ybaclient.Alert, 0),
+			rAcknowledge,
+			fmt.Sprintf("An error occurred while acknowledging alert: %s", alertUUID),
+		)
 
 		alertCtx := formatter.Context{
 			Command: "list",

@@ -92,23 +92,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     userIntent.setCgroupSize(100);
-    Universe universe =
-        createUniverse(
-            userIntent,
-            params -> {
-              AtomicInteger i = new AtomicInteger(1);
-              params
-                  .getPrimaryCluster()
-                  .placementInfo
-                  .azStream()
-                  .forEach(
-                      az -> {
-                        az.leaderPreference = i.get();
-                        if (i.get() == 1) {
-                          i.incrementAndGet();
-                        }
-                      });
-            });
+    Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
     verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
@@ -218,18 +202,44 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
   public void testAZMove() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
-    Universe universe = createUniverse(userIntent);
+    Universe universe =
+        createUniverse(
+            userIntent,
+            params -> {
+              AtomicInteger i = new AtomicInteger(1);
+              params
+                  .getPrimaryCluster()
+                  .placementInfo
+                  .azStream()
+                  .forEach(
+                      az -> {
+                        int rank = i.get();
+                        if (rank == 1) {
+                          i.incrementAndGet();
+                        }
+                        az.leaderPreference = rank; // Should be 1-2-2 ranks
+                      });
+            });
+    assertTrue(universe.getUniverseDetails().getPrimaryCluster().placementInfo.hasRankOrdering());
+    verifyUniverseState(universe);
+
     initYSQL(universe);
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     moveAZ(cluster.placementInfo, az1.getUuid(), az4.getUuid());
+    AtomicInteger i = new AtomicInteger();
+    cluster
+        .placementInfo
+        .azStream()
+        .forEach(az -> az.leaderPreference = i.getAndIncrement()); // 0-1-2
     PlacementInfoUtil.updateUniverseDefinition(
         universe.getUniverseDetails(),
         customer.getId(),
         cluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     verifyNodeModifications(universe, 1, 1);
+
     UUID taskID =
         universeCRUDHandler.update(
             customer,
@@ -871,7 +881,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     if (customizer != null) {
       customizer.accept(main.getPlacement());
     }
-    PlacementInfoUtil.checkAndSetPerAZRF(main.getPlacement(), 3);
+    PlacementInfoUtil.checkAndSetPerAZRF(main.getPlacement(), 3, null, false);
     main.setReplicationFactor(3);
 
     UniverseDefinitionTaskParams.PartitionInfo secondary =

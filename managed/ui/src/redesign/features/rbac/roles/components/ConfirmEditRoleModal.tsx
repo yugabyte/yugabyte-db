@@ -11,7 +11,7 @@ import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
-import ErrorIcon from '../../../../assets/error.svg';
+import ErrorIcon from '../../../../assets/error.svg?img';
 
 type ConfirmEditRoleModalProps = {
   open: boolean;

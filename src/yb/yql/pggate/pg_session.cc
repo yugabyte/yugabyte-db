@@ -36,6 +36,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -497,7 +498,8 @@ PgSession::PgSession(
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings)
+    BufferingSettings& buffering_settings,
+    RunRWOperationsHook&& hook)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -511,7 +513,8 @@ PgSession::PgSession(
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher),
-      tablespace_cache_(kTablespaceCacheCapacity) {
+      tablespace_cache_(kTablespaceCacheCapacity),
+      rw_operations_hook_{std::move(hook)} {
   Update(&buffering_settings_);
 }
 
@@ -528,91 +531,6 @@ Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
   else
     *legacy_colocated_database = true;
   return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgSession::DropDatabase(
-    const std::string& database_name, PgOid database_oid, CoarseTimePoint deadline) {
-  tserver::PgDropDatabaseRequestPB req;
-  req.set_database_name(database_name);
-  req.set_database_oid(database_oid);
-
-  RETURN_NOT_OK(pg_client_.DropDatabase(&req, deadline));
-  return Status::OK();
-}
-
-// This function is only used to get the protobuf-based catalog version, not using
-// the pg_yb_catalog_version table.
-Status PgSession::GetCatalogMasterVersion(uint64_t *version) {
-  *version = VERIFY_RESULT(pg_client_.GetCatalogMasterVersion());
-  return Status::OK();
-}
-
-Result<int> PgSession::GetXClusterRole(uint32_t db_oid) {
-  return pg_client_.GetXClusterRole(db_oid);
-}
-
-Status PgSession::CancelTransaction(const unsigned char* transaction_id) {
-  return pg_client_.CancelTransaction(transaction_id);
-}
-
-Status PgSession::CreateSequencesDataTable() {
-  return pg_client_.CreateSequencesDataTable();
-}
-
-Status PgSession::InsertSequenceTuple(int64_t db_oid,
-                                      int64_t seq_oid,
-                                      uint64_t ysql_catalog_version,
-                                      bool is_db_catalog_version_mode,
-                                      int64_t last_val,
-                                      bool is_called) {
-  return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
-}
-
-Result<bool> PgSession::UpdateSequenceTuple(int64_t db_oid,
-                                            int64_t seq_oid,
-                                            uint64_t ysql_catalog_version,
-                                            bool is_db_catalog_version_mode,
-                                            int64_t last_val,
-                                            bool is_called,
-                                            std::optional<int64_t> expected_last_val,
-                                            std::optional<bool> expected_is_called) {
-  return pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
-      expected_last_val, expected_is_called);
-}
-
-Result<std::pair<int64_t, int64_t>> PgSession::FetchSequenceTuple(int64_t db_oid,
-                                                                  int64_t seq_oid,
-                                                                  uint64_t ysql_catalog_version,
-                                                                  bool is_db_catalog_version_mode,
-                                                                  uint32_t fetch_count,
-                                                                  int64_t inc_by,
-                                                                  int64_t min_value,
-                                                                  int64_t max_value,
-                                                                  bool cycle) {
-  return pg_client_.FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
-      min_value, max_value, cycle);
-}
-
-Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
-                                                              int64_t seq_oid,
-                                                              uint64_t ysql_catalog_version,
-                                                              bool is_db_catalog_version_mode) {
-  std::optional<uint64_t> optional_ysql_catalog_version = std::nullopt;
-  std::optional<uint64_t> optional_yb_read_time = std::nullopt;
-  if (!yb_disable_catalog_version_check) {
-    optional_ysql_catalog_version = ysql_catalog_version;
-  }
-  if (yb_read_time != 0) {
-    optional_yb_read_time = yb_read_time;
-  }
-  return pg_client_.ReadSequenceTuple(
-      db_oid, seq_oid, optional_ysql_catalog_version, is_db_catalog_version_mode,
-      optional_yb_read_time);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -722,10 +640,6 @@ void PgSession::UpdateTableCacheMinVersion(uint64_t min_ysql_catalog_version) {
   table_cache_min_ysql_catalog_version_ = min_ysql_catalog_version;
 }
 
-Result<client::TableSizeInfo> PgSession::GetTableDiskSize(const PgObjectId& table_oid) {
-  return pg_client_.GetTableDiskSize(table_oid);
-}
-
 Status PgSession::StartOperationsBuffering() {
   SCHECK(!buffering_enabled_, IllegalState, "Buffering has been already started");
   if (PREDICT_FALSE(!buffer_.IsEmpty())) {
@@ -789,10 +703,6 @@ std::string PgSession::GenerateNewYbrowid() {
 
   // Generate a new random and unique v4 UUID.
   return GenerateObjectId(true /* binary_id */);
-}
-
-Result<bool> PgSession::IsInitDbDone() {
-  return pg_client_.IsInitDbDone();
 }
 
 Result<FlushFuture> PgSession::FlushOperations(
@@ -936,7 +846,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-  if (auto origin_id = GetSessionReplicationOriginId()) {
+  if (auto origin_id = pg_callbacks_.GetSessionReplicationOriginId()) {
     options.set_xrepl_origin_id(origin_id);
   }
 
@@ -998,35 +908,6 @@ void PgSession::ClearInsertOnConflictBuffer(void* plan) {
 
 bool PgSession::IsInsertOnConflictBufferEmpty() const {
   return insert_on_conflict_buffers_.empty();
-}
-
-Result<int> PgSession::TabletServerCount(bool primary_only) {
-  return pg_client_.TabletServerCount(primary_only);
-}
-
-Result<yb::tserver::PgGetLockStatusResponsePB> PgSession::GetLockStatusData(
-    const std::string& table_id, const std::string& transaction_id) {
-  return pg_client_.GetLockStatusData(table_id, transaction_id);
-}
-
-Result<client::TabletServersInfo> PgSession::ListTabletServers() {
-  return pg_client_.ListLiveTabletServers(false);
-}
-
-Status PgSession::GetIndexBackfillProgress(std::vector<PgObjectId> index_ids,
-                                           uint64_t* num_rows_read_from_table,
-                                           double* num_rows_backfilled) {
-  return pg_client_.GetIndexBackfillProgress(index_ids,
-                                             num_rows_read_from_table,
-                                             num_rows_backfilled);
-}
-
-void PgSession::SetTimeout(const int timeout_ms) {
-  pg_client_.SetTimeout(timeout_ms * 1ms);
-}
-
-void PgSession::SetLockTimeout(int lock_timeout_ms) {
-  pg_client_.SetLockTimeout(lock_timeout_ms * 1ms);
 }
 
 void PgSession::ResetCatalogReadPoint() {
@@ -1118,7 +999,7 @@ Status PgSession::ValidatePlacements(
 
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
-    const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
+    const Generator& generator, const RunOptions& options,
     std::optional<CacheOptions>&& cache_options) {
   const auto first_table_op = generator();
   RSTATUS_DCHECK(!first_table_op.IsEmpty(), IllegalState, "Operation list must not be empty");
@@ -1135,9 +1016,12 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *first_table_op.table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
+  if (group_session_type != SessionType::kCatalog) {
+    RETURN_NOT_OK(rw_operations_hook_(options.marker));
+  }
   auto table_op = generator();
   RunHelper runner(
-      this, group_session_type, in_txn_limit, force_non_bufferable);
+      this, group_session_type, options.in_txn_limit, options.force_non_bufferable);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
   auto processor =
       [this,
@@ -1176,51 +1060,28 @@ Result<PerformFuture> PgSession::DoRunAsync(
   return runner.Flush(std::move(cache_options));
 }
 
-Result<PerformFuture> PgSession::RunAsync(const OperationGenerator& generator,
-                                          HybridTime in_txn_limit,
-                                          ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
-}
-
-Result<PerformFuture> PgSession::RunAsync(const ReadOperationGenerator& generator,
-                                          HybridTime in_txn_limit,
-                                          ForceNonBufferable force_non_bufferable) {
-  return DoRunAsync(generator, in_txn_limit, force_non_bufferable);
+Result<PerformFuture> PgSession::RunAsync(
+    std::span<const PgsqlOpPtr> ops, const PgTableDesc& table, const RunOptions& options) {
+  const auto generator = [i = ops.begin(), end = ops.end(), t = &table]() mutable {
+      using TO = TableOperation<PgsqlOpPtr>;
+      return i != end ? TO{.operation = &*i++, .table = t} : TO();
+  };
+  return DoRunAsync(make_lw_function(generator), options);
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-    const ReadOperationGenerator& generator, CacheOptions&& cache_options) {
-  RSTATUS_DCHECK(!cache_options.key_value.empty(), InvalidArgument, "Cache key can't be empty");
-  // Ensure no buffered requests will be added to cached request.
-  RETURN_NOT_OK(buffer_.Flush(PgFlushDebugContext::CatalogTablePrefetch()));
-  return DoRunAsync(generator, HybridTime(), ForceNonBufferable::kFalse, std::move(cache_options));
+    const OperationGenerator& generator, const RunOptions& options) {
+  return DoRunAsync(generator, options);
 }
 
-Result<bool> PgSession::CheckIfPitrActive() {
-  return pg_client_.CheckIfPitrActive();
-}
-
-Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
-  return pg_client_.IsObjectPartOfXRepl(table_id);
-}
-
-Result<TableKeyRanges> PgSession::GetTableKeyRanges(
-    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
-  // TODO(ysql_parallel_query): consider async population of range boundaries to avoid blocking
-  // calling worker on waiting for range boundaries.
-  return pg_client_.GetTableKeyRanges(
-      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length);
-}
-
-Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {
-  return pg_client_.ListReplicationSlots();
-}
-
-Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
-    const ReplicationSlotName& slot_name) {
-  return pg_client_.GetReplicationSlot(slot_name);
+Result<PerformFuture> PgSession::RunAsync(
+    const ReadOperationGenerator& generator, std::optional<CacheOptions>&& cache_options) {
+  if (cache_options) {
+    RSTATUS_DCHECK(!cache_options->key_value.empty(), InvalidArgument, "Cache key can't be empty");
+    // Ensure no buffered requests will be added to cached request.
+    RETURN_NOT_OK(buffer_.Flush(PgFlushDebugContext::CatalogTablePrefetch()));
+  }
+  return DoRunAsync(generator, {}, std::move(cache_options));
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
@@ -1228,31 +1089,9 @@ PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
   return wait_event_watcher_(wait_event, ash::PggateRPC::kNoRPC);
 }
 
-Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {
-  return pg_client_.YCQLStatementStats();
-}
-
-Result<tserver::PgActiveSessionHistoryResponsePB> PgSession::ActiveSessionHistory() {
-  return pg_client_.ActiveSessionHistory();
-}
-
-const std::string PgSession::LogPrefix() const {
+std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
 }
-
-Result<tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata(bool local_only) {
-  return pg_client_.TabletsMetadata(local_only);
-}
-
-Result<yb::tserver::PgServersMetricsResponsePB> PgSession::ServersMetrics() {
-  return pg_client_.ServersMetrics();
-}
-
-Status PgSession::SetCronLastMinute(int64_t last_minute) {
-  return pg_client_.SetCronLastMinute(last_minute);
-}
-
-Result<int64_t> PgSession::GetCronLastMinute() { return pg_client_.GetCronLastMinute(); }
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
@@ -1293,7 +1132,7 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 }
 
 Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabled())) {
+  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
     // Also skip object locking during initdb bootstrap mode, since it's a single-process,
@@ -1315,10 +1154,6 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(
     YbcPgOid table_oid, bool create_if_not_exists) {
   return pg_callbacks_.GetCatalogSnapshotReadPoint(table_oid, create_if_not_exists);
-}
-
-uint16_t PgSession::GetSessionReplicationOriginId() const {
-  return pg_callbacks_.GetSessionReplicationOriginId();
 }
 
 }  // namespace yb::pggate

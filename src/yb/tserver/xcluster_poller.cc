@@ -619,10 +619,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
         YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 300, 1)
-            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
+            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " ";
       } else {
         YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 30, 1)
-            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " " << THROTTLE_MSG;
+            << LogPrefix() << "ExecuteCommittedDDLs Error: " << s << " ";
       }
       StoreNOKReplicationError();
       if (FLAGS_enable_xcluster_stat_collection) {

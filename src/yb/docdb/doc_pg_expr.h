@@ -49,7 +49,7 @@ namespace docdb {
 // for the first time, column references or expressions can no longer be added to the executor.
 class DocPgExprExecutor {
  public:
-  using Results = std::vector<qlexpr::LWExprResult>;
+  using Results = std::vector<qlexpr::QLExprResult>;
 
   DocPgExprExecutor(DocPgExprExecutor&&);
   DocPgExprExecutor& operator=(DocPgExprExecutor&&);
@@ -66,8 +66,7 @@ class DocPgExprExecutor {
   // Then target expressions are evaluated in the order they were added. Execution results are
   // converted to DocDB values and written into the next element of the results vector. This is a
   // caller's responsibility to track target expressions added to the executor.
-  Result<bool> Exec(
-      const dockv::PgTableRow& row, std::vector<qlexpr::QLExprResult>* results = nullptr);
+  Result<bool> Exec(const dockv::PgTableRow& row, Results* results = nullptr);
 
  private:
   class State;
