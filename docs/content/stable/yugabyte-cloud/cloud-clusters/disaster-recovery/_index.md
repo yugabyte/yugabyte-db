@@ -4,9 +4,6 @@ headerTitle: Disaster Recovery
 linkTitle: Disaster recovery
 description: Enable Disaster recovery for clusters
 headContent: Fail over to a replica cluster in case of unplanned outages
-cascade:
-  tags:
-    feature: early-access
 menu:
   stable_yugabyte-cloud:
     parent: cloud-clusters
@@ -17,10 +14,6 @@ showRightNav: true
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
-
-{{<tip title="Early Access">}}
-This feature is Early Access; to try it, contact {{% support-cloud %}}.
-{{</tip>}}
 
 A DR configuration consists of the following:
 
@@ -63,32 +56,12 @@ DR further allows for the role of each cluster to switch during planned switchov
     href="disaster-recovery-switchover/"
     icon="fa-thin fa-toggle-on">}}
 
-  {{<index/item
-    title="Add and remove tables and indexes"
-    body="Perform DDL changes to databases in replication."
-    href="disaster-recovery-tables/"
-    icon="fa-thin fa-plus-minus">}}
-
 {{</index/block>}}
-
-## Schema changes
-
-Table and index-level schema changes must be performed in the same order as follows:
-
-1. The Source cluster.
-2. The Target cluster.
-
-You don't need to make any changes to the DR configuration.
-
-{{<lead link="./disaster-recovery-tables/">}}
-To learn more, refer to [Manage tables and indexes](./disaster-recovery-tables/)
-{{</lead>}}
 
 ## Limitations
 
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the Source to the Target, see [Manage tables and indexes](./disaster-recovery-tables/).
+- Disaster recovery requires both clusters to be running the same version of YugabyteDB, and the version must be {{<release "2025.2">}} or later.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.
 
 - Currently in YugabyteDB Aeon, you cannot use xCluster Disaster Recovery with point-in-time recovery (PITR) on the same database. If you have PITR configured for a database and want to set up xCluster Disaster Recovery, [disable PITR](../aeon-pitr/#disable-pitr) first.
-

@@ -9,6 +9,8 @@ menu:
     parent: disaster-recovery-aeon
     identifier: disaster-recovery-setup-aeon
     weight: 10
+aliases:
+  - /stable/yugabyte-cloud/cloud-clusters/disaster-recovery/disaster-recovery-tables/
 type: docs
 ---
 
@@ -206,6 +208,10 @@ To remove a database from DR, do the following:
 1. Select the databases to be removed.
 
 1. Click **Remove Databases**.
+
+### Perform DDL operations
+
+Perform DDL operations on the Source cluster only. All schema changes are automatically replicated to the Target cluster.
 
 ### Remove DR
 
