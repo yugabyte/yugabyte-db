@@ -33,7 +33,7 @@ In addition, both python and python3 must symbolically link to Python 3. Refer t
 
 cron-based universes are no longer supported in YugabyteDB Anywhere v2025.2 and later. Before you can upgrade to v2025.2 or later, all your universes must be using systemd.
 
-To update cron-based universes, first upgrade YugabyteDB Anywhere to v2024.2.2 or later, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
+To update cron-based universes, first upgrade YugabyteDB Anywhere to the latest version in the {{<release "2024.2">}} series, and then refer to the steps in [Prepare to upgrade a universe](/v2024.2/yugabyte-platform/manage-deployments/upgrade-software-prepare/).
 
 ## Node provisioning
 
