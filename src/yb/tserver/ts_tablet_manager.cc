@@ -3302,7 +3302,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(
     result = metadata->cdc_sdk_safe_time();
   }
 
-  Status s = BackfillNamespaceIdIfNeeded(*metadata, client());
+  Status s = BackfillNamespaceIdIfNeeded(metadata->table_id(), *metadata, client());
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "
                                    << metadata->raft_group_id() << ": " << s;

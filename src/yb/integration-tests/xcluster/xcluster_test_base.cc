@@ -923,8 +923,7 @@ Status XClusterTestBase::WaitForSafeTimeToAdvanceToNow(std::vector<NamespaceName
 
   for (const auto& name : namespace_names) {
     master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        std::string() /* namespace_id */, name, YQL_DATABASE_PGSQL, &resp));
+    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(name, YQL_DATABASE_PGSQL, &resp));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -1041,8 +1040,7 @@ Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId(Cluster* clu
   if (FLAGS_ysql_legacy_colocated_database_creation) {
     // Legacy colocated database
     master::GetNamespaceInfoResponsePB ns_resp;
-    RETURN_NOT_OK(
-        cluster->client_->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
+    RETURN_NOT_OK(cluster->client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
     return GetColocatedDbParentTableId(ns_resp.namespace_().id());
   }
   // Colocated database

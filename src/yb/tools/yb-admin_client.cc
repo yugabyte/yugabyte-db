@@ -3851,11 +3851,11 @@ Status ClusterAdminClient::ListCDCSDKStreams(const std::string& namespace_name) 
   req.set_id_type(yb::master::IdTypePB::NAMESPACE_ID);
 
   if (!namespace_name.empty()) {
-        cout << "Filtering out DB streams for the namespace: " << namespace_name << "\n\n";
-        master::GetNamespaceInfoResponsePB namespace_info_resp;
-        RETURN_NOT_OK(yb_client_->GetNamespaceInfo(
-            "", namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
-        req.set_namespace_id(namespace_info_resp.namespace_().id());
+    cout << "Filtering out DB streams for the namespace: " << namespace_name << "\n\n";
+    master::GetNamespaceInfoResponsePB namespace_info_resp;
+    RETURN_NOT_OK(
+        yb_client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &namespace_info_resp));
+    req.set_namespace_id(namespace_info_resp.namespace_().id());
   }
 
   RpcController rpc;

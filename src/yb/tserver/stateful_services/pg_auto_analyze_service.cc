@@ -596,9 +596,8 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
       // If the database is renamed, we need to refresh name cache so that tables in the renamed
       // database can be analyzed in the next iteration of TriggerAnalyze.
       master::GetNamespaceInfoResponsePB resp;
-      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
-                                                           &resp));
-      if (resp.namespace_().name() != dbname) { // renamed
+      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, &resp));
+      if (resp.namespace_().name() != dbname) {  // renamed
         VLOG(4) << "Database " << dbname << " was renamed to " << resp.namespace_().name();
         refresh_name_cache_ = true;
         *is_deleted_or_renamed = true;

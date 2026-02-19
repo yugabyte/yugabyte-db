@@ -17,8 +17,6 @@
 #include <memory>
 #include <thread>
 
-#include <glog/logging.h>
-#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/yb_table_name.h"
@@ -43,6 +41,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -77,8 +76,7 @@ class OrphanedTabletCleanupTest : public PgMiniTestBase {
 
   Status CreateSnapshotScheduleOnDatabase(const string& database_name) {
     master::GetNamespaceInfoResponsePB resp;
-    RETURN_NOT_OK(client_->GetNamespaceInfo(
-        "" /* namespace_id */, kDatabaseName, YQL_DATABASE_PGSQL, &resp));
+    RETURN_NOT_OK(client_->GetNamespaceInfo(kDatabaseName, YQL_DATABASE_PGSQL, &resp));
     auto namespace_id = resp.namespace_().id();
 
     auto keyspace = client::YBTableName();

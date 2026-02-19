@@ -14,24 +14,31 @@
 #include <chrono>
 
 #include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
+#include "yb/client/namespace_alterer.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.pb.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/sync_point.h"
@@ -127,11 +134,31 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   Status GetNamespaceId() {
     master::GetNamespaceInfoResponsePB resp;
 
-    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        std::string() /* namespace_id */, namespace_name, YQL_DATABASE_CQL, &resp));
+    RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(namespace_name, YQL_DATABASE_CQL, &resp));
 
     namespace_id_ = resp.namespace_().id();
     return OK();
+  }
+
+  Status RenameProducerDB(
+      const std::string& old_namespace_name, const std::string& new_namespace_name) {
+    return RenameDB(*producer_client(), old_namespace_name, new_namespace_name);
+  }
+
+  Status RenameConsumerDB(
+      const std::string& old_namespace_name, const std::string& new_namespace_name) {
+    return RenameDB(*consumer_client(), old_namespace_name, new_namespace_name);
+  }
+
+  Status RenameDB(
+      YBClient& client, const std::string& old_namespace_name,
+      const std::string& new_namespace_name) {
+    master::GetNamespaceInfoResponsePB resp;
+    RETURN_NOT_OK(client.GetNamespaceInfo(old_namespace_name, YQL_DATABASE_CQL, &resp));
+    auto alterer = client.NewNamespaceAlterer(old_namespace_name, resp.namespace_().id());
+    alterer->SetDatabaseType(YQL_DATABASE_CQL);
+    alterer->RenameTo(new_namespace_name);
+    return alterer->Alter();
   }
 
   void WriteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
@@ -273,6 +300,12 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
 }
 
 TEST_F(XClusterSafeTimeTest, ConsumerHistoryCutoff) {
+  // For xcluster tserver tablet metadata must have the namespace_id.
+  // The code to backfill the namespace id on tserver tablet metadata used to fetch the namespace id
+  // by name. To ensure we no longer have that bug, rename the databases on both the producer and
+  // consumer.
+  ASSERT_OK(RenameProducerDB(namespace_name, "yugabyte2"));
+  ASSERT_OK(RenameConsumerDB(namespace_name, "yugabyte2"));
   // Make sure safe time is initialized.
   auto ht_1 = GetProducerSafeTime();
   ASSERT_OK(WaitForSafeTime(ht_1));
