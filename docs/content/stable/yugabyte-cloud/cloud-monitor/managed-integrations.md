@@ -38,7 +38,7 @@ Currently, you can export data to the following tools.
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Logging](#google-cloud-logging) | Database audit logs | |
 | [New Relic](#new-relic) | | Yes |
-| [Amazon S3](#amazon-s3) | Yes | |
+| [Amazon S3](#amazon-s3) | Database query logs<br>Database audit logs | |
 
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
 
