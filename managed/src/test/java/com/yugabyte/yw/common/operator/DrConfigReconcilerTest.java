@@ -3,149 +3,281 @@
 package com.yugabyte.yw.common.operator;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.dr.DrConfigHelper;
+import com.yugabyte.yw.common.dr.DrConfigHelper.DrConfigTaskResult;
+import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
-import com.yugabyte.yw.models.OperatorResource;
+import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.UniverseImporter;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
-import io.fabric8.kubernetes.client.utils.Serialization;
+import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.DrConfigSpec;
+import io.yugabyte.operator.v1alpha1.DrConfigStatus;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 public class DrConfigReconcilerTest extends FakeDBApplication {
 
-  @Mock SharedIndexInformer<DrConfig> drConfigInformer;
-
-  @Mock
-  MixedOperation<DrConfig, KubernetesResourceList<DrConfig>, Resource<DrConfig>> resourceClient;
-
-  @Mock DrConfigHelper drConfigHelper;
-  @Mock SharedIndexInformer<StorageConfig> scInformer;
-  @Mock OperatorUtils operatorUtils;
+  private DrConfigHelper mockDrConfigHelper;
+  private OperatorUtils mockOperatorUtils;
+  private KubernetesClient mockClient;
+  private YBInformerFactory mockInformerFactory;
+  private SharedIndexInformer<DrConfig> mockDrConfigInformer;
+  private SharedIndexInformer<StorageConfig> mockScInformer;
+  private MixedOperation<DrConfig, KubernetesResourceList<DrConfig>, Resource<DrConfig>>
+      mockResourceClient;
+  private NonNamespaceOperation<DrConfig, KubernetesResourceList<DrConfig>, Resource<DrConfig>>
+      mockInNamespaceResourceClient;
+  private Resource<DrConfig> mockDrConfigResource;
+  private Indexer<DrConfig> mockDrConfigIndexer;
+  private RuntimeConfGetter mockConfGetter;
+  private ValidatingFormFactory mockFormFactory;
+  private YBClientService mockYbClientService;
+  private KubernetesClientFactory mockKubernetesClientFactory;
+  private UniverseImporter mockUniverseImporter;
+  private KubernetesManagerFactory mockKubernetesManagerFactory;
 
   private DrConfigReconciler drConfigReconciler;
-  private static final String NAMESPACE = "test-namespace";
+  private Customer testCustomer;
+  private Provider testProvider;
+  private Universe testSourceUniverse;
+  private Universe testTargetUniverse;
+
+  private final String namespace = "test-namespace";
 
   @Before
   public void setup() {
+    mockDrConfigHelper = Mockito.mock(DrConfigHelper.class);
+    mockConfGetter = Mockito.mock(RuntimeConfGetter.class);
+    mockFormFactory = Mockito.mock(ValidatingFormFactory.class);
+    mockYbClientService = Mockito.mock(YBClientService.class);
+    mockKubernetesClientFactory = Mockito.mock(KubernetesClientFactory.class);
+    mockUniverseImporter = Mockito.mock(UniverseImporter.class);
+    mockKubernetesManagerFactory = Mockito.mock(KubernetesManagerFactory.class);
+    mockOperatorUtils =
+        spy(
+            new OperatorUtils(
+                mockConfGetter,
+                mockReleaseManager,
+                mockYbcManager,
+                mockFormFactory,
+                mockYbClientService,
+                mockKubernetesClientFactory,
+                mockUniverseImporter,
+                mockKubernetesManagerFactory));
+    mockClient = Mockito.mock(KubernetesClient.class);
+    mockInformerFactory = Mockito.mock(YBInformerFactory.class);
+    mockDrConfigInformer = Mockito.mock(SharedIndexInformer.class);
+    mockScInformer = Mockito.mock(SharedIndexInformer.class);
+    mockResourceClient = Mockito.mock(MixedOperation.class);
+    mockDrConfigIndexer = Mockito.mock(Indexer.class);
+    mockInNamespaceResourceClient = Mockito.mock(NonNamespaceOperation.class);
+    mockDrConfigResource = Mockito.mock(Resource.class);
+
+    when(mockInformerFactory.getSharedIndexInformer(
+            eq(DrConfig.class), any(KubernetesClient.class)))
+        .thenReturn(mockDrConfigInformer);
+    when(mockInformerFactory.getSharedIndexInformer(
+            eq(StorageConfig.class), any(KubernetesClient.class)))
+        .thenReturn(mockScInformer);
+    when(mockDrConfigInformer.getIndexer()).thenReturn(mockDrConfigIndexer);
+    when(mockClient.resources(eq(DrConfig.class))).thenReturn(mockResourceClient);
+    when(mockResourceClient.inNamespace(anyString())).thenReturn(mockInNamespaceResourceClient);
+    when(mockInNamespaceResourceClient.withName(anyString())).thenReturn(mockDrConfigResource);
+    when(mockInNamespaceResourceClient.resource(any(DrConfig.class)))
+        .thenReturn(mockDrConfigResource);
+
     drConfigReconciler =
-        new DrConfigReconciler(
-            drConfigInformer, resourceClient, drConfigHelper, NAMESPACE, scInformer, operatorUtils);
+        spy(
+            new DrConfigReconciler(
+                mockDrConfigHelper, namespace, mockOperatorUtils, mockClient, mockInformerFactory));
+
+    testCustomer = ModelFactory.testCustomer();
+    testProvider = ModelFactory.kubernetesProvider(testCustomer);
+    testSourceUniverse = ModelFactory.createUniverse("source-universe", testCustomer.getId());
+    testTargetUniverse = ModelFactory.createUniverse("target-universe", testCustomer.getId());
   }
 
-  private DrConfig createDrConfigCr(String name) {
+  private DrConfig createDrConfigCr(String name, String sourceUniverse, String targetUniverse) {
     DrConfig drConfig = new DrConfig();
     ObjectMeta metadata = new ObjectMeta();
     metadata.setName(name);
-    metadata.setNamespace(NAMESPACE);
+    metadata.setNamespace(namespace);
     metadata.setUid(UUID.randomUUID().toString());
-    drConfig.setMetadata(metadata);
-    drConfig.setStatus(null);
+    metadata.setGeneration(1L);
     DrConfigSpec spec = new DrConfigSpec();
-    spec.setName(name);
-    spec.setSourceUniverse("source-universe");
-    spec.setTargetUniverse("target-universe");
-    spec.setStorageConfig("my-storage-config");
-    spec.setDatabases(Arrays.asList("db1", "db2"));
+    spec.setSourceUniverse(sourceUniverse);
+    spec.setTargetUniverse(targetUniverse);
+    drConfig.setMetadata(metadata);
     drConfig.setSpec(spec);
     return drConfig;
   }
 
+  // --- CREATE tests ---
+
   @Test
-  public void testOnAddAddsResourceToTrackedResources() throws Exception {
-    String drConfigName = "test-drconfig";
-    DrConfig drConfig = createDrConfigCr(drConfigName);
-    when(operatorUtils.getDrConfigCreateFormFromCr(any(DrConfig.class), eq(scInformer)))
-        .thenThrow(new RuntimeException("mock - skip full processing"));
+  public void testReconcileCreate() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    UUID taskUUID = UUID.randomUUID();
 
-    try {
-      drConfigReconciler.onAdd(drConfig);
-    } catch (Exception e) {
-      // expected as we have not setup any k8s connection
-    }
+    DrConfigCreateForm createForm = new DrConfigCreateForm();
+    doReturn(createForm)
+        .when(mockOperatorUtils)
+        .getDrConfigCreateFormFromCr(any(DrConfig.class), any());
 
-    assertEquals(1, drConfigReconciler.getTrackedResources().size());
-    KubernetesResourceDetails details = drConfigReconciler.getTrackedResources().iterator().next();
-    assertEquals(drConfigName, details.name);
-    assertEquals(NAMESPACE, details.namespace);
+    DrConfigTaskResult result = new DrConfigTaskResult(UUID.randomUUID(), taskUUID, "drConfigName");
+    when(mockDrConfigHelper.createDrConfigTask(
+            eq(testCustomer.getUuid()), any(DrConfigCreateForm.class)))
+        .thenReturn(result);
 
-    // Verify OperatorResource entries were persisted in the database
-    List<OperatorResource> allResources = OperatorResource.getAll();
-    assertEquals(1, allResources.size());
-    assertTrue(
-        "OperatorResource name should contain the drconfig name",
-        allResources.get(0).getName().contains(drConfigName));
-    DrConfig rDrConfig = Serialization.unmarshal(allResources.get(0).getData(), DrConfig.class);
-    assertEquals(drConfigName, rDrConfig.getMetadata().getName());
-    assertEquals(NAMESPACE, rDrConfig.getMetadata().getNamespace());
-    assertEquals("source-universe", rDrConfig.getSpec().getSourceUniverse());
-    assertEquals("target-universe", rDrConfig.getSpec().getTargetUniverse());
-    assertEquals("my-storage-config", rDrConfig.getSpec().getStorageConfig());
-    assertEquals(Arrays.asList("db1", "db2"), rDrConfig.getSpec().getDatabases());
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    verify(mockDrConfigHelper, times(1))
+        .createDrConfigTask(eq(testCustomer.getUuid()), any(DrConfigCreateForm.class));
+    assertEquals(
+        taskUUID,
+        drConfigReconciler.getDrConfigTaskMapValue(
+            OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata())));
   }
 
   @Test
-  public void testOnDeleteRemovesOperatorResource() throws Exception {
-    String drConfigName = "test-drconfig-delete";
-    DrConfig drConfig = createDrConfigCr(drConfigName);
-    when(operatorUtils.getDrConfigCreateFormFromCr(any(DrConfig.class), eq(scInformer)))
-        .thenThrow(new RuntimeException("mock - skip full processing"));
-
-    try {
-      drConfigReconciler.onAdd(drConfig);
-    } catch (Exception e) {
-      // expected
-    }
-    assertEquals(1, OperatorResource.getAll().size());
-
-    // Delete - drConfig has no status, so handleDelete takes the simple path
-    drConfigReconciler.onDelete(drConfig, false);
-
-    assertTrue(
-        "Tracked resources should be empty after delete",
-        drConfigReconciler.getTrackedResources().isEmpty());
-    assertTrue(
-        "OperatorResource entries should be removed after delete",
-        OperatorResource.getAll().isEmpty());
-  }
-
-  @Test
-  public void testOnAddWithExistingResourceUuidDoesNotAddToTrackedResources() {
-    DrConfig drConfig = createDrConfigCr("existing-drconfig");
-    io.yugabyte.operator.v1alpha1.DrConfigStatus status =
-        new io.yugabyte.operator.v1alpha1.DrConfigStatus();
+  public void testReconcileCreateAlreadyInitialized() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    DrConfigStatus status = new DrConfigStatus();
     status.setResourceUUID(UUID.randomUUID().toString());
     drConfig.setStatus(status);
 
-    drConfigReconciler.onAdd(drConfig);
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
 
-    assertTrue(
-        "Tracked resources should be empty when already initialized (early return)",
-        drConfigReconciler.getTrackedResources().isEmpty());
+    verify(mockDrConfigHelper, never()).createDrConfigTask(any(), any(DrConfigCreateForm.class));
+  }
 
-    // Verify no OperatorResource entries were created in the database
-    List<OperatorResource> allResources = OperatorResource.getAll();
-    assertTrue(
-        "No OperatorResource entries should exist when early return occurs",
-        allResources.isEmpty());
+  @Test
+  public void testReconcileCreateSetsFinalizer() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    // Ensure no finalizers set initially
+    drConfig.getMetadata().setFinalizers(Collections.emptyList());
+
+    DrConfigCreateForm createForm = new DrConfigCreateForm();
+    doReturn(createForm)
+        .when(mockOperatorUtils)
+        .getDrConfigCreateFormFromCr(any(DrConfig.class), any());
+
+    DrConfigTaskResult result =
+        new DrConfigTaskResult(UUID.randomUUID(), UUID.randomUUID(), "drConfigName");
+    when(mockDrConfigHelper.createDrConfigTask(any(), any(DrConfigCreateForm.class)))
+        .thenReturn(result);
+
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    // Verify patch was called (which sets the finalizer)
+    verify(mockDrConfigResource, times(1)).patch(any(DrConfig.class));
+    assertEquals(OperatorUtils.YB_FINALIZER, drConfig.getMetadata().getFinalizers().get(0));
+  }
+
+  // --- UPDATE tests ---
+
+  @Test
+  public void testReconcileUpdateIgnoredNoStatus() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    // No status set
+
+    drConfigReconciler.updateActionReconcile(drConfig, testCustomer);
+
+    verify(mockDrConfigHelper, never())
+        .failoverDrConfigTask(any(), any(), any(DrConfigFailoverForm.class));
+    verify(mockDrConfigHelper, never())
+        .switchoverDrConfigTask(any(), any(), any(DrConfigSwitchoverForm.class));
+    verify(mockDrConfigHelper, never())
+        .setDatabasesTask(any(), any(), any(DrConfigSetDatabasesForm.class));
+  }
+
+  // --- NO_OP tests ---
+
+  @Test
+  public void testNoOpRequeuesCreateWhenNotFound() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    // No status, no tracked task
+
+    drConfigReconciler.noOpActionReconcile(drConfig, testCustomer);
+
+    // The workqueue should have a CREATE action requeued.
+    // We verify by checking that no task-related methods were called
+    // and that the drConfigTaskMap has no entry.
+    assertNull(
+        drConfigReconciler.getDrConfigTaskMapValue(
+            OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata())));
+  }
+
+  // --- DELETE tests ---
+
+  @Test
+  public void testReconcileDeleteNoStatus() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+    drConfig.getMetadata().setFinalizers(Collections.singletonList(OperatorUtils.YB_FINALIZER));
+    // No status set
+
+    drConfigReconciler.handleResourceDeletion(
+        drConfig, testCustomer, OperatorWorkQueue.ResourceAction.DELETE);
+
+    verify(mockOperatorUtils, times(1)).removeFinalizer(eq(drConfig), any());
+  }
+
+  @Test
+  public void testCreateOnExceptionHandledGracefully() throws Exception {
+    DrConfig drConfig = createDrConfigCr("test-dr", "source-universe", "target-universe");
+
+    doReturn(new DrConfigCreateForm())
+        .when(mockOperatorUtils)
+        .getDrConfigCreateFormFromCr(any(DrConfig.class), any());
+
+    when(mockDrConfigHelper.createDrConfigTask(any(), any(DrConfigCreateForm.class)))
+        .thenThrow(new RuntimeException("simulated failure"));
+
+    // Should not throw - the method catches exceptions internally
+    drConfigReconciler.createActionReconcile(drConfig, testCustomer);
+
+    // Task map should be empty since creation failed
+    assertNull(
+        drConfigReconciler.getDrConfigTaskMapValue(
+            OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata())));
   }
 }

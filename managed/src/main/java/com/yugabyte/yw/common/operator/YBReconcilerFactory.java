@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.dr.DrConfigHelper;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.pitr.PitrConfigHelper;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
@@ -31,6 +32,7 @@ public class YBReconcilerFactory {
   @Inject private YbcManager ybcManager;
   @Inject private BackupHelper backupHelper;
   @Inject private PitrConfigHelper pitrConfigHelper;
+  @Inject private DrConfigHelper drConfigHelper;
   @Inject private ValidatingFormFactory formFactory;
   @Inject private ScheduleTaskHelper scheduleTaskHelper;
 
@@ -74,5 +76,11 @@ public class YBReconcilerFactory {
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     return new PitrConfigReconciler(
         pitrConfigHelper, formFactory, namespace, operatorUtils, client, informerFactory);
+  }
+
+  public DrConfigReconciler getDrConfigReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new DrConfigReconciler(
+        drConfigHelper, namespace, operatorUtils, client, informerFactory);
   }
 }

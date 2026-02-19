@@ -180,10 +180,10 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
    */
   @Override
   public void updateDrConfigStatus(
-      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+      com.yugabyte.yw.models.DrConfig drConfig, String operationStatus, UUID taskUUID) {
     try {
       if (drConfig != null && drConfig.getKubernetesResourceDetails() != null) {
-        log.info("Update Dr config Status called for task {} ", taskUUID);
+        log.info("Update Dr config status called for task {} ", taskUUID);
         try (final KubernetesClient kubernetesClient =
             new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
           DrConfig drConfigCr =
@@ -192,8 +192,15 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
                   kubernetesClient.resources(DrConfig.class),
                   DrConfig.class);
           DrConfigStatus status = drConfigCr.getStatus();
+          if (status == null) {
+            status = new DrConfigStatus();
+          }
 
-          status.setMessage("Dr Config State: " + drConfig.getState().name());
+          status.setMessage(
+              "Operation Status: "
+                  + operationStatus
+                  + ". Dr Config State: "
+                  + drConfig.getState().name());
           status.setResourceUUID(drConfig.getUuid().toString());
           status.setTaskUUID(taskUUID.toString());
 

@@ -2,12 +2,13 @@ package com.yugabyte.yw.common.operator;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.fabric8.kubernetes.api.model.HasMetadata;
-import java.io.Serializable;
 import java.util.Objects;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @NoArgsConstructor
-public class KubernetesResourceDetails implements Serializable {
+@Getter
+public class KubernetesResourceDetails {
   @JsonProperty("resourceType")
   public String resourceType;
 

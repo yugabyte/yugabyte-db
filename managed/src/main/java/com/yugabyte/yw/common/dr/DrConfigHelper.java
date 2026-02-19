@@ -5,15 +5,18 @@ package com.yugabyte.yw.common.dr;
 import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getRequestedTableInfoList;
 import static org.apache.commons.validator.routines.UrlValidator.ALLOW_LOCAL_URLS;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.XClusterCreatePrecheck;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -22,12 +25,17 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.controllers.XClusterConfigController;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigCreateForm.PitrParams;
 import com.yugabyte.yw.forms.DrConfigEditForm;
+import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
@@ -38,17 +46,29 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
+import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.XClusterTableConfig.Status;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.validator.routines.UrlValidator;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetUniverseReplicationInfoResponse;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
 
@@ -65,6 +85,9 @@ public class DrConfigHelper {
   private final XClusterCreatePrecheck xClusterCreatePrecheck;
   private final CustomerConfigService customerConfigService;
   private final BackupHelper backupHelper;
+  private final XClusterUniverseService xClusterUniverseService;
+  private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   public record DrConfigTaskResult(UUID drConfigUuid, UUID taskUuid, String message) {}
 
@@ -77,7 +100,10 @@ public class DrConfigHelper {
       AutoFlagUtil autoFlagUtil,
       YBClientService ybService,
       BackupHelper backupHelper,
-      CustomerConfigService customerConfigService) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler,
+      CustomerConfigService customerConfigService,
+      XClusterUniverseService xClusterUniverseService) {
     this.confGetter = confGetter;
     this.commissioner = commissioner;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
@@ -85,7 +111,10 @@ public class DrConfigHelper {
     this.autoFlagUtil = autoFlagUtil;
     this.ybService = ybService;
     this.backupHelper = backupHelper;
+    this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
     this.customerConfigService = customerConfigService;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   public boolean abortDrConfigTask(UUID taskUUID) {
@@ -342,6 +371,9 @@ public class DrConfigHelper {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    if (setDatabasesForm.getKubernetesResourceDetails() != null) {
+      drConfig.setKubernetesResourceDetails(setDatabasesForm.getKubernetesResourceDetails());
+    }
     verifyTaskAllowed(drConfig, TaskType.SetDatabasesDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
@@ -371,7 +403,6 @@ public class DrConfigHelper {
 
     XClusterUtil.checkDbScopedNonEmptyDbs(newDatabaseIds);
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
-
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getSetDatabasesTaskParams(
             xClusterConfig, newDatabaseIds, databaseIdsToAdd, databaseIdsToRemove);
@@ -385,6 +416,374 @@ public class DrConfigHelper {
         CustomerTask.TaskType.Edit,
         drConfig.getName());
     log.info("Submitted set databases DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    return taskUUID;
+  }
+
+  public UUID switchoverDrConfigTask(
+      UUID customerUUID, UUID drConfigUuid, DrConfigSwitchoverForm switchoverForm) {
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    if (switchoverForm.getKubernetesResourceDetails() != null) {
+      drConfig.setKubernetesResourceDetails(switchoverForm.getKubernetesResourceDetails());
+    }
+    verifyTaskAllowed(drConfig, TaskType.SwitchoverDrConfig);
+    Optional<XClusterConfig> xClusterConfigOptional =
+        drConfig.getActiveXClusterConfig(
+            switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid);
+    if (xClusterConfigOptional.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The underlying xCluster config with source universe %s and target universe %s does"
+                  + " not exist; possibly due to a previous switchover operation that has failed;"
+                  + " you may retry that failed operation, or roll back.",
+              switchoverForm.drReplicaUniverseUuid, switchoverForm.primaryUniverseUuid));
+    }
+    XClusterConfig xClusterConfig = xClusterConfigOptional.get();
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(targetUniverse, sourceUniverse);
+    }
+
+    // All the tables in DBs in replication on the source universe must be in the xCluster config.
+    List<TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      XClusterConfigTaskBase.validateSourceTablesInReplication(
+          sourceTableInfoList, xClusterConfig.getTableIds());
+    }
+
+    XClusterConfig xClusterConfigTemp = XClusterConfig.getOrBadRequest(xClusterConfig.getUuid());
+    xClusterScheduler.syncXClusterConfig(xClusterConfigTemp);
+    xClusterConfigTemp.refresh();
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+        xClusterUniverseService,
+        ybService,
+        tableHandler,
+        xClusterConfigTemp,
+        confGetter.getGlobalConf(GlobalConfKeys.xclusterGetApiTimeoutMs),
+        this.confGetter);
+    // To do switchover, the xCluster config and all the tables in that config must be in
+    // the green status because we are going to drop that config and the information for bad
+    // replication streams will be lost.
+    if (xClusterConfigTemp.getStatus() != XClusterConfigStatusType.Running
+        || !xClusterConfigTemp.getTableDetails().stream()
+            .map(XClusterTableConfig::getStatus)
+            .allMatch(tableConfigStatus -> tableConfigStatus == Status.Running)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "In order to do switchover, the underlying xCluster config and all of its "
+              + "replication streams must be in a running status. Go to the tables tab to see the "
+              + "tables not in Running status.");
+    }
+
+    XClusterConfig switchoverXClusterConfig =
+        drConfig.addXClusterConfig(
+            xClusterConfig.getTargetUniverseUUID(),
+            xClusterConfig.getSourceUniverseUUID(),
+            xClusterConfig.getType(),
+            xClusterConfig.isAutomaticDdlMode());
+    switchoverXClusterConfig.setSecondary(true);
+    switchoverXClusterConfig.update();
+
+    // Todo: PLAT-10130, handle cases where the planned failover task fails.
+    DrConfigTaskParams taskParams;
+    List<TableInfo> targetTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      // Use table IDs on the target universe for failover xCluster.
+      Map<String, String> sourceTableIdTargetTableIdMap =
+          xClusterUniverseService.getSourceTableIdTargetTableIdMap(
+              targetUniverse, xClusterConfig.getReplicationGroupName());
+      Set<String> targetTableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
+
+      List<TableInfo> requestedTableInfoList =
+          XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, targetTableIds);
+
+      // All tables must have corresponding tables on the target universe.
+      Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+          sourceTableIdTargetTableIdMap.entrySet().stream()
+              .filter(entry -> Objects.isNull(entry.getValue()))
+              .map(Entry::getKey)
+              .collect(Collectors.toSet());
+      if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "The following tables are in replication with no corresponding table on the target"
+                    + " universe: %s. This can happen if the table is dropped without being removed"
+                    + " from replication first. You may fix this issue by running `Reconcile config"
+                    + " with DB` from UI",
+                sourceTableIdsWithNoTableOnTargetUniverse));
+      }
+
+      drSwitchoverFailoverPreChecks(
+          ybService,
+          CustomerTask.TaskType.Switchover,
+          requestedTableInfoList,
+          targetTableInfoList,
+          targetUniverse,
+          sourceTableInfoList,
+          sourceUniverse);
+
+      Map<String, List<String>> mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              ybService, targetUniverse, targetTableIds);
+
+      switchoverXClusterConfig.updateTables(targetTableIds, null /* tableIdsNeedBootstrap */);
+      switchoverXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
+          mainTableIndexTablesMap);
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              xClusterConfig,
+              switchoverXClusterConfig,
+              null /* namespaceIdSafetimeEpochUsMap */,
+              requestedTableInfoList,
+              mainTableIndexTablesMap);
+    } else {
+      GetUniverseReplicationInfoResponse inboundReplicationResp;
+      GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp;
+
+      if (xClusterConfig.isAutomaticDdlMode()) {
+        // Hide the `replicated_ddls` table from the xCluster config. This table is metadata and
+        // the user does not need to see it.
+        sourceTableInfoList =
+            sourceTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+        targetTableInfoList =
+            targetTableInfoList.stream()
+                .filter(tableInfo -> !TableInfoUtil.isReplicatedDdlsTable(tableInfo))
+                .collect(Collectors.toList());
+      }
+
+      try {
+        inboundReplicationResp =
+            XClusterConfigTaskBase.getUniverseReplicationInfo(
+                ybService, targetUniverse, xClusterConfig.getReplicationGroupName());
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to get inbound replication group %s",
+                xClusterConfig.getReplicationGroupName()));
+      }
+
+      try {
+        outboundReplicationResp =
+            XClusterConfigTaskBase.getXClusterOutboundReplicationGroupInfo(
+                ybService, sourceUniverse, xClusterConfig.getReplicationGroupName());
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to get outbound replication group %s",
+                xClusterConfig.getReplicationGroupName()));
+      }
+
+      drDBScopedSwitchoverPreChecks(
+          outboundReplicationResp,
+          inboundReplicationResp,
+          sourceTableInfoList,
+          targetTableInfoList);
+
+      switchoverXClusterConfig.updateNamespaces(
+          inboundReplicationResp.getDbScopedInfos().stream()
+              .map(DbScopedInfoPB::getTargetNamespaceId)
+              .collect(Collectors.toSet()));
+
+      taskParams =
+          new DrConfigTaskParams(
+              drConfig,
+              xClusterConfig,
+              switchoverXClusterConfig,
+              switchoverXClusterConfig.getDbIds(),
+              Collections.emptyMap());
+    }
+
+    switchoverXClusterConfig.update();
+
+    // Submit task to set up xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.SwitchoverDrConfig, taskParams);
+    CustomerTask.create(
+        customer,
+        sourceUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Switchover,
+        drConfig.getName());
+
+    log.info("Submitted switchover DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    return taskUUID;
+  }
+
+  public UUID failoverDrConfigTask(
+      UUID customerUUID, UUID drConfigUuid, DrConfigFailoverForm failoverForm) {
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    if (failoverForm.getKubernetesResourceDetails() != null) {
+      drConfig.setKubernetesResourceDetails(failoverForm.getKubernetesResourceDetails());
+    }
+    verifyTaskAllowed(drConfig, TaskType.FailoverDrConfig);
+    Optional<XClusterConfig> xClusterConfigOptional =
+        drConfig.getActiveXClusterConfig(
+            failoverForm.drReplicaUniverseUuid, failoverForm.primaryUniverseUuid);
+    if (xClusterConfigOptional.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The underlying xCluster config with source universe %s and target universe %s does"
+                  + " not exist; possibly due to a previous failover operation that has failed; you"
+                  + " may retry that failed operation.",
+              failoverForm.drReplicaUniverseUuid, failoverForm.primaryUniverseUuid));
+    }
+    XClusterConfig xClusterConfig = xClusterConfigOptional.get();
+    // The following will be the new dr universe.
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    // The following will be the new primary universe.
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (!targetUniverse
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.Ready)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot configure XCluster/DR config because target universe is not in ready state");
+    }
+
+    DrConfigTaskParams taskParams;
+    Set<String> namespaceIdsWithSafetime =
+        MapUtils.isEmpty(failoverForm.namespaceIdSafetimeEpochUsMap)
+            ? null
+            : failoverForm.namespaceIdSafetimeEpochUsMap.keySet();
+    Set<String> namespaceIdsWithoutSafetime = null;
+    XClusterConfig failoverXClusterConfig =
+        drConfig.addXClusterConfig(
+            xClusterConfig.getTargetUniverseUUID(),
+            xClusterConfig.getSourceUniverseUUID(),
+            xClusterConfig.getType(),
+            xClusterConfig.isAutomaticDdlMode());
+
+    try {
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        List<TableInfo> targetTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+
+        // Because during failover, the source universe could be down, we should rely on the target
+        // universe to get the table map between source to target.
+        Map<String, String> sourceTableIdTargetTableIdMap =
+            xClusterUniverseService.getSourceTableIdTargetTableIdMap(
+                targetUniverse, xClusterConfig.getReplicationGroupName());
+
+        // Use table IDs on the target universe for failover xCluster.
+        Set<String> tableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
+        List<TableInfo> requestedTableInfoList =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
+
+        // Todo: Add the following prechecks:
+        //  1. XCluster controller create and add table: if a table is part of a DR config, it
+        //   cannot be part of an xCluster config.
+        //  2. Run certsForCdcDirGFlagCheck when creating the DR config on both directions.
+        Map<String, List<String>> mainTableIndexTablesMap =
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
+
+        // If namespaceIdSafetimeEpochUsMap is passed in , make sure the safetime for all the
+        // namespaces is specified.
+        if (Objects.nonNull(namespaceIdsWithSafetime)) {
+          namespaceIdsWithoutSafetime =
+              XClusterConfigTaskBase.getNamespaces(requestedTableInfoList).stream()
+                  .map(namespace -> namespace.getId().toStringUtf8())
+                  .filter(namespaceId -> !namespaceIdsWithSafetime.contains(namespaceId))
+                  .collect(Collectors.toSet());
+        }
+
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                failoverXClusterConfig,
+                failoverForm.namespaceIdSafetimeEpochUsMap,
+                requestedTableInfoList,
+                mainTableIndexTablesMap);
+        failoverXClusterConfig.updateTables(tableIds, null /* tableIdsNeedBootstrap */);
+        failoverXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
+            mainTableIndexTablesMap);
+      } else {
+        try {
+          Set<String> namespacesInReplication =
+              XClusterConfigTaskBase.getUniverseReplicationInfo(
+                      ybService, targetUniverse, xClusterConfig.getReplicationGroupName())
+                  .getDbScopedInfos()
+                  .stream()
+                  .map(i -> i.getTargetNamespaceId())
+                  .collect(Collectors.toSet());
+
+          // If namespaceIdSafetimeEpochUsMap is passed in , make sure the safetime for all the
+          // namespaces is specified.
+          if (Objects.nonNull(namespaceIdsWithSafetime)) {
+            namespaceIdsWithoutSafetime =
+                Sets.difference(namespacesInReplication, namespaceIdsWithSafetime);
+          }
+
+          failoverXClusterConfig.updateNamespaces(namespacesInReplication);
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format(
+                  "Failed to get target namespace IDs for group %s",
+                  xClusterConfig.getReplicationGroupName()));
+        }
+
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                failoverXClusterConfig,
+                failoverXClusterConfig.getDbIds(),
+                failoverForm.namespaceIdSafetimeEpochUsMap);
+      }
+
+      if (!CollectionUtils.isEmpty(namespaceIdsWithoutSafetime)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Safetime must be specified for all the databases in the disaster recovery "
+                    + "config; namespaces ids without safetimes: %s",
+                namespaceIdsWithoutSafetime));
+      }
+
+      failoverXClusterConfig.setSecondary(true);
+      failoverXClusterConfig.update();
+    } catch (Exception e) {
+      failoverXClusterConfig.delete();
+      throw e;
+    }
+
+    // Submit task to set up xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.FailoverDrConfig, taskParams);
+    CustomerTask.create(
+        customer,
+        sourceUniverse.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        CustomerTask.TaskType.Failover,
+        drConfig.getName());
+
+    log.info("Submitted failover DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
     return taskUUID;
   }
 
@@ -483,5 +882,82 @@ public class DrConfigHelper {
     bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
     bootstrapParams.allowBootstrap = true;
     return bootstrapParams;
+  }
+
+  /**
+   * It runs some pre-checks to ensure that the reverse direction xCluster config can be set up. A
+   * reverse direction xCluster config is almost the same as the main xCluster config but in the
+   * reverse direction.
+   *
+   * @param ybClientService The YB client service to use for the pre-checks.
+   * @param taskType This specifies the task that triggered the creation of a reverse direction
+   *     xCluster config.
+   * @param requestedTableInfoList The table info list on the target universe that will be part of
+   *     the failover xCluster config
+   * @param targetTableInfoList The table info list for all tables on the target universe
+   * @param targetUniverse The target universe in the main xCluster config which is the same as the
+   *     source universe in the reverse direction xCluster config
+   * @param sourceTableInfoList The table info list for all tables on the source universe
+   * @param sourceUniverse The source universe in the main xCluster config which is the same as the
+   *     target universe in the reverse direction xCluster config
+   */
+  private void drSwitchoverFailoverPreChecks(
+      YBClientService ybClientService,
+      CustomerTask.TaskType taskType,
+      List<TableInfo> requestedTableInfoList,
+      List<TableInfo> targetTableInfoList,
+      Universe targetUniverse,
+      List<TableInfo> sourceTableInfoList,
+      Universe sourceUniverse) {
+    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+
+    // General xCluster pre-checks.
+    XClusterConfigTaskBase.verifyTablesNotInReplication(
+        ybClientService,
+        tableIds,
+        TableInfoUtil.getXClusterConfigTableType(requestedTableInfoList),
+        ConfigType.Txn,
+        targetUniverse.getUniverseUUID(),
+        targetTableInfoList,
+        sourceUniverse.getUniverseUUID(),
+        sourceTableInfoList,
+        true /* skipTxnReplicationCheck */);
+    XClusterConfigController.certsForCdcDirGFlagCheck(targetUniverse, sourceUniverse);
+
+    // If table type is YSQL, all tables in that keyspace are selected.
+    if (XClusterConfigTaskBase.getTableType(requestedTableInfoList) == TableType.PGSQL_TABLE_TYPE) {
+      XClusterConfigTaskBase.validateTargetTablesInReplication(
+          targetTableInfoList,
+          XClusterConfigTaskBase.getTableIds(requestedTableInfoList),
+          taskType);
+    }
+  }
+
+  private void drDBScopedSwitchoverPreChecks(
+      GetXClusterOutboundReplicationGroupInfoResponse outboundReplicationResp,
+      GetUniverseReplicationInfoResponse inboundReplicationResp,
+      List<TableInfo> sourceTableInfoList,
+      List<TableInfo> targetTableInfoList) {
+
+    Map<String, String> inboundSourceToTargetTableId =
+        inboundReplicationResp.getTableInfos().stream()
+            .collect(
+                Collectors.toMap(TableInfoPB::getSourceTableId, TableInfoPB::getTargetTableId));
+    Set<String> inboundSourceTableIds = inboundSourceToTargetTableId.keySet();
+    Set<String> outboundSourceTableIds =
+        outboundReplicationResp.getNamespaceInfos().stream()
+            .map(namespaceInfo -> namespaceInfo.getTableStreamsMap().keySet())
+            .flatMap(Set::stream)
+            .collect(Collectors.toSet());
+
+    XClusterConfigTaskBase.validateOutInboundReplicationTables(
+        outboundSourceTableIds, inboundSourceTableIds);
+
+    XClusterConfigTaskBase.validateSourceTablesInReplication(
+        sourceTableInfoList, outboundSourceTableIds);
+    XClusterConfigTaskBase.validateTargetTablesInReplication(
+        targetTableInfoList,
+        new HashSet<>(inboundSourceToTargetTableId.values()),
+        CustomerTask.TaskType.Switchover);
   }
 }

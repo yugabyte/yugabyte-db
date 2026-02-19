@@ -75,7 +75,7 @@ public interface OperatorStatusUpdater {
   }
 
   default void updateDrConfigStatus(
-      com.yugabyte.yw.models.DrConfig drConfig, String taskName, UUID taskUUID) {
+      com.yugabyte.yw.models.DrConfig drConfig, String status, UUID taskUUID) {
     // no-op implementation
   }
 
