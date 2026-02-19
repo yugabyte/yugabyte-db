@@ -116,6 +116,7 @@ struct CDCSDKStreamInfo {
   std::string cdcsdk_ysql_replication_slot_plugin_name;
   tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
   std::unordered_map<std::string, std::string> options;
 
   template <class PB>
@@ -132,6 +133,7 @@ struct CDCSDKStreamInfo {
       pb->set_yb_lsn_type(replication_slot_lsn_type);
     }
     pb->set_allow_tables_without_primary_key(allow_tables_without_primary_key);
+    pb->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
   }
 
   template <class PB>
@@ -152,6 +154,7 @@ struct CDCSDKStreamInfo {
         .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
             pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
         .allow_tables_without_primary_key = pb.allow_tables_without_primary_key(),
+        .detect_publication_changes_implicitly = pb.detect_publication_changes_implicitly(),
         .options = std::move(options)};
 
     return stream_info;
@@ -705,7 +708,8 @@ class YBClient {
       std::optional<std::string>* replication_slot_name = nullptr,
       std::vector<TableId>* unqualified_table_ids = nullptr,
       std::optional<ReplicationSlotLsnType>* lsn_type = nullptr,
-      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr);
+      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr,
+      std::optional<bool>* detect_publication_changes_implicitly = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,

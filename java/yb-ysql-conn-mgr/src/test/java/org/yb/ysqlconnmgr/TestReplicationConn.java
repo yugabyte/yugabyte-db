@@ -80,13 +80,17 @@ public class TestReplicationConn extends BaseYsqlConnMgr {
 
   @Test
   public void testReplicationConnAuthBackend() throws Exception {
-    restartClusterWithFlags(createMasterFlags(), createTserverFlags(false, true));
+    Map<String, String> tserverFlags = createTserverFlags(false, true);
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    restartClusterWithFlags(createMasterFlags(), tserverFlags);
     runReplicationConnTest(true);
   };
 
   @Test
   public void testReplicationConnAuthPassthrough() throws Exception {
-    restartClusterWithFlags(createMasterFlags(), createTserverFlags(false, false));
+    Map<String, String> tserverFlags = createTserverFlags(false, false);
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    restartClusterWithFlags(createMasterFlags(), tserverFlags);
     runReplicationConnTest(false);
   };
 

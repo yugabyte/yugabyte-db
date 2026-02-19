@@ -77,6 +77,7 @@ namespace cdc {
 
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
+constexpr int kNumberOfCatalogTablesBeingPolledByCDC = 2;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kEnumTypeName = "coupon_discount_type";

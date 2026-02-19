@@ -153,6 +153,11 @@ DEFINE_RUNTIME_AUTO_bool(xcluster_store_older_schema_versions, kLocalPersisted, 
 DEFINE_RUNTIME_uint32(xcluster_max_old_schema_versions, 50,
     "Maximum number of old schema versions to keep in xCluster replication stream metadata");
 
+DEFINE_RUNTIME_AUTO_bool(cdc_enable_dynamic_schema_changes, kLocalPersisted, false, true,
+    "When set, enables streaming of dynamic schema changes via CDC. The dynamic schema changes "
+    "include any changes made to the publications and all the DDLs including those which cause "
+    "table rewrites.");
+
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(ysql_yb_allow_replication_slot_lsn_types);
@@ -879,7 +884,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // We add the pg_class and pg_publication_rel catalog tables to the stream metadata as we will
   // poll them to figure out changes to the publications. This will not be done for gRPC streams.
   if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
-      req.has_cdcsdk_ysql_replication_slot_name()) {
+      FLAGS_cdc_enable_dynamic_schema_changes && req.has_cdcsdk_ysql_replication_slot_name()) {
     auto database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgClassTableOid));
     table_ids.push_back(GetPgsqlTableId(database_oid, kPgPublicationRelOid));
@@ -1067,6 +1072,9 @@ Status CatalogManager::CreateNewCdcsdkStream(
     metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
     metadata->set_allow_tables_without_primary_key(
         FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key);
+    metadata->set_detect_publication_changes_implicitly(
+        FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+        FLAGS_cdc_enable_dynamic_schema_changes);
   }
 
   metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
@@ -2818,7 +2826,11 @@ Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
     // replication slot's state table entry. Replication slot's entry is skipped in order to avoid
     // its deletion since it does not represent a real tablet_id and the cleanup algorithm works
     // under the assumption that all cdc state entires are representing real tablet_ids.
+    //
+    // Also skip processing the entries corresponding to sys catalog tablet, since it will never be
+    // deleted.
     if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId &&
+        entry.key.tablet_id != kSysCatalogTabletId &&
         stream_ids_metadata_to_be_cleaned_up.contains(entry.key.stream_id)) {
       cdc_state_entries.emplace_back(entry.key);
     }
@@ -3152,6 +3164,10 @@ Status CatalogManager::GetCDCStream(
       stream_lock->pb.has_allow_tables_without_primary_key() &&
       stream_lock->pb.allow_tables_without_primary_key());
 
+  stream_info->set_detect_publication_changes_implicitly(
+      stream_lock->pb.has_detect_publication_changes_implicitly() &&
+      stream_lock->pb.detect_publication_changes_implicitly());
+
   return Status::OK();
 }
 
@@ -3328,6 +3344,10 @@ Status CatalogManager::ListCDCStreams(
     stream->set_allow_tables_without_primary_key(
         ltm->pb.has_allow_tables_without_primary_key() &&
         ltm->pb.allow_tables_without_primary_key());
+
+    stream->set_detect_publication_changes_implicitly(
+        ltm->pb.has_detect_publication_changes_implicitly() &&
+        ltm->pb.detect_publication_changes_implicitly());
   }
   return Status::OK();
 }

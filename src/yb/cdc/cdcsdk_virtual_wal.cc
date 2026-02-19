@@ -219,13 +219,23 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
                           << ", end_hash_range: " << slot_hash_range_->end_range;
     RETURN_NOT_OK(CheckHashRangeConstraints(*slot_entry_opt));
   }
+  auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
 
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+  detect_publication_changes_implicitly_ =
+      stream->GetDetectPublicationChangesImplicitly().value_or(false);
+  if (detect_publication_changes_implicitly_ &&
+      !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    return STATUS_FORMAT(
+        IllegalState,
+        "Cannot stream using a slot which has detect_publication_changes_implicitly set to true "
+        "while the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled.");
+  }
+
+  if (detect_publication_changes_implicitly_) {
     pub_all_tables_ = pub_all_tables;
     publications_list_ = std::move(publications_list);
 
     // Add the PG catalog tables to the table_list.
-    auto stream = VERIFY_RESULT(cdc_service_->GetStream(stream_id_));
     auto namespace_id = stream->GetNamespaceId();
     auto pg_database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
     pg_class_table_id_ = GetPgsqlTableId(pg_database_oid, kPgClassTableOid);
@@ -561,8 +571,10 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
 
     if (records_queue.empty()) {
       if (tablet_id == kPublicationRefreshTabletID) {
-        if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-          // Delete the empty pub refresh tablet queue, since it will be no longer used.
+        if (detect_publication_changes_implicitly_) {
+          // Delete the empty pub refresh tablet queue, since it will be no longer used. Ideally we
+          // will never reach here, since pub refresh queue is not created when
+          // detect_publication_changes_implicitly_ is true.
           tablet_queues_.erase(kPublicationRefreshTabletID);
         } else {
           // Before shipping any LSN with commit time greater than the last_pub_refresh_time, we
@@ -602,11 +614,6 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     const auto unique_id = tablet_record_info_pair.second.first;
     auto record = tablet_record_info_pair.second.second;
 
-    // TODO(#27686): We should only send a publication refresh signal to the walsender based on
-    // catalog tablet records when the pub refresh tablet queue is deleted. In case of streams that
-    // are upgraded from a version which did not have this mechanism we need to keep the existing
-    // pub refresh mechanism until we have reached the point in time at which retention barriers
-    // were set on the sys catalog tablet.
     if (tablet_id == master::kSysCatalogTabletId) {
       auto pub_refresh_required =
           DeterminePubRefreshFromMasterRecord(tablet_record_info_pair.second);
@@ -670,8 +677,9 @@ Status CDCSDKVirtualWAL::GetConsistentChangesInternal(
     // When a publication refresh record is popped from the priority queue, stop populating further
     // records in the response. Set the fields 'needs_publication_table_list_refresh' and
     // 'publication_refresh_time' and return the response.
-    if (unique_id->IsPublicationRefreshRecord() &&
-        !FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+    // This is done only for the slots which have detect_publication_changes_implicitly_ set to
+    // false. These are the slots that use pub refresh mechanism.
+    if (unique_id->IsPublicationRefreshRecord() && !detect_publication_changes_implicitly_) {
       // The dummy transaction id is set in the publication refresh message only when the value of
       // the flag 'cdcsdk_enable_dynamic_table_support' is true. In other words, the VWAL notifies
       // the walsender to refresh publication when the pub refresh message has a dummy transaction
@@ -1412,9 +1420,10 @@ bool CDCSDKVirtualWAL::CompareCDCSDKProtoRecords::operator()(
 }
 
 Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-    LOG(INFO) << "Will not create a pub refresh tablet queue as "
-                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+  if (detect_publication_changes_implicitly_) {
+    LOG_WITH_PREFIX(INFO)
+        << "Will not create a pub refresh tablet queue as detect_publication_changes_implicitly is "
+           "set to true in stream metadata.";
     return Status::OK();
   }
 
@@ -1453,9 +1462,10 @@ Status CDCSDKVirtualWAL::CreatePublicationRefreshTabletQueue() {
 }
 
 Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-    LOG(INFO) << "Will not push any records to the pub refresh tablet queue since "
-                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+  if (detect_publication_changes_implicitly_) {
+    LOG_WITH_PREFIX(INFO)
+        << "Will not push any records to the pub refresh tablet queue since "
+           "detect_publication_changes_implicitly_ is set to true in stream metadata.";
     return Status::OK();
   }
 
@@ -1493,9 +1503,10 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
 Status CDCSDKVirtualWAL::PushPublicationRefreshRecord(
     uint64_t pub_refresh_time, bool should_apply) {
-  if (FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
-    LOG(INFO) << "Will not push any records to the pub refresh tablet queue as "
-                 "FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication is enabled.";
+  if (detect_publication_changes_implicitly_) {
+    LOG_WITH_PREFIX(INFO)
+        << "Will not push any records to the pub refresh tablet queue as "
+           "detect_publication_changes_implicitly_ is set to true in stream metadata.";
     return Status::OK();
   }
   auto publication_refresh_record = std::make_shared<CDCSDKProtoRecordPB>();
@@ -1781,11 +1792,15 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
     return true;
   }
 
-  // We should only receive records corresponding to pg_class and pg_publication_rel tables.
-  DLOG(FATAL) << "Records from an unexpected table: " << table_id
-             << " received from sys catalog tablet in virtual WAL."
-             << " pg_class_table_id_ = " << pg_class_table_id_
-             << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
+  // We should only receive records corresponding to pg_class and pg_publication_rel tables. Only
+  // possibility of reaching here is when a DDL record is sent from sys catalog tablet, for ex: when
+  // a new slot is created, the existing slot sees the CHANGE_METADATA_OP used for setting retention
+  // barriers and sends a DDL record.
+  LOG_IF(DFATAL, record->row_message().op() != RowMessage_Op_DDL)
+      << "Records from an unexpected table: " << table_id
+      << " received from sys catalog tablet in virtual WAL."
+      << " pg_class_table_id_ = " << pg_class_table_id_
+      << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
   return false;
 }
 

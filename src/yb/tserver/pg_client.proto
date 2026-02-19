@@ -692,6 +692,7 @@ message PgReplicationSlotInfoPB {
   uint64 active_pid = 13;
   bool expired = 14;
   bool allow_tables_without_primary_key = 15;
+  bool detect_publication_changes_implicitly = 16;
 }
 
 message PgListReplicationSlotsResponsePB {

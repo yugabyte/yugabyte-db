@@ -86,6 +86,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
+    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
     return flagMap;
   }
 
@@ -94,6 +95,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put(
       "vmodule", "cdc_service=4,cdcsdk_producer=4");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
@@ -968,9 +970,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
     tserverFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-    tserverFlags.put("cdcsdk_enable_dynamic_table_support", "" + usePubRefresh);
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     tserverFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
     tserverFlags.put(
@@ -978,8 +978,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     tserverFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
 
     masterFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     masterFlags.put(
         "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
     masterFlags.put(
@@ -3903,6 +3902,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidAndWalStatusPopulationOnStreamRestart() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");
@@ -3990,6 +3993,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidPopulationFromDifferentTServers() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");

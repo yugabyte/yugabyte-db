@@ -632,6 +632,7 @@ DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_string(initial_sys_catalog_snapshot_path);
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
 namespace yb::master {
 
 using std::shared_ptr;
@@ -11183,7 +11184,8 @@ Status CatalogManager::SendAlterTableRequestInternal(
         VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
       auto tablets = VERIFY_RESULT(table->GetTablets());
       if (tablets.size() == 1 && tablets[0]->tablet_id() == master::kSysCatalogTabletId &&
-          FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) {
+          FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+          FLAGS_cdc_enable_dynamic_schema_changes) {
         RETURN_NOT_OK(SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(table, stream_id));
         return Status::OK();
       }

@@ -369,6 +369,10 @@ class CDCSDKVirtualWAL {
   // Maintains the mapping between table's PG OID and relfilenode. This is used in detecting DDLs
   // that cause table rewrites.
   std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode_;
+
+  // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
+  // tablet for determining changes to the publication.
+  bool detect_publication_changes_implicitly_ = false;
 };
 
 }  // namespace cdc

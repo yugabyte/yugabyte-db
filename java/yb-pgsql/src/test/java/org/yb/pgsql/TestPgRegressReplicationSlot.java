@@ -37,6 +37,7 @@ public class TestPgRegressReplicationSlot extends BasePgRegressTest {
     }
     flagMap.put(
         "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
+    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
     return flagMap;
   }
 

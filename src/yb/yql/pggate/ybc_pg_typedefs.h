@@ -649,6 +649,7 @@ typedef struct {
   uint64_t active_pid;
   bool expired;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
 } YbcReplicationSlotDescriptor;
 
 typedef struct {

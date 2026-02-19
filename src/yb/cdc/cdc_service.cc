@@ -5199,7 +5199,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
     std::string error_msg = Format(
         "VirtualWAL initialisation failed for stream_id: $0 & session_id: $1", stream_id,
         session_id);
-    LOG(DFATAL) << s.CloneAndPrepend(error_msg);
+    LOG(WARNING) << s.CloneAndPrepend(error_msg);
     RPC_STATUS_RETURN_ERROR(
         s.CloneAndPrepend(error_msg), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
     return;

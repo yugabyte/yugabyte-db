@@ -25,6 +25,11 @@ class CDCSDKConsumptionConsistentChangesTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_slot_consumption) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_cdcsdk_setting_get_changes_response_byte_limit) = true;
+
+    // TODO(#30298): Port all the tests to run with mechanism to poll sys catalog tablet. Certain
+    // tests written exclusively for pub refresh mechanism should be run with this flag disabled.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+        false;
   }
 
   enum FeedbackType {
@@ -5247,7 +5252,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
 
@@ -5487,7 +5491,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenT
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
 
@@ -5632,7 +5635,6 @@ TEST_F(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
 
@@ -5702,10 +5704,9 @@ TEST_F(
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTriggerPubRefresh) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_dynamic_table_support) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -5761,6 +5762,84 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTrigger
   // Consume the DDL record.
   change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records()[0].row_message().op(), RowMessage_Op_DDL);
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest,
+    TestSlotWithImplicitPublicationChangesDetectionWhenFeatureDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Trying to use a slot which has detect_publication_changes_implicitly set to true while the flag
+  // ysql_yb_enable_implicit_dynamic_tables_logical_replication is disabled should result in an
+  // error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ASSERT_NOK(InitVirtualWAL(
+      stream_id, {} /* table_ids */, kVWALSessionId1, nullptr,
+      true /* include_oid_to_relfilenode */, 0 /* timeout*/));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {} /* table_ids */, kVWALSessionId1, nullptr,
+      true /* include_oid_to_relfilenode */));
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestPubRefreshStreamsWorkFineAfterUpgrade) {
+  // Start with ysql_yb_enable_implicit_dynamic_tables_logical_replication set to false, simulating
+  // pre-upgrade universe.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_publication_list_refresh_interval_secs) = 5;
+  // Set this to avoid destruction of VWALs due to them being classifed as expired sessions.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_before_complete_expired_pg_sessions_shutdown_ms) =
+      100 * 1000;
+
+  google::SetVLOGLevel("cdcsdk_virtual_wal", 3);
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a single tablet table.
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  // Create a pub refresh slot.
+  auto pub_refresh_slot = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Set the flag ysql_yb_enable_implicit_dynamic_tables_logical_replication to true. This simulates
+  // an upgrade.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(InitVirtualWAL(
+      pub_refresh_slot, {table.table_id()} /* table_ids */, 1 /* session_id */, nullptr,
+      true /* include_oid_to_relfilenode */));
+
+  auto change_resp_1 =
+      ASSERT_RESULT(GetConsistentChangesFromCDC(pub_refresh_slot, 1 /* session_id */));
+  ASSERT_TRUE(change_resp_1.cdc_sdk_proto_records().empty());
+
+  // Sleep so that the next record to be streamed from pub_refresh_slot is a pub refresh record.
+  SleepFor(MonoDelta::FromSeconds(
+      FLAGS_cdcsdk_publication_list_refresh_interval_secs * 2 * kTimeMultiplier));
+  change_resp_1 = ASSERT_RESULT(GetConsistentChangesFromCDC(pub_refresh_slot, 1 /* session_id */));
+  ASSERT_EQ(change_resp_1.cdc_sdk_proto_records_size(), 0);
+  ASSERT_TRUE(
+      change_resp_1.has_needs_publication_table_list_refresh() &&
+      change_resp_1.needs_publication_table_list_refresh() &&
+      change_resp_1.has_publication_refresh_time());
+  ASSERT_GT(change_resp_1.publication_refresh_time(), 0);
 }
 
 }  // namespace cdc

@@ -595,6 +595,9 @@ TEST_F_EX(PgWaitEventAuxTest, PgCDCServiceRPCs, PgCDCWaitEventAux) {
   auto res = ASSERT_RESULT(conn_->FetchFormat(
       "SELECT * FROM pg_create_logical_replication_slot('$0', 'test_decoding')", kSlotName));
 
+  // Create a new table after slot creation so that UpdatePublicationTableListRPC is called.
+  ASSERT_OK(conn_->Execute("CREATE TABLE test_table_2 (k INT PRIMARY KEY)"));
+
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this]() {
     std::vector<std::string> argv = {
