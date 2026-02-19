@@ -49,6 +49,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
@@ -669,6 +670,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool is_running() const;
   bool is_deleted() const;
   bool is_hidden() const;
+  bool started_hiding() const;
   bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
@@ -883,7 +885,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
-  bool UsesTablespacesForPlacement() const;
+  bool TableTypeUsesTablespacesForPlacement() const;
 
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
@@ -936,10 +938,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsUserCreated() const;
   bool IsUserTable() const;
   bool IsUserIndex() const;
+  bool HasUserSpecifiedPrimaryKey() const;
 
   bool IsUserCreated(const ReadLock& lock) const;
   bool IsUserTable(const ReadLock& lock) const;
   bool IsUserIndex(const ReadLock& lock) const;
+  bool HasUserSpecifiedPrimaryKey(const ReadLock& lock) const;
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -1149,7 +1153,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   virtual const std::string& id() const override { return ts_uuid_; }
 
   Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl)
+      EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
@@ -1311,7 +1316,7 @@ auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry
 
 struct SplitTabletIds {
   const TabletId& source;
-  const std::pair<const TabletId&, const TabletId&> children;
+  const std::vector<TabletId>& children;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(source, children);
@@ -1379,6 +1384,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const google::protobuf::Map<::std::string, ::yb::PgReplicaIdentity> GetReplicaIdentityMap() const;
 
   bool IsDynamicTableAdditionDisabled() const;
+
+  bool IsTablesWithoutPrimaryKeyAllowed() const;
 
   std::string ToString() const override;
 

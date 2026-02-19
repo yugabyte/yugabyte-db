@@ -171,7 +171,7 @@ void TabletInvoker::SelectTabletServer()  {
       assign_new_leader_ = true;
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1)
-          << "Unable to pick leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
+          << "Unable to find the leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
           << ", followers: " << AsString(followers_);
     }
   } else {
@@ -189,10 +189,13 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
     }
   }
 
+  ash::WaitStateSnapshot wait_state_snapshot;
+
   if (!tablet_) {
     client_->LookupTabletById(tablet_id_, table_, include_hidden_, include_deleted_,
                               retrier_->deadline(),
-                              std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
+                              std::bind(&TabletInvoker::InitialLookupTabletDone, this,
+                                  wait_state_snapshot, _1),
                               UseCache::kTrue);
     return;
   }
@@ -229,7 +232,8 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
                                 include_hidden_,
                                 include_deleted_,
                                 retrier_->deadline(),
-                                std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                                std::bind(&TabletInvoker::LookupTabletCb, this,
+                                    wait_state_snapshot, _1),
                                 UseCache::kFalse);
       return;
     }
@@ -259,7 +263,8 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
                               include_hidden_,
                               include_deleted_,
                               retrier_->deadline(),
-                              std::bind(&TabletInvoker::LookupTabletCb, this, _1),
+                              std::bind(&TabletInvoker::LookupTabletCb, this,
+                                  wait_state_snapshot, _1),
                               UseCache::kTrue);
     return;
   }
@@ -528,8 +533,12 @@ bool TabletInvoker::Done(Status* status) {
   return true;
 }
 
-void TabletInvoker::InitialLookupTabletDone(const Result<RemoteTabletPtr>& result) {
+void TabletInvoker::InitialLookupTabletDone(
+    ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result) {
   VLOG(1) << "InitialLookupTabletDone(" << result << ")";
+
+  ADOPT_WAIT_STATE(snapshot.wait_state);
+  SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot);
 
   if (result.ok()) {
     tablet_ = *result;
@@ -556,9 +565,13 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
   return current_ts_->ProxyEndpoint();
 }
 
-void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
+void TabletInvoker::LookupTabletCb(
+    ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result) {
   VLOG_WITH_FUNC(1) << AsString(result) << ", command: " << command_->ToString()
                     << ", retrier: " << retrier_->ToString();
+
+  ADOPT_WAIT_STATE(snapshot.wait_state);
+  SET_WAIT_STATUS_FROM_SNAPSHOT(snapshot);
 
   if (result.ok()) {
 #ifndef DEBUG

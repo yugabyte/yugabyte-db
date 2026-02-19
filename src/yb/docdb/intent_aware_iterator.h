@@ -153,6 +153,10 @@ class IntentAwareIterator final {
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
+  // Directly fetch value from underlying iterator for specified key. Returns empty slice
+  // when entry not found.
+  Result<Slice> FetchValue(Slice key);
+
   const ReadHybridTime& read_time() const {
     return read_time_;
   }
@@ -451,9 +455,26 @@ class NODISCARD_CLASS IntentAwareIteratorBoundScope {
 using IntentAwareIteratorLowerboundScope = IntentAwareIteratorBoundScope<true>;
 using IntentAwareIteratorUpperboundScope = IntentAwareIteratorBoundScope<false>;
 
-std::string DebugDumpKeyToStr(Slice key);
+class NODISCARD_CLASS IntentAwareIteratorBoundsScope {
+ public:
+  IntentAwareIteratorBoundsScope(
+      Slice lower_bound, Slice upper_bound, IntentAwareIterator* iterator)
+      : lower_bound_scope_(lower_bound, iterator),
+        upper_bound_scope_(upper_bound, iterator) {
+  }
 
-// Used for IntentIterator only.
-void AppendStrongWrite(dockv::KeyBytes* out);
+  ~IntentAwareIteratorBoundsScope() = default;
+
+  IntentAwareIteratorBoundsScope(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope(IntentAwareIteratorBoundsScope&&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(const IntentAwareIteratorBoundsScope&) = delete;
+  IntentAwareIteratorBoundsScope& operator=(IntentAwareIteratorBoundsScope&&) = delete;
+
+ private:
+  IntentAwareIteratorLowerboundScope lower_bound_scope_;
+  IntentAwareIteratorUpperboundScope upper_bound_scope_;
+};
+
+std::string DebugDumpKeyToStr(Slice key);
 
 } // namespace yb::docdb

@@ -575,8 +575,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Aborting because this operation can potentially "
-            + "take down a majority of copies of some tablets",
+        "Service(s) MASTER are not alive on node",
         null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
@@ -593,8 +592,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Aborting because this operation can potentially "
-            + "take down a majority of copies of some tablets",
+        "Service(s) TSERVER are not alive on node",
         null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
@@ -644,7 +642,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             new HashMap<>(), Collections.singletonMap("log_max_seconds_to_retain", "86333"));
     universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
 
-    CommissionerBaseTest.setPausePosition(21);
+    CommissionerBaseTest.setPausePosition(22);
     GFlagsUpgradeParams gFlagsUpgradeParams =
         getUpgradeParams(
             universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, GFlagsUpgradeParams.class);

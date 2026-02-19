@@ -899,19 +899,7 @@ function(enable_lto_if_needed)
 
   detect_lto_type_from_linking_type()
   if(YB_LTO_ENABLED)
-    if(YB_BUILD_TYPE STREQUAL "prof_gen")
-      # We need a "mostly static" build (one big binary and few libs)
-      # for tserver in order to dump all the counters. Our linking type "lto"
-      # does it, but it also turns on link-time optimizations (LTO) for clang.
-      # LTO and profile generation together produce incorrect counters for
-      # inlined functions in clang15. That's why we need to remove
-      # -lto=${YB_LTO_TYPE} from out "lto" linking type when building for prof_gen.
-      # TODO: remove after we switch to clang16 (the problem is fixed in current llvm main).
-      # https://github.com/yugabyte/yugabyte-db/issues/15093
-      ADD_CXX_FLAGS("-fuse-ld=lld")
-    else()
-      ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
-    endif()
+    ADD_CXX_FLAGS("-flto=${YB_LTO_TYPE} -fuse-ld=lld")
     # In LTO mode, yb-master / yb-tserver executables are generated with LTO, but we first generate
     # yb-master-dynamic and yb-tserver-dynamic binaries that are dynamically linked.
     set_in_current_and_parent_scope(YB_DYNAMICALLY_LINKED_EXE_SUFFIX "-dynamic" PARENT_SCOPE)

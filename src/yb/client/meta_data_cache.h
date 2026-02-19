@@ -96,6 +96,8 @@ class YBMetaDataCache {
   // Removes all cached tables. Used by Restore operation to cleanup the cache.
   void Reset();
 
+  size_t TEST_NumberOfCachedTableEntries();
+
   // Opens the type with the given name. If the type has been opened before, returns the
   // previously opened type from cached_types_. If the type has not been opened before
   // in this client, this will do an RPC to ensure that the type exists and look up its info.

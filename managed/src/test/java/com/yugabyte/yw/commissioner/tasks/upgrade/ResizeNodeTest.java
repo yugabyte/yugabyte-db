@@ -743,7 +743,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(
+            true,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes,
+            getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -873,7 +876,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
         // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
-        .precheckTasks(getPrecheckTasks(false))
+        .precheckTasks(
+            true,
+            defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.numNodes,
+            getPrecheckTasks(false, true))
         // Persist for Primary although we have no changes but this will help to avoid
         // inconsistency.
         .addTasks(TaskType.PersistResizeNode)
@@ -899,10 +905,12 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertDedicatedIntent(
         NEW_INSTANCE_TYPE, NEW_VOLUME_SIZE, DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE);
+    int primaryNodeCount =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes;
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(true, primaryNodeCount, getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -965,7 +973,10 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(
+            true,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes,
+            getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -989,10 +1000,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertDedicatedIntent(
         DEFAULT_INSTANCE_TYPE, DEFAULT_VOLUME_SIZE, NEW_INSTANCE_TYPE, NEW_VOLUME_SIZE);
+    int masterNodeCount = 0;
+    for (NodeDetails node : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
+      if (node.isMaster) {
+        masterNodeCount++;
+      }
+    }
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(true, masterNodeCount, getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .masterTask(TaskType.ChangeInstanceType)
@@ -1266,13 +1283,16 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getTaskParams().get("nodeName").textValue());
-    assertEquals(3, updateMounts.get(0).getPosition().intValue());
+    assertEquals(5, updateMounts.get(0).getPosition().intValue());
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(
+            true,
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.numNodes,
+            getPrecheckTasks(true))
         .addTask(TaskType.UpdateMountedDisks, Json.newObject().put("nodeName", nodeName.get()))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
@@ -1305,9 +1325,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             .get();
 
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    int nodeChangeCount = 0;
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       if (nodeDetails.getAzUuid().equals(az2.getUuid())) {
         assertEquals(azOverrides.getInstanceType(), nodeDetails.cloudInfo.instance_type);
+        nodeChangeCount++;
       } else {
         assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
       }
@@ -1315,7 +1337,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(true, nodeChangeCount, getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -1410,7 +1432,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(true, 1, getPrecheckTasks(true))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -1635,7 +1657,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                     Arrays.asList(rrNodesByAZ.get("4"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        23,
         NodeManager.NodeCommandType.Change_Instance_Type,
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(
@@ -1778,7 +1800,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
                 "6", new ZoneData("region-2", Arrays.asList(rrNodesByAZ.get("az-6"))))));
 
     verifyNodeInteractionsCapacityReservation(
-        21,
+        23,
         NodeManager.NodeCommandType.Change_Instance_Type,
         params -> ((ChangeInstanceType.Params) params).capacityReservation,
         Map.of(

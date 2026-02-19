@@ -51,9 +51,10 @@ class YbctidReader {
 
     ReadResult Read(
         PgOid database_id, const TableLocalityMap& tables_locality,
-        const ExecParametersMutator& exec_params_mutator) {
+        const ExecParametersMutator& exec_params_mutator,
+        std::optional<PgSessionRunOperationMarker> marker = {}) {
       RSTATUS_DCHECK(IsActive(), IllegalState, "Read from inactive batch is not allowed");
-      return reader_.Read(database_id, tables_locality, exec_params_mutator);
+      return reader_.Read(database_id, tables_locality, exec_params_mutator, marker);
     }
 
    private:
@@ -87,15 +88,16 @@ class YbctidReader {
   void Add(const LightweightTableYbctid& ybctid) { ybctids_.push_back(ybctid); }
   void Clear() {
     ybctids_.clear();
-    holders_.clear();
+    holders_->clear();
   }
 
   ReadResult Read(
       PgOid database_id, const TableLocalityMap& tables_locality,
-      const ExecParametersMutator& exec_params_mutator);
+      const ExecParametersMutator& exec_params_mutator,
+      std::optional<PgSessionRunOperationMarker> marker);
 
-  PgSessionPtr session_;
-  boost::container::small_vector<RefCntBuffer, 4> holders_;
+  const PgSessionPtr& session_;
+  BuffersPtr holders_ = std::make_shared<Buffers>();
   boost::container::small_vector<LightweightTableYbctid, 8> ybctids_;
   size_t active_batch_accessor_signature_{0};
 };

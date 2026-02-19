@@ -1019,7 +1019,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   return new_peer;
 }
 
-struct TabletCreationMetaData {
+struct TabletCreationMetadata {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
   dockv::Partition partition;
@@ -1029,35 +1029,35 @@ struct TabletCreationMetaData {
 
 namespace {
 
-// Creates SplitTabletsCreationMetaData for two new tablets for `tablet` splitting based on request.
-SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
+// Creates SplitTabletsCreationMetadata for N new tablets for `tablet` splitting based on request.
+SplitTabletsCreationMetadata PrepareTabletCreationMetadataForSplit(
     const tablet::SplitTabletRequestPB& request, const tablet::Tablet& tablet) {
-  SplitTabletsCreationMetaData metas;
+  const auto new_tablet_ids = GetSplitChildTabletIds(request);
+  const auto split_partition_keys = GetSplitPartitionKeys(request);
+  const auto split_encoded_keys = GetSplitEncodedKeys(request);
+  const int num_split_tablets = narrow_cast<int>(new_tablet_ids.size());
+  CHECK_EQ(num_split_tablets - 1, split_partition_keys.size());
+  CHECK_EQ(num_split_tablets - 1, split_encoded_keys.size());
 
-  const auto& split_partition_key = request.split_partition_key();
-  const auto& split_encoded_key = request.split_encoded_key();
-
-  auto source_partition = tablet.metadata()->partition();
+  const auto source_partition = tablet.metadata()->partition();
   const auto& source_key_bounds = tablet.key_bounds();
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet1_id();
+  SplitTabletsCreationMetadata metas;
+  metas.reserve(num_split_tablets);
+  for (int i = 0; i < num_split_tablets; ++i) {
+    TabletCreationMetadata meta;
+    meta.tablet_id = new_tablet_ids[i];
+    // TODO(nway-tsplit): How does hash bucket population change with N-way split? For binary
+    // splits, we seemed to simply copy from source partition.
     meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.upper.Reset(split_encoded_key);
-    meta.partition.set_partition_key_end(split_partition_key);
-    metas.push_back(meta);
-  }
-
-  {
-    TabletCreationMetaData meta;
-    meta.tablet_id = request.new_tablet2_id();
-    meta.partition = *source_partition;
-    meta.key_bounds = source_key_bounds;
-    meta.key_bounds.lower.Reset(split_encoded_key);
-    meta.partition.set_partition_key_start(split_partition_key);
-    metas.push_back(meta);
+    meta.partition.set_partition_key_start(GetVectorItemOrDefault(
+        split_partition_keys, i - 1, source_partition->partition_key_start()));
+    meta.partition.set_partition_key_end(GetVectorItemOrDefault(
+        split_partition_keys, i, source_partition->partition_key_end()));
+    meta.key_bounds.lower.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i - 1, source_key_bounds.lower.AsSlice()));
+    meta.key_bounds.upper.Reset(GetVectorItemOrDefault(
+        split_encoded_keys, i, source_key_bounds.upper.AsSlice()));
+    metas.push_back(std::move(meta));
   }
 
   return metas;
@@ -1084,7 +1084,7 @@ Status TSTabletManager::CleanUpSubtabletIfExistsOnDisk(
 }
 
 Status TSTabletManager::StartSubtabletsSplit(
-    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas) {
+    const RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetadata* tcmetas) {
   auto* const env = fs_manager_->env();
 
   auto iter = tcmetas->begin();
@@ -1163,17 +1163,22 @@ Status TSTabletManager::ApplyTabletSplit(
   auto tablet = VERIFY_RESULT(operation->tablet_safe());
   const auto tablet_id = tablet->tablet_id();
   const auto* request = operation->request();
+  const auto request_pb = request->ToGoogleProtobuf();
+  const auto new_tablet_ids = GetSplitChildTabletIds(*request);
+
   SCHECK_EQ(
       request->tablet_id(), tablet_id, IllegalState,
       Format(
           "Unexpected SPLIT_OP $0 designated for tablet $1 to be applied to tablet $2",
           split_op_id, request->tablet_id(), tablet_id));
-  SCHECK(
-      tablet_id != request->new_tablet1_id() && tablet_id != request->new_tablet2_id(),
-      IllegalState,
+
+  for (size_t i = 0; i < new_tablet_ids.size(); ++i) {
+    SCHECK_NE(
+      tablet_id, new_tablet_ids[i], IllegalState,
       Format(
-          "One of SPLIT_OP $0 destination tablet IDs ($1, $2) is the same as source tablet ID $3",
-          split_op_id, request->new_tablet1_id(), request->new_tablet2_id(), tablet_id));
+          "The SPLIT_OP $0 destination tablet ID $1 (index $2) is the same as source tablet ID $3",
+          split_op_id, new_tablet_ids[i], i, tablet_id));
+  }
 
   LOG_WITH_PREFIX(INFO) << "Tablet " << tablet_id << " split operation " << split_op_id
                         << " apply started";
@@ -1215,7 +1220,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(INFO) << "TEST: ApplyTabletSplit: delay finished";
   }
 
-  auto tcmetas = PrepareTabletCreationMetaDataForSplit(request->ToGoogleProtobuf(), *tablet);
+  auto tcmetas = PrepareTabletCreationMetadataForSplit(request_pb, *tablet);
 
   RETURN_NOT_OK(StartSubtabletsSplit(meta, &tcmetas));
 
@@ -1269,8 +1274,7 @@ Status TSTabletManager::ApplyTabletSplit(
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_source_tablet_mark_split_done";
   }
 
-  meta.SetSplitDone(
-      split_op_id, request->new_tablet1_id().ToBuffer(), request->new_tablet2_id().ToBuffer());
+  meta.SetSplitDone(split_op_id, new_tablet_ids);
   RETURN_NOT_OK(meta.Flush());
 
   tablet->SplitDone();
@@ -1711,12 +1715,6 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   // Write out the last files to make the new replica visible and update the
   // TabletDataState in the superblock to TABLET_DATA_READY.
-  // Finish() will call EndRemoteSession() and wait for the leader to successfully submit a
-  // ChangeConfig request (to change this server's role from PRE_VOTER or PRE_OBSERVER to VOTER or
-  // OBSERVER respectively). If the RPC times out, we will ignore the error (since the leader could
-  // have successfully submitted the ChangeConfig request and failed to respond in time)
-  // and check the committed config until we find that this server's role has changed, or until we
-  // time out which will cause us to tombstone the tablet.
   TOMBSTONE_NOT_OK(rb_client->Finish(),
                    meta,
                    fs_manager_->uuid(),
@@ -1724,27 +1722,24 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
                    this);
 
   LOG(INFO) << kLogPrefix << "Remote bootstrap: Opening tablet";
-
-  // TODO(hector):  ENG-3173: We need to simulate a failure in OpenTablet during remote bootstrap
-  // and verify that this tablet server gets remote bootstrapped again by the leader. We also need
-  // to check what happens when this server receives raft consensus requests since at this point,
-  // this tablet server could be a voter (if the ChangeRole request in Finish succeeded and its
-  // initial role was PRE_VOTER).
   OpenTablet(meta, nullptr);
   // If OpenTablet fails, tablet_peer->error() will be set.
   RETURN_NOT_OK(ShutdownAndTombstoneTabletPeerNotOk(
       tablet_peer->error(), tablet_peer, meta, fs_manager_->uuid(),
       "Remote bootstrap: OpenTablet() failed", this));
 
+  LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+
+  // Since the above call to OpenTablet succeeded, the peer's consensus would have been started.
+  // On receiving the consensus requests from this PRE_VOTER peer, the leader tries to catch the
+  // peer up by sending required ops and then promotes it to VOTER state.
   auto status = rb_client->VerifyChangeRoleSucceeded(VERIFY_RESULT(tablet_peer->GetConsensus()));
   if (!status.ok()) {
-    // If for some reason this tserver wasn't promoted (e.g. from PRE-VOTER to VOTER), the leader
-    // will find out and do the CHANGE_CONFIG.
-    LOG(WARNING) << kLogPrefix << "Remote bootstrap finished. "
-                               << "Failure calling VerifyChangeRoleSucceeded: "
-                               << status.ToString();
-  } else {
-    LOG(INFO) << kLogPrefix << "Remote bootstrap for tablet ended successfully";
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "Peer not promoted from PRE_[VOTER/OBSERVER] after successful remote bootstrap, "
+        << "could be indicative of either a lagging peer which the leader is unable to bring "
+        << "back to speed as it could have GC'ed the required logs, or could be a consensus/quorum "
+        << "related issue.";
   }
 
   WARN_NOT_OK(rb_client->Remove(), "Remove remote bootstrap sessions failed");
@@ -2232,7 +2227,8 @@ Status TSTabletManager::TriggerAdminCompaction(
   auto start_time = CoarseMonoClock::Now();
   uint64_t total_size = 0U;
 
-  tablet::AdminCompactionOptions tablet_compaction_options {
+  tablet::ManualCompactionOptions tablet_compaction_options {
+      .compaction_reason = rocksdb::CompactionReason::kAdminCompaction,
       .compaction_completion_callback =
           options.should_wait ? [&latch, &first_compaction_error,
                                  &first_compaction_error_mutex](const Status& status) {
@@ -3351,7 +3347,7 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
     result = metadata->cdc_sdk_safe_time();
   }
 
-  Status s = BackfillNamespaceIdIfNeeded(*metadata, client());
+  Status s = BackfillNamespaceIdIfNeeded(metadata->table_id(), *metadata, client());
   if (!s.ok()) {
     YB_LOG_EVERY_N_SECS(ERROR, 30) << "Unable to backfill tablet metadata namespace_id for tablet: "
                                    << metadata->raft_group_id() << ": " << s;

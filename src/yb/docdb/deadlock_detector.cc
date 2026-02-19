@@ -402,7 +402,7 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     DCHECK(false) << "Did not set callback before sending probes.";
   };
 
-  std::atomic<uint64> remaining_requests_;
+  std::atomic<int64> remaining_requests_;
   std::atomic<bool> did_send_response_ = false;
 
   mutable rw_spinlock mutex_;

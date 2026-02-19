@@ -304,6 +304,13 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case YB_AUTO_ANALYZE_BACKEND:
 			backendDesc = "yb auto analyze backend";
+			break;
+		case YB_INDEX_BACKFILL_DDL:
+			backendDesc = "yb index backfill";
+			break;
+		case YB_MATVIEW_REFRESH_DDL:
+			backendDesc = "yb matview refresh";
+			break;
 	}
 
 	return backendDesc;

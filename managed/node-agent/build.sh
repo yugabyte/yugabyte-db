@@ -239,6 +239,7 @@ format() {
 }
 
 run_tests() {
+    local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
     pushd "$project_dir"
@@ -247,6 +248,10 @@ run_tests() {
         dir=$(echo "${dir}" | sed 's/\/$//')
         if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
             echo "Skipping directory ${dir}"
+            continue
+        fi
+        if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
+            echo "Skipping directory ${dir} for testone"
             continue
         fi
         echo "Running tests in ${dir}..."
@@ -304,13 +309,12 @@ package_for_platform() {
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
     cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
-    pushd "$project_dir"
-    cp -rf ../devops/roles/configure-cluster-server/templates/* "${script_dir}"/ynp/modules/provision/systemd/templates/
-    popd
+    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd
-    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" .
+    # Create the tar.gz package without ./ prefix.
+    tar -zcf "${staging_dir_name}.tar.gz" -C "$staging_dir_name" "$version"
     popd
 }
 
@@ -338,17 +342,19 @@ prepare=false
 build=false
 clean=false
 test=false
+testone=false
 package=false
 version=0
 update_dependencies=false
 build_pymodule=false
+testone_path=""
 
 
 show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies|build-pymodule>
+./build.sh <fmt|prepare|build|clean|test|testone <package>|package <version>|update-dependencies|build-pymodule>
 EOT
 exit 1
 }
@@ -372,6 +378,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     test)
       test=true
+      ;;
+    testone)
+      testone=true
+      shift
+      if [[ $# -gt 0 ]]; then
+        testone_path=$1
+      fi
       ;;
     package)
       package=true
@@ -450,6 +463,17 @@ if [ "$test" == "true" ]; then
     echo "Running tests..."
     prepare
     run_tests
+fi
+
+if [ "$testone" == "true" ]; then
+    if [ -z "$testone_path"  ]; then
+        echo "Test path is not specified for testone"
+        exit 1
+    fi
+    help_needed=false
+    echo "Running test for ${testone_path}..."
+    prepare
+    run_tests "$testone_path"
 fi
 
 if [ "$package" == "true" ]; then

@@ -62,7 +62,8 @@ var editYCQLUniverseCmd = &cobra.Command{
 					formatter.Colorize("Invalid ycql-auth value\n", formatter.RedColor))
 			}
 		}
-		if strings.Compare(ycqlAuth, util.EnableOpType) == 0 {
+		if strings.Compare(ycqlAuth, util.EnableOpType) == 0 ||
+			strings.Compare(ycqlAuth, util.DisableOpType) == 0 {
 			ycqlPassword, err := cmd.Flags().GetString("ycql-password")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -70,7 +71,7 @@ var editYCQLUniverseCmd = &cobra.Command{
 			if util.IsEmptyString(ycqlPassword) {
 				logrus.Fatalf(
 					formatter.Colorize(
-						"YCQL password not found while enabling auth\n",
+						"YCQL password is required when enabling or disabling auth\n",
 						formatter.RedColor,
 					),
 				)
@@ -150,13 +151,13 @@ var editYCQLUniverseCmd = &cobra.Command{
 			enableYCQLAuth := false
 			if strings.Compare(ycqlAuth, util.EnableOpType) == 0 {
 				enableYCQLAuth = true
-				ycqlPassword, err := cmd.Flags().GetString("ycql-password")
-				if err != nil {
-					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-				}
-				if !util.IsEmptyString(ycqlPassword) {
-					req.SetYcqlPassword(ycqlPassword)
-				}
+			}
+			ycqlPassword, err := cmd.Flags().GetString("ycql-password")
+			if err != nil {
+				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
+			}
+			if !util.IsEmptyString(ycqlPassword) {
+				req.SetYcqlPassword(ycqlPassword)
 			}
 			if enableYCQLAuth == userIntent.GetEnableYCQLAuth() {
 				logrus.Debugf("Enable YCQL auth is already set to %t\n", enableYCQLAuth)
@@ -217,7 +218,7 @@ func init() {
 			"[Optional] YCQL authentication password. Use single quotes ('') to provide "+
 				"values with special characters. %s",
 			formatter.Colorize(
-				"Required when YCQL authentication is enabled",
+				"Required when YCQL authentication is being enabled or disabled",
 				formatter.GreenColor,
 			),
 		))

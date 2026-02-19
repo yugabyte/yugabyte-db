@@ -713,7 +713,7 @@ public enum TaskType {
 
   OperatorImportUniverse(
       com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse.class,
-      CustomerTask.TaskType.OperatorImportUniverse,
+      CustomerTask.TaskType.OperatorImport,
       CustomerTask.TargetType.Universe),
 
   /* Subtasks start here */
@@ -1127,6 +1127,9 @@ public enum TaskType {
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),
 
+  CheckShellConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity.class),
+
   CheckGlibc(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckGlibc.class),
 
   CheckOpentelemetryOperator(
@@ -1269,6 +1272,14 @@ public enum TaskType {
 
   TablespaceValidationOnRemove(
       com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove.class),
+
+  CheckServiceLiveness(com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness.class),
+
+  CheckNodeCommandExecution(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeCommandExecution.class),
+
+  CheckNodeDataDirDiskSpace(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
 
   OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
 

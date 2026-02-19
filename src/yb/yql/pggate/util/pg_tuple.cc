@@ -18,23 +18,15 @@
 
 #include "yb/yql/pggate/util/ybc-internal.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-#ifdef PGTUPLE_DEBUG
-PgTuple::PgTuple(size_t nattrs, uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols)
-    : nattrs_(nattrs), datums_(datums), isnulls_(isnulls), syscols_(syscols) {
-}
-#else
-PgTuple::PgTuple(uint64_t *datums, bool *isnulls, YbcPgSysColumns *syscols)
+PgTuple::PgTuple(uint64_t* datums, bool* isnulls, YbcPgSysColumns* syscols, size_t nattrs)
     : datums_(datums), isnulls_(isnulls), syscols_(syscols) {
+  DEBUG_ONLY(nattrs_ = nattrs);
 }
-#endif
 
 void PgTuple::CopyFrom(const PgTuple& other, size_t nattrs) {
-#ifdef PGTUPLE_DEBUG
-  CHECK_LE(nattrs, nattrs_) << "PgTuple index is out of bounds";
-#endif
+  DEBUG_ONLY(DCHECK_LE(nattrs, nattrs_)  << "PgTuple index is out of bounds");
   memcpy(datums_, other.datums_, nattrs * sizeof(*datums_));
   memcpy(isnulls_, other.isnulls_, nattrs * sizeof(*isnulls_));
   if (syscols_ && other.syscols_) {
@@ -42,21 +34,10 @@ void PgTuple::CopyFrom(const PgTuple& other, size_t nattrs) {
   }
 }
 
-void PgTuple::WriteNull(int index) {
-#ifdef PGTUPLE_DEBUG
-  CHECK_LT(index, nattrs_) << "PgTuple index is out of bounds";
-#endif
-  isnulls_[index] = true;
-  datums_[index] = 0;
-}
-
-void PgTuple::WriteDatum(int index, uint64_t datum) {
-#ifdef PGTUPLE_DEBUG
-  CHECK_LT(index, nattrs_) << "PgTuple index is out of bounds";
-#endif
-  isnulls_[index] = false;
+void PgTuple::DoWrite(int index, bool isnull, uint64_t datum) {
+  DEBUG_ONLY(DCHECK_LT(index, nattrs_) << "PgTuple index is out of bounds");
+  isnulls_[index] = isnull;
   datums_[index] = datum;
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

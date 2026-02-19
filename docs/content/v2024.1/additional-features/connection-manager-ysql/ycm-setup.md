@@ -44,7 +44,7 @@ To explicitly set a port for YSQL, you should specify ports for the flags `ysql_
 The following table describes YB-TServer flags related to YSQL Connection Manager:
 
 | flag | Description | Default |
-|:---- | :---------- | :------ |
+| :---- | :---------- | :------ |
 | enable_ysql_conn_mgr | Enables YSQL Connection Manager for the cluster. YB-TServer starts a YSQL Connection Manager process as a child process. | false |
 | ysql_conn_mgr_idle_time | Specifies the maximum idle time (in seconds) allowed for database connections created by YSQL Connection Manager. If a database connection remains idle without serving a client connection for a duration equal to, or exceeding this value, it is automatically closed by YSQL Connection Manager. | 60 |
 | ysql_conn_mgr_max_client_connections | Maximum number of concurrent database connections YSQL Connection Manager can create per pool. | 10000 |

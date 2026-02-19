@@ -40,6 +40,7 @@ import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/opid.proto";
 import "yb/consensus/metadata.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/metadata.proto";
 import "yb/tablet/operations.proto";
 import "yb/tablet/tablet_types.proto";
@@ -456,7 +457,9 @@ service TabletServerAdminService {
   rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
 
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
-      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);

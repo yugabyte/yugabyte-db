@@ -100,7 +100,7 @@ void DumpTableLocations(
   }
 }
 
-void DumpWorkloadStats(const TestWorkload& workload) {
+void DumpWorkloadStats(const TestYcqlWorkload& workload) {
   LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
   LOG(INFO) << "Rows insert failed: " << workload.rows_insert_failed();
   LOG(INFO) << "Rows read ok: " << workload.rows_read_ok();
@@ -119,7 +119,8 @@ Status SplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& 
   LOG(INFO) << "DB properties: " << properties;
 
   return catalog_mgr->SplitTablet(
-      tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal());
+      tablet_id, master::ManualSplit::kTrue, kDefaultNumSplitParts,
+      catalog_mgr->GetLeaderEpochInternal());
 }
 
 Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet& tablet) {
@@ -131,7 +132,8 @@ Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet
       rocksdb::DB::Properties::kAggregatedTableProperties, &properties);
   LOG(INFO) << "DB properties: " << properties;
 
-  const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
+  const auto split_keys = VERIFY_RESULT(tablet.GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   std::string partition_split_key = encoded_split_key;
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
     const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
@@ -414,6 +416,7 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::SendTServerRpcSyncGetSp
       proxy_cache_.get(), HostPort::FromBoundEndpoint(tserver->bound_rpc_addr()));
   tserver::GetSplitKeyRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
@@ -428,6 +431,7 @@ Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterRpcSyncSplitTa
 
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
 
   rpc::RpcController controller;
   controller.set_timeout(kRpcTimeout);
@@ -833,6 +837,7 @@ void TabletSplitExternalMiniClusterITest::SetFlags() {
 Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& tablet_id) {
   master::SplitTabletRequestPB req;
   req.set_tablet_id(tablet_id);
+  req.set_split_factor(cluster_->GetSplitFactor());
   master::SplitTabletResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
@@ -1022,7 +1027,7 @@ Status TabletSplitExternalMiniClusterITest::SplitTabletCrashMaster(
   // Retrieve split key from a leader peer
   if (split_partition_key) {
     RETURN_NOT_OK(WaitForAnySstFiles(tablet_id));
-    *split_partition_key = VERIFY_RESULT(cluster_->GetSplitKey(tablet_id)).split_partition_key();
+    *split_partition_key = VERIFY_RESULT(cluster_->GetSplitKey(tablet_id)).split_partition_keys(0);
   }
 
   RETURN_NOT_OK(SplitTablet(tablet_id));

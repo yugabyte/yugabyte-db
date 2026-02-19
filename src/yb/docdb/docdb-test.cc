@@ -273,6 +273,12 @@ TEST_F(DocDBTestQl, YsqlSystemTableTombstoneCompaction) {
       ASSERT_RESULT(Uuid::FromString("66666666-7777-8888-9999-000000000000")));
 }
 
+TEST_F(DocDBTestQl, DestroyAfterFilesDeleted) {
+  ASSERT_OK(Env::Default()->DeleteRecursively(rocksdb_dir_));
+  ASSERT_OK(Env::Default()->DeleteRecursively(IntentsDBDir()));
+  ASSERT_OK(DestroyRocksDB());
+}
+
 // YB associates a list of <KeyEntryType, IntentTypeSet> to each table lock type such that
 // the table lock conflict matrix of postgres is achieved. The below test asserts the same.
 //

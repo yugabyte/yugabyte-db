@@ -36,6 +36,8 @@ import io.swagger.annotations.Authorization;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -55,6 +57,8 @@ public class PitrController extends AuthenticatedController {
 
   public static final String PITR_CLONE_COMPATIBLE_PREVIEW_DB_VERSION = "2.25.1.0-b1";
   public static final String PITR_CLONE_COMPATIBLE_STABLE_DB_VERSION = "2024.2.0.0-b1";
+
+  private static final Lock listPitrConfigsLock = new ReentrantLock();
 
   private final Commissioner commissioner;
   private final YBClientService ybClientService;
@@ -166,45 +170,57 @@ public class PitrController extends AuthenticatedController {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    List<PitrConfig> pitrConfigList = new LinkedList<>();
-    ListSnapshotSchedulesResponse scheduleResp;
-    List<SnapshotScheduleInfo> scheduleInfoList = null;
+    // Serialize PITR config reads. If the master leader is down, reads can take ~2 minutes to
+    // time out; allowing concurrent reads during that window can exhaust the backend thread
+    // pool and freeze the UI.
+    if (!listPitrConfigsLock.tryLock()) {
+      throw new PlatformServiceException(
+          TOO_MANY_REQUESTS,
+          "Another PITR config list request is already in progress. Please retry shortly.");
+    }
+    try {
+      List<PitrConfig> pitrConfigList = new LinkedList<>();
+      ListSnapshotSchedulesResponse scheduleResp;
+      List<SnapshotScheduleInfo> scheduleInfoList = null;
 
-    pitrConfigHelper.checkCompatibleYbVersion(
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    if (universe.getUniverseDetails().universePaused) {
-      pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
-    } else {
-      try (YBClient client = ybClientService.getUniverseClient(universe)) {
-        scheduleResp = client.listSnapshotSchedules(null);
-        scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-      } catch (Exception ex) {
-        log.error(ex.getMessage());
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-      }
-
-      if (scheduleResp.hasError()) {
+      pitrConfigHelper.checkCompatibleYbVersion(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+      if (universe.getUniverseDetails().universePaused) {
         pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
       } else {
-        for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
-          PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
-          if (pitrConfig == null) {
-            continue;
+        try (YBClient client = ybClientService.getUniverseClient(universe)) {
+          scheduleResp = client.listSnapshotSchedules(null);
+          scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+        } catch (Exception ex) {
+          log.error(ex.getMessage());
+          throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
+        }
+
+        if (scheduleResp.hasError()) {
+          pitrConfigList = createPitrConfigsWithUnknownState(universeUUID);
+        } else {
+          for (SnapshotScheduleInfo snapshotScheduleInfo : scheduleInfoList) {
+            PitrConfig pitrConfig = PitrConfig.get(snapshotScheduleInfo.getSnapshotScheduleUUID());
+            if (pitrConfig == null) {
+              continue;
+            }
+            boolean pitrStatus =
+                BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
+            long currentTimeMillis = System.currentTimeMillis();
+            long minTimeInMillis =
+                BackupUtil.getMinRecoveryTimeForSchedule(
+                    snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig);
+            pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
+            pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
+            pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
+            pitrConfigList.add(pitrConfig);
           }
-          boolean pitrStatus =
-              BackupUtil.allSnapshotsSuccessful(snapshotScheduleInfo.getSnapshotInfoList());
-          long currentTimeMillis = System.currentTimeMillis();
-          long minTimeInMillis =
-              BackupUtil.getMinRecoveryTimeForSchedule(
-                  snapshotScheduleInfo.getSnapshotInfoList(), pitrConfig);
-          pitrConfig.setMinRecoverTimeInMillis(minTimeInMillis);
-          pitrConfig.setMaxRecoverTimeInMillis(currentTimeMillis);
-          pitrConfig.setState(pitrStatus ? State.COMPLETE : State.FAILED);
-          pitrConfigList.add(pitrConfig);
         }
       }
+      return PlatformResults.withData(pitrConfigList);
+    } finally {
+      listPitrConfigsLock.unlock();
     }
-    return PlatformResults.withData(pitrConfigList);
   }
 
   @ApiOperation(

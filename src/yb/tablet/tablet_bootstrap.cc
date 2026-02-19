@@ -567,9 +567,7 @@ class TabletBootstrap {
     }
 
     // Only sleep if this isn't a new tablet, since we only want to delay on restart when testing.
-    if (PREDICT_FALSE(FLAGS_TEST_tablet_bootstrap_delay_ms > 0)) {
-      SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_tablet_bootstrap_delay_ms));
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_tablet_bootstrap_delay_ms);
 
     // If there were blocks, there must be segments to replay. This is required by Raft, since we
     // always need to know the term and index of the last logged op in order to vote, know how to

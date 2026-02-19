@@ -46,7 +46,7 @@ class PGConn;
 
 namespace server {
 class RpcAndWebServerBase;
-class YCQLStatementStatsProvider;
+class YCQLServerExternalInterface;
 }
 
 namespace tserver {
@@ -123,7 +123,7 @@ class TabletServerIf : public LocalTabletServer {
   }
 
   virtual void SetCQLServer(yb::server::RpcAndWebServerBase* server,
-      server::YCQLStatementStatsProvider* stmt_provider) = 0;
+      server::YCQLServerExternalInterface* cql_server_if) = 0;
 
   virtual rpc::Messenger* GetMessenger(ash::Component component) const = 0;
 
@@ -132,6 +132,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual void ClearAllMetaCachesOnServer() = 0;
 
   virtual Status ClearMetacache(const std::string& namespace_id) = 0;
+
+  virtual Status ClearYCQLMetaDataCache() = 0;
 
   virtual Status YCQLStatementStats(const tserver::PgYCQLStatementStatsRequestPB& req,
     tserver::PgYCQLStatementStatsResponsePB* resp) const = 0;
@@ -165,6 +167,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status RestartPG() const = 0;
 
   virtual Status KillPg() const = 0;
+
+  virtual ConnectivityStateResponsePB ConnectivityState() = 0;
 };
 
 } // namespace tserver

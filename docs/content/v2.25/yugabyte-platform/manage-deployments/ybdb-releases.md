@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Before you can upgrade your universe to a specific version of YugabyteDB, verify that the release is available in YugabyteDB Anywhere and, if necessary, import it.
+Before you can upgrade your universe to a specific version of YugabyteDB, verify that the YugabyteDB version is available in your YugabyteDB Anywhere instance and, if necessary, import it.
 
 ## View YugabyteDB releases
 
@@ -26,6 +26,52 @@ To view the release details, select a release in the list.
 
 To delete or disable a release, click its corresponding **Actions**. Disabled releases are not available when creating universes.
 
+## How to get YugabyteDB
+
+You can either download the YugabyteDB release to your local machine before import, or use a URL to import the release directly.
+
+You can obtain YugabyteDB from the following locations:
+
+- [download.yugabyte.com](https://download.yugabyte.com/#linux).
+
+- [YugabyteDB Releases](/stable/releases/ybdb-releases/).
+
+    Choose the release series you want, to navigate to the release notes. Each release includes a Downloads section with links to the release tar.gz file.
+
+- Direct download. You can download a release using the following URL format:
+
+    ```text.nocopy
+    https://software.yugabyte.com/releases/<version>/yugabyte-<version-build>-<architecture>.tar.gz
+    ```
+
+    Where architecture can be one of `linux-x86_64` or `el8-aarch64`. For example:
+
+    ```text
+    https://software.yugabyte.com/releases/{{< yb-version version="v2.25">}}/yugabyte-{{< yb-version version="v2.25" format="build">}}-linux-x86_64.tar.gz
+    ```
+
+### YugabyteDB release file
+
+A YugabyteDB release file has the following format:
+
+```text.nocopy
+yugabyte-<version-build>-<architecture>.tar.gz
+```
+
+For example:
+
+```text.nocopy
+yugabyte-{{< yb-version version="v2.25" format="build">}}-linux-x86_64.tar.gz
+```
+
+When importing into YugabyteDB Anywhere, use the tar.gz file; do not untar the file before importing.
+
+{{< note title="Importing Stable and Preview versions" >}}
+By default, you cannot import [stable](/stable/releases/versioning/#stable-releases) versions of YugabyteDB if you are running a preview version of YugabyteDB Anywhere (for example, v2.25.x).
+
+To enable this import, set the YugabyteDB Anywhere runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+{{< /note >}}
+
 ## Import a YugabyteDB release
 
 If the YugabyteDB release you want to use for your universe is not in the **Releases** list, you must import it to your YugabyteDB Anywhere instance.
@@ -33,14 +79,6 @@ If the YugabyteDB release you want to use for your universe is not in the **Rele
 If you are running YugabyteDB Anywhere airgapped, download the YugabyteDB release to a machine that is accessible to your instance so that you can upload the file.
 
 If your YugabyteDB Anywhere instance has internet access, you can import the release from a bucket or an internal server using a URL.
-
-You can obtain YugabyteDB releases by navigating to the release from the [YugabyteDB releases](../../../releases/ybdb-releases/) page.
-
-{{< note title="Importing Stable and Preview versions" >}}
-By default, you cannot import the latest stable YugabyteDB versions (v2024.1.x) in preview YugabyteDB Anywhere versions (for example, v2.23.x).
-
-To enable this import, you need to set the YugabyteDB Anywhere runtime flag `yb.allow_db_version_more_than_yba_version` to true. See [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
-{{< /note >}}
 
 To import a YugabyteDB release, do the following:
 

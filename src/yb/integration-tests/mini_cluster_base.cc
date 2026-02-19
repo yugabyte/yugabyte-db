@@ -22,6 +22,7 @@
 #include "yb/util/result.h"
 #include "yb/rpc/messenger.h"
 
+DECLARE_bool(TEST_enable_multi_way_tablet_split);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 
@@ -80,6 +81,16 @@ Result<std::unique_ptr<client::YBClient>> MiniClusterBase::CreateSecureClient(
 
 Result<HostPort> MiniClusterBase::GetLeaderMasterBoundRpcAddr() {
   return DoGetLeaderMasterBoundRpcAddr();
+}
+
+int MiniClusterBase::GetSplitFactor() {
+  return split_factor_;
+}
+
+void MiniClusterBase::SetSplitFactor(int split_factor) {
+  split_factor_ = split_factor;
+  LOG(INFO) << "Setting split factor to " << split_factor;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_multi_way_tablet_split) = true;
 }
 
 rpc::MessengerBuilder CreateMiniClusterMessengerBuilder() {

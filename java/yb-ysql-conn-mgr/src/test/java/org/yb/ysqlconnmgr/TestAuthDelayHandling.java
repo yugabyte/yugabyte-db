@@ -24,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestAuthDelayHandling extends BaseYsqlConnMgr {
@@ -32,19 +33,18 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
   // of first spinning up a backend and then discovering that the client
   // has alread left.
   private final int AUTH_DELAY_MS = 5000;
-  private final int MAX_CONTROL_BACKENDS = 1;
   private final int NUM_WORKERS = 10; // Queue size is num_workers * 16. Set to 10 to be safe.
   private final String USERNAME = "yugabyte";
   private final String PASSWORD = "yugabyte";
-  // Keep a multiple of 10 as control pool size is set to ysql_max_connections/10,
-  // so this makes for cleaner calculations.
   private final int MAX_PHYSICAL_CONNECTIONS = 20;
-  // Connection manager seems to allocate 19 physical backends to the control pool,
-  // despite setting ysql_max_connections to 20. Not entirely sure why, but this
-  // behaviour is stable with this configuration. Thus, we set total threads to
-  // 2 * 19 + 1 (1 successful login expected). Refer to the test explanation for
-  // more details.
-  private final int numThreads = 1 + 38;
+
+  // If N is the control pool max size,
+  // 2*N connection attempts expected to fail and 1 attempt expected to succeed.
+  // So, we launch 1 + 2*N threads with 1 conn attempt each.
+  // Becaue multi route pooling is true by default, all backend capacity is allowed to be used by
+  // the control pool while no other pools are using backends.
+  // So, N = `ysql_max_connections`. (Would have been 1/10th otherwise)
+  private final int numThreads = 1 + (2 * MAX_PHYSICAL_CONNECTIONS);
 
   @Override
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
@@ -60,7 +60,6 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
         put("ysql_enable_auth", "true");
         put("TEST_ysql_conn_mgr_auth_delay_ms", Integer.toString(AUTH_DELAY_MS));
         put("ysql_conn_mgr_log_settings", "log_debug,log_query");
-        put("ysql_conn_mgr_control_connection_pool_size", Integer.toString(MAX_CONTROL_BACKENDS));
       }
     };
     super.customizeMiniClusterBuilder(builder);
@@ -97,7 +96,11 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
     // to also time out (here, the 1 expectSuccess thread), causing a
     // 'cascade of timeouts'.
 
-    getConnectionBuilder().withUser("yugabyte").withPassword("yugabyte").connect();
+    getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withUser("yugabyte")
+        .withPassword("yugabyte")
+        .connect();
 
     Runnable[] runnables = new Runnable[numThreads];
     for (int i = 0; i < numThreads; i++) {
@@ -140,7 +143,8 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
       this.expectSuccess = expectSuccess;
       this.threadId = threadId;
       this.caughtException = false;
-      this.socketTimeout = (expectSuccess) ? (2 * AUTH_DELAY_MS / 1000) : 1;
+      this.socketTimeout =
+          (expectSuccess) ? Math.toIntExact(Math.round(2.5 * AUTH_DELAY_MS) / 1000) : 1;
     }
 
     @Override
@@ -159,7 +163,7 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
         // We want to delay the thread that is expected to succeed so that it is necessarily last in
         // the queue
         try {
-          Thread.sleep(AUTH_DELAY_MS / 2);
+          Thread.sleep(250);
         } catch (InterruptedException e) {
           fail("Sleep interrupted for thread " + threadId + " with expectSuccess. "
               + e.getMessage());
@@ -171,7 +175,9 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
 
       LOG.info("Now connecting for thread " + threadId);
 
-      try (Connection connection = getConnectionBuilder().connect(props);) {
+      try (Connection connection = getConnectionBuilder()
+               .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+               .connect(props)) {
         LOG.info("Connection successful for thread " + threadId);
         if (!this.expectSuccess) {
           LOG.error("Unexpectedly created connection for thread number " + this.threadId

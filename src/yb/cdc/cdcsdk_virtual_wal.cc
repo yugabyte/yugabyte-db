@@ -46,6 +46,12 @@
     } \
   } while (0)
 
+#define GET_OID_FROM_PG_CLASS_RECORD(record) \
+  record->row_message().new_tuple().Get(0).pg_catalog_value().uint32_value()
+
+#define GET_RELFILENODE_FROM_PG_CLASS_RECORD(record) \
+  record->row_message().new_tuple().Get(7).pg_catalog_value().uint32_value()
+
 #define GET_RELKIND_FROM_PG_CLASS_RECORD(record) \
   record->row_message().new_tuple().Get(16).pg_catalog_value().int8_value()
 
@@ -101,6 +107,7 @@ TAG_FLAG(cdcsdk_update_restart_time_when_nothing_to_stream, advanced);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
+DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb::cdc {
 
@@ -142,8 +149,7 @@ bool CDCSDKVirtualWAL::IsTabletEligibleForVWAL(
     const std::string& tablet_id, const PartitionPB& tablet_partition_pb) {
   dockv::Partition tablet_partition;
   dockv::Partition::FromPB(tablet_partition_pb, &tablet_partition);
-  const auto& [tablet_start_hash_range, _] =
-      dockv::PartitionSchema::GetHashPartitionBounds(tablet_partition);
+  const auto tablet_start_hash_range = tablet_partition.GetKeyStartAsHashCode();
   VLOG_WITH_PREFIX(1) << "tablet " << tablet_id << " has start range: " << tablet_start_hash_range;
   return (tablet_start_hash_range >= slot_hash_range_->start_range) &&
          (tablet_start_hash_range < slot_hash_range_->end_range);
@@ -194,8 +200,9 @@ Status CDCSDKVirtualWAL::CheckHashRangeConstraints(const CDCStateTableEntry& slo
 }
 
 Status CDCSDKVirtualWAL::InitVirtualWALInternal(
-    std::unordered_set<TableId> table_list, const HostPort hostport, const CoarseTimePoint deadline,
-    std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
+    std::unordered_set<TableId> table_list,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode, const HostPort hostport,
+    const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
     const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables) {
   DCHECK_EQ(publication_table_list_.size(), 0);
   LOG_WITH_PREFIX(INFO) << "Publication table list: " << AsString(table_list);
@@ -227,6 +234,10 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
     table_list.emplace(pg_publication_rel_table_id_);
     VLOG_WITH_PREFIX(1) << "Successfully added the catalog tables pg_class and pg_publication_rel "
                            "to the polling list.";
+  }
+
+  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    oid_to_relfilenode_ = std::move(oid_to_relfilenode);
   }
 
   for (const auto& table_id : table_list) {
@@ -1510,8 +1521,43 @@ std::vector<TabletId> CDCSDKVirtualWAL::GetTabletsForTable(const TableId& table_
   return tablet_ids;
 }
 
+void CDCSDKVirtualWAL::UpdateOidToRelfilenodeMap(
+    const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode) {
+  std::unordered_set<uint32_t> oids_to_be_added;
+  std::unordered_set<uint32_t> oids_to_be_removed;
+
+  for (const auto& [oid, _] : new_oid_to_relfilenode) {
+    // Either a new table is added to the publication or the relfilenode for an existing table has
+    // changed.
+    if (!oid_to_relfilenode_.contains(oid) ||
+        oid_to_relfilenode_[oid] != new_oid_to_relfilenode.at(oid)) {
+      oids_to_be_added.insert(oid);
+    }
+  }
+
+  for (const auto& [oid, _] : oid_to_relfilenode_) {
+    // The table has been removed from the publication.
+    if (!new_oid_to_relfilenode.contains(oid)) {
+      oids_to_be_removed.insert(oid);
+    }
+  }
+
+  for (const auto& oid_to_be_removed : oids_to_be_removed) {
+    VLOG_WITH_PREFIX(1) << "Removing entry [" << oid_to_be_removed << " , "
+                        << oid_to_relfilenode_[oid_to_be_removed] << "] from oid_to_relfilenode_";
+    oid_to_relfilenode_.erase(oid_to_be_removed);
+  }
+
+  for (const auto& oid_to_be_added : oids_to_be_added) {
+    VLOG_WITH_PREFIX(1) << "Adding / updating entry [" << oid_to_be_added << " , "
+                        << new_oid_to_relfilenode.at(oid_to_be_added) << "] to oid_to_relfilenode_";
+    oid_to_relfilenode_[oid_to_be_added] = new_oid_to_relfilenode.at(oid_to_be_added);
+  }
+}
+
 Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
-    const std::unordered_set<TableId>& new_tables, const HostPort hostport,
+    const std::unordered_set<TableId>& new_tables,
+    const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode, const HostPort hostport,
     const CoarseTimePoint deadline) {
   std::unordered_set<TableId> tables_to_be_added;
   std::unordered_set<TableId> tables_to_be_removed;
@@ -1580,6 +1626,9 @@ Status CDCSDKVirtualWAL::UpdatePublicationTableListInternal(
       VLOG_WITH_PREFIX(1) << "Table: " << table_id << " removed from the polling list";
     }
   }
+
+  // Update the oid_to_relfilenode_ map according to the newly added / removed table_ids.
+  UpdateOidToRelfilenodeMap(new_oid_to_relfilenode);
 
   return Status::OK();
 }
@@ -1699,6 +1748,11 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
   if (table_id.empty()) {
     return false;
   } else if (table_id == pg_class_table_id_) {
+    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
+      LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
+      return true;
+    }
+
     // We are only interested in INSERTS to pg_class when pub_all_tables is true. Also we are only
     // interested in tables (relations) but pg_class can get entries for indexes, views etc. We only
     // signal for a pub refresh when an entry is INSERTED into pg_class table for a relation.
@@ -1732,6 +1786,36 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
              << " received from sys catalog tablet in virtual WAL."
              << " pg_class_table_id_ = " << pg_class_table_id_
              << " pg_publication_rel_table_id_ = " << pg_publication_rel_table_id_;
+  return false;
+}
+
+bool CDCSDKVirtualWAL::CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record) {
+  auto row_message = record->row_message();
+  auto oid = GET_OID_FROM_PG_CLASS_RECORD(record);
+
+  if (!oid_to_relfilenode_.contains(oid)) {
+    return false;
+  }
+
+  // Drop table case.
+  if (row_message.op() == RowMessage_Op_DELETE) {
+    VLOG_WITH_PREFIX(1) << "Dropping of table with OID: " << oid << " has been detected";
+    return true;
+  }
+
+  if (row_message.op() == RowMessage_Op_INSERT || row_message.op() == RowMessage_Op_UPDATE) {
+    DCHECK_GT(row_message.new_tuple().size(), 7);
+    auto new_rel_file_node = GET_RELFILENODE_FROM_PG_CLASS_RECORD(record);
+
+    // Table re-write case.
+    if (new_rel_file_node != oid_to_relfilenode_[oid]) {
+      VLOG_WITH_PREFIX(1) << "Rewrite of table with OID " << oid
+                          << " has been detected. Old relfilenode: " << oid_to_relfilenode_[oid]
+                          << " new relfilenode: " << new_rel_file_node;
+      return true;
+    }
+  }
+
   return false;
 }
 

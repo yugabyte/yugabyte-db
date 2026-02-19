@@ -664,10 +664,16 @@ void CompactionJob::ProcessKeyValueCompaction(
       input->SeekToFirst();
     }
 
+    // Explicitly cleanup resource from previous iteration.
+    if (sub_compact->context) {
+      sub_compact->context->CompactionFinished();
+    }
+
     if (db_options_.compaction_context_factory) {
       auto context = CompactionContextOptions{
           .level0_inputs = *compact_->compaction->inputs(0),
           .boundary_extractor = sub_compact->boundary_extractor,
+          .compaction_reason = sub_compact->compaction->compaction_reason(),
       };
       sub_compact->context = (*db_options_.compaction_context_factory)(sub_compact, context);
       sub_compact->feed = sub_compact->context->Feed();
@@ -809,6 +815,11 @@ void CompactionJob::ProcessKeyValueCompaction(
     if (prev_perf_level != PerfLevel::kEnableTime) {
       SetPerfLevel(prev_perf_level);
     }
+  }
+
+  if (sub_compact->context) {
+    // Must be triggered to maybe free the resource, despite the compaction result.
+    sub_compact->context->CompactionFinished();
   }
 
   sub_compact->c_iter = nullptr;
@@ -1302,6 +1313,25 @@ void CompactionJob::LogCompaction() {
   // Let's check if anything will get logged. Don't prepare all the info if
   // we're not logging
   if (db_options_.info_log_level <= InfoLogLevel::INFO_LEVEL) {
+    // For non-manual compaction per-file info has already been logged by CompactionPicker.
+    if (compaction->is_manual_compaction()) {
+      for (size_t lvl_idx = 0; lvl_idx < compaction->num_input_levels(); lvl_idx++) {
+        const auto* input_level = compaction->input_levels(lvl_idx);
+        const auto num_files = input_level->num_files;
+        if (num_files == 0) {
+          continue;
+        }
+        for (size_t i = 0; i < num_files; i++) {
+          const auto& fd = input_level->files[i].fd;
+            RLOG(
+              InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+              "[%s] Manual: Picking file %" PRIu64 " with size %" PRIu64
+              " (metadata size %" PRIu64 ", data size %" PRIu64 ")",
+              cfd->GetName().c_str(), fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
+              fd.GetTotalFileSize() - fd.GetBaseFileSize());
+        }
+      }
+    }
     Compaction::InputLevelSummaryBuffer inputs_summary;
     RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacting %s, score %.2f", cfd->GetName().c_str(),

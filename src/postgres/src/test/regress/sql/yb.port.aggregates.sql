@@ -1106,7 +1106,6 @@ FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1) u;
 
--- YB: fails until https://github.com/yugabyte/yugabyte-db/issues/28920 is fixed.
 SELECT variance(unique1::int4), sum(unique1::int8), regr_count(unique1::float8, unique1::float8)
 FROM (SELECT * FROM tenk1
       UNION ALL SELECT * FROM tenk1

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -912,6 +913,11 @@ public class GFlagsUtil {
       if (queryLogConfig.getYsqlQueryLogConfig() != null
           && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
         YSQLQueryLogConfig ysqlQueryLogConfig = queryLogConfig.getYsqlQueryLogConfig();
+        // Add log_line_prefix if specified in the API
+        if (StringUtils.isNotEmpty(ysqlQueryLogConfig.getLogLinePrefix())) {
+          ysqlPgConfCsvEntries.add(
+              "\"log_line_prefix='" + ysqlQueryLogConfig.getLogLinePrefix() + "'\"");
+        }
         ysqlPgConfCsvEntries.add(
             encodeBooleanPgAuditFlag("log_duration", ysqlQueryLogConfig.isLogDuration()));
         ysqlPgConfCsvEntries.add(
@@ -1750,9 +1756,10 @@ public class GFlagsUtil {
       try {
         Files.createDirectory(localGflagFilePath);
       } catch (IOException e) {
+        LOG.error("Error while creating gflag directory: {}", e);
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
-            String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
+            String.format("Failed to create tmp gflag directory: %s", e.getMessage()));
       }
     }
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -1762,7 +1769,7 @@ public class GFlagsUtil {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR,
             String.format(
-                "Missing placement information for the node in universe {}. Can't Continue",
+                "Missing placement information for the node in universe: %s. Can't Continue",
                 universeUUID.toString()));
       } else {
         placementUUID = node.placementUuid;
@@ -2009,7 +2016,23 @@ public class GFlagsUtil {
     return cluster.userIntent.specificGFlags.isInheritFromPrimary();
   }
 
-  public static String getLogLinePrefix(String pgConfCsv) {
+  public static String getLogLinePrefix(QueryLogConfig queryLogConfig, String ysqlPgConfCsv) {
+    // Priority 1: User specificGFlags take precedence when explicitly set
+    String userLogLinePrefix = extractLogLinePrefixFromCsv(ysqlPgConfCsv);
+    if (!DEFAULT_LOG_LINE_PREFIX.equals(userLogLinePrefix)) {
+      return userLogLinePrefix;
+    }
+    // Priority 2: Fall back to query log API's log_line_prefix if available
+    if (queryLogConfig != null
+        && queryLogConfig.getYsqlQueryLogConfig() != null
+        && StringUtils.isNotEmpty(queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix())) {
+      return queryLogConfig.getYsqlQueryLogConfig().getLogLinePrefix();
+    }
+    // Priority 3: Return default
+    return DEFAULT_LOG_LINE_PREFIX;
+  }
+
+  private static String extractLogLinePrefixFromCsv(String pgConfCsv) {
     if (StringUtils.isEmpty(pgConfCsv)) {
       return DEFAULT_LOG_LINE_PREFIX;
     }
@@ -2140,5 +2163,216 @@ public class GFlagsUtil {
         });
 
     return result;
+  }
+
+  // Merges sensitive gflags, preserving actual values when REDACTED is received.
+  public static Map<String, String> mergeSensitiveGFlags(
+      Map<String, String> existingGFlags,
+      Map<String, String> newGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (existingGFlags == null || newGFlags == null) {
+      return newGFlags;
+    }
+
+    Map<String, String> mergedGFlags = new HashMap<>(newGFlags);
+
+    try {
+      Set<String> sensitiveGFlagFields =
+          RedactingService.getSensitiveGflagsForRedaction(ybSoftwareVersion, gFlagsValidation);
+
+      for (String sensitiveFlag : sensitiveGFlagFields) {
+        String newValue = newGFlags.get(sensitiveFlag);
+        String existingValue = existingGFlags.get(sensitiveFlag);
+
+        if (newValue != null
+            && newValue.equals(RedactingService.SECRET_REPLACEMENT)
+            && existingValue != null) {
+          mergedGFlags.put(sensitiveFlag, existingValue);
+          LOG.debug(
+              "Merged sensitive gflag {}: REDACTED -> preserved existing value", sensitiveFlag);
+        }
+      }
+
+      String newYsqlHbaConf = newGFlags.get("ysql_hba_conf_csv");
+      String existingYsqlHbaConf = existingGFlags.get("ysql_hba_conf_csv");
+
+      if (newYsqlHbaConf != null
+          && existingYsqlHbaConf == null
+          && newYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+        LOG.warn(
+            "ysql_hba_conf_csv is being added for the first time with REDACTED placeholder. "
+                + "The password cannot be restored - please provide the actual password.");
+      }
+
+      if (newYsqlHbaConf != null
+          && existingYsqlHbaConf != null
+          && newYsqlHbaConf.contains(RedactingService.SECRET_REPLACEMENT)) {
+        String mergedValue = mergeYsqlHbaConfLdapPassword(existingYsqlHbaConf, newYsqlHbaConf);
+        mergedGFlags.put("ysql_hba_conf_csv", mergedValue);
+        if (!mergedValue.contains(RedactingService.SECRET_REPLACEMENT)) {
+          LOG.debug(
+              "Merged ysql_hba_conf_csv: replaced ldapbindpasswd=REDACTED with original password");
+        }
+      }
+    } catch (Exception e) {
+      LOG.warn("Error in fetching sensitive gflags in mergeSensitiveGFlags flow: {}", e);
+    }
+
+    return mergedGFlags;
+  }
+
+  // Replaces REDACTED ldapbindpasswd in newValue with original password from existingValue.
+  private static String mergeYsqlHbaConfLdapPassword(String existingValue, String newValue) {
+    String originalPassword = extractLdapBindPasswd(existingValue);
+    if (originalPassword == null) {
+      LOG.warn("Could not extract ldapbindpasswd from existing ysql_hba_conf_csv");
+      return newValue;
+    }
+
+    if (originalPassword.equals(RedactingService.SECRET_REPLACEMENT)) {
+      LOG.error(
+          "Existing ysql_hba_conf_csv in DB already contains REDACTED! "
+              + "Cannot restore original password.");
+      return newValue;
+    }
+
+    String safePassword = java.util.regex.Matcher.quoteReplacement(originalPassword);
+    String result = newValue;
+
+    result =
+        result.replaceAll(
+            "ldapbindpasswd=" + RedactingService.SECRET_REPLACEMENT + "(?=[\\s,\"]|$)",
+            "ldapbindpasswd=" + safePassword);
+    result =
+        result.replace(
+            "ldapbindpasswd=\"" + RedactingService.SECRET_REPLACEMENT + "\"",
+            "ldapbindpasswd=\"" + originalPassword + "\"");
+    result =
+        result.replace(
+            "ldapbindpasswd=\"\"" + RedactingService.SECRET_REPLACEMENT + "\"\"",
+            "ldapbindpasswd=\"\"" + originalPassword + "\"\"");
+
+    return result;
+  }
+
+  // Extracts ldapbindpasswd from ysql_hba_conf_csv (handles unquoted, quoted, double-quoted).
+  private static String extractLdapBindPasswd(String ysqlHbaConf) {
+    if (ysqlHbaConf == null) {
+      return null;
+    }
+    java.util.regex.Pattern doubleQuotedPattern =
+        java.util.regex.Pattern.compile("ldapbindpasswd=\"\"([^\"]+)\"\"");
+    java.util.regex.Matcher doubleQuotedMatcher = doubleQuotedPattern.matcher(ysqlHbaConf);
+    if (doubleQuotedMatcher.find()) {
+      return doubleQuotedMatcher.group(1);
+    }
+    java.util.regex.Pattern quotedPattern =
+        java.util.regex.Pattern.compile("ldapbindpasswd=\"([^\"]+)\"");
+    java.util.regex.Matcher quotedMatcher = quotedPattern.matcher(ysqlHbaConf);
+    if (quotedMatcher.find()) {
+      return quotedMatcher.group(1);
+    }
+    java.util.regex.Pattern unquotedPattern =
+        java.util.regex.Pattern.compile("ldapbindpasswd=([^\\s,\"]+)");
+    java.util.regex.Matcher unquotedMatcher = unquotedPattern.matcher(ysqlHbaConf);
+    if (unquotedMatcher.find()) {
+      return unquotedMatcher.group(1);
+    }
+
+    return null;
+  }
+
+  // Merges sensitive SpecificGFlags, preserving actual values when REDACTED is received.
+  public static SpecificGFlags mergeSensitiveSpecificGFlags(
+      SpecificGFlags existingSpecificGFlags,
+      SpecificGFlags newSpecificGFlags,
+      GFlagsValidation gFlagsValidation,
+      String ybSoftwareVersion) {
+    if (existingSpecificGFlags == null || newSpecificGFlags == null) {
+      return newSpecificGFlags;
+    }
+
+    // Merge per-process flags
+    SpecificGFlags.PerProcessFlags mergedPerProcessFlags = null;
+    try {
+      if (newSpecificGFlags.getPerProcessFlags() != null) {
+        mergedPerProcessFlags = new SpecificGFlags.PerProcessFlags();
+        for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> entry :
+            newSpecificGFlags.getPerProcessFlags().value.entrySet()) {
+          UniverseTaskBase.ServerType serverType = entry.getKey();
+          Map<String, String> newProcessFlags = entry.getValue();
+          Map<String, String> existingProcessFlags =
+              existingSpecificGFlags.getPerProcessFlags() != null
+                  ? existingSpecificGFlags.getPerProcessFlags().value.get(serverType)
+                  : null;
+
+          Map<String, String> mergedProcessFlags =
+              mergeSensitiveGFlags(
+                  existingProcessFlags, newProcessFlags, gFlagsValidation, ybSoftwareVersion);
+          mergedPerProcessFlags.value.put(serverType, mergedProcessFlags);
+          if (!Objects.equals(mergedProcessFlags, newProcessFlags)) {
+            LOG.debug("Merged sensitive gflags for server type {}", serverType);
+          }
+        }
+      }
+    } catch (Exception e) {
+      LOG.warn(
+          "Error in merging sensitive gflags in PerProcessFlags of mergeSensitiveSpecificGFlags"
+              + " flow: {}",
+          e);
+    }
+
+    // Merge per-AZ flags
+    Map<UUID, SpecificGFlags.PerProcessFlags> mergedPerAZFlags = new HashMap<>();
+    try {
+      if (newSpecificGFlags.getPerAZ() != null) {
+        for (Map.Entry<UUID, SpecificGFlags.PerProcessFlags> entry :
+            newSpecificGFlags.getPerAZ().entrySet()) {
+          UUID azUuid = entry.getKey();
+          SpecificGFlags.PerProcessFlags newAZFlags = entry.getValue();
+          SpecificGFlags.PerProcessFlags existingAZFlags =
+              existingSpecificGFlags.getPerAZ() != null
+                  ? existingSpecificGFlags.getPerAZ().get(azUuid)
+                  : null;
+
+          SpecificGFlags.PerProcessFlags mergedAZFlags = new SpecificGFlags.PerProcessFlags();
+          if (newAZFlags != null && newAZFlags.value != null) {
+            for (Map.Entry<UniverseTaskBase.ServerType, Map<String, String>> serverEntry :
+                newAZFlags.value.entrySet()) {
+              UniverseTaskBase.ServerType serverType = serverEntry.getKey();
+              Map<String, String> newServerFlags = serverEntry.getValue();
+              Map<String, String> existingServerFlags =
+                  existingAZFlags != null && existingAZFlags.value != null
+                      ? existingAZFlags.value.get(serverType)
+                      : null;
+
+              Map<String, String> mergedServerFlags =
+                  mergeSensitiveGFlags(
+                      existingServerFlags, newServerFlags, gFlagsValidation, ybSoftwareVersion);
+              mergedAZFlags.value.put(serverType, mergedServerFlags);
+              if (!Objects.equals(mergedServerFlags, newServerFlags)) {
+                LOG.debug("Merged sensitive gflags for AZ {} server type {}", azUuid, serverType);
+              }
+            }
+          }
+          mergedPerAZFlags.put(azUuid, mergedAZFlags);
+        }
+      }
+    } catch (Exception e) {
+      LOG.warn(
+          "Error in merging sensitive gflags in PerAZFlags of mergeSensitiveSpecificGFlags flow:"
+              + " {}",
+          e);
+    }
+
+    // Create new SpecificGFlags with merged values
+    SpecificGFlags mergedSpecificGFlags = new SpecificGFlags();
+    mergedSpecificGFlags.setPerProcessFlags(mergedPerProcessFlags);
+    mergedSpecificGFlags.setPerAZ(mergedPerAZFlags);
+    mergedSpecificGFlags.setGflagGroups(newSpecificGFlags.getGflagGroups());
+    mergedSpecificGFlags.setInheritFromPrimary(newSpecificGFlags.isInheritFromPrimary());
+
+    return mergedSpecificGFlags;
   }
 }

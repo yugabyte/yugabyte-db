@@ -538,7 +538,8 @@ public class NodeAgentRpcPayload {
                   config,
                   queryLogConfig,
                   metricsExportConfig,
-                  GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+                  GFlagsUtil.getLogLinePrefix(
+                      queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
                   NodeManager.getOtelColMetricsPort(taskParams),
                   nodeAgent)
               .toAbsolutePath()

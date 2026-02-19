@@ -897,7 +897,10 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1075,7 +1078,10 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -1349,7 +1355,10 @@
             "SAFETIME_LAG",
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
-            "THP_INCORRECT_SETTINGS"
+            "THP_INCORRECT_SETTINGS",
+            "CDCSDK_FLUSH_LAG",
+            "CDCSDK_EXPIRY",
+            "OTEL_LOG_EXPORT_FAILURE"
           ],
           "type" : "string"
         },
@@ -2751,6 +2760,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -2811,6 +2821,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -3415,6 +3428,10 @@
             "YB_CONTROLLER"
           ],
           "type" : "string"
+        },
+        "backupStats" : {
+          "description" : "WARNING: This is a preview API that could change. Backup stats with YSQL dump.",
+          "type" : "boolean"
         },
         "backupType" : {
           "description" : "Backup type",
@@ -5465,6 +5482,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -5525,6 +5543,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -7947,6 +7968,32 @@
       },
       "type" : "object"
     },
+    "ExporterRetryConfig" : {
+      "description" : "Optional retry configuration for telemetry export (Otel retry_on_failure)",
+      "properties" : {
+        "enabled" : {
+          "description" : "Whether retry on failure is enabled",
+          "example" : true,
+          "type" : "boolean"
+        },
+        "initialInterval" : {
+          "description" : "Initial interval between retries. Duration string (e.g. \"30s\", \"1m\"). Used as initial_interval in Otel collector.",
+          "example" : "30s",
+          "type" : "string"
+        },
+        "maxElapsedTime" : {
+          "description" : "Maximum elapsed time for all retries. Duration string (e.g. \"60m\", \"1800m\"). Used as max_elapsed_time in Otel collector.",
+          "example" : "60m",
+          "type" : "string"
+        },
+        "maxInterval" : {
+          "description" : "Maximum interval between retries. Duration string (e.g. \"10m\", \"1800m\"). Used as max_interval in Otel collector.",
+          "example" : "10m",
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "ExtraDependencies" : {
       "description" : "Extra dependencies",
       "properties" : {
@@ -8539,6 +8586,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -8599,6 +8647,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -9335,6 +9386,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -9395,6 +9447,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -10845,6 +10900,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -10905,6 +10961,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -11562,6 +11621,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -11622,6 +11682,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -13762,7 +13825,6 @@
         "instanceType",
         "ip",
         "region",
-        "sshUser",
         "zone"
       ],
       "type" : "object"
@@ -13876,7 +13938,11 @@
               "type" : "object"
             },
             "logsEndpoint" : {
-              "description" : "Logs endpoint. The target URL to send log data to (e.g.: https://example.com:4318/v1/logs). If this setting is present the endpoint setting is ignored logs. Allowed only for HTTP protocol",
+              "description" : "Logs endpoint. The target URL to send log data to (e.g.: https://example.com:4318/v1/logs). If this setting is present the endpoint setting is ignored for logs. Allowed only for HTTP protocol",
+              "type" : "string"
+            },
+            "metricsEndpoint" : {
+              "description" : "Metrics endpoint. The target URL to send metric data to (e.g.: https://example.com:4318/v1/metrics). If this setting is present the endpoint setting is ignored for metrics. Allowed only for HTTP protocol",
               "type" : "string"
             },
             "protocol" : {
@@ -13886,6 +13952,10 @@
                 "HTTP"
               ],
               "type" : "string"
+            },
+            "retryOnFailure" : {
+              "$ref" : "#/definitions/ExporterRetryConfig",
+              "description" : "Optional retry-on-failure config for the Otel collector exporter. When set, overrides default retry settings (initial_interval, max_interval, max_elapsed_time). Duration format: e.g. \"30s\", \"1m\", \"60m\"."
             },
             "timeoutSeconds" : {
               "description" : "Timeout in seconds",
@@ -14995,6 +15065,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "state" : {
+          "enum" : [
+            "LEADER",
+            "STAND_BY"
+          ],
+          "type" : "string"
+        },
         "uuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -15007,7 +15084,7 @@
         "address",
         "instance_state",
         "is_leader",
-        "is_local",
+        "state",
         "uuid",
         "ybaVersion"
       ],
@@ -15850,6 +15927,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -15910,6 +15988,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -16877,6 +16958,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -16937,6 +17019,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -17704,6 +17789,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -17764,6 +17850,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19223,6 +19312,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -19283,6 +19373,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -19412,6 +19505,10 @@
             },
             "forcePathStyle" : {
               "description" : "Force Path Style. Set this to true to force the request to use path-style addressing",
+              "type" : "boolean"
+            },
+            "includeUniverseAndNodeInPrefix" : {
+              "description" : "When true, appends universe UUID and node name to the S3 prefix. Example: 'yb-logs/<universe-uuid>/<node-name>'",
               "type" : "boolean"
             },
             "marshaler" : {
@@ -19868,6 +19965,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -19928,6 +20026,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -20272,6 +20373,7 @@
               "CheckCertificateConfig",
               "CheckMemory",
               "CheckLocale",
+              "CheckShellConnectivity",
               "CheckGlibc",
               "CheckOpentelemetryOperator",
               "PGUpgradeTServerCheck",
@@ -20332,6 +20434,9 @@
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
               "TablespaceValidationOnRemove",
+              "CheckServiceLiveness",
+              "CheckNodeCommandExecution",
+              "CheckNodeDataDirDiskSpace",
               "OperatorImportResource"
             ],
             "type" : "string"
@@ -21094,6 +21199,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -21154,6 +21260,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22186,6 +22295,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -22246,6 +22356,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -22795,7 +22908,7 @@
               "ImportUniverse",
               "MigrateUniverse",
               "KubernetesToggleImmutableYbc",
-              "OperatorImportUniverse"
+              "OperatorImport"
             ],
             "type" : "string"
           },
@@ -23502,6 +23615,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -23562,6 +23676,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -24172,6 +24289,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -24232,6 +24350,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -24271,7 +24392,6 @@
         }
       },
       "required" : [
-        "allowInsecure",
         "clusters",
         "creatingUser",
         "enableClientToNodeEncrypt",
@@ -25097,6 +25217,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -25157,6 +25278,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -25731,6 +25855,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -25791,6 +25916,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -26365,6 +26493,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -26425,6 +26554,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -27509,6 +27641,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -27569,6 +27702,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -28630,6 +28766,7 @@
             "CheckCertificateConfig",
             "CheckMemory",
             "CheckLocale",
+            "CheckShellConnectivity",
             "CheckGlibc",
             "CheckOpentelemetryOperator",
             "PGUpgradeTServerCheck",
@@ -28690,6 +28827,9 @@
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
             "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
             "OperatorImportResource"
           ],
           "type" : "string"
@@ -35648,7 +35788,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,
@@ -36321,7 +36461,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,

@@ -37,8 +37,13 @@
 #include "catalog/pg_opfamily_d.h"
 #include "catalog/pg_policy_d.h"
 #include "catalog/pg_proc_d.h"
+#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_namespace_d.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_rel_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_ts_config_d.h"
 #include "catalog/pg_ts_config_map_d.h"
@@ -75,6 +80,15 @@
 #define TABLE_REWRITE_OBJID_COLUMN_ID 1
 
 static List *rewritten_table_oid_list = NIL;
+
+/* DDLs ignored for replication. */
+#define IGNORED_DDL_LIST \
+	X(CMDTAG_ALTER_PUBLICATION) \
+	X(CMDTAG_ALTER_SUBSCRIPTION) \
+	X(CMDTAG_CREATE_PUBLICATION) \
+	X(CMDTAG_CREATE_SUBSCRIPTION) \
+	X(CMDTAG_DROP_PUBLICATION) \
+	X(CMDTAG_DROP_SUBSCRIPTION)
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -209,6 +223,21 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag)
 	{
 #define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
 			ALLOWED_DDL_LIST
+#undef X
+		default:
+			return false;
+	}
+
+	return false;
+}
+
+static bool
+IsIgnoredDdlCommand(CommandTag command_tag)
+{
+	switch (command_tag)
+	{
+#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+			IGNORED_DDL_LIST
 #undef X
 		default:
 			return false;
@@ -770,6 +799,47 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
+void
+PushVariable(JsonbParseState *state, char *guc_name)
+{
+	char *value = GetConfigOptionByName(guc_name, NULL, false);
+	if (!value)
+		return;
+
+	AddStringJsonEntry(state, guc_name, value);
+}
+
+void
+PushVariableMap(JsonbParseState *state)
+{
+	AddJsonKey(state, "variables");
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	/*----------
+	 * To maximize safety, we always record the session variables.
+	 *
+	 * This protects us against the source and target clusters having
+	 * different defaults and changes of which DDLs use these variables.
+	 *----------
+	 */
+
+	/* This affects what tablespace a table is created in. */
+	PushVariable(state, "default_tablespace");
+	/* This affects whether a table is range or hash started. */
+	PushVariable(state, "yb_use_hash_splitting_by_default");
+
+	/* Settings that affect parsing of string literals. */
+	PushVariable(state, "standard_conforming_strings");
+	/* Settings that affect parsing of dates, times, and intervals. */
+	PushVariable(state, "DateStyle");
+	PushVariable(state, "TimeZone");
+	PushVariable(state, "IntervalStyle");
+	/* Settings that affect parsing of function bodies. */
+	PushVariable(state, "check_function_bodies");
+
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -906,6 +976,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			should_replicate_ddl = !is_temporary_object;
 		}
+		else if (IsIgnoredDdlCommand(command_tag))
+		{
+			continue;
+		}
 		else
 		{
 			elog(ERROR, "Unsupported DDL: %s\n%s", command_tag_name,
@@ -934,6 +1008,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	PushEnumLabelMap(state, "enum_label_info", enum_label_list);
 	PushNameToOidMap(state, "sequence_info", sequence_info_list);
 	PushNameToOidMap(state, "type_info", type_info_list);
+
+	/*
+	 * Record session variables that are known to meaningfully affect the DDL
+	 * execution.
+	 */
+	PushVariableMap(state);
 
 	return should_replicate_ddl;
 }
@@ -1048,6 +1128,17 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			/*
+			 * Ignore logical replication objects (not replicated via xCluster).
+			 * Note: Schema-level publications (PublicationNamespaceRelationId)
+			 * and SUBSCRIPTION are not supported yet in YB.
+			 */
+			case PublicationRelationId:
+			case PublicationRelRelationId:
+			case PublicationNamespaceRelationId:
+			case SubscriptionRelationId:
+			case SubscriptionRelRelationId:
+				continue;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,

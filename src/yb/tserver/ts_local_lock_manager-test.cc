@@ -49,6 +49,7 @@ DECLARE_bool(enable_ysql);
 
 using namespace std::literals;
 
+using yb::docdb::DocDBTableLocksConflictMatrixTest;
 using yb::docdb::IntentTypeSetAdd;
 using yb::docdb::LockState;
 using yb::docdb::ObjectLockFastpathLockType;
@@ -68,6 +69,7 @@ constexpr auto kObject1 = 1;
 constexpr auto kObject2 = 2;
 constexpr uint32_t kDefaultObjectId = 0;
 constexpr uint32_t kDefaultObjectSubId = 0;
+constexpr auto kDefaultTestStatusTabletId = "test_status_tablet";
 
 class TSLocalLockManagerTest : public TabletServerTestBase {
  protected:
@@ -97,10 +99,12 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelations(
       const ObjectLockOwner& owner, uint32_t database_id, const std::vector<uint32_t>& relation_ids,
       const std::vector<TableLockType>& lock_types,
-      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr) {
+      CoarseTimePoint deadline = CoarseTimePoint::max(), LockStateMap* state_map = nullptr,
+      TransactionId bg_txn = TransactionId::Nil()) {
     SCHECK_EQ(relation_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
     tserver::AcquireObjectLockRequestPB req;
     owner.PopulateLockRequest(&req);
+    req.set_status_tablet(kDefaultTestStatusTabletId);
     for (size_t i = 0; i < relation_ids.size(); i++) {
       auto* lock = req.add_object_locks();
       lock->set_database_oid(database_id);
@@ -110,6 +114,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       lock->set_lock_type(lock_types[i]);
     }
     req.set_propagated_hybrid_time(MonoTime::Now().ToUint64());
+    if (!bg_txn.IsNil()) {
+      req.set_background_transaction_id(bg_txn.data(), bg_txn.size());
+    }
     Synchronizer synchronizer;
     lm_->AcquireObjectLocksAsync(req, deadline, synchronizer.AsStdStatusCallback());
     RETURN_NOT_OK(synchronizer.Wait());
@@ -117,8 +124,14 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
       return Status::OK();
     }
     auto res = VERIFY_RESULT(DetermineObjectsToLock(req.object_locks()));
-    for (auto& lock_batch_entry : res.lock_batch) {
-      (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+    bool is_lock_redundant = std::ranges::all_of(res.lock_batch, [&](auto lock_batch_entry) {
+      return docdb::LockStateContains(
+          (*state_map)[lock_batch_entry.key], IntentTypeSetAdd(lock_batch_entry.intent_types));
+    });
+    if (!is_lock_redundant) {
+      for (auto& lock_batch_entry : res.lock_batch) {
+        (*state_map)[lock_batch_entry.key] += IntentTypeSetAdd(lock_batch_entry.intent_types);
+      }
     }
     return Status::OK();
   }
@@ -126,8 +139,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
   Status LockRelation(
       const ObjectLockOwner& owner, uint32_t database_id, uint32_t relation_id,
       TableLockType lock_type, CoarseTimePoint deadline = CoarseTimePoint::max(),
-      LockStateMap* state_map = nullptr) {
-    return LockRelations(owner, database_id, {relation_id}, {lock_type}, deadline, state_map);
+      LockStateMap* state_map = nullptr, TransactionId bg_txn = TransactionId::Nil()) {
+    return LockRelations(
+        owner, database_id, {relation_id}, {lock_type}, deadline, state_map, bg_txn);
   }
 
   Status ReleaseLocksForSubtxn(
@@ -163,6 +177,22 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
 
   size_t WaitingLocksSize() {
     return lm_->TEST_WaitingLocksSize();
+  }
+
+  bool DoesLockTypeContainLock(TableLockType a, TableLockType b) {
+    auto entries1 = docdb::GetEntriesForLockType(a);
+    auto entries2 = docdb::GetEntriesForLockType(b);
+    for (auto& [key2, intent_type2] : entries2) {
+      bool contains = std::ranges::any_of(entries1, [&](auto key_and_intent) {
+        return key_and_intent.first == key2 &&
+               docdb::LockStateContains(IntentTypeSetAdd(key_and_intent.second),
+                                        IntentTypeSetAdd(intent_type2));
+      });
+      if (!contains) {
+        return false;
+      }
+    }
+    return true;
   }
 
   tserver::TSLocalLockManager* lm_;
@@ -202,6 +232,33 @@ TEST_F(TSLocalLockManagerTest, TestFastpathLockAndRelease) {
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+}
+
+TEST_F(TSLocalLockManagerTest, TestFastpathConflictMatrix) {
+  google::SetVLOGLevel("object_lock_shared*", 1);
+  auto inner_txn = lock_owner_registry_->Register(kTxn2.txn_id, TabletId());
+  for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
+    auto outer_lock = TableLockType(l);
+    auto outer_entries = docdb::GetEntriesForLockType(outer_lock);
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, outer_lock));
+    for (auto fastpath_lock : docdb::ObjectLockFastpathLockTypeList()) {
+      auto inner_lock = FastpathLockTypeToTableLockType(fastpath_lock);
+      auto inner_entries = docdb::GetEntriesForLockType(inner_lock);
+      LOG(INFO) << "Checking fastpath for " << TableLockType_Name(inner_lock)
+                << " with existing lock " << TableLockType_Name(outer_lock);
+      auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(outer_entries, inner_entries));
+      auto lock_acquired = ASSERT_RESULT(LockRelationPgFastpath(
+          inner_txn.tag(), kTxn2.subtxn_id, kDatabase1, kObject1, fastpath_lock));
+      ASSERT_TRUE(is_conflicting ^ lock_acquired)
+          << "lock type " << TableLockType_Name(outer_lock)
+          << ", " << TableLockType_Name(inner_lock)
+          << " - is_conflicting: " << is_conflicting
+          << ", fastpath_lock_acquired: " << lock_acquired;
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    }
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
 }
 
 TEST_F(TSLocalLockManagerTest, TestFastpathConflictWithExisting) {
@@ -483,7 +540,7 @@ TEST_F(TSLocalLockManagerTest, TestDowngradeDespiteExclusiveLockWaiter) {
       auto lock_type_2 = TableLockType(l2);
       auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
       const auto is_conflicting = ASSERT_RESULT(
-          docdb::DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
 
       if (is_conflicting) {
         SyncPoint::GetInstance()->LoadDependency({
@@ -662,7 +719,8 @@ TEST_F(TSLocalLockManagerTest, TestWaiterResumptionStateLogic) {
   hold_waiter_being_resumed = true;
   {
     auto log_waiter = StringWaiterLogSink("added to wait-queue on");
-    ASSERT_OK(ReleaseLocksForSubtxn(lock_owners[0], CoarseTimePoint::max()));
+    ASSERT_OK(ReleaseLocksForSubtxn(
+        ObjectLockOwner{lock_owners[0].txn_id, 2}, CoarseTimePoint::max()));
     ASSERT_OK(WaitFor([&]() {
       return resumed_waiters >= kTotalNumWaiters;
     }, 5s * kTimeMultiplier, "Expected 2 more waiters to be scheduled for resumption"));
@@ -720,12 +778,66 @@ TEST_F(TSLocalLockManagerTest, YB_LINUX_DEBUG_ONLY_TEST(TestFastpathCrash)) {
   ASSERT_OK(ReleaseLocksForOwner(kTxn1));
 }
 
+TEST_F(TSLocalLockManagerTest, RedundadntLockBecomesNoOp) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      bool is_inner_lock_redundant = DoesLockTypeContainLock(lock_type_1, lock_type_2);
+      auto deadline = CoarseMonoClock::Now() + 60s;
+      LOG(INFO) << "Checking " << TableLockType_Name(lock_type_1)
+                << ", " << TableLockType_Name(lock_type_2);
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1, deadline));
+      auto log_waiter = is_inner_lock_redundant
+          ? RegexWaiterLogSink(".*Ignoring redundant acquire.*")
+          : RegexWaiterLogSink(".*Locking key :.*with existing state:.*");
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_2, deadline));
+      ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(5 * kTimeMultiplier)));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+    }
+  }
+}
+
+TEST_F(TSLocalLockManagerTest, TestConflictsWithBgTxnAreIgnored) {
+  google::SetVLOGLevel("object_lock_manager*", 4);
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock_type_1 = TableLockType(l1);
+    auto entries1 = docdb::GetEntriesForLockType(lock_type_1);
+    for (auto l2 = TableLockType_MIN + 1; l2 <= TableLockType_MAX; l2++) {
+      auto lock_type_2 = TableLockType(l2);
+      auto entries2 = docdb::GetEntriesForLockType(lock_type_2);
+      const auto is_conflicting = ASSERT_RESULT(
+          DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(entries1, entries2));
+      if (!is_conflicting) {
+        continue;
+      }
+      ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, lock_type_1));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn2, kDatabase1, kObject1, lock_type_1, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn1.txn_id));
+      ASSERT_OK(LockRelation(
+          kTxn1, kDatabase1, kObject1, lock_type_2, CoarseMonoClock::Now() + 1s * kTimeMultiplier,
+          nullptr, kTxn2.txn_id));
+
+      ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+      ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+      ASSERT_EQ(GrantedLocksSize(), 0);
+      ASSERT_EQ(WaitingLocksSize(), 0);
+    }
+  }
+}
+
 class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
  public:
   void BeforeSharedMemorySetup() override {
     DdlLockEntriesPB entries;
     auto* lock_request = entries.mutable_lock_entries()->Add();
     lock_request->set_txn_id(kTxn1.txn_id.data(), kTxn1.txn_id.size());
+    lock_request->set_status_tablet(kDefaultTestStatusTabletId);
     lock_request->set_subtxn_id(kTxn1.subtxn_id);
     auto* lock = lock_request->mutable_object_locks()->Add();
     lock->set_database_oid(kDatabase1);

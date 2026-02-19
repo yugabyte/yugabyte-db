@@ -6554,3 +6554,96 @@ invalid_pair:
 			 errmsg("invalid Unicode surrogate pair")));
 	PG_RETURN_NULL();			/* keep compiler quiet */
 }
+
+/*
+ * YB: Built-in levenshtein SQL-callable wrapper functions.
+ * These are added as built-in functions (rather than extension functions from
+ * fuzzystrmatch) to enable expression pushdown to DocDB.
+ */
+Datum
+yb_levenshtein(PG_FUNCTION_ARGS)
+{
+	text	   *src = PG_GETARG_TEXT_PP(0);
+	text	   *dst = PG_GETARG_TEXT_PP(1);
+	const char *s_data;
+	const char *t_data;
+	int			s_bytes,
+				t_bytes;
+
+	s_data = VARDATA_ANY(src);
+	t_data = VARDATA_ANY(dst);
+	s_bytes = VARSIZE_ANY_EXHDR(src);
+	t_bytes = VARSIZE_ANY_EXHDR(dst);
+
+	PG_RETURN_INT32(varstr_levenshtein(s_data, s_bytes, t_data, t_bytes,
+									   1, 1, 1, false));
+}
+
+Datum
+yb_levenshtein_with_costs(PG_FUNCTION_ARGS)
+{
+	text	   *src = PG_GETARG_TEXT_PP(0);
+	text	   *dst = PG_GETARG_TEXT_PP(1);
+	int			ins_c = PG_GETARG_INT32(2);
+	int			del_c = PG_GETARG_INT32(3);
+	int			sub_c = PG_GETARG_INT32(4);
+	const char *s_data;
+	const char *t_data;
+	int			s_bytes,
+				t_bytes;
+
+	s_data = VARDATA_ANY(src);
+	t_data = VARDATA_ANY(dst);
+	s_bytes = VARSIZE_ANY_EXHDR(src);
+	t_bytes = VARSIZE_ANY_EXHDR(dst);
+
+	PG_RETURN_INT32(varstr_levenshtein(s_data, s_bytes, t_data, t_bytes,
+									   ins_c, del_c, sub_c, false));
+}
+
+Datum
+yb_levenshtein_less_equal(PG_FUNCTION_ARGS)
+{
+	text	   *src = PG_GETARG_TEXT_PP(0);
+	text	   *dst = PG_GETARG_TEXT_PP(1);
+	int			max_d = PG_GETARG_INT32(2);
+	const char *s_data;
+	const char *t_data;
+	int			s_bytes,
+				t_bytes;
+
+	s_data = VARDATA_ANY(src);
+	t_data = VARDATA_ANY(dst);
+	s_bytes = VARSIZE_ANY_EXHDR(src);
+	t_bytes = VARSIZE_ANY_EXHDR(dst);
+
+	PG_RETURN_INT32(varstr_levenshtein_less_equal(s_data, s_bytes,
+												  t_data, t_bytes,
+												  1, 1, 1,
+												  max_d, false));
+}
+
+Datum
+yb_levenshtein_less_equal_with_costs(PG_FUNCTION_ARGS)
+{
+	text	   *src = PG_GETARG_TEXT_PP(0);
+	text	   *dst = PG_GETARG_TEXT_PP(1);
+	int			ins_c = PG_GETARG_INT32(2);
+	int			del_c = PG_GETARG_INT32(3);
+	int			sub_c = PG_GETARG_INT32(4);
+	int			max_d = PG_GETARG_INT32(5);
+	const char *s_data;
+	const char *t_data;
+	int			s_bytes,
+				t_bytes;
+
+	s_data = VARDATA_ANY(src);
+	t_data = VARDATA_ANY(dst);
+	s_bytes = VARSIZE_ANY_EXHDR(src);
+	t_bytes = VARSIZE_ANY_EXHDR(dst);
+
+	PG_RETURN_INT32(varstr_levenshtein_less_equal(s_data, s_bytes,
+												  t_data, t_bytes,
+												  ins_c, del_c, sub_c,
+												  max_d, false));
+}

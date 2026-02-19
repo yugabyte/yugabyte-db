@@ -48,13 +48,13 @@ import { createErrorMessage } from '../../../../../../utils/ObjectUtils';
 //icons
 import { Info } from '@material-ui/icons';
 
-import { ReactComponent as Italic } from '../icons/italic.svg';
-import { ReactComponent as Bold } from '../icons/bold.svg';
-import { ReactComponent as Underline } from '../icons/underline.svg';
-import { ReactComponent as Strikethrough } from '../icons/strikethrough.svg';
+import Italic from '../icons/italic.svg';
+import Bold from '../icons/bold.svg';
+import Underline from '../icons/underline.svg';
+import Strikethrough from '../icons/strikethrough.svg';
 import { FormatAlignCenter, FormatAlignLeft, FormatAlignRight } from '@material-ui/icons';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
-import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
+import ClearTemplate from '../icons/clearTemplate.svg';
 import { RbacValidator } from '../../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
 

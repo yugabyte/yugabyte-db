@@ -1310,7 +1310,7 @@ This behaviour may be unexpected, but it is still safe. Only the schema definiti
 
 Setting up a YugabyteDB server to run the connector requires a database user that can perform replications. Replication can be performed only by a database user that has appropriate permissions and only for a configured number of hosts.
 
-Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
+Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` attributes, as mentioned in [Security](#security), it is best not to provide the replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
 
 **Prerequisites:**
 
@@ -1323,6 +1323,12 @@ To provide a user with replication permissions, define a YugabyteDB role that ha
 ```sql
 CREATE ROLE <name> REPLICATION LOGIN;
 ```
+
+{{< tip title="REPLICATION is non-inheritable" >}}
+
+Like other PostgreSQL role attributes, REPLICATION is not inheritable. Being a member of a role with REPLICATION will not allow the member to connect to the server in replication mode, even if the membership grant has the INHERIT attribute. You must actually [SET ROLE](../../../../api/ysql/the-sql-language/statements/dcl_set_role/) to a specific role having the REPLICATION attribute in order to make use of the attribute.
+
+{{< /tip >}}
 
 ### Setting privileges to enable the connector to create YugabyteDB publications when you use `pgoutput` or `yboutput`
 
@@ -1384,7 +1390,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](/preview/develop/drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](/stable/develop/drivers-orms/java/yugabyte-jdbc-reference/). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 
@@ -1411,6 +1417,16 @@ To deploy the connector, you install the connector archive, configure the connec
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
+
+{{< note title="Note" >}}
+
+Using connector version `dz.2.5.2.yb.2025.2`, you may get the following error while deploying the connector:
+
+`ERROR: cannot export or import snapshot when ysql_enable_pg_export_snapshot is disabled.`
+
+Use connector version `dz.2.5.2.yb.2025.2.2`, or `dz.2.5.2.yb.2025.1.2` and earlier versions instead.
+
+{{< /note >}}
 
 ### Creating Kafka topics
 
@@ -1687,7 +1703,7 @@ In these cases, the error message has details about the problem and possibly a s
 
 ### YB-TServer becomes unavailable
 
-When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](/preview/develop/drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
+When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses the [YugabyteDB Java driver](/stable/develop/drivers-orms/java/), the connection is handled internally and the connector restores the connection to another running node.
 
 The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact.
 

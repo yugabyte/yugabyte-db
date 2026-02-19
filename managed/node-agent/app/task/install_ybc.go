@@ -11,6 +11,7 @@ import (
 	pb "node-agent/generated/service"
 	"node-agent/util"
 	"path/filepath"
+	"strings"
 )
 
 type InstallYbcHandler struct {
@@ -192,6 +193,16 @@ func (h *InstallYbcHandler) Handle(ctx context.Context) (*pb.DescribeTaskRespons
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-
+	systemdCtx := map[string]any{
+		"mount_paths":              strings.Join(h.param.GetMountPoints(), " "),
+		"user_name":                h.username,
+		"yb_home_dir":              h.param.GetYbHomeDir(),
+		"use_system_level_systemd": false,
+	}
+	err = module.UpdateUserSystemdUnits(ctx, h.username, "controller", systemdCtx, h.logOut)
+	if err != nil {
+		util.FileLogger().Error(ctx, err.Error())
+		return nil, err
+	}
 	return nil, nil
 }

@@ -74,7 +74,7 @@ public class TestYCMConfiguration extends BaseYsqlConnMgr {
     // The deploy phase should fail if we continue to use a larger
     // application name, we should expect only the reset phase to
     // be executed, leading to an empty string for application_name.
-    reduceQuerySizePacketAndRestartCluster(70);
+    reduceQuerySizePacketAndRestartCluster(75);
 
     try (Connection conn = getConnectionBuilder()
                     .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)

@@ -27,8 +27,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
@@ -43,9 +43,9 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -57,7 +57,7 @@
 
 using std::string;
 
-DEFINE_RUNTIME_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
+DEPRECATE_FLAG(int32, cdc_snapshot_batch_size, "02_2026");
 
 DEFINE_RUNTIME_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 
@@ -77,6 +77,11 @@ DEFINE_RUNTIME_uint64(
     cdc_stream_records_threshold_size_bytes, 4_MB,
     "The threshold for the size of the response of a GetChanges call. The actual size may be a "
     "little higher than this value.");
+
+DEFINE_RUNTIME_uint64(
+    cdc_snapshot_records_threshold_size_bytes, 4_MB,
+    "The threshold for the size of the CDC snapshot GetChanges response. The actual size may be "
+    "slightly higher than this value.");
 
 DEFINE_test_flag(
     bool, cdc_snapshot_failure, false,
@@ -108,7 +113,7 @@ DEFINE_NON_RUNTIME_bool(cdc_enable_intra_transactional_before_image,
                         false,
                         "If 'true', before image is populated for the intra-transactional DMLs.");
 
-DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, false,
+DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "If 'true', CDC streaming will filter out intents from aborted "
                     "subtransactions (rolled-back savepoints). This prevents CDC consumers "
                     "from receiving data that was never actually committed. This flag is only "
@@ -117,8 +122,7 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, false,
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
-namespace yb {
-namespace cdc {
+namespace yb::cdc {
 
 using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
@@ -191,7 +195,7 @@ Status AddColumnToMap(
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
       RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
           ql_value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
-          cdc_datum_message));
+          *cdc_datum_message));
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
@@ -534,7 +538,6 @@ Status DoPopulateBeforeImage(
   auto docdb = tablet->doc_db();
   auto pending_op = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
 
-  const auto log_prefix = tablet->LogPrefix();
   auto doc_read_context = table_info->doc_read_context;
   dockv::ReaderProjection projection(schema);
 
@@ -1977,7 +1980,7 @@ Status PopulateCDCSDKSnapshotRecord(
         if (col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
           RETURN_NOT_OK(docdb::SetValueFromQLBinaryWrapper(
               *value, col_schema.pg_type_oid(), enum_oid_label_map, composite_atts_map,
-              cdc_datum_message));
+              *cdc_datum_message));
         } else {
           cdc_datum_message->set_column_type(col_schema.pg_type_oid());
           cdc_datum_message->set_pg_type(col_schema.pg_type_oid());
@@ -2168,7 +2171,7 @@ Status GetConsistentWALRecords(
 
     if (read_ops.messages.size() > 0) {
       *msgs_holder = consensus::ReplicateMsgsHolder(
-          nullptr, std::move(read_ops.messages), std::move((*consumption)));
+          /*ops=*/nullptr, std::move(read_ops.messages), std::move((*consumption)));
     }
 
     // Handle the case where WAL doesn't have the apply record for all the committed transactions.
@@ -2265,7 +2268,7 @@ Status GetWALRecords(
 
   if (read_ops.messages.size() > 0) {
     *msgs_holder = consensus::ReplicateMsgsHolder(
-        nullptr, std::move(read_ops.messages), std::move((*consumption)));
+        /*ops=*/nullptr, std::move(read_ops.messages), std::move((*consumption)));
   }
 
   return Status::OK();
@@ -2503,19 +2506,20 @@ Status HandleGetChangesForSnapshotRequest(
 
     if (time.read.ToUint64() == 0) {
       // This means there is no data from the sansphot.
-      SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, checkpoint, nullptr);
+      SetCheckpoint(
+          data.op_id.term, data.op_id.index, 0, "", 0, checkpoint, /*last_streamed_op_id=*/nullptr);
     } else {
       *safe_hybrid_time_resp = data.log_ht;
       // This should go to cdc_state table.
       // Below condition update the checkpoint in cdc_state table.
       SetCheckpoint(
-          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), checkpoint, nullptr);
+          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), checkpoint,
+          /*last_streamed_op_id=*/nullptr);
     }
 
     *checkpoint_updated = true;
   } else {
     // Snapshot is already taken.
-    HybridTime ht;
     time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
     *safe_hybrid_time_resp = HybridTime(from_op_id.snapshot_time());
     const auto& next_key = from_op_id.key();
@@ -2536,8 +2540,8 @@ Status HandleGetChangesForSnapshotRequest(
       *table_name = VERIFY_RESULT(GetColocatedTableName(tablet_peer, colocated_table_id));
     }
 
-    int limit = FLAGS_cdc_snapshot_batch_size;
-    int fetched = 0;
+    auto threshold = FLAGS_cdc_snapshot_records_threshold_size_bytes;
+    uint64_t bytes_fetched = 0;
     std::vector<qlexpr::QLTableRow> rows;
     qlexpr::QLTableRow row;
     dockv::ReaderProjection projection(*schema_details.schema);
@@ -2550,12 +2554,13 @@ Status HandleGetChangesForSnapshotRequest(
         tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
     auto table_id =
         colocated_table_id.empty() ? tablet_ptr->metadata()->table_id() : colocated_table_id;
-    while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
+    while (bytes_fetched < threshold && VERIFY_RESULT(iter->FetchNext(&row))) {
       RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
           resp, &row, *schema_details.schema, *table_name, table_id, time, enum_oid_label_map,
           composite_atts_map, from_op_id, next_key, tablet_ptr->table_type() == PGSQL_TABLE_TYPE,
           throughput_metrics));
-      fetched++;
+      bytes_fetched +=
+          resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1).ByteSizeLong();
     }
     dockv::SubDocKey sub_doc_key = VERIFY_RESULT(iter->GetSubDocKey());
 
@@ -2565,7 +2570,9 @@ Status HandleGetChangesForSnapshotRequest(
       LOG(INFO) << "Done with snapshot operation for tablet_id: " << tablet_id
                 << " stream_id: " << stream_id << ", from_op_id: " << from_op_id.DebugString();
       // Get the checkpoint or read the checkpoint from the table/cache.
-      SetCheckpoint(from_op_id.term(), from_op_id.index(), 0, "", 0, checkpoint, nullptr);
+      SetCheckpoint(
+          from_op_id.term(), from_op_id.index(), 0, "", 0, checkpoint,
+          /*last_streamed_op_id=*/nullptr);
       *checkpoint_updated = true;
     } else {
       VLOG(1) << "Setting next sub doc key is " << sub_doc_key.Encode().ToStringBuffer();
@@ -2573,7 +2580,7 @@ Status HandleGetChangesForSnapshotRequest(
       checkpoint->set_write_id(-1);
       SetCheckpoint(
           from_op_id.term(), from_op_id.index(), -1, sub_doc_key.Encode().ToStringBuffer(),
-          time.read.ToUint64(), checkpoint, nullptr);
+          time.read.ToUint64(), checkpoint, /*last_streamed_op_id=*/nullptr);
       *checkpoint_updated = true;
     }
   }
@@ -2727,13 +2734,23 @@ Status GetChangesForCDCSDK(
           &last_seen_op_id, &last_readable_opid_index, safe_hybrid_time_req, deadline, true,
           &wal_records, &all_checkpoints));
 
-    // We don't need to wait for wal to get updated in this case because we will anyways stream
-    // only until we complete this transaction.
-    wait_for_wal_update = false;
-
     have_more_messages = HaveMoreMessages(true);
 
-    if (wal_records.size() > (size_t)wal_segment_index &&
+    if (wal_records.empty()) {
+      RSTATUS_DCHECK(
+          wait_for_wal_update, IllegalState,
+          Format(
+            "Did not receive any WAL record for from_op_id: $0 for tablet_id: $1 and stream_id: $2",
+            OpId::FromPB(from_op_id),
+            tablet_id,
+            stream_id));
+
+      VLOG(1) << "Returning empty response while resuming partial txn."
+              << " tablet_id: " << tablet_id << ", stream_id: " << stream_id
+              << ", from_op_id: " << OpId::FromPB(from_op_id)
+              << ", last_seen_op_id: " << last_seen_op_id.ToString();
+    } else if (
+        wal_records.size() > (size_t)wal_segment_index &&
         wal_records[wal_segment_index]->op_type() ==
             consensus::OperationType::UPDATE_TRANSACTION_OP &&
         wal_records[wal_segment_index]->transaction_state().has_commit_hybrid_time()) {
@@ -2750,46 +2767,46 @@ Status GetChangesForCDCSDK(
 
       op_id.term = msg->id().term();
       op_id.index = msg->id().index();
-    } else {
-      LOG(DFATAL) << "Unable to read the transaction commit time for tablet_id: " << tablet_id
-                  << " with stream_id: " << stream_id
-                  << " because there is no RAFT log message read from WAL with from_op_id: "
-                  << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
-      if (wal_records.size() > 0) {
-        VLOG(1) << "Expected message with UPDATE_TRANSACTION_OP but instead received a message"
-                << "with op: " << wal_records[wal_segment_index]->op_type();
+
+      RETURN_NOT_OK(
+          reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
+      auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
+
+      auto aborted_subtxns =
+          FLAGS_cdc_enable_savepoint_rollback_filtering
+              ? VERIFY_RESULT(SubtxnSet::FromPB(
+                    wal_records[wal_segment_index]->transaction_state().aborted().set()))
+              : SubtxnSet();
+
+      RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
+          op_id, transaction_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
+          enum_oid_label_map, composite_atts_map, request_source, resp, &consumption, &checkpoint,
+          tablet_peer, &keyValueIntents, &stream_state, client, cached_schema_details,
+          schema_packing_storages, commit_timestamp, throughput_metrics));
+
+      if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
+        AcknowledgeStreamedMultiShardTxn(
+            wal_records[wal_segment_index], ShouldUpdateSafeTime(wal_records, wal_segment_index),
+            safe_hybrid_time_req, &next_checkpoint_index, all_checkpoints, &checkpoint,
+            last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
+      } else {
+        pending_intents = true;
+        VLOG(1) << "Couldn't stream all records with this GetChanges call for tablet_id: "
+                << tablet_id << ", transaction_id: " << transaction_id.ToString()
+                << ", commit_time: " << commit_timestamp
+                << ". The remaining records will be streamed in susequent GetChanges calls.";
+        SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
       }
-    }
-
-    RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
-    auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
-
-    auto aborted_subtxns =
-        FLAGS_cdc_enable_savepoint_rollback_filtering
-            ? VERIFY_RESULT(SubtxnSet::FromPB(
-                  wal_records[wal_segment_index]->transaction_state().aborted().set()))
-            : SubtxnSet();
-
-    RETURN_NOT_OK(ProcessIntentsWithInvalidSchemaRetry(
-        op_id, transaction_id, xrepl_origin_id, aborted_subtxns, stream_metadata,
-        enum_oid_label_map, composite_atts_map, request_source, resp, &consumption, &checkpoint,
-        tablet_peer, &keyValueIntents, &stream_state, client, cached_schema_details,
-        schema_packing_storages, commit_timestamp, throughput_metrics));
-
-    if (checkpoint.write_id() == 0 && checkpoint.key().empty() && wal_records.size()) {
-      AcknowledgeStreamedMultiShardTxn(
-          wal_records[wal_segment_index], ShouldUpdateSafeTime(wal_records, wal_segment_index),
-          safe_hybrid_time_req, &next_checkpoint_index, all_checkpoints, &checkpoint,
-          last_streamed_op_id, &safe_hybrid_time_resp, &wal_segment_index);
+      checkpoint_updated = true;
     } else {
-      pending_intents = true;
-      VLOG(1) << "Couldn't stream all records with this GetChanges call for tablet_id: "
-              << tablet_id << ", transaction_id: " << transaction_id.ToString()
-              << ", commit_time: " << commit_timestamp
-              << ". The remaining records will be streamed in susequent GetChanges calls.";
-      SetSafetimeFromRequestIfInvalid(safe_hybrid_time_req, &safe_hybrid_time_resp);
+      return STATUS_FORMAT(
+          InternalError,
+          "Unexpectedly did not find a WAL message corresponding to from_op_id: $0 "
+          "for tablet_id: $1 and stream_id: $2",
+          OpId::FromPB(from_op_id),
+          tablet_id,
+          stream_id);
     }
-    checkpoint_updated = true;
   } else {
     OpId last_seen_op_id = op_id;
     bool saw_non_actionable_message = false;
@@ -3274,5 +3291,4 @@ Status GetChangesForCDCSDK(
   return Status::OK();
 }  // NOLINT(readability/fn_size)
 
-}  // namespace cdc
-}  // namespace yb
+} // namespace yb::cdc

@@ -1,19 +1,8 @@
 import Clipboard from 'clipboard';
+import { setCookie } from 'browser-cookie-utils';
 
 const $ = window.jQuery;
 let yugabytePageFinderList = [];
-
-/**
- * Create Cookie.
- */
-function setCookie(name, value, monthToLive) {
-  let cookie = `${name}=${encodeURIComponent(value)}; max-age=${(monthToLive * 30 * (24 * 60 * 60))}; path=/`;
-  if (location.hostname !== 'localhost') {
-    cookie += '; secure=true';
-  }
-
-  document.cookie = cookie;
-}
 
 /**
  * Show popup when the text limit exceed in Pills.
@@ -316,8 +305,14 @@ $(document).ready(() => {
 
       $(document).unbind('mousemove');
       if ($('body').hasClass('dragging')) {
-        setCookie('leftMenuWidth', mouseMoveX, 3);
-        setCookie('leftMenuShowHide', '', 3);
+        setCookie('leftMenuWidth', mouseMoveX, {
+          timeToLive: 3,
+          unit: 'month'
+        });
+        setCookie('leftMenuShowHide', '', {
+          timeToLive: 3,
+          unit: 'month'
+        });
       }
 
       $('body').removeClass('dragging');
@@ -775,7 +770,10 @@ $(window).resize(() => {
   $('.td-main #dragbar').attr('style', '');
   $('.td-main').attr('style', '');
   setTimeout(() => {
-    setCookie('leftMenuWidth', 300, 3);
+    setCookie('leftMenuWidth', 300, {
+      timeToLive: 3,
+      unit: 'month'
+    });
   }, 1000);
   yugabytePageFinderWidth();
 });

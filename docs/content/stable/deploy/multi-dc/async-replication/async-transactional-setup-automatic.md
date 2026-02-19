@@ -1,8 +1,8 @@
 ---
-title: Set up transactional xCluster
+title: Set up transactional xCluster (Automatic)
 headerTitle: Set up transactional xCluster
 linkTitle: Setup
-description: Setting up transactional (active-active single-master) replication between two YB universes
+description: Automatic setup of transactional (active-active single-master) replication between two universes
 headContent: Set up transactional xCluster replication
 menu:
   stable:
@@ -34,10 +34,10 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
-To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.1, v2.25.1, or later.
+To use automatic-mode transactional xCluster replication, both the Primary and Standby universes must be running v2025.2.1 or later.
 {{< /note >}}
 
-{{<tags/feature/ea idea="153">}}Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
+Automatic transactional xCluster replication handles all aspects of replication for both data and schema changes.
 
 In particular, DDL changes made to the Primary universe are automatically replicated to the Standby universe.
 
@@ -102,8 +102,27 @@ them.
 
 {{< warning title="Warning" >}}
 
-Not all DDLs can be automatically replicated yet; see [XCluster Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+Most DDLs can be automatically replicated, however there are still some [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
 {{< /warning >}}
 
 DDL operations must only be performed on the Primary universe. All schema changes are automatically replicated to the Standby universe.
+
+## Check which universe is primary
+
+To determine which universe is the Primary in xCluster replication, connect to a database that is in replication and run the following command:
+
+```sql
+SELECT yb_xcluster_ddl_replication.get_replication_role();
+```
+
+```output
+ get_replication_role
+----------------------
+ source
+(1 row)
+```
+
+The `source` role indicates that you are talking to the Primary version of the database and that it is ready to accept traffic.
+
+Other role values are possible depending on whether a setup or switchover is in progress and whether you are talking to the Primary or Standby. These other roles are subject to change in future releases.

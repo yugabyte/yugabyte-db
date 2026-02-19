@@ -213,7 +213,7 @@ class LoadBalancerMockedBase : public YBTest {
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
         PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
-        NewReplica(ts_desc, state, role, &replica);
+        NewReplica(ts_desc, state, role, consensus::PeerMemberType::VOTER, &replica);
         replica.member_type = consensus::PeerMemberType::VOTER;
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
@@ -294,7 +294,9 @@ class LoadBalancerMockedBase : public YBTest {
       std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
+    NewReplica(
+        ts_desc, tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER,
+        consensus::PeerMemberType::VOTER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }

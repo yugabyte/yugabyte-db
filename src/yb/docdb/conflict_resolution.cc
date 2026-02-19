@@ -522,6 +522,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     auto self = shared_from_this();
     pending_requests_.store(conflict_data_->NumActiveTransactions());
     TracePtr trace(Trace::CurrentTrace());
+    ash::WaitStateSnapshot wait_state_snapshot;
+    SET_WAIT_STATUS(TransactionStatusCache_DoGetCommitData);
     for (auto& i : conflict_data_->RemainingTransactions()) {
       auto& transaction = i;
       TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
@@ -532,9 +534,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         request_scope_.request_id(),
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction, trace, wait_state = ash::WaitStateInfo::CurrentWaitState()](
+        [self, &transaction, trace, wait_state_snapshot](
             Result<TransactionStatusResult> result) {
-          ADOPT_WAIT_STATE(std::move(wait_state));
+          ADOPT_WAIT_STATE(wait_state_snapshot.wait_state);
           ADOPT_TRACE(trace.get());
           if (result.ok()) {
             transaction.ProcessStatus(*result);
@@ -549,6 +551,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
           DCHECK(!transaction.status_tablet.empty() ||
                  transaction.status != TransactionStatus::PENDING);
           if (self->pending_requests_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            SET_WAIT_STATUS_FROM_SNAPSHOT(wait_state_snapshot);
             self->FetchTransactionStatusesDone();
           }
         },

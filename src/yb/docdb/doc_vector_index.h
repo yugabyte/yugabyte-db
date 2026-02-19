@@ -27,6 +27,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/storage/storage_types.h"
+
 #include "yb/tablet/tablet_fwd.h"
 
 #include "yb/util/kv_util.h"
@@ -62,13 +64,51 @@ using DocVectorIndexSearchResultEntries = std::vector<DocVectorIndexSearchResult
 struct DocVectorIndexSearchResult {
   bool could_have_more_data;
   DocVectorIndexSearchResultEntries entries;
+
+  std::string ToString() const {
+     return YB_STRUCT_TO_STRING((num_entries, AsString(entries.size())), could_have_more_data);
+  }
 };
 
-struct DocVectorIndexedTableContext {
-  virtual ~DocVectorIndexedTableContext() = default;
-  virtual Result<docdb::DocRowwiseIteratorPtr> CreateIterator(HybridTime read_ht) const = 0;
+class DocVectorIndexReverseMappingReader {
+ public:
+  virtual ~DocVectorIndexReverseMappingReader() = default;
+
+  // Returns the value which corresponds to the specified key without DocHybridTime.
+  virtual Result<Slice> Fetch(Slice key) = 0;
+
+  // Returns the value which corresponds to the specified vector_id.
+  Result<Slice> Fetch(const vector_index::VectorId& vector_id);
+
+  // Returns ybctid which corresponds to the specified vector_id. Returns empty value if
+  // no ybctid is found or kTombstone corresponds to the specified vector_id.
+  Result<Slice> FetchYbctid(const vector_index::VectorId& vector_id);
 };
-using DocVectorIndexedTableContextPtr = std::unique_ptr<DocVectorIndexedTableContext>;
+
+using DocVectorIndexReverseMappingReaderPtr = std::unique_ptr<DocVectorIndexReverseMappingReader>;
+
+class DocVectorIndexContext {
+ public:
+  virtual ~DocVectorIndexContext() = default;
+  virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
+      const ReadHybridTime& read_ht) const = 0;
+};
+
+using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
+
+struct DocVectorIndexMetrics {
+  explicit DocVectorIndexMetrics(const MetricEntityPtr& metric_entity);
+
+  EventStatsPtr convert_us;
+  EventStatsPtr filter_checked;
+  EventStatsPtr filter_accepted;
+  EventStatsPtr filter_removed;
+  EventStatsPtr read_data_us;
+  EventStatsPtr read_intents_us;
+  EventStatsPtr merge_us;
+  EventStatsPtr found_intents;
+  EventStatsPtr result_size;
+};
 
 class DocVectorIndex {
  public:
@@ -80,10 +120,11 @@ class DocVectorIndex {
   virtual const PgVectorIdxOptionsPB& options() const = 0;
   virtual const std::string& path() const = 0;
   virtual HybridTime hybrid_time() const = 0;
-  virtual const DocVectorIndexedTableContext& indexed_table_context() const = 0;
+  virtual const DocVectorIndexContext& context() const = 0;
+  virtual const DocVectorIndexMetrics& metrics() const = 0;
 
   virtual Status Insert(
-      const DocVectorIndexInsertEntries& entries, const rocksdb::UserFrontiers& frontiers) = 0;
+      const DocVectorIndexInsertEntries& entries, const storage::UserFrontiers& frontiers) = 0;
   virtual Result<DocVectorIndexSearchResult> Search(
       Slice vector, const vector_index::SearchOptions& options,
       bool could_have_missing_entries) = 0;
@@ -94,7 +135,7 @@ class DocVectorIndex {
   virtual Status Flush() = 0;
   virtual Status WaitForFlush() = 0;
   virtual docdb::ConsensusFrontierPtr GetFlushedFrontier() = 0;
-  virtual rocksdb::FlushAbility GetFlushAbility() = 0;
+  virtual storage::FlushAbility GetFlushAbility() = 0;
   virtual Status CreateCheckpoint(const std::string& out) = 0;
   virtual const std::string& ToString() const = 0;
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
@@ -105,6 +146,7 @@ class DocVectorIndex {
   virtual void CompleteShutdown() = 0;
 
   virtual bool TEST_HasBackgroundInserts() const = 0;
+  virtual size_t TEST_NextManifestFileNo() const = 0;
 
   bool BackfillDone();
 
@@ -136,7 +178,7 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    DocVectorIndexedTableContextPtr indexed_table_context,
+    DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity);

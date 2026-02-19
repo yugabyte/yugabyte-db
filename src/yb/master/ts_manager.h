@@ -114,7 +114,8 @@ class TSManager {
   // persisted but is kept for backwards compatibility.
   Status RegisterFromRaftConfig(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache);
+      CloudInfoPB&& local_master_cloud_info, const LeaderEpoch& epoch,
+      rpc::ProxyCache* proxy_cache);
 
   // Lookup an existing TS descriptor from a heartbeat request. If found, update the TSDescriptor
   // using the metadata in the heartbeat request.
@@ -123,7 +124,7 @@ class TSManager {
 
   Result<TSDescriptorPtr> RegisterFromHeartbeat(
       const TSHeartbeatRequestPB& heartbeat_request, const LeaderEpoch& epoch,
-      CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache);
+      CloudInfoPB&& local_master_cloud_info, rpc::ProxyCache* proxy_cache);
 
   // Return all of the currently registered TS descriptors into the provided list.
   void GetAllDescriptors(TSDescriptorVector* descs) const;
@@ -182,7 +183,8 @@ class TSManager {
   Result<TSDescriptorPtr> RegisterInternal(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
       std::optional<std::reference_wrapper<const TSHeartbeatRequestPB>> request,
-      CloudInfoPB&& local_cloud_info, const LeaderEpoch& epoch, rpc::ProxyCache* proxy_cache);
+      CloudInfoPB&& local_master_cloud_info, const LeaderEpoch& epoch,
+      rpc::ProxyCache* proxy_cache);
 
   // Encodes the mutations that must be performed to register a new tserver, or update the
   // registration of an already registered tserver.
@@ -202,7 +204,7 @@ class TSManager {
   // writes with various locks is complex.
   Result<RegistrationMutationData> ComputeRegistrationMutationData(
       const NodeInstancePB& instance, const TSRegistrationPB& registration,
-      CloudInfoPB&& local_cloud_info, rpc::ProxyCache* proxy_cache,
+      CloudInfoPB&& local_master_cloud_info, rpc::ProxyCache* proxy_cache,
       RegisteredThroughHeartbeat registered_through_heartbeat) REQUIRES(registration_lock_);
 
   // Perform the mutations encoded in RegistrationMutationData.

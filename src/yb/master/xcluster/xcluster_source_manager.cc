@@ -26,13 +26,15 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_types.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/ysql_sequence_util.h"
 
@@ -771,12 +773,10 @@ void XClusterSourceManager::RecordHiddenTablets(
       continue;
     }
 
-    decltype(HiddenTabletInfo::split_tablets) split_tablets = {};
     auto tablet_lock = hidden_tablet->LockForRead();
     auto& tablet_pb = tablet_lock->pb;
-    if (tablet_pb.split_tablet_ids_size() == kDefaultNumSplitParts) {
-      split_tablets = {tablet_pb.split_tablet_ids(0), tablet_pb.split_tablet_ids(1)};
-    }
+    std::vector<TabletId> split_tablets(
+        tablet_pb.split_tablet_ids().begin(), tablet_pb.split_tablet_ids().end());
 
     HiddenTabletInfo info{
         .table_id = hidden_tablet->table()->id(),

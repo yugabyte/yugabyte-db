@@ -17,6 +17,76 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.2.2 - February 17, 2026
+
+### Enhancements
+
+- TIMETZ (time with time zone) and pgvector columns are now flagged as unsupported for live migration in the assessment report, and the corresponding columns are automatically excluded from live migration.
+
+### Bug fixes
+
+- Fixed an issue where `export schema` could hang while fetching redundant index information during schema export.
+- Fixed a potential data loss issue in live migration where events could be marked as processed before being durably written to disk.
+- Corrected the default value of the `use-yb-grpc-connector` parameter in configuration templates from true to false.
+
+## v2026.2.1 - February 3, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.2.1.
+
+{{< /note >}}
+
+### New feature
+
+- Support for case-sensitive schema names in PostgreSQL migrations. PostgreSQL schemas that use quoted identifiers (for example, `"pg-schema"`, `"Schema"`) are now correctly handled in all migration workflows: assessment, export schema, export data, live migration, and also the grant-migration-permissions script. The `--source-db-schema` or `schema_list` parameter accepts schema names with or without quotes. Quoted names are preserved and matched correctly.
+
+### Enhancement
+
+- Voyager now automatically re-runs the internal assessment during export schema with the `--start-clean` flag if the `assess-migration` command was skipped. This ensures metadata remains in sync after a clean start and avoids stale assessment data.
+
+## v2026.1.1 - January 20, 2026
+
+### Enhancements
+
+- Improved assessment validation. When replica endpoints are provided during a migration assessment, Voyager now validates that they belong to the same cluster as the primary by comparing the system identifier. Misconfigurations are detected and flagged early in the migration process.
+
+- When importing snapshot data to the target YugabyteDB cluster, `import-data` now schedules sharded table imports in descending order of size (as opposed to a random order). This ensures that the import of larger tables starts sooner, avoiding the scenario where the largest tables are imported towards the end, which can cause an uneven load on the cluster and become a bottleneck during snapshot import.
+
+### Bug fixes
+
+- Fixed an issue in live migration (fall-back or fall-forward) where INTERVAL columns were not being handled correctly during value conversion, causing import-data to error out.
+
+- Fixed an issue in live migration where prepared statement name collisions occurred when schema or table identifiers exceeded PostgreSQL's 63 character limit. The fix ensures distinct statement names are generated for different tables and operations, even those with long identifiers.
+
+## v2025.12.2 - December 30, 2025
+
+### Highlight
+
+- Live migration for PostgreSQL source database (with fall-forward or fall-back using [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/)) is {{<tags/feature/ga>}}.
+
+### New features
+
+- The assess-migration command now collects metadata from PostgreSQL primary and replica nodes in parallel, significantly improving assessment performance for multi-node deployments.
+- Added support for User-Defined Types (UDTs) and Array types (including arrays of enums, hstore, and tsvector) with [YugabyteDB Connector](../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) in live migration with fall-back or fall-forward workflows.
+
+### Enhancements
+
+- Enhanced guardrail checks to validate all required permissions in the source database before starting export data. Missing permissions are now clearly reported with specific details, preventing migration failures due to insufficient privileges.
+- Assessment topology in reports. The assessment report now includes topology information about primary and replica nodes assessed, providing better visibility into the scope of the assessment. This information is also sent with call-home diagnostics.
+- Added a new `--primary-only` flag to the assess-migration command for PostgreSQL sources. When specified, the assessment skips read replica discovery and assessment, allowing you to assess only the primary database.
+- Updated the default target YugabyteDB version to `2025.2.0.0`.
+- SAVEPOINT usage detection in migration assessment. The assess-migration command now detects and reports SAVEPOINT usage (SAVEPOINT, ROLLBACK TO SAVEPOINT, and RELEASE SAVEPOINT) in source database transactions. This is important because YugabyteDB CDC has a known limitation where DML operations rolled back via ROLLBACK TO SAVEPOINT are incorrectly emitted as CDC events, which can cause data inconsistencies during fall-forward or fall-back workflows.
+
+### Bug fixes
+
+- Fixed an issue where resumption of live migration could fail for events larger than 20MB with the error string length exceeds the maximum length. The object mapper limits have been increased to 500MB to handle large-sized events during resumption.
+- Fixed a performance issue with large BYTEA type columns during live migration streaming. The value converter now uses StringBuilder instead of string concatenation, improving performance when processing rows with large binary data.
+- Fixed an issue with expression-based unique indexes that are present only on partitions and not on the root table. These indexes are now properly detected and handled, with events for such tables being executed sequentially to prevent conflicts.
+- Fixed an issue with conflict detection cache for partitioned tables where a unique constraint or index is present on leaf partitions but not on the root table. The unique columns from all partitions are now correctly aggregated to the root table for proper conflict detection.
+- Fixed handling of LTREE datatype in live migration streaming changes for all workflows (live migration, fall-forward, and fall-back).
+- Fixed an issue where multi-range type columns (INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE) and custom range type columns caused errors during live migration. These column types are now appropriately skipped with a warning.
+
 ## v2025.12.1 - December 9, 2025
 
 {{< note title="Important: Breaking change" >}}

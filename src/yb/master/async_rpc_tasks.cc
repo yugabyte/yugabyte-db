@@ -1187,10 +1187,12 @@ bool ShouldRetrySplitTabletRPC(const Status& s) {
 // ============================================================================
 AsyncGetTabletSplitKey::AsyncGetTabletSplitKey(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const ManualSplit is_manual_split, LeaderEpoch epoch, DataCallbackType result_cb)
+    const ManualSplit is_manual_split, int split_factor, LeaderEpoch epoch,
+    DataCallbackType result_cb)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)), result_cb_(result_cb) {
   req_.set_tablet_id(tablet_id());
   req_.set_is_manual_split(is_manual_split);
+  req_.set_split_factor(split_factor);
 }
 
 void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
@@ -1237,9 +1239,20 @@ bool AsyncGetTabletSplitKey::SendRequest(int attempt) {
 void AsyncGetTabletSplitKey::Finished(const Status& status) {
   if (result_cb_) {
     if (status.ok()) {
-      result_cb_(Data{
-          .split_encoded_key = resp_.split_encoded_key(),
-          .split_partition_key = resp_.split_partition_key()});
+      Data data;
+      if (resp_.split_partition_keys_size() > 0) {
+        DCHECK_EQ(resp_.split_partition_keys_size(), req_.split_factor() - 1);
+        DCHECK_EQ(resp_.split_encoded_keys_size(), req_.split_factor() - 1);
+        data.split_encoded_keys.assign(
+            resp_.split_encoded_keys().begin(), resp_.split_encoded_keys().end());
+        data.split_partition_keys.assign(
+            resp_.split_partition_keys().begin(), resp_.split_partition_keys().end());
+      } else {
+        data.split_encoded_keys.push_back(resp_.deprecated_split_encoded_key());
+        data.split_partition_keys.push_back(resp_.deprecated_split_partition_key());
+      }
+
+      result_cb_(data);
     } else {
       result_cb_(status);
     }
@@ -1251,15 +1264,21 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 // ============================================================================
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-    const std::array<TabletId, kDefaultNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-                                   LeaderEpoch epoch)
+    const std::vector<TabletId>& new_tablet_ids,
+    const std::vector<std::string>& split_encoded_keys,
+    const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch)
   : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {
   req_.set_tablet_id(tablet_id());
-  req_.set_new_tablet1_id(new_tablet_ids[0]);
-  req_.set_new_tablet2_id(new_tablet_ids[1]);
-  req_.set_split_encoded_key(split_encoded_key);
-  req_.set_split_partition_key(split_partition_key);
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_encoded_keys.size());
+  DCHECK_EQ(new_tablet_ids.size() - 1, split_partition_keys.size());
+  req_.set_deprecated_new_tablet1_id(new_tablet_ids[0]);
+  req_.set_deprecated_new_tablet2_id(new_tablet_ids[1]);
+  req_.set_deprecated_split_encoded_key(split_encoded_keys.front());
+  req_.set_deprecated_split_partition_key(split_partition_keys.front());
+  req_.mutable_new_tablet_ids()->Add(new_tablet_ids.begin(), new_tablet_ids.end());
+  req_.mutable_split_encoded_keys()->Add(split_encoded_keys.begin(), split_encoded_keys.end());
+  req_.mutable_split_partition_keys()->Add(
+      split_partition_keys.begin(), split_partition_keys.end());
 }
 
 void AsyncSplitTablet::HandleResponse(int attempt) {

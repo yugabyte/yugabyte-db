@@ -80,6 +80,9 @@ var certEncryptionInTransitCmd = &cobra.Command{
 					formatter.RedColor))
 		}
 
+		primaryUserIntent := clusters[0].GetUserIntent()
+		enableClientToNodeEncrypt := primaryUserIntent.GetEnableClientToNodeEncrypt()
+
 		upgradeOption, err := cmd.Flags().GetString("upgrade-option")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
@@ -123,16 +126,21 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+		rootCAUnchanged := false
 		if !util.IsEmptyString(rootCAName) {
 			for _, cert := range certs {
 				if strings.Compare(cert.GetLabel(), rootCAName) == 0 {
 					rootCA := cert.GetUuid()
 					if strings.Compare(rootCA, universeRootCA) == 0 {
-						logrus.Fatalf(
-							formatter.Colorize("Root CA is already set to "+rootCAName+"\n",
-								formatter.RedColor))
+						// Root CA is same as current - don't fail yet, client root CA might be different
+						rootCAUnchanged = true
+						logrus.Debugf(
+							"Root CA is already set to %s, checking if client root CA is different\n",
+							rootCAName,
+						)
+					} else {
+						logrus.Debugf("Setting Root CA to: %s\n", rootCAName)
 					}
-					logrus.Debugf("Setting Root CA to: %s\n", rootCAName)
 					requestBody.SetRootCA(cert.GetUuid())
 					break
 				}
@@ -146,6 +154,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 				)
 			}
 		} else {
+			rootCAUnchanged = true
 			logrus.Debugf("Root CA is Universe's Root CA\n")
 			requestBody.SetRootCA(universeRootCA)
 		}
@@ -154,6 +163,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
+		clientRootCAUnchanged := false
 		if rootAndClientRootCASame {
 			if !util.IsEmptyString(clientRootCAName) &&
 				!util.IsEmptyString(rootCAName) &&
@@ -166,18 +176,21 @@ var certEncryptionInTransitCmd = &cobra.Command{
 			} else {
 				logrus.Debugf("Root and Client Root CA are same\n")
 				requestBody.SetClientRootCA(requestBody.GetRootCA())
+				clientRootCAUnchanged = rootCAUnchanged
 			}
 		} else {
 			if !util.IsEmptyString(clientRootCAName) {
+				// User explicitly provided a client root CA
 				for _, cert := range certs {
 					if strings.Compare(cert.GetLabel(), clientRootCAName) == 0 {
 						clientRootCA := cert.GetUuid()
 						if strings.Compare(clientRootCA, universeClientRootCA) == 0 {
-							logrus.Fatalf(
-								formatter.Colorize("Client Root CA is already set to "+clientRootCAName+"\n",
-									formatter.RedColor))
+							// Client Root CA is same as current - don't fail yet, root CA might be different
+							clientRootCAUnchanged = true
+							logrus.Debugf("Client Root CA is already set to %s, checking if root CA is different\n", clientRootCAName)
+						} else {
+							logrus.Debugf("Setting Client Root CA to: %s\n", clientRootCAName)
 						}
-						logrus.Debugf("Setting Client Root CA to: %s\n", clientRootCAName)
 						requestBody.SetClientRootCA(cert.GetUuid())
 						break
 					}
@@ -187,10 +200,21 @@ var certEncryptionInTransitCmd = &cobra.Command{
 						formatter.Colorize("No client root CA found with name: "+clientRootCAName+"\n",
 							formatter.RedColor))
 				}
+			} else if !enableClientToNodeEncrypt {
+				// Client-to-node encryption is disabled, don't set clientRootCA
+				// This check must come before checking universeClientRootCA to avoid
+				// sending clientRootCA when C2N is disabled (even if universe has one from prior config)
+				clientRootCAUnchanged = true
+				logrus.Debugf("Client Root CA not set (client-to-node encryption disabled)\n")
 			} else if len(universeClientRootCA) != 0 {
+				// C2N is enabled and universe has a clientRootCA, use it
+				clientRootCAUnchanged = true
 				logrus.Debugf("Client Root CA is Universe's Client Root CA\n")
 				requestBody.SetClientRootCA(universeClientRootCA)
 			} else {
+				// C2N is enabled but no clientRootCA set, default to rootCA
+				clientRootCAUnchanged = rootCAUnchanged
+				logrus.Debugf("Client Root CA defaulting to Root CA (client-to-node encryption enabled)\n")
 				requestBody.SetClientRootCA(universeRootCA)
 			}
 		}
@@ -228,6 +252,17 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		} else {
 			requestBody.SetRootAndClientRootCASame(rootAndClientRootCASame)
 			logrus.Debugf("Setting rootAndClientRootCASame to: %t\n", rootAndClientRootCASame)
+		}
+
+		// Fail if no changes are being made: both CAs unchanged and no self-signed cert rotation
+		if rootCAUnchanged && clientRootCAUnchanged &&
+			!rotateSelfSignedClientCert && !rotateSelfSignedServerCert {
+			logrus.Fatalf(
+				formatter.Colorize(
+					"No certificate rotation requested: Root CA and Client Root CA are already set "+
+						"to the requested values and no self-signed certificate rotation was requested\n",
+					formatter.RedColor,
+				))
 		}
 
 		r, response, err := authAPI.UpgradeCerts(

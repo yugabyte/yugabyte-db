@@ -46,6 +46,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <regex>
 
 #include <boost/uuid/uuid_generators.hpp>
@@ -59,6 +60,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/path_util.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 
@@ -366,6 +368,30 @@ void GetFullLogFilename(google::LogSeverity severity, string* filename) {
   ss << FLAGS_log_dir << "/" << FLAGS_log_filename << "."
      << google::GetLogSeverityName(severity);
   *filename = ss.str();
+}
+
+string GetLogFilePathnamePrefix() {
+  if (FLAGS_log_dir.empty() || FLAGS_log_filename.empty()) {
+    return "<empty_log_dir_or_filename>";
+  }
+  return JoinPathSegments(FLAGS_log_dir, FLAGS_log_filename);
+}
+
+// This code is a copy of the google/glog C++ library code to build the
+// time_pid_string used in CreateLogfile() for log file name suffix.
+// This helper function is used to print the suffix in tserver.err/master.err
+// at boot time to help locate the right log file during incident troubleshooting.
+string GetTimePidString(uint64_t now_micros, int pid) {
+  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
+  struct ::tm tm_time;
+  localtime_r(&now_seconds, &tm_time);
+  ostringstream time_pid_stream;
+  time_pid_stream.fill('0');
+  time_pid_stream << 1900 + tm_time.tm_year << setw(2) << 1 + tm_time.tm_mon
+                  << setw(2) << tm_time.tm_mday << '-' << setw(2)
+                  << tm_time.tm_hour << setw(2) << tm_time.tm_min << setw(2)
+                  << tm_time.tm_sec << '.' << pid;
+  return time_pid_stream.str();
 }
 
 void ShutdownLoggingSafe() {

@@ -113,6 +113,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_SCALAR_FIELD(stmt_len);
 
 	COPY_SCALAR_FIELD(yb_num_referenced_relations);
+	COPY_SCALAR_FIELD(ybPlanId);
 
 	return newnode;
 }
@@ -437,6 +438,9 @@ CopyScanFields(const Scan *from, Scan *newnode)
 	CopyPlanFields((const Plan *) from, (Plan *) newnode);
 
 	COPY_SCALAR_FIELD(scanrelid);
+
+	/* YB */
+	COPY_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -1309,6 +1313,9 @@ _copyHash(const Hash *from)
 	COPY_SCALAR_FIELD(skewColumn);
 	COPY_SCALAR_FIELD(skewInherit);
 	COPY_SCALAR_FIELD(rows_total);
+
+	/* YB */
+	COPY_STRING_FIELD(ybSkewTableName);
 
 	return newnode;
 }
@@ -2660,6 +2667,10 @@ _copyRangeTblEntry(const RangeTblEntry *from)
 	COPY_BITMAPSET_FIELD(updatedCols);
 	COPY_BITMAPSET_FIELD(extraUpdatedCols);
 	COPY_NODE_FIELD(securityQuals);
+
+	/* YB */
+	COPY_STRING_FIELD(ybScannedObjectName);
+	COPY_STRING_FIELD(ybSchemaName);
 
 	return newnode;
 }

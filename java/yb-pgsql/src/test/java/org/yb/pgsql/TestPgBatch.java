@@ -442,10 +442,7 @@ public class TestPgBatch extends BasePgSQLTest {
   }
 
   protected void SetupTxnSnapshotTest(IsolationLevel isolationLevel) throws Throwable {
-    String enable_pg_export_snapshot_gFlag = "ysql_enable_pg_export_snapshot";
     Map<String, String> extra_tserver_flags = new HashMap<String, String>();
-    extra_tserver_flags.put("allowed_preview_flags_csv", enable_pg_export_snapshot_gFlag);
-    extra_tserver_flags.put(enable_pg_export_snapshot_gFlag, "true");
     restartClusterWithFlags(Collections.emptyMap(), extra_tserver_flags);
 
     setUpTable(11, isolationLevel);

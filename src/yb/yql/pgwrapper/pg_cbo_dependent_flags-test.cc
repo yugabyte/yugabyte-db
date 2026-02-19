@@ -29,16 +29,27 @@ namespace yb::pgwrapper {
 
 class PgCboDependentFlagsTest : public LibPqTestBase {
  protected:
+  void SetUp() override {
+    LibPqTestBase::SetUp();
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      tserver_initial_flags_.push_back(*cluster_->tablet_server(i)->mutable_flags());
+    }
+  }
+
   // Restart cluster with specified tserver flags
   void RestartClusterWithFlags(const std::vector<std::string>& tserver_flags) {
     LOG(INFO) << "Restarting cluster with tserver flags: " << JoinStrings(tserver_flags, ", ");
     cluster_->Shutdown();
 
     for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+      auto* ts_flags = cluster_->tablet_server(i)->mutable_flags();
       // Clear previous flags before adding new ones
-      cluster_->tablet_server(i)->mutable_flags()->clear();
+      ts_flags->clear();
       for (const auto& flag : tserver_flags) {
-        cluster_->tablet_server(i)->mutable_flags()->push_back(flag);
+        ts_flags->push_back(flag);
+      }
+      for (const auto& flag : tserver_initial_flags_[i]) {
+        ts_flags->push_back(flag);
       }
     }
 
@@ -72,6 +83,9 @@ class PgCboDependentFlagsTest : public LibPqTestBase {
               Format("GUC $0: expected '$1', got '$2'", guc_name, expected_value, actual_value));
     return Status::OK();
   }
+
+ private:
+  std::vector<std::vector<std::string>> tserver_initial_flags_;
 };
 
 // ============================================================================

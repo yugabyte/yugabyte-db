@@ -1,5 +1,5 @@
 import { useTheme } from '@material-ui/core';
-import { ReactComponent as FailoverIconSvg } from '../../../redesign/assets/failover.svg';
+import FailoverIconSvg from '../../../redesign/assets/failover.svg';
 
 interface FailoverIconProps {
   isDisabled?: boolean;

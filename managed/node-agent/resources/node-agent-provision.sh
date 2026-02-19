@@ -28,7 +28,7 @@ err_msg() {
 }
 
 is_csp=false
-cloud_type=""
+cloud_type="onprem"
 is_airgap=false
 # By default, we use the virtual environment.
 use_system_python=false
@@ -322,9 +322,6 @@ execute_go() {
 
 # Main function for Go execution.
 main_go() {
-    if [[ "$is_csp" == true && "$is_airgap" == false ]]; then
-        import_gpg_key_if_required
-    fi
     execute_go "${filtered_args[@]}"
 }
 

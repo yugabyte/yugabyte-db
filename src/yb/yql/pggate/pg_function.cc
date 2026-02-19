@@ -354,7 +354,7 @@ Result<std::list<PgTableRow>> PgLockStatusRequestor(
   const auto [transaction, transaction_null] =
       VERIFY_RESULT(params.GetParamValue<Uuid>("transaction_id"));
 
-  const auto lock_status = VERIFY_RESULT(pg_session->GetLockStatusData(
+  const auto lock_status = VERIFY_RESULT(pg_session->pg_client().GetLockStatusData(
       table_id, transaction_null ? std::string() : transaction.AsSlice().ToBuffer()));
 
   VLOG(2) << "retrieved locks " << lock_status.DebugString();

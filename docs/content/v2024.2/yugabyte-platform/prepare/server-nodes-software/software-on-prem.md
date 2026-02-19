@@ -35,7 +35,7 @@ After you have created the VMs with the operating system and additional software
 
 These steps prepare the node for use by YugabyteDB Anywhere, including setting ulimits and transparent hugepages. If you have already [installed YugabyteDB Anywhere](../../../install-yugabyte-platform/) and it is running (recommended), the script additionally creates (or updates) an [on-premises provider](../../../configure-yugabyte-platform/on-premises/) with the node already added.
 
-Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/preview/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
+Root or sudo privileges are only required to provision the nodes. After the node is provisioned (with [YugabyteDB Anywhere node agent](/stable/faq/yugabyte-platform/#what-is-a-node-agent) installed), sudo is no longer required.
 
 ### Download the package
 
@@ -50,7 +50,7 @@ curl -k https://<yba_address>/api/v1/node_agents/download\?downloadType\=package
 ```
 
 - `<yba_address>` is the address of your YugabyteDB Anywhere installation.
-- `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication).
+- `<api_token>` is an API token you created. For information on creating an API token, refer to [API authentication](../../../anywhere-automation/#authentication). The user creating the API token must have [Admin role](../../../administer-yugabyte-platform/anywhere-rbac/#built-in-roles) privileges or better.
 - You can change the architecture from AMD64 to ARM64 as appropriate.
 
 Use this method if you don't have internet connectivity. This downloads the same version of node agent as the version of YugabyteDB Anywhere you are running.
@@ -116,7 +116,7 @@ Set the following options to have node agent create (or update) the [on-premises
 | :--- | :--- |
 | `url` | The base URL of your YugabyteDB Anywhere instance. |
 | `customer_uuid` | Your customer ID. To view your customer ID, in YugabyteDB Anywhere, click the **Profile** icon in the top right corner of the window, and choose **User Profile**. |
-| `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. |
+| `api_key` | Your API token. To obtain this, in YugabyteDB Anywhere, click the Profile icon in the top right corner of the window, and choose **User Profile**. Then click **Generate Key**. The user creating the API token must have [Admin role](../../../administer-yugabyte-platform/anywhere-rbac/#built-in-roles) privileges or better. |
 | `node_name` | A name for the node. |
 | `node_external_fqdn` | The fully qualified domain name or IP address of the node, must be accessible from the YugabyteDB Anywhere server. |
 

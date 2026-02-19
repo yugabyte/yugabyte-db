@@ -480,7 +480,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_enable_optimizer_statistics
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -491,7 +491,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -504,7 +504,7 @@ See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If th
 ##### yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -574,10 +574,16 @@ Turn this setting `ON/TRUE/1` to make all the transactions in the current sessio
 {{% tags/wrap %}}
 
 
-Default: `read committed`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
-Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `read uncommitted`, `read committed`, `repeatable read`, or `serializable`.
+Specifies the default isolation level of each new transaction. Every transaction has an isolation level of `'read uncommitted'`, `'read committed'`, `'repeatable read'`, or `serializable`.
+
+For example:
+
+```sql
+SET default_transaction_isolation='repeatable read';
+```
 
 See [transaction isolation levels](../../../architecture/transactions/isolation-levels) for reference.
 
@@ -1626,6 +1632,8 @@ Default: `0`
 
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
+For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+
 ##### --default_memory_limit_to_ram_ratio
 
 {{% tags/wrap %}}
@@ -1636,6 +1644,8 @@ Default: `0.85`
 The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
 #### Flags controlling the split of memory within a TServer
 
@@ -2664,14 +2674,14 @@ Some connections are reserved for superusers. The total number of superuser conn
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `READ COMMITTED`
+Default: `'read committed'`
 {{% /tags/wrap %}}
 
 Specifies the default transaction isolation level.
 
-Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
+Valid values: `serializable`, `'repeatable read'`, `'read committed'`, and `'read uncommitted'`.
 
-[Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+[Read Committed isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case Read Committed and Read Uncommitted of YSQL also in turn use Snapshot isolation).
 
 ##### --yb_enable_read_committed_isolation
 
@@ -2680,7 +2690,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 Default: `false`
 {{% /tags/wrap %}}
 
-Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+Enables Read Committed isolation. By default this flag is false and in this case Read Committed (and Read Uncommitted) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 ##### --pg_client_use_shared_memory
 
@@ -2721,7 +2731,7 @@ For details on the expected behaviour when used with the sequence cache clause, 
 ##### --ysql_yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2738,7 +2748,7 @@ See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter
 ##### --ysql_yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 

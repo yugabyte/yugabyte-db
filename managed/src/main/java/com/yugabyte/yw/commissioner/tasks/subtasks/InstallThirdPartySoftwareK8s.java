@@ -5,10 +5,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -37,20 +35,12 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
 
   private final long UPLOAD_PACKAGE_TIMEOUT_SEC = 60;
   private final String PACKAGE_PERMISSIONS = "755";
-  private NodeUniverseManager nodeUniverseManager;
-  private RuntimeConfGetter confGetter;
   private Config appConfig;
 
   @Inject
-  public InstallThirdPartySoftwareK8s(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      Config appConfig,
-      RuntimeConfGetter confGetter) {
+  public InstallThirdPartySoftwareK8s(BaseTaskDependencies baseTaskDependencies, Config appConfig) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
     this.appConfig = appConfig;
-    this.confGetter = confGetter;
   }
 
   public static class Params extends AbstractTaskParams {

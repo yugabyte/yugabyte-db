@@ -96,7 +96,7 @@ public class InternalHAController extends Controller {
                     log.warn("No local instance configured");
                     throw new PlatformServiceException(BAD_REQUEST, "No local instance configured");
                   }
-                  if (localInstance.get().getIsLeader()) {
+                  if (localInstance.get().isLeader()) {
                     log.warn(
                         "Rejecting request to import instances due to this process being designated"
                             + " a leader");

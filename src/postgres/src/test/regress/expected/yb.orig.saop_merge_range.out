@@ -1,6 +1,5 @@
 --
 -- See yb_saop_merge_schedule for details about the test.
--- TODO(#29072): fix output.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
@@ -3348,6 +3347,166 @@
 
 -- (Reset the limit change)
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+-- #30096: SAOP merge shouldn't be used in a parallel scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+:explain4
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 318
+(10 rows)
+
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Merge Sort Key: r5n.r3, r5n.r4, r5n.r5
+   Merge Stream Key: r5n.r1, r5n.r2
+   Merge Streams: 6
+   Merge Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 6
+   Storage Table Rows Scanned: 318
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3, r5n.r4, r5n.r5
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3, r5n.r4, r5n.r5
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+-- Same thing with backwards scan.
+\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
+:explain4
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+   Sort Method: quicksort
+   ->  Index Scan using r5n_pkey on public.r5n (actual rows=318 loops=1)
+         Output: n, r5, r3, r1, r2, r4
+         Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+         Storage Table Read Requests: 2
+         Storage Table Read Ops: 8
+         Storage Table Rows Scanned: 318
+(10 rows)
+
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Index Scan Backward using r5n_pkey on public.r5n (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Merge Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+   Merge Stream Key: r5n.r1, r5n.r2
+   Merge Streams: 6
+   Merge Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 6
+   Storage Table Rows Scanned: 318
+(10 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Gather Merge (actual rows=318 loops=1)
+   Output: n, r5, r3, r1, r2, r4
+   Workers Planned: 2
+   Workers Launched: 2
+   ->  Sort (actual rows=106 loops=3)
+         Output: n, r5, r3, r1, r2, r4
+         Sort Key: r5n.r3 DESC, r5n.r4 DESC, r5n.r5 DESC
+         Sort Method: quicksort
+         Worker 0:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         Worker 1:  actual rows=0 loops=1
+           Sort Method: quicksort  Memory: 25kB
+         ->  Parallel Index Scan using r5n_pkey on public.r5n (actual rows=106 loops=3)
+               Output: n, r5, r3, r1, r2, r4
+               Index Cond: ((r5n.r1 = ANY ('{0,2,4}'::integer[])) AND (r5n.r2 = ANY ('{6,8}'::bigint[])))
+               Storage Table Read Requests: 3
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 106
+               Worker 0:  actual rows=0 loops=1
+               Worker 1:  actual rows=0 loops=1
+(20 rows)
+
 --
 -- Secondary index
 --

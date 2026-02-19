@@ -305,8 +305,8 @@ BEGIN;
 INSERT INTO test12 VALUES (3, 3);
 SAVEPOINT test12_sp;
 CREATE TABLE test13 (a int primary key, b int);
-ERROR:  interleaving SAVEPOINT & DDL in transaction block not supported by YugaByte yet
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/26734. React with thumbs up to raise its priority.
+ERROR:  interleaving SAVEPOINT & DDL in transaction disallowed without DDL savepoint support
+HINT:  Consider enabling ysql_yb_enable_ddl_savepoint_support.
 ROLLBACK;
 BEGIN;
 CREATE TEMPORARY TABLE temp_table (
@@ -429,6 +429,21 @@ UPDATE pg_index SET indisvalid = false
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'test_partitioned_even_i_idx'::regclass;
 \c
+-- https://github.com/yugabyte/yugabyte-db/issues/29534
+-- The previous \c can be too fast due to incremental relcache refresh optimization.
+-- This can cause read restart because a read time of the next REINDEX statement
+-- is selected using safetime mechanism which is slightly in the past. If the read
+-- time picked is older than the write time of the above UPDATE pg_index statement,
+-- we will see restart read error, which is intercepted by PG and shows up as
+-- "ERROR:  Restarting a DDL transaction not supported".
+-- To avoid read restart error, sleep 2 seconds to allow safetime to advance past
+-- the write time of the above UPDATE statement.
+SELECT pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 REINDEX INDEX test_partitioned_i_idx;
 \c
 -- #29424
@@ -498,3 +513,62 @@ SELECT * FROM _33_s_1_audit WHERE notes = 'V3';
       3 |     600 | V3
 (1 row)
 
+-- #29325: Failed ALTER TABLE ALTER TYPE should not lead to a crash in
+-- transaction abort.
+CREATE TABLE int4_table(id SERIAL, c1 int4, PRIMARY KEY (id ASC));
+ALTER TABLE int4_table ALTER c1 TYPE int8;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+INSERT INTO int4_table(c1) VALUES (2 ^ 40);
+ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+ERROR:  integer out of range
+-- #30109: duplicate key value violates unique constraint
+\c
+-- The bug only exists when yb_fallback_to_legacy_catalog_read_time = false
+-- We also test yb_fallback_to_legacy_catalog_read_time = true to ensure
+-- correctness in both cases.
+SET yb_fallback_to_legacy_catalog_read_time = false;
+CREATE TABLE test_table1();
+CREATE OR REPLACE PROCEDURE test_alter1()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table1 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter1();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\c
+SET yb_fallback_to_legacy_catalog_read_time = true;
+CREATE TABLE test_table2();
+CREATE OR REPLACE PROCEDURE test_alter2()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_1 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+  EXECUTE 'ALTER TABLE test_table2 ADD COLUMN id_2 int DEFAULT (random() * 1000000)::int';
+  COMMIT;
+END;
+$$;
+CALL test_alter2();
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+\c
+-- end of test of #30109

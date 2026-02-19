@@ -19,7 +19,7 @@ import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
 import { prepareAddGeoPartitionPayload, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
-import { ReactComponent as PinIcon } from '@app/redesign/assets/pin.svg';
+import PinIcon from '@app/redesign/assets/pin.svg';
 
 const { Box } = mui;
 

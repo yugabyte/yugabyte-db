@@ -16,7 +16,7 @@ import { YBModal, YBRadioGroup } from '../../../../../../components';
 import { YBTable } from '../../../../../../../components/backupv2/components/restore/pages/selectTables/YBTable';
 
 import { Backup_Options_Type, ITable } from '../../../../../../../components/backupv2';
-import { ReactComponent as EditIcon } from '../../../../../../assets/edit2.svg';
+import EditIcon from '../../../../../../assets/edit2.svg';
 
 interface SelectTablesProps {
   control: Control;

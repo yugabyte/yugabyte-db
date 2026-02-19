@@ -160,10 +160,6 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 DECLARE_bool(enable_object_locking_for_table_locks);
 
-METRIC_DEFINE_event_stats(
-    server, pg_client_exchange_response_size, "The size of PgClient exchange response in bytes",
-    yb::MetricUnit::kBytes, "The size of PgClient exchange response in bytes");
-
 namespace yb::tserver {
 namespace {
 
@@ -845,8 +841,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         response_cache_(parent_mem_tracker, metric_entity),
         instance_id_(permanent_uuid),
         shared_mem_pool_(parent_mem_tracker, instance_id_),
-        stats_exchange_response_size_(
-            METRIC_pg_client_exchange_response_size.Instantiate(metric_entity)),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }),
@@ -860,7 +854,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             .response_cache = response_cache_,
             .sequence_cache = sequence_cache_,
             .shared_mem_pool = shared_mem_pool_,
-            .stats_exchange_response_size = stats_exchange_response_size_,
+            .metrics = PgClientSessionMetrics{metric_entity},
             .instance_uuid = instance_id_,
             .lock_owner_registry =
                 tablet_server_.ObjectLockSharedStateManager()
@@ -949,8 +943,8 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     auto session_info = SessionInfo::Make(
         txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
         FLAGS_pg_client_session_expiration_ms * 1ms, transaction_builder_, client(),
-        session_context_, session_id, lease_epoch(), tablet_server_.ts_local_lock_manager(),
-        messenger_.scheduler());
+        session_context_, session_id, req.pid(), lease_epoch(),
+        tablet_server_.ts_local_lock_manager(), messenger_.scheduler());
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
@@ -1035,9 +1029,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   Status GetDatabaseInfo(
       const PgGetDatabaseInfoRequestPB& req, PgGetDatabaseInfoResponsePB* resp,
       rpc::RpcContext* context) {
-    return client().GetNamespaceInfo(
-        GetPgsqlNamespaceId(req.oid()), "" /* namespace_name */, YQL_DATABASE_PGSQL,
-        resp->mutable_info());
+    return client().GetNamespaceInfo(GetPgsqlNamespaceId(req.oid()), resp->mutable_info());
   }
 
   Result<PgPollVectorIndexReadyResponsePB> PollVectorIndexReady(
@@ -1877,6 +1869,58 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status ListSlotEntries(
+      const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
+      rpc::RpcContext* context) {
+    Status iteration_status;
+    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector()
+            .IncludeConfirmedFlushLSN()
+            .IncludeRestartLSN()
+            .IncludeXmin()
+            .IncludeRecordIdCommitTime()
+            .IncludeLastPubRefreshTime()
+            .IncludeActivePid(),
+        &iteration_status));
+
+    for (const auto& entry_result : range_result) {
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+      if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          entry.confirmed_flush_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have confirmed flush LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.restart_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have restart LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.xmin.has_value(), IllegalState, "Slot entry for stream $0 does not have xmin",
+          entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.record_id_commit_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have record id commit time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.last_pub_refresh_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have last pub refresh time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.active_pid.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have active pid", entry.key.stream_id);
+
+      auto slot_entry = resp->add_slot_entries();
+      slot_entry->set_stream_id(entry.key.stream_id.ToString());
+      slot_entry->set_confirmed_flush_lsn(entry.confirmed_flush_lsn.value());
+      slot_entry->set_restart_lsn(entry.restart_lsn.value());
+      slot_entry->set_xmin(entry.xmin.value());
+      slot_entry->set_record_id_commit_time_ht(entry.record_id_commit_time.value());
+      slot_entry->set_last_pub_refresh_time(entry.last_pub_refresh_time.value());
+      slot_entry->set_active_pid(entry.active_pid.value());
+    }
+
+    return Status::OK();
+  }
+
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2354,6 +2398,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     AddWaitStatesToResponse(
         ash::XClusterPollerTracker(), req.export_wait_state_code_as_string(),
         resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
+    AddWaitStatesToResponse(
+        ash::MinRunningHybridTimeTracker(), req.export_wait_state_code_as_string(),
+        resp->mutable_tserver_wait_states(), sample_size, tserver_samples_considered);
     float tserver_sample_weight =
         std::max(tserver_samples_considered, sample_size) * 1.0 / sample_size;
     float cql_sample_weight = std::max(cql_samples_considered, sample_size) * 1.0 / sample_size;
@@ -2754,6 +2801,18 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status GetYbSystemTableInfo(
+      const PgGetYbSystemTableInfoRequestPB& req, PgGetYbSystemTableInfoResponsePB* resp,
+      rpc::RpcContext* context) {
+    PgOid oid = kPgInvalidOid;
+    PgOid relfilenode = kPgInvalidOid;
+    RETURN_NOT_OK(client().GetYsqlYbSystemTableInfo(
+        req.namespace_oid(), req.table_name(), &oid, &relfilenode));
+    resp->set_table_oid(oid);
+    resp->set_relfilenode(relfilenode);
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
@@ -2993,8 +3052,6 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   std::unique_ptr<YBThreadPool> exchange_thread_pool_;
 
   PgSharedMemoryPool shared_mem_pool_;
-
-  const EventStatsPtr stats_exchange_response_size_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;

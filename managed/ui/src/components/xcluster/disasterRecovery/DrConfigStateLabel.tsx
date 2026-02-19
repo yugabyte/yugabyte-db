@@ -3,7 +3,7 @@ import { Variant } from '@material-ui/core/styles/createTypography';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import InfoIcon from '../../../redesign/assets/info-message.svg';
+import InfoIcon from '../../../redesign/assets/info-message.svg?img';
 import { YBTooltip } from '../../../redesign/components';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { getTableCountsOfConcern } from '../ReplicationUtils';

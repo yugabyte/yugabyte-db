@@ -171,6 +171,8 @@ if("${YB_THIRDPARTY_DIR}" STREQUAL "")
   endif()
   set(ENV{YB_THIRDPARTY_DIR} "${YB_THIRDPARTY_DIR}")
 endif()
+# Remove trailing slash from YB_THIRDPARTY_DIR if it exists.
+string(REGEX REPLACE "/+$" "" YB_THIRDPARTY_DIR "${YB_THIRDPARTY_DIR}")
 message("YB_THIRDPARTY_DIR: ${YB_THIRDPARTY_DIR}")
 
 set(YB_BUILD_ROOT "${CMAKE_CURRENT_BINARY_DIR}")
@@ -273,6 +275,11 @@ if(YB_LTO_ENABLED)
   ADD_CXX_FLAGS("-DYB_LTO_ENABLED")
 endif()
 
+if(YB_BOLT_ENABLED)
+  # Retain relocation data in the final binary. This is needed to run BOLT on the binary,
+  ADD_LINKER_FLAGS("-Wl,--emit-relocs")
+endif()
+
 # Generate a compile_commands.json "compilation database" file.
 # See http://clang.llvm.org/docs/JSONCompilationDatabase.html
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
@@ -365,6 +372,7 @@ ADD_CXX_FLAGS("-Werror=reorder")
 ADD_CXX_FLAGS("-Werror=switch")
 ADD_CXX_FLAGS("-Werror=return-type")
 ADD_CXX_FLAGS("-Werror=non-virtual-dtor")
+ADD_CXX_FLAGS("-Wtype-limits")
 
 if(IS_CLANG)
   ADD_CXX_FLAGS("-Werror=string-plus-int")
@@ -463,12 +471,6 @@ endif()
 #       This has a small perf hit but worth it for the ability to profile in production
 # For CMAKE_BUILD_TYPE=ReleaseAsserts
 #   Same as RELEASE, except NDEBUG is not set.
-# For profile guided optimization (PGO) builds, in addition to the flags for release builds:
-#   1. Build first with CMAKE_BUILD_TYPE_PROFILE_GEN:
-#     -fprofile-generate: Indicates compiler should insert profile guided optimization events
-#   2. Run the benchmarks (generates *.gcda profiling data).
-#   3. Build again with CMAKE_BUILD_TYPE_PROFILE_BUILD
-#     -fprofile-use: Compiler will use the profile outputs for optimizations
 set(CXX_FLAGS_DEBUG "-ggdb")
 set(CXX_FLAGS_FASTDEBUG "-ggdb -O1 -fno-omit-frame-pointer -DFASTDEBUG")
 set(CXX_FLAGS_RELEASE "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
@@ -479,9 +481,6 @@ set(CXX_FLAGS_RELEASE_ASSERTS "-O3 -g -fno-omit-frame-pointer")
 # optimization level will be changed because in case of multiple -O flags gcc uses the last one.
 set(CMAKE_CXX_FLAGS_DEBUG "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
-
-set(CXX_FLAGS_PROFILE_GEN "${CXX_FLAGS_RELEASE} -fprofile-generate")
-set(CXX_FLAGS_PROFILE_BUILD "${CXX_FLAGS_RELEASE} -fprofile-use")
 
 set(CLANG_GCC_TOOLCHAIN "")
 if(IS_CLANG AND NOT APPLE AND USING_LINUXBREW)
@@ -501,10 +500,6 @@ elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE")
   ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE}")
 elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "RELEASE_ASSERTS")
   ADD_CXX_FLAGS("${CXX_FLAGS_RELEASE_ASSERTS}")
-elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_GEN")
-  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_GEN}")
-elseif ("${CMAKE_BUILD_TYPE}" STREQUAL "PROFILE_BUILD")
-  ADD_CXX_FLAGS("${CXX_FLAGS_PROFILE_BUILD}")
 else()
   message(FATAL_ERROR "Unknown build type: ${CMAKE_BUILD_TYPE}")
 endif ()
@@ -597,15 +592,11 @@ if (IS_SANITIZER)
 endif()
 
 set(BUILD_SHARED_LIBS ON)
-if ("${YB_BUILD_TYPE}" STREQUAL "prof_gen")
-  ADD_CXX_FLAGS("-fprofile-instr-generate -DYB_PROFGEN")
-endif ()
 
-if ("${YB_BUILD_TYPE}" STREQUAL "prof_use")
-  if (NOT YB_PGO_DATA_PATH)
-    message (SEND_ERROR "Pgo data path is not set.")
-  endif()
-  ADD_CXX_FLAGS("-fprofile-instr-use=${YB_PGO_DATA_PATH}")
+if (YB_PGO_DATA_PATH)
+  ADD_CXX_FLAGS("-fprofile-use=${YB_PGO_DATA_PATH}")
+  ADD_LINKER_FLAGS("-fprofile-use=${YB_PGO_DATA_PATH}")
+
   # Even with the fresh profile data we might get warnings like
   # warning: Function control flow change detected (hash mismatch)
   #    [-Wbackend-plugin]
@@ -613,7 +604,21 @@ if ("${YB_BUILD_TYPE}" STREQUAL "prof_use")
   ADD_CXX_FLAGS("-Wno-backend-plugin")
   ADD_CXX_FLAGS("-Wno-profile-instr-unprofiled")
   ADD_CXX_FLAGS("-Wno-profile-instr-out-of-date")
-endif ()
+endif()
+
+if ("${YB_BUILD_TYPE}" STREQUAL "prof_gen")
+  ADD_CXX_FLAGS("-DYB_PROFGEN")
+  if ("${YB_PGO_INSTRUMENT_TYPE}" STREQUAL "ir")
+    ADD_CXX_FLAGS("-fprofile-generate")
+    ADD_LINKER_FLAGS("-fprofile-generate")
+  elseif("${YB_PGO_INSTRUMENT_TYPE}" STREQUAL "csir")
+    ADD_CXX_FLAGS("-fcs-profile-generate")
+    ADD_LINKER_FLAGS("-fcs-profile-generate")
+  else()
+    message(FATAL_ERROR "Unsupported instrumentation type ${YB_PGO_INSTRUMENT_TYPE}, acceptable "
+                        "instrumentation types: ir csir")
+  endif()
+endif()
 
 # Position independent code is only necessary when producing shared objects.
 ADD_CXX_FLAGS(-fPIC)
@@ -710,11 +715,6 @@ set(CMAKE_PREFIX_PATH
 # command line, we have to be cautions when adding these same directories to RPATH.
 message("CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
-if(APPLE AND IS_CLANG AND "${COMPILER_VERSION}" MATCHES "^1[567][.].*$")
-  # To avoid "warning: duplicate LC_RPATH are deprecated" messages.
-  # Suggestion from https://github.com/igraph/igraph/issues/2394#issuecomment-1732292483
-  ADD_LINKER_FLAGS("-ld_classic")
-endif()
 
 ADD_GLOBAL_RPATH_ENTRY_AND_LIB_DIR("${YB_THIRDPARTY_COMMON_DIR}/lib")
 
@@ -758,6 +758,9 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR IS_SANITIZER)
     #
     # See https://github.com/bazelbuild/bazel/issues/16413 for discussion.
     ADD_LINKER_FLAGS("-Wl,-no_fixup_chains")
+    # Suppress warnings about unwind information in non-code sections from tcmalloc/gperftools
+    # symbols (e.g., malloc_hook, google_malloc). These warnings are harmless but noisy.
+    ADD_LINKER_FLAGS("-Wl,-w")
   elseif(IS_GCC)
     # Without this, yb_util cannot get linked with GCC 11 because it references some undefined
     # symbols belonging to tcmalloc, e.g. HeapProfilerStart.
@@ -912,6 +915,7 @@ set(YB_SUBDIR_NAMES
     rocksutil
     rpc
     server
+    storage
     tablet
     tools
     tserver

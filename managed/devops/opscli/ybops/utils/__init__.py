@@ -13,11 +13,11 @@ from __future__ import print_function
 import json
 import logging
 import os
-import pipes
 import platform
 import random
 import re
 import requests
+import shlex
 import socket
 import string
 import subprocess
@@ -66,7 +66,7 @@ RETRY_DELAY = 10  # Initial delay, increases exponentially
 
 
 def get_path_from_yb(path):
-    return os.path.join(pipes.quote(YB_FOLDER_PATH), path)
+    return os.path.join(shlex.quote(YB_FOLDER_PATH), path)
 
 
 # Home directory of the devops source tree. This is determined based on the yb_devops_home

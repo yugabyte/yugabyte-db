@@ -156,7 +156,7 @@ public class HAController extends AuthenticatedController {
         HighAvailabilityConfig.maybeGet(configUUID)
             .orElseThrow(() -> new PlatformServiceException(NOT_FOUND, "Invalid config UUID"));
     Optional<PlatformInstance> localInstance = config.getLocal();
-    if (localInstance.isPresent() && !localInstance.get().getIsLeader()) {
+    if (localInstance.isPresent() && !localInstance.get().isLeader()) {
       // Revert prometheus from federated mode.
       replicationManager.switchPrometheusToStandalone();
     }

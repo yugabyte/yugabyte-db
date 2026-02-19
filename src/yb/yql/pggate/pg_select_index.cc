@@ -45,9 +45,8 @@ Status PgSelectIndex::PrepareSubquery(
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
   ybctids_.clear();
   if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
-          [this](Slice ybctid, const RefCntBuffer&) {
+          [this](Slice ybctid) {
             ybctids_.push_back(ybctid);
-            return Status::OK();
           }))) {
     return std::nullopt;
   }

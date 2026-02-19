@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterNamespaceConfig.Status;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -239,6 +240,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    boolean taskSucceeded = false;
     try {
       // Lock the target universe.
       lockAndFreezeUniverseForUpdate(
@@ -298,6 +300,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
+        taskSucceeded = true;
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
         xClusterConfig.refresh();
@@ -340,7 +343,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       if (xClusterConfig.isUsedForDr()) {
         DrConfig drConfig = xClusterConfig.getDrConfig();
         drConfig.refresh();
-        kubernetesStatus.updateDrConfigStatus(drConfig, getName(), getUserTaskUUID());
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
       }
     }
 
@@ -496,9 +500,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .filter(tableConfig -> Objects.isNull(tableConfig.getStreamId()))
             .map(XClusterTableConfig::getTableId)
             .collect(Collectors.toSet());
-    if (!tableIdsNotNeedBootstrapWithoutStream.isEmpty()) {
+    if (!tableIdsNotNeedBootstrapWithoutStream.isEmpty()
+        || taskParams().updatingTask == TaskType.SwitchoverDrConfig) {
       // Create checkpoints for the tables.
-      createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrapWithoutStream)
+      createBootstrapProducerTask(
+              xClusterConfig, tableIdsNotNeedBootstrapWithoutStream, taskParams().updatingTask)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
     }
 
@@ -688,7 +694,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         }
       } else {
         // Create checkpoints for the tables.
-        createBootstrapProducerTask(xClusterConfig, tableIdsNeedBootstrap)
+        createBootstrapProducerTask(
+                xClusterConfig, tableIdsNeedBootstrap, taskParams().updatingTask)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
       }
 

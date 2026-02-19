@@ -293,8 +293,7 @@ TEST_P(YBBackupTestWithColocationParam, TestFailImportWithUnmatchedDocDBTable) {
   namespace_info.set_namespace_name(kBackupSourceDbName);
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
   namespace_info.set_namespace_id(namespace_id);
   TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(namespace_info));
@@ -371,8 +370,7 @@ TEST_P(YBBackupTestWithColocationParam, CreateConsistentMasterSnapshot) {
   namespace_info.set_namespace_name(kBackupSourceDbName);
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
   namespace_info.set_namespace_id(namespace_id);
 
@@ -459,8 +457,7 @@ TEST_P(YBBackupTestWithColocationParam, RetainTableDeletedDuringCreateSnapshot) 
 
   // Get the namespace ID for the database using the client API.
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto& namespace_id = namespace_resp.namespace_().id();
   // We will delete table test_table2 after starting the async create snapshot. Table deletion
   // happens after the master leader selects the snapshot_hybrid_time and collects the entries
@@ -538,8 +535,7 @@ TEST_P(YBBackupTestWithColocationParam, CleanNamespaceAnchoringAfterFailedSnapsh
 
   // Get the namespace ID for the database using the client API
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo(
-      "" /* namespace_id */, kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo(kBackupSourceDbName, YQL_DATABASE_PGSQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
 
   // Specifying only namespace identifier (ns id, name and type) means the created snapshot includes

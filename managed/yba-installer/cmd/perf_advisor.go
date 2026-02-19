@@ -18,6 +18,7 @@ import (
 type perfAdvisorDirectories struct {
 	SystemdFileLocation string
 	templateFileName    string
+	ConfFileLocation    string
 	PABin               string
 	PALogDir            string
 }
@@ -32,16 +33,16 @@ type PerfAdvisor struct {
 func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	return perfAdvisorDirectories{
 		SystemdFileLocation: common.SystemdDir + "/yb-perf-advisor.service",
+		ConfFileLocation:    common.GetSoftwareRoot() + "/perf-advisor/conf/overrides.properties",
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
-		PABin:          common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
-		PALogDir:       common.GetBaseInstall() + "/data/logs",
+		PABin:    common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
+		PALogDir: common.GetBaseInstall() + "/data/logs",
 	}
 }
 
 // NewPerfAdvisor creates and returns a new PerfAdvisor struct for the given version.
 func NewPerfAdvisor(version string) PerfAdvisor {
-
 	return PerfAdvisor{
 		name:                   "yb-perf-advisor",
 		version:                version,
@@ -114,7 +115,7 @@ func (perf PerfAdvisor) Stop() error {
 	return nil
 }
 
-// Status prints the status output specific to Postgres.
+// Status prints the status output specific to Perf Advisor.
 func (perf PerfAdvisor) Status() (common.Status, error) {
 	// Initialize a Status struct with service name, port, and version.
 	status := common.Status{
@@ -122,6 +123,8 @@ func (perf PerfAdvisor) Status() (common.Status, error) {
 		Port:       viper.GetInt("perfAdvisor.port"),
 		Version:    perf.Version(),
 		LogFileLoc: common.GetBaseInstall() + "/data/logs/perf-advisor.log",
+		ConfigLoc:  perf.ConfFileLocation,
+		BinaryLoc:  perf.PABin,
 	}
 
 	// Set the systemd service file location if one exists
@@ -201,11 +204,11 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	// Untar pa.tar.gz into perf-advisor
 	rExtract, err := os.Open(paPath)
 	if err != nil {
-			return fmt.Errorf("failed to open %s: %w", paPath, err)
+		return fmt.Errorf("failed to open %s: %w", paPath, err)
 	}
 	defer rExtract.Close()
 	if err := tar.Untar(rExtract, targetDir, tar.WithMaxUntarSize(-1)); err != nil {
-			return fmt.Errorf("failed to extract %s: %w", paPath, err)
+		return fmt.Errorf("failed to extract %s: %w", paPath, err)
 	}
 
 	// Now check that backend and ui/frontend exist
@@ -213,10 +216,10 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	frontendDir := filepath.Join(targetDir, "ui")
 
 	if stat, err := os.Stat(backendDir); err != nil || !stat.IsDir() {
-			return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
+		return fmt.Errorf("backend directory not found in %s after extraction", targetDir)
 	}
 	if stat, err := os.Stat(frontendDir); err != nil || !stat.IsDir() {
-			return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
+		return fmt.Errorf("ui directory not found in %s after extraction", targetDir)
 	}
 
 	if common.HasSudoAccess() {
@@ -233,7 +236,13 @@ func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 
 func (perf PerfAdvisor) Install() error {
 	log.Info("Starting Perf Advisor install")
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
+	}
 	template.GenerateTemplate(perf)
+	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
+		return fmt.Errorf("set perf-advisor config ownership: %w", err)
+	}
 
 	if err := perf.createSoftwareDirectories(); err != nil {
 		return err
@@ -292,14 +301,64 @@ func (perf PerfAdvisor) Upgrade() error {
 
 func (perf PerfAdvisor) Reconfigure() error {
 	log.Info("Reconfiguring Perf Advisor")
+	if err := ensurePerfAdvisorTLSKeystore(); err != nil {
+		return fmt.Errorf("ensure Perf Advisor TLS keystore: %w", err)
+	}
 	if err := template.GenerateTemplate(perf); err != nil {
 		return fmt.Errorf("failed to generate template: %w", err)
+	}
+	if err := ensurePerfAdvisorConfigOwnership(); err != nil {
+		return fmt.Errorf("set perf-advisor config ownership: %w", err)
+	}
+
+	// Reload systemd daemon to pick up the regenerated service file
+	if err := systemd.DaemonReload(); err != nil {
+		return fmt.Errorf("failed to reload systemd daemon: %w", err)
 	}
 	log.Info("Perf Advisor reconfigured")
 	return nil
 }
 
 func (PerfAdvisor) IsReplicated() bool { return false }
+
+// ensurePerfAdvisorConfigOwnership chowns baseInstall/perf-advisor (config, certs) to the service user
+// so generated files like metrics-export.yml are not root-owned.
+func ensurePerfAdvisorConfigOwnership() error {
+	if !common.HasSudoAccess() {
+		return nil
+	}
+	dir := common.GetPerfAdvisorBaseDataDir()
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	userName := viper.GetString("service_username")
+	if err := common.Chown(dir, userName, userName, true); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ensurePerfAdvisorTLSKeystore creates the tls.p12 keystore when Perf Advisor TLS is enabled,
+// using the platform server cert and key. No-op when perfAdvisor.tls.enabled is false.
+func ensurePerfAdvisorTLSKeystore() error {
+	if !viper.GetBool("perfAdvisor.tls.enabled") {
+		return nil
+	}
+	certPath, keyPath := common.GetPlatformServerCertPaths()
+	if _, err := os.Stat(certPath); err != nil {
+		return fmt.Errorf("platform server cert not found at %s: %w", certPath, err)
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		return fmt.Errorf("platform server key not found at %s: %w", keyPath, err)
+	}
+	// FixConfigValues() in common.Install() (and reconfigure) generates this password when empty
+	// and calls InitViper(), so it is already set by the time we run here.
+	password := viper.GetString("perfAdvisor.tls.keystorePassword")
+	return common.GeneratePerfAdvisorTLSKeystore(certPath, keyPath, common.GetPerfAdvisorCertsDir(), password)
+}
 
 // Restart the perf advisor service.
 func (perf PerfAdvisor) Restart() error {

@@ -15,6 +15,7 @@ import com.google.common.collect.Lists;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseBackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
@@ -66,6 +68,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -631,8 +634,9 @@ public class BackupHelper {
     }
     CustomerConfig storageConfig =
         customerConfigService.getOrBadRequest(customerUUID, storageConfigUUID);
-    CustomerConfigData configData = storageConfig.getDataObject();
+    precheckStorageConfig(storageConfig, universe);
     StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
+    CustomerConfigData configData = storageConfig.getDataObject();
     Map<String, String> configLocationMap = storageUtil.getRegionLocationsMap(configData);
     for (YbcBackupResponse successMarker : successMarkers) {
       Map<String, YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation>
@@ -653,6 +657,32 @@ public class BackupHelper {
       // Verify on Universe nodes.
       validateStorageConfigForRestoreOnUniverse(
           storageConfig, universe, successMarker.responseCloudStoreSpec.getBucketLocationsMap());
+    }
+  }
+
+  private void precheckStorageConfig(CustomerConfig storageConfig, Universe universe) {
+    StorageUtil storageUtil = storageUtilFactory.getStorageUtil(storageConfig.getName());
+    if (storageUtil.isIamEnabled(storageConfig)
+        && storageConfig.getName().equals(CustomerConfigConsts.NAME_AZURE)) {
+      validateIfYbdbInbuiltYbcHasAzureIAM(universe);
+    }
+  }
+
+  // For k8s universes: if useYbdbInbuiltYbc is true, need to check if Azure IAM feature is
+  // supported
+  private void validateIfYbdbInbuiltYbcHasAzureIAM(Universe universe) {
+    if (universe
+            .getUniverseDetails()
+            .getPrimaryCluster()
+            .userIntent
+            .providerType
+            .equals(Common.CloudType.kubernetes)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+        && !ybcManager.getEnabledBackupFeatures(universe.getUniverseUUID()).getAzureIam()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Azure IAM is not supported in the YB-Controller version running on this Kubernetes"
+              + " Universe.");
     }
   }
 
@@ -1149,6 +1179,7 @@ public class BackupHelper {
   public Map<String, YbcBackupResponse> getYbcSuccessMarker(
       CustomerConfig storageConfig, Set<String> storageLocationList, UUID universeUUID) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    precheckStorageConfig(storageConfig, universe);
     Map<String, String> successMarkerStrs = new HashMap<>();
     try {
       storageLocationList.stream()
@@ -1274,6 +1305,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
+    precheckStorageConfig(config, universe);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (NodeDetails node : nodeDetailsList) {
       ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
@@ -1298,13 +1330,15 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
-    List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
-    for (NodeDetails node : nodeDetailsList) {
-      ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
-          node.cloudInfo.private_ip,
-          universe,
-          ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
-              config, bucketLocationsMap, universe));
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      List<NodeDetails> nodesInCluster = universe.getRunningTserversinCluster(cluster.uuid);
+      for (NodeDetails node : nodesInCluster) {
+        ybcManager.validateCloudConfigIgnoreIfYbcUnavailable(
+            node.cloudInfo.private_ip,
+            universe,
+            ybcBackupUtil.getCloudStoreConfigWithBucketLocationsMap(
+                config, bucketLocationsMap, universe));
+      }
     }
   }
 
@@ -1313,6 +1347,7 @@ public class BackupHelper {
     if (isSkipConfigBasedPreflightValidation(universe)) {
       return;
     }
+    precheckStorageConfig(config, universe);
     List<NodeDetails> nodeDetailsList = universe.getRunningTserversInPrimaryCluster();
     for (String successMarkerLoc : successMarkerLocations) {
       CloudStoreSpec successMarkerCSSpec =

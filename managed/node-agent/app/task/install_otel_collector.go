@@ -77,7 +77,7 @@ func (h *InstallOtelCollector) Handle(ctx context.Context) (*pb.DescribeTaskResp
 	_, err = module.CopyFile(
 		ctx,
 		otelCollectorServiceContext,
-		filepath.Join(ServerTemplateSubpath, OtelCollectorService),
+		filepath.Join(module.ServerTemplateSubpath, OtelCollectorService),
 		filepath.Join(h.param.GetYbHomeDir(), module.UserSystemdUnitPath, OtelCollectorService),
 		fs.FileMode(0755),
 		h.username,

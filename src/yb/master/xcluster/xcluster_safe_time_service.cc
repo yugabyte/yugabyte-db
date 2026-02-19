@@ -27,9 +27,10 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"

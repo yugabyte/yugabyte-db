@@ -12,7 +12,7 @@ type rootConfig struct {
 	Platform    platformConfig    `mapstructure:"platform"`
 	Prometheus  prometheusConfig  `mapstructure:"prometheus"`
 	Postgres    postgresConfig    `mapstructure:"postgres"`
-	PerfAdvisor perfAdvisorConfig `mapstructure:"performance_advisor"`
+	PerfAdvisor perfAdvisorConfig `mapstructure:"perfAdvisor"`
 }
 
 type Service string
@@ -21,7 +21,7 @@ const (
 	ServicePlatform           Service = "platform"
 	ServicePostgres           Service = "postgres"
 	ServicePrometheus         Service = "prometheus"
-	ServicePerformanceAdvisor Service = "performance_advisor"
+	ServicePerformanceAdvisor Service = "yb-perf-advisor"
 )
 
 func (s Service) String() string {
@@ -64,6 +64,7 @@ type platformConfig struct {
 	Proxy                 proxy       `mapstructure:"proxy"`
 	SupportOriginUrl      string      `mapstructure:"support_origin_url"`
 	AdditionalConfig      string      `mapstructure:"additional_config"`
+	TrustedProxies        []string    `mapstructure:"trusted_proxies"`
 }
 
 type oauthConfig struct {
@@ -152,5 +153,22 @@ type ldapConfig struct {
 }
 
 type perfAdvisorConfig struct {
-	// Add Perf Advisor-specific configuration fields here
+	Enabled        bool           `mapstructure:"enabled"`
+	Port           int            `mapstructure:"port"`
+	RestartSeconds int            `mapstructure:"restart_seconds"`
+	PaSecret       string         `mapstructure:"pa_secret"`
+	Callhome       callhomeConfig `mapstructure:"callhome"`
+	Tls            tlsConfig      `mapstructure:"tls"`
+}
+
+type tlsConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	SSLProtocols     string `mapstructure:"ssl_protocols"`
+	Hsts             bool   `mapstructure:"hsts"`
+	KeystorePassword string `mapstructure:"keystore_password"`
+}
+
+type callhomeConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	Environment string `mapstructure:"environment"`
 }

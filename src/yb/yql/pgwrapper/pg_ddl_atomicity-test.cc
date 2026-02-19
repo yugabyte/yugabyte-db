@@ -1928,7 +1928,7 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   // Perform an unsuccessful alter table operation.
   ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
-  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_next_ddl=1"));
   // Perform an unsuccessful alter table rewrite operation.
   ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD PRIMARY KEY (key)"));
 
@@ -1979,7 +1979,7 @@ TEST_F(PgDdlAtomicityTest, TestAlterTableAddUniqueConstraint) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE bar (y character varying(20))"));
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("y_unique")).size(), 0);
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   // As of 2024-09-17, the aborted ALTER TABLE bar statement leaves an orphan index
   // inside DocDB that is not garbage collected. But its existence will not prevent
   // a retry of the same statement to succeed, which will create another index with
@@ -2007,7 +2007,7 @@ TEST_F(PgDdlAtomicityTest, TestAlterTableAddCheckConstraint) {
   ASSERT_EQ(foo_table_info->schema.version(), 1);
 
   ASSERT_OK(conn.Execute("CREATE TABLE bar(id int)"));
-  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=1"));
   ASSERT_NOK(conn.Execute("ALTER TABLE bar ADD CONSTRAINT bar_id_check CHECK (id > 5)"));
   auto bar_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "bar"));
   std::shared_ptr<client::YBTableInfo> bar_table_info = std::make_shared<client::YBTableInfo>();

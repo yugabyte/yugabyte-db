@@ -23,7 +23,7 @@ Use the `START_REPLICATION` command to start streaming changes from a logical re
 {{%ebnf%}}
   start_replication,
   log_sequence_number,
-  replication_option
+  start_replication_option
 {{%/ebnf%}}
 
 ## Semantics

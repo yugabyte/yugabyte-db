@@ -219,6 +219,10 @@ static bool yb_can_pushdown_distinct(PlannerInfo *root, IndexOptInfo *index);
 static bool yb_can_pushdown_as_filter(PlannerInfo *root, IndexOptInfo *index, RestrictInfo *rinfo);
 static void yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel, IndexOptInfo *index,
 								 Relids relids, IndexClauseSet *clauseset);
+static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
+												 RelOptInfo *rel,
+												 IndexOptInfo *index,
+												 List *useful_pathkeys);
 
 bool yb_enable_derived_equalities;
 
@@ -1460,6 +1464,13 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
+		if (yb_saop_merge_saop_cols && useful_pathkeys != NIL)
+		{
+			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
+																  rel,
+																  index,
+																  useful_pathkeys);
+		}
 		orderbyclauses = NIL;
 		orderbyclausecols = NIL;
 	}
@@ -1544,9 +1555,11 @@ yb_step_4:
 		/*
 		 * If appropriate, consider parallel index scan.  We don't allow
 		 * parallel index scan for bitmap index scans.
+		 * YB: Also, SAOP merge conflicts with parallel scan
 		 */
 		if (index->amcanparallel &&
 			rel->consider_parallel && outer_relids == NULL &&
+			yb_saop_merge_saop_cols == NIL &&
 			scantype != ST_BITMAPSCAN)
 		{
 			ipath = create_index_path(root, index,
@@ -1622,6 +1635,13 @@ yb_step_4:
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
+		if (yb_saop_merge_saop_cols && useful_pathkeys != NIL)
+		{
+			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
+																  rel,
+																  index,
+																  useful_pathkeys);
+		}
 yb_step_5:
 		if (useful_pathkeys != NIL)
 		{
@@ -1658,6 +1678,7 @@ yb_step_5:
 			/* If appropriate, consider parallel index scan */
 			if (index->amcanparallel &&
 				rel->consider_parallel && outer_relids == NULL &&
+				yb_saop_merge_saop_cols == NIL &&
 				scantype != ST_BITMAPSCAN)
 			{
 				ipath = create_index_path(root, index,
@@ -4999,4 +5020,66 @@ yb_derive_equal_cond(PlannerInfo *root, RelOptInfo *rel,
 	index_close(index_rel, NoLock);
 	if (outer_relids)
 		bms_free(outer_relids);
+}
+
+/*
+ * yb_truncate_embedded_index_pathkeys
+ *
+ * Expression columns in the Yugabyte's embedded (i.e. colocated) indexess are
+ * useless for merge sort purposes, because DocDB returns data from the base
+ * table only, and has no mechanism to return the data from the index.
+ * Therefore, if the index is an embedded index, we iterate over the pathkeys
+ * to check if there are equivalent columns in the base table. If not, we
+ * truncate the pathkeys list to exclude the expression columns.
+ */
+static List *
+yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
+									IndexOptInfo *index, List *useful_pathkeys)
+{
+	ListCell   *lc;
+	int			useful;
+	Relation	table_rel;
+	Relation	index_rel;
+	bool		is_embedded_index;
+
+	table_rel = RelationIdGetRelation(planner_rt_fetch(rel->relid, root)->relid);
+	index_rel = RelationIdGetRelation(index->indexoid);
+	is_embedded_index = YbIsScanningEmbeddedIdx(table_rel, index_rel);
+	RelationClose(table_rel);
+	RelationClose(index_rel);
+	/* Regular index queried directly, all the passkey are useful */
+	if (!is_embedded_index)
+	{
+		return useful_pathkeys;
+	}
+
+	useful = 0;
+	foreach(lc, useful_pathkeys)
+	{
+		ListCell   *lc2;
+		bool		found = false;
+		PathKey    *pathkey = (PathKey *) lfirst(lc);
+		EquivalenceClass *ec = pathkey->pk_eclass;
+		foreach(lc2, ec->ec_members)
+		{
+			EquivalenceMember *em = (EquivalenceMember *) lfirst(lc2);
+			if (bms_equal(em->em_relids, rel->relids))
+			{
+				Expr	   *expr = em->em_expr;
+				while (IsA(expr, RelabelType))
+					expr = ((RelabelType *) expr)->arg;
+				if (IsA(expr, Var))
+				{
+					found = true;
+					break;
+				}
+			}
+		}
+		if (!found)
+		{
+			return list_truncate(useful_pathkeys, useful);
+		}
+		++useful;
+	}
+	return useful_pathkeys;
 }

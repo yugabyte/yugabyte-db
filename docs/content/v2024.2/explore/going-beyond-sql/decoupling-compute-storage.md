@@ -82,7 +82,7 @@ This automatically ensures that the data is only stored in zones `storage-zone-a
 
 ## Separating compute
 
-Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d and e. You can either configure your applications to only connect to the remaining nodes (127.0.0.4, 127.0.0.5, 127.0.0.6, 127.0.0.7), or use a [YugabyteDB Smart Driver](/preview/develop/drivers-orms/smart-drivers) to connect only to the nodes in zones `compute-zone-a` and `compute-zone-b` using [topology_keys](/preview/develop/drivers-orms/smart-drivers/#topology-keys). For example:
+Now that you have restricted storage to specific zones, the machines in the remaining zones can be used for query processing by having your applications connect only to the nodes in zones d and e. You can either configure your applications to only connect to the remaining nodes (127.0.0.4, 127.0.0.5, 127.0.0.6, 127.0.0.7), or use a [YugabyteDB Smart Driver](/stable/develop/drivers-orms/smart-drivers) to connect only to the nodes in zones `compute-zone-a` and `compute-zone-b` using [topology_keys](/stable/develop/drivers-orms/smart-drivers/#topology-keys). For example:
 
 ```java
 topology_keys = "topology_keys=aws.east.compute-zone-a,aws.east.compute-zone-b";

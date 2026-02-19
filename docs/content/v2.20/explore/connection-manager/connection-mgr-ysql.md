@@ -1,14 +1,13 @@
 ---
-title: Connection Manager in YSQL
-headerTitle: YSQL Connection Manager
-linkTitle: YSQL Connection Manager
-description: Built-in server-side connection pooler for YSQL
-headcontent: Built-in server-side connection pooler for YSQL
+title: Built-in connection pooling in YSQL
+headerTitle: Built-in connection pooling
+linkTitle: Built-in connection pooling
+description: YSQL Connection Manager 
+headcontent: YSQL Connection Manager
 tags:
   feature: tech-preview
 menu:
   v2.20:
-    name: YSQL Connection Manager
     identifier: explore-conn-mgr-ysql
     parent: explore
     weight: 800

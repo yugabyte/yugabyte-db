@@ -54,7 +54,6 @@ class AddBiDirectionalIndexToXClusterTargetTask : public MultiStepTableTaskBase 
   scoped_refptr<UniverseReplicationInfo> universe_;
   std::shared_ptr<client::XClusterRemoteClientHolder> remote_client_;
   XClusterManagerIf& xcluster_manager_;
-  Master& master_;
   const CoarseTimePoint deadline_;
 
   TableId source_index_table_id_;

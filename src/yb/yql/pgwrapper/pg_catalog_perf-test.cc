@@ -629,7 +629,7 @@ TEST_F(PgCatalogPerfTest, RPCCountAfterDdlFailure) {
     return conn->Execute("CREATE TABLE mytable1 (id int)");
   }));
   auto rpc_count_for_ddl_failure = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
-    RETURN_NOT_OK(conn->Execute("SET yb_test_fail_next_ddl=true"));
+    RETURN_NOT_OK(conn->Execute("SET yb_test_fail_next_ddl=1"));
     if (conn->Execute("CREATE TABLE mytable (id int)").ok()) {
       return STATUS(RuntimeError, "Expected to fail Ddl");
     }

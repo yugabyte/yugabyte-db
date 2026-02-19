@@ -9,7 +9,6 @@ cascade:
   unversioned: true
 rightNav:
   hideH2: true
-type: docs
 ---
 
 |          Product           |  Affected Versions  |  Related Issues   | Fixed In |

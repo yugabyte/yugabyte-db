@@ -164,6 +164,8 @@ class PgApiImpl {
       uint32_t db_oid, bool is_breaking_change,
       uint64_t new_catalog_version, const YbcCatalogMessageList *message_list);
 
+  Status GetYbSystemTableInfo(
+      PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode);
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
   pid_t GetLocalTServerPid() const;
@@ -653,7 +655,7 @@ class PgApiImpl {
 
   Result<bool> SampleNextBlock(PgStatement* handle);
 
-  Status ExecSample(PgStatement *handle);
+  Status ExecSample(PgStatement *handle, YbcPgExecParameters* exec_params);
 
   Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 
@@ -662,7 +664,7 @@ class PgApiImpl {
   Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
-  Status ResetTransactionReadPoint();
+  Status ResetTransactionReadPoint(bool is_catalog_snapshot);
   Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
@@ -672,6 +674,7 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  void SetClampUncertaintyWindow(bool clamp);
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
@@ -823,6 +826,8 @@ class PgApiImpl {
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
   Result<tserver::PgGetReplicationSlotResponsePB> GetReplicationSlot(
@@ -830,11 +835,13 @@ class PgApiImpl {
 
   Result<cdc::InitVirtualWALForCDCResponsePB> InitVirtualWALForCDC(
       const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
       const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
       const std::vector<PgOid>& publication_oids, bool pub_all_tables);
 
   Result<cdc::UpdatePublicationTableListResponsePB> UpdatePublicationTableList(
-      const std::string& stream_id, const std::vector<PgObjectId>& table_ids);
+      const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode);
 
   Result<cdc::DestroyVirtualWALForCDCResponsePB> DestroyVirtualWALForCDC();
 
@@ -959,14 +966,13 @@ class PgApiImpl {
 
   PgSharedDataHolder pg_shared_data_;
 
+  tserver::TServerSharedData& tserver_shared_object_;
+
   // TODO Rename to client_ when YBClient is removed.
   PgClient pg_client_;
   std::unique_ptr<Interrupter> interrupter_;
 
   scoped_refptr<server::HybridClock> clock_;
-
-  // Local tablet-server shared memory data.
-  tserver::TServerSharedData* tserver_shared_object_;
 
   const bool enable_table_locking_;
   scoped_refptr<PgTxnManager> pg_txn_manager_;

@@ -2,6 +2,7 @@ package ybactlstate
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/viper"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -24,13 +25,32 @@ func (s State) ValidateReconfig() error {
 	if viper.GetBool("postgres.install.ldap_enabled") != s.Postgres.LdapEnabled {
 		return fmt.Errorf("cannot change postgres ldap configuration")
 	}
-	// Check none of the installed services are changing:
-	if s.Services.PerfAdvisor != viper.GetBool("perfAdvisor.enabled") {
-		return fmt.Errorf("cannot change perf advisor service from %t", s.Services.PerfAdvisor)
+
+	if viper.GetBool("as_root") != s.Config.AsRoot {
+		return fmt.Errorf("cannot change as_root from %t", s.Config.AsRoot)
 	}
-	// Platform is enabled only if perf advisor is false.
-	if s.Services.Platform != (!viper.GetBool("perfAdvisor.enabled")) {
-		return fmt.Errorf("cannot change platform service from %t", s.Services.Platform)
+
+	if err := ValidatePrometheusScrapeConfig(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidatePrometheusScrapeConfig validates the prometheus scrape config.
+// It checks that the scrape timeout is less than the scrape interval.
+func ValidatePrometheusScrapeConfig() error {
+	// Parse the scrape timeout and interval.
+	scrapeTimeout, err := time.ParseDuration(viper.GetString("prometheus.scrapeTimeout"))
+	if err != nil {
+		return fmt.Errorf("cannot parse prometheus scrape timeout: %s", err.Error())
+	}
+	scrapeInterval, err := time.ParseDuration(viper.GetString("prometheus.scrapeInterval"))
+	if err != nil {
+		return fmt.Errorf("cannot parse prometheus scrape interval: %s", err.Error())
+	}
+	if scrapeTimeout > scrapeInterval {
+		return fmt.Errorf("prometheus scrape timeout must be less than scrape interval")
 	}
 
 	return nil

@@ -1384,6 +1384,12 @@ public class UniverseCRUDHandler {
         .orElseGet(Collections::emptyList);
   }
 
+  public UniverseResp findByUUID(Customer customer, UUID universeUUID) {
+    return Universe.maybeGet(universeUUID)
+        .map(value -> UniverseResp.create(value, null, confGetter))
+        .orElse(null);
+  }
+
   public UUID destroy(
       Customer customer,
       Universe universe,
@@ -2640,7 +2646,9 @@ public class UniverseCRUDHandler {
               "true",
               "split_respects_tablet_replica_limits",
               "true"));
-      newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+      if (primaryCluster.userIntent.enableYSQL) {
+        newInstallTserverGflags.putAll(Map.of("use_memory_defaults_optimized_for_ysql", "true"));
+      }
     }
 
     // Add new flags for versions >= 2.29.0.0 or 2025.2.0.0

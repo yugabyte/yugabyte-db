@@ -212,7 +212,6 @@ readonly -a VALID_BUILD_TYPES=(
   tsan_slow
   pvs
   prof_gen
-  prof_use
 )
 make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
@@ -237,6 +236,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang17
   clang18
   clang19
+  clang21
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -559,7 +559,7 @@ set_default_compiler_type() {
       YB_COMPILER_TYPE=clang
       adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
-      YB_COMPILER_TYPE=clang19
+      YB_COMPILER_TYPE=clang21
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -712,7 +712,7 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       cmake_build_type=debug
     ;;
-    prof_gen|prof_use)
+    prof_gen)
       cmake_build_type=release
     ;;
     *)
@@ -732,7 +732,7 @@ set_cmake_build_type_and_compiler_type() {
           "Sanitizers are only supported with Clang."
   fi
 
-  if [[ $build_type =~ ^(prof_gen|prof_use)$ && $YB_COMPILER_TYPE == gcc* ]]; then
+  if [[ $build_type == prof_gen && $YB_COMPILER_TYPE == gcc* ]]; then
     fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
           "PGO works only with Clang for now."
   fi
@@ -2487,30 +2487,19 @@ lint_java_code() {
     local java_test_file
     for java_test_file in "${java_test_files[@]}"; do
       local log_prefix="YB JAVA LINT: $java_test_file"
-      if ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBParameterizedTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonMac\.class\)' \
-             "$java_test_file"
-      then
+      local run_with_pattern='@RunWith\((value[ ]*=[ ]*)?('
+      run_with_pattern+='YBParameterizedTestRunnerNonTsanOnly|YBParameterizedTestRunner|'
+      run_with_pattern+='YBTestRunnerNonSanitizersOrMac|YBTestRunnerNonSanOrAArch64Mac|'
+      run_with_pattern+='YBTestRunnerNonTsanOnly|YBTestRunnerNonTsanAsan|'
+      run_with_pattern+='YBTestRunnerReleaseOnly|YBTestRunnerYsqlConnMgr|'
+      run_with_pattern+='YBTestRunnerNonMac|YBTestRunner)\.class\)'
+      if ! grep -Eq "$run_with_pattern" "$java_test_file"; then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
+            "YBParameterizedTestRunnerNonTsanOnly, YBTestRunnerNonTsanOnly, " \
+            " YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
             "YBTestRunnerNonSanOrAArch64Mac, " \
-            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac are being " \
-            "used in test"
+            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac " \
+            " are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2656,7 +2645,7 @@ check_arc_wrapper() {
     # This is a Yugabyte workstation or dev server.
     local arc_path
     set +e
-    arc_path=$( which arc )
+    arc_path=$( command -v arc )
     set -e
     if [[ ! -f $arc_path ]]; then
       # OK if arc is not found. Then people cannot "arc land" changes that do not pass tests.

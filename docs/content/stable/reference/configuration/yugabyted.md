@@ -34,11 +34,11 @@ For information on installing YugabyteDB, see [Use a local cluster](/stable/quic
 
 After installing YugabyteDB, if you want to use [backup](#backup) and [restore](#restore), you also need to install the YB Controller service, which manages backup and restore operations. YB Controller is included in the `share` directory of your YugabyteDB installation.
 
-For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.0.0.0-b19-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
+For example, if you installed v{{< yb-version version="stable"  format="short">}}, extract the `ybc-2.2.0.3-b14-linux-x86_64.tar.gz` file into the `ybc` folder as follows:
 
 ```sh
 cd yugabyte-{{< yb-version version="stable" >}}
-mkdir ybc | tar -xvf share/ybc-2.0.0.0-b19-linux-x86_64.tar.gz -C ybc --strip-components=1
+mkdir ybc | tar -xvf share/ybc-2.2.0.3-b14-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
@@ -1117,7 +1117,7 @@ outputs directions for bootstrapping the relevant databases.
 --replication_id *xcluster-replication-id*
 : A string to uniquely identify the replication.
 
---automatic_mode  {{<tags/feature/ea idea="2176">}}
+--automatic_mode  {{<tags/feature/ga idea="153">}}
 : Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/). If you omit this flag, then semi-automatic mode is used.
 
 #### add_to_checkpoint

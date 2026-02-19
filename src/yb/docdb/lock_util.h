@@ -81,6 +81,16 @@ extern const IntentTypeSetMap kIntentTypeSetMask;
 LockState IntentTypeMask(
     dockv::IntentType intent_type, LockState single_intent_mask = kFirstIntentTypeMask);
 
+inline bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
+  auto lhs_value = std::to_underlying(lhs);
+  auto rhs_value = std::to_underlying(rhs);
+  // The rules are the following:
+  // 1) At least one intent should be strong for conflict.
+  // 2) Read and write conflict only with opposite type.
+  return ((lhs_value & dockv::kStrongIntentFlag) || (rhs_value & dockv::kStrongIntentFlag)) &&
+         ((lhs_value & dockv::kWriteIntentFlag) != (rhs_value & dockv::kWriteIntentFlag));
+}
+
 inline LockState IntentTypeSetAdd(dockv::IntentTypeSet intent_types) {
   return kIntentTypeSetAdd[intent_types.ToUIntPtr()];
 }
@@ -96,6 +106,8 @@ bool IntentTypeSetsConflict(dockv::IntentTypeSet lhs, dockv::IntentTypeSet rhs);
 [[nodiscard]] size_t LockStateWriteIntentCount(LockState state);
 
 std::string LockStateDebugString(LockState state);
+
+bool LockStateContains(LockState existing_state, LockState add);
 
 template <typename LockManager>
 struct DetermineKeysToLockResult {

@@ -98,8 +98,30 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
           TaskType.SetNodeState,
           TaskType.WaitStartingFromTime);
 
+  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER_ONLY =
+      ImmutableList.of(
+          TaskType.SetNodeState,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.WaitForEncryptionKeyInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.CheckFollowerLag,
+          TaskType.SetNodeState,
+          TaskType.WaitStartingFromTime);
+
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
-      ImmutableList.of(TaskType.AnsibleClusterServerCtl, TaskType.AnsibleConfigureServers);
+      ImmutableList.of(
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.AnsibleClusterServerCtl, /* Stop master on non-master nodes */
+          TaskType.AnsibleConfigureServers);
 
   private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
       ImmutableList.of(
@@ -187,6 +209,16 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
                 .map(nodeIdx -> String.format("host-n%d", nodeIdx))
                 .collect(Collectors.toList());
         int pos = position;
+        // A bit hacky, but for TSERVER we need to do the tserver only (does not also have a master
+        // process) for the tserver only nodes. Based on the ordering, our masters are node indexes
+        // 3, 1, 2 - with nodes 4 and 5 being tserver only.
+        if (nodeNames.size() == 1 && serverType == TSERVER) {
+          if (nodeIndexes.get(0) >= 4) {
+            taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER_ONLY;
+          } else {
+            taskSequence = ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
+          }
+        }
         for (TaskType type : taskSequence) {
           log.debug("exp {} {} - {}", nodeNames, pos++, type);
         }
@@ -353,13 +385,15 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
         "2.21.0.0-b1",
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
-    verify(mockNodeManager, times(33)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(37)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
@@ -374,7 +408,7 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, true, false);
     position = assertSequence(subTasksByPosition, MASTER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true);
-    assertEquals(117, position);
+    assertEquals(122, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -443,13 +477,15 @@ public class RollbackUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     // 4 download + 4x3 (stop/config/start tserver) + 3x3 (stop/config/start master)
     // + 1x2 (stop inactive master + config)
-    verify(mockNodeManager, times(27)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(29)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckServiceLiveness);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodeCommandExecution);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateConsistencyCheck);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);

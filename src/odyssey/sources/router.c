@@ -1111,11 +1111,20 @@ attach:
 	server->key_client = client_for_router->key;
 
 	if (route->id.logical_rep) {
-		// Replication connections are never detached after txn is committed similar to sticky
-		// connections. Attach phase is called once for a replication connection. So only once
-		// the sticky count is incremented to reflect on stats.
+		/*
+		 * Replication connections are never detached after txn is committed
+		 * similar to sticky connections. Attach phase is called once for a
+		 * replication connection. So only once the sticky count is incremented
+		 * to reflect on stats. Control backends are however NOT marked as
+		 * sticky, as they are either automatically closed after athentication
+		 * (Auth Backend) or reset and reused for further authentication
+		 * (Auth Passthrough).
+		 */
+
 		server->yb_replication_connection = true;
-		route->server_pool.yb_count_sticky++;
+		if(!(route->rule->pool->routing == OD_RULE_POOL_INTERVAL)) {
+			route->server_pool.yb_count_sticky++;
+		}
 	}
 
 	od_route_unlock(route);
@@ -1232,13 +1241,15 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 * 			a. Creating TEMP TABLES.
 	 * 			b. Use of WITH HOLD CURSORS.
 	 *  c. Client connection is a logical or physical replication connection
+	 *     (but NOT a control connection).
 	 *  d. It took too long to reset state on the server.
 	 */
 	if (od_likely(!server->offline) &&
 		!server->yb_sticky_connection &&
 		!server->reset_timeout) {
 		od_instance_t *instance = server->global->instance;
-		if (route->id.physical_rep || route->id.logical_rep) {
+		if ((route->id.physical_rep || route->id.logical_rep) &&
+		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {
 			od_debug(&instance->logger, "expire-replication", NULL,
 				 server, "closing replication connection");
 			server->route = NULL;

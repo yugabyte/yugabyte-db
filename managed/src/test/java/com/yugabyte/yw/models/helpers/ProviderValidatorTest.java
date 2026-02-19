@@ -34,6 +34,31 @@ public class ProviderValidatorTest extends FakeDBApplication {
     providerValidator = app.injector().instanceOf(ProviderValidator.class);
   }
 
+  // Duplicate AZ code is added as a replacement of old deleted az.
+  @Test
+  public void testDuplicateOldAzReplacement() {
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "yb-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "az-1", "subnet-1");
+    az.setActive(false);
+    az.save();
+    Provider requestedProvider = Provider.getOrBadRequest(provider.getUuid());
+    List<Region> shallowCopy = new ArrayList<>(requestedProvider.getRegions());
+    requestedProvider.setRegions(shallowCopy);
+    Region newRegion = new Region();
+    newRegion.setProvider(provider);
+    newRegion.setCode("us-west-2");
+    newRegion.setName("us-west-2");
+    newRegion.setYbImage("yb-image");
+    shallowCopy.add(newRegion);
+    AvailabilityZone newAz = new AvailabilityZone();
+    newAz.setRegion(newRegion);
+    newAz.setCode("az-1");
+    newAz.setName("az-1");
+    newAz.setSubnet("subnet-1");
+    newRegion.setZones(Arrays.asList(newAz));
+    providerValidator.validate(requestedProvider, provider);
+  }
+
   // Duplicate AZ code is added. This must fail as new duplicates are not allowed.
   @Test
   public void testDuplicateAzAddition() {

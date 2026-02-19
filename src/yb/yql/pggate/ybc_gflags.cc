@@ -15,6 +15,7 @@
 #include <string>
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -95,10 +96,7 @@ DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "used with superuser login disabled, such as in YBM. When true, this assumes those blocked "
     "roles are not already in use.");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_enable_pg_export_snapshot, false,
-    "Enables the support for synchronizing snapshots across transactions, using pg_export_snapshot "
-    "and SET TRANSACTION SNAPSHOT");
+DEPRECATE_FLAG(bool, ysql_enable_pg_export_snapshot, "01_2026");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_neghit_full_inheritscache, true,
     "When set to true, a (fully) preloaded inherits cache returns negative cache hits"
@@ -126,9 +124,15 @@ DEFINE_test_flag(bool, ysql_bypass_auto_analyze_auth_check, false,
     "Bypass the yb-tserver-key authentication method check when connecting using "
     "yb_auto_analyze backend type.");
 
+DEFINE_test_flag(int64, delay_after_table_analyze_ms, 0,
+    "Add this delay after each table is analyzed.");
+
+DEFINE_test_flag(
+    bool, enable_obj_tuple_locks, false, "Enable object tuple locks in the lock manager.");
+
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
 DECLARE_bool(TEST_ysql_enable_db_logical_client_version_mode);
-DECLARE_bool(TEST_ysql_yb_enable_ddl_savepoint_support);
+DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
 DECLARE_bool(TEST_generate_ybrowid_sequentially);
 DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
@@ -141,6 +145,7 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
+DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
 
 namespace {
 
@@ -216,13 +221,12 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
       .ysql_conn_mgr_max_query_size = &FLAGS_ysql_conn_mgr_max_query_size,
       .ysql_conn_mgr_wait_timeout_ms = &FLAGS_ysql_conn_mgr_wait_timeout_ms,
-      .ysql_enable_pg_export_snapshot = &FLAGS_ysql_enable_pg_export_snapshot,
       .ysql_enable_neghit_full_inheritscache =
         &FLAGS_ysql_enable_neghit_full_inheritscache,
       .enable_object_locking_for_table_locks =
           &FLAGS_enable_object_locking_for_table_locks,
-      .TEST_ysql_yb_enable_ddl_savepoint_support =
-          &FLAGS_TEST_ysql_yb_enable_ddl_savepoint_support,
+      .ysql_yb_enable_ddl_savepoint_support =
+          &FLAGS_ysql_yb_enable_ddl_savepoint_support,
       .ysql_max_invalidation_message_queue_size =
           &FLAGS_ysql_max_invalidation_message_queue_size,
       .ysql_max_replication_slots = &FLAGS_max_replication_slots,
@@ -242,6 +246,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .placement_region = FLAGS_placement_region.c_str(),
       .placement_zone = FLAGS_placement_zone.c_str(),
       .TEST_ysql_bypass_auto_analyze_auth_check = &FLAGS_TEST_ysql_bypass_auto_analyze_auth_check,
+      .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
+      .TEST_ysql_yb_enable_listen_notify = &FLAGS_TEST_ysql_yb_enable_listen_notify,
+      .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
   };
   // clang-format on
   return &accessor;

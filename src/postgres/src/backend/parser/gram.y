@@ -1131,12 +1131,12 @@ stmt:
 			| ImportForeignSchemaStmt { parser_ybc_beta_feature(@1, "foreign data wrapper", false); }
 			| IndexStmt
 			| InsertStmt
-			| ListenStmt { parser_ybc_warn_ignored(@1, "LISTEN", 1872); }
+			| ListenStmt
 			| RefreshMatViewStmt
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LockStmt
 			| MergeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
+			| NotifyStmt
 			| PrepareStmt
 			| ReassignOwnedStmt
 			| ReindexStmt
@@ -1151,7 +1151,7 @@ stmt:
 			| SelectStmt
 			| TransactionStmt
 			| TruncateStmt
-			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
+			| UnlistenStmt
 			| UpdateStmt
 			| VacuumStmt
 			| VariableResetStmt
@@ -5531,6 +5531,10 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->extname = $3;
 					n->if_not_exists = false;
 					n->options = $5;
+					if (strcmp(n->extname, "pg_stat_monitor") == 0)
+					{
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
+					}
 					$$ = (Node *) n;
 				}
 				| CREATE EXTENSION IF_P NOT EXISTS name opt_with create_extension_opt_list
@@ -5540,6 +5544,10 @@ CreateExtensionStmt: CREATE EXTENSION name opt_with create_extension_opt_list
 					n->extname = $6;
 					n->if_not_exists = true;
 					n->options = $8;
+					if (strcmp(n->extname, "pg_stat_monitor") == 0)
+					{
+						parser_ybc_beta_feature(@1, "pg_stat_monitor", false);
+					}
 					$$ = (Node *) n;
 				}
 		;

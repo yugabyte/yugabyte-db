@@ -51,6 +51,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/json_document.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
@@ -88,6 +89,7 @@ DECLARE_int32(TEST_partitioning_version);
 DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
+DECLARE_bool(TEST_pause_apply_tablet_split);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -268,7 +270,8 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
 
   ASSERT_OK(WaitForAnySstFiles(parent_peer));
   auto tablet = ASSERT_RESULT(parent_peer->shared_tablet());
-  const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+  const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+  const auto& encoded_split_key = split_keys.encoded_keys.front();
   const auto doc_key_hash = ASSERT_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
 
   ASSERT_OK(SplitSingleTablet(table_id));
@@ -549,9 +552,7 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
     LOG(INFO) << "Searching for k1 value that (kK1Value, k2) records should match lower bound of "
                  "the upper-half tablet...";
 
-    const auto boundary_hash_code =
-        dockv::PartitionSchema::GetHashPartitionBounds(*peer->tablet_metadata()->partition()).first;
-
+    const auto boundary_hash_code = peer->tablet_metadata()->partition()->GetKeyStartAsHashCode();
     std::string tmp;
     QLValuePB value;
     for (;; ++kK1Value) {
@@ -582,12 +583,12 @@ TEST_F(PgTabletSplitTest, SplitKeyMatchesPartitionBound) {
 
   // Have to make a low-level direct call of split middle key to verify an error.
   auto tablet = ASSERT_RESULT(peer->shared_tablet());
-  auto result = tablet->GetEncodedMiddleSplitKey();
+  auto result = tablet->GetSplitKeys(kDefaultNumSplitParts);
   ASSERT_NOK(result);
   ASSERT_EQ(
       tserver::TabletServerError(result.status()),
       tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL);
-  ASSERT_NE(result.status().ToString().find("with partition bounds"), std::string::npos);
+  ASSERT_NE(result.status().ToString().find("partition bounds"), std::string::npos);
 }
 
 // Tests for post split compaction with limit by size and upper bound.
@@ -868,16 +869,12 @@ TEST_F(PgManyTabletsSelect, AnalyzeTableWithLargeRows) {
 
   ASSERT_OK(conn.ExecuteFormat("SET yb_fetch_row_limit = 0"));
 
-  const auto explain_str = ASSERT_RESULT(conn.FetchAllAsString(Format(
+  auto explain_json = ASSERT_RESULT(conn.FetchRow<JsonDocument>(Format(
       "EXPLAIN (ANALYZE, DIST, FORMAT JSON) SELECT * FROM $0 WHERE wide = wide", table_name)));
-  LOG(INFO) << "Explain output: " << explain_str;
-
-  rapidjson::Document explain_json;
-  explain_json.Parse(explain_str.c_str());
-
+  LOG(INFO) << "Explain output: " << ASSERT_RESULT(explain_json.Root().ToString());
   // The response is too large to fit in one request (RPC_MAX_SIZE_LIMIT), so it is split into two
-  ASSERT_EQ(explain_json[0]["Storage Read Requests"].GetInt(), 2);
-  ASSERT_EQ(explain_json[0]["Plan"]["Actual Rows"].GetInt(), rows);
+  ASSERT_EQ(ASSERT_RESULT(explain_json.Root()[0]["Storage Read Requests"].GetDouble()), 2);
+  ASSERT_EQ(ASSERT_RESULT(explain_json.Root()[0]["Plan"]["Actual Rows"].GetDouble()), rows);
 }
 
 class PgPartitioningVersionTest :
@@ -1152,7 +1149,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
       // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-      const auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+      const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+      const auto& encoded_split_key = split_keys.encoded_keys.front();
       ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
       dockv::SubDocKey split_key;
       ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
@@ -1256,7 +1254,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_OK(WaitForAnySstFiles(parent_peer));
 
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
-    auto encoded_split_key = ASSERT_RESULT(tablet->GetEncodedMiddleSplitKey());
+    const auto split_keys = ASSERT_RESULT(tablet->GetSplitKeys(kDefaultNumSplitParts));
+    const auto& encoded_split_key = split_keys.encoded_keys.front();
     ASSERT_TRUE(tablet->metadata()->partition_schema()->IsRangePartitioning());
     dockv::SubDocKey split_key;
     ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
@@ -1785,5 +1784,98 @@ INSTANTIATE_TEST_CASE_P(
     PgTabletSplitTest,
     PgPartitioningVersionTest,
     ::testing::Values(0U, 1U));
+
+class PgDelayedSplitAtFollower : public PgTabletSplitTest {
+ protected:
+  size_t NumTabletServers() override {
+    return 3;
+  }
+};
+
+// Test scenario:
+// 1. 3 tservers: A (leader), B, C
+// 2. Transaction inserts a row and flushes all tablets
+// 3. Stop C
+// 4. Tablet split occurs
+// 5. After split completes at A and B, commit the transaction
+// 6. Switch leader to C
+// 7. Read the row - should return the row
+TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
+  constexpr int kKey = 1000000;
+  constexpr int kValue = 100;
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create table with 1 tablet
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Insert enough data to create SST files for splitting
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+
+  // Insert a row in a transaction
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $1)", kKey, kValue));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Stop tserver C (index 2)
+  const int target_tserver_idx = 2;
+  auto target_tserver = cluster_->mini_tablet_server(target_tserver_idx);
+  target_tserver->Shutdown();
+  ASSERT_OK(WaitForTableLeaders(cluster_.get(), table_id, 30s, RequireLeaderIsReady::kTrue));
+
+  // Trigger tablet split
+  LOG(INFO) << "Triggering tablet split on table_id:" << table_id;
+  ASSERT_OK(SplitSingleTablet(table_id));
+
+  // Wait for split to complete on A and B (C is down, so it won't participate)
+  // We expect 2 child tablets to be active
+  LOG(INFO) << "Waiting for split completion on A and B";
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+
+  LOG(INFO) << "Committing transaction";
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Wait for a while so that the txn will be applied and then removed from
+  // status tablet
+  ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
+
+  LOG(INFO) << "Restarting tserver C with TEST_pause_apply_tablet_split=true";
+  // Set the flag before restarting - this will affect the tserver when it starts
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_apply_tablet_split) = true;
+
+  // Restart C
+  ASSERT_OK(target_tserver->Start());
+  ASSERT_OK(target_tserver->WaitStarted());
+
+  // Wait for a while so that the txn and its intents are removed from C. Please note that with mvcc
+  // for split op, the txn will not be removed until the split op finishes.
+  SleepFor(15s * kTimeMultiplier);
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Reset TEST_pause_apply_tablet_split to false by restart
+  LOG(INFO) << "Change TEST_pause_apply_tablet_split to false";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_apply_tablet_split) = false;
+  ASSERT_OK(target_tserver->Restart());
+  ASSERT_OK(target_tserver->WaitStarted());
+
+  // Check if the row exists on tserver C (index 2) using RowExistsInTablet
+  LOG(INFO) << "Checking if row exists on tserver C for all tablets";
+  auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_id);
+  ASSERT_GE(tablet_ids.size(), 2) << "Should have at least two child tablet";
+
+  bool found = false;
+  for (const auto& tablet_id : tablet_ids) {
+    auto exists = RowExistsInTablet(cluster_.get(), client_.get(), table_id, tablet_id, kKey, 2);
+    ASSERT_OK(exists);
+    if (exists.ok() && *exists) {
+      found = true;
+      LOG(INFO) << "Found row with key " << kKey << " in tablet " << tablet_id
+                << " on tserver " << target_tserver_idx;
+      break;
+    }
+  }
+
+  ASSERT_TRUE(found) << " The row is not found";
+}
 
 } // namespace yb::pgwrapper

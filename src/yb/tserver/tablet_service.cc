@@ -87,11 +87,12 @@
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/read_result.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_dump_helper.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
 
@@ -648,7 +649,7 @@ TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
 }
 
 std::string TabletServiceAdminImpl::LogPrefix() const {
-  return Format("P $0: ", server_->permanent_uuid());
+  return server::MakeServerLogPrefix(server_->permanent_uuid());
 }
 
 void TabletServiceAdminImpl::BackfillDone(
@@ -932,7 +933,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   std::string backfilled_until;
   std::unordered_set<TableId> failed_indexes;
   uint64_t num_rows_read_from_table_for_backfill = 0;
-  std::unordered_map<TableId, double> num_rows_backfilled_in_index;
+  double num_rows_backfilled_in_index = 0.0;
   if (is_pg_table) {
     if (!req->has_namespace_name()) {
       SetupErrorAndRespond(
@@ -958,8 +959,11 @@ void TabletServiceAdminImpl::BackfillIndex(
     bool is_xcluster_automatic_mode_target =
         server_->GetXClusterContext().IsTargetAndInAutomaticMode(*namespace_id);
 
+    DCHECK_EQ(indexes_to_backfill.size(), 1)
+        << "We don't support batching index backfill in YSQL yet";
+    const qlexpr::IndexInfo& index_to_backfill = indexes_to_backfill[0];
     backfill_status = tablet.tablet->BackfillIndexesForYsql(
-        indexes_to_backfill,
+        index_to_backfill,
         req->start_key(),
         deadline,
         read_at,
@@ -968,15 +972,15 @@ void TabletServiceAdminImpl::BackfillIndex(
         server_->GetSharedMemoryPostgresAuthKey(),
         is_xcluster_automatic_mode_target,
         &num_rows_read_from_table_for_backfill,
-        num_rows_backfilled_in_index,
+        &num_rows_backfilled_in_index,
         &backfilled_until);
     if (backfill_status.IsIllegalState()) {
-      DCHECK_EQ(failed_indexes.size(), 0) << "We don't support batching in YSQL yet";
-      for (const auto& idx_info : indexes_to_backfill) {
-        failed_indexes.insert(idx_info.table_id());
-      }
+      failed_indexes.insert(index_to_backfill.table_id());
       DCHECK_EQ(failed_indexes.size(), 1) << "We don't support batching in YSQL yet";
     }
+
+    resp->mutable_num_rows_backfilled_in_index()->insert(
+        {index_to_backfill.table_id(), num_rows_backfilled_in_index});
   } else if (tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE) {
     backfill_status = tablet.tablet->BackfillIndexes(
         indexes_to_backfill,
@@ -1001,11 +1005,6 @@ void TabletServiceAdminImpl::BackfillIndex(
   resp->set_backfilled_until(backfilled_until);
   resp->set_propagated_hybrid_time(server_->Clock()->Now().ToUint64());
   resp->set_num_rows_read_from_table_for_backfill(num_rows_read_from_table_for_backfill);
-  if (is_pg_table) {
-    for (const auto& [index_id, num_rows_backfilled] : num_rows_backfilled_in_index) {
-      resp->mutable_num_rows_backfilled_in_index()->insert({index_id, num_rows_backfilled});
-    }
-  }
 
   if (!backfill_status.ok()) {
     VLOG(2) << " Failed indexes are " << yb::ToString(failed_indexes);
@@ -1739,11 +1738,12 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   dockv::Partition::FromPB(req->partition(), &partition);
 
   LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
-            << " (table=" << req->table_name()
-            << " [id=" << req->table_id() << "]), partition="
-            << partition_schema.PartitionDebugString(partition, schema);
+            << " (table=" << req->table_name() << " [id=" << req->table_id()
+            << "]), partition=" << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
+  // todo(GH29982): The request includes namespace_id. We should pass it to the TableInfo
+  // constructor.
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
@@ -2338,12 +2338,17 @@ Status TabletServiceAdminImpl::DoClonePgSchema(
   std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
       req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
       HybridTime(req->restore_ht())));
-  VLOG(2) << "Dump output: " << dump_output;
+  VLOG(2) << "ysql_dump output: " << dump_output;
 
   // Execute the sql script to generate the PG database.
   YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
-  RETURN_NOT_OK(
-      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */));
+  auto result =
+      ysqlsh_runner.ExecuteSqlScript(dump_output, "clone_pg_schema" /* tmp_file_prefix */);
+  if (!result.ok()) {
+    LOG(INFO) << "Failed executing ysql_dump output: " << dump_output;
+    return result.status();
+  }
+
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
@@ -2519,6 +2524,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       "SELECT count(*) FROM pg_stat_activity WHERE"
       " backend_type != 'walsender' AND backend_type != 'yb-conn-mgr walsender'"
       " AND backend_type != 'yb auto analyze backend'"
+      " AND backend_type != 'yb index backfill'"
+      " AND backend_type != 'yb matview refresh'"
       " AND catalog_version < $0 AND datid = $1$2",
       catalog_version, database_oid,
       (req->has_requestor_pg_backend_pid() ?
@@ -3410,7 +3417,7 @@ void TabletServiceImpl::GetSplitKey(
         const auto& tablet = leader_tablet_peer.tablet;
         if (!req->is_manual_split() &&
             FLAGS_rocksdb_max_file_size_for_compaction > 0 &&
-            tablet->schema()->table_properties().HasDefaultTimeToLive()) {
+            tablet->schema()->table_properties().HasEffectiveDefaultTimeToLive()) {
           auto s = STATUS(NotSupported, "Tablet splitting not supported for TTL tables.");
           return s.CloneAndAddErrorCode(
               TabletServerError(TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY));
@@ -3418,12 +3425,17 @@ void TabletServiceImpl::GetSplitKey(
         if (tablet->MayHaveOrphanedPostSplitData()) {
           return STATUS(IllegalState, "Tablet has orphaned post-split data");
         }
-        std::string partition_split_hash_key;
-        const auto split_encoded_key =
-            VERIFY_RESULT(tablet->GetEncodedMiddleSplitKey(&partition_split_hash_key));
-        resp->set_split_encoded_key(split_encoded_key);
-        resp->set_split_partition_key(partition_split_hash_key.size() ? partition_split_hash_key
-                                                                      : split_encoded_key);
+
+        const auto split_factor =
+            req->has_split_factor() ? req->split_factor() : kDefaultNumSplitParts;
+        const auto split_keys = VERIFY_RESULT(tablet->GetSplitKeys(split_factor));
+        const auto& encoded_keys = split_keys.encoded_keys;
+        const auto& partition_keys = split_keys.partition_keys;
+
+        resp->set_deprecated_split_encoded_key(encoded_keys.front());
+        resp->set_deprecated_split_partition_key(partition_keys.front());
+        resp->mutable_split_encoded_keys()->Add(encoded_keys.begin(), encoded_keys.end());
+        resp->mutable_split_partition_keys()->Add(partition_keys.begin(), partition_keys.end());
         return Status::OK();
   });
 }
@@ -3815,6 +3827,18 @@ void TabletServiceImpl::ClearMetacache(
   }
 }
 
+void TabletServiceImpl::ClearYCQLMetaDataCacheOnServer(
+    const ClearYCQLMetaDataCacheOnServerRequestPB* req,
+    ClearYCQLMetaDataCacheOnServerResponsePB* resp,
+    rpc::RpcContext context) {
+  auto s = server_->ClearYCQLMetaDataCache();
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
 void TabletServiceImpl::AcquireObjectLocks(
     const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
     rpc::RpcContext context) {
@@ -3970,6 +3994,50 @@ Result<VerifyVectorIndexesResponsePB> TabletServiceImpl::VerifyVectorIndexes(
     RETURN_NOT_OK(tablet->vector_indexes().Verify());
   }
   return VerifyVectorIndexesResponsePB();
+}
+
+Result<DumpTabletDataResponsePB> TabletServiceImpl::DumpTabletData(
+    const DumpTabletDataRequestPB& req, CoarseTimePoint deadline) {
+  LOG(INFO) << "DumpTabletData request: " << req.ShortDebugString();
+  auto peer_tablet =
+      VERIFY_RESULT(LookupTabletPeer(server_->tablet_peer_lookup(), req.tablet_id()));
+  uint64_t read_ht = 0;
+  if (req.has_read_ht()) {
+    read_ht = req.read_ht();
+  }
+
+  auto peer_role = VERIFY_RESULT(peer_tablet.tablet_peer->GetConsensus())->role();
+
+  std::unique_ptr<WritableFile> file;
+  if (!req.dest_path().empty()) {
+    RETURN_NOT_OK(Env::Default()->NewWritableFile(req.dest_path(), &file));
+    RETURN_NOT_OK(file->Append(Format("Tablet ID: $0\n", req.tablet_id())));
+    RETURN_NOT_OK(
+        file->Append(Format("Peer UUID: $0\n", peer_tablet.tablet_peer->permanent_uuid())));
+    RETURN_NOT_OK(file->Append(Format("Peer Role: $0\n", PeerRole_Name(peer_role))));
+  }
+
+  uint64_t row_count = 0;
+  uint64_t xor_hash = 0;
+  RETURN_NOT_OK(
+      tablet::DumpTabletData(
+          *peer_tablet.tablet, server_->client_future(), file.get(), read_ht, deadline, xor_hash,
+          row_count));
+  DumpTabletDataResponsePB resp;
+  resp.set_row_count(row_count);
+  resp.set_xor_hash(xor_hash);
+
+  if (file) {
+    RETURN_NOT_OK(file->Append(Format("\nRow count: $0\n", row_count)));
+    RETURN_NOT_OK(file->Append(Format("XOR hash: $0\n", xor_hash)));
+    RETURN_NOT_OK(file->Close());
+  }
+  return resp;
+}
+
+Result<ConnectivityStateResponsePB> TabletServiceImpl::ConnectivityState(
+    const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) {
+  return server_->ConnectivityState();
 }
 
 Status TabletServiceImpl::CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch) {

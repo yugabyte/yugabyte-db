@@ -114,3 +114,10 @@ To rotate root certificates for a universe, do the following:
     If the universe was created using YugabyteDB Anywhere v2.16.5 and earlier, select the **Use rolling upgrade to apply this change** option to perform the upgrade in a rolling update (recommended) and enter the number of seconds to wait between node upgrades.
 
 1. Click **Apply**.
+
+## Limitation
+
+Currently, certificate rotation for Kubernetes universes using [cert-manager](../add-certificate-kubernetes/) is not managed using YugabyteDB Anywhere.
+
+For Kubernetes universes using cert-manager, certificate renewal is handled automatically by cert-manager based on the `renewBefore` setting in the [Certificate resource](https://cert-manager.io/v1.4-docs/usage/certificate/). cert-manager monitors certificates and automatically renews them before expiration. Ensure that your certificate resources are properly configured with appropriate `renewBefore` values (for example, 15-30 days before expiry) to prevent certificate expiration.
+

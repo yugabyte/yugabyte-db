@@ -48,5 +48,6 @@ public class ScheduleResp {
     TimeUnit expiryTimeUnit;
     long parallelism;
     boolean pointInTimeRestoreEnabled;
+    boolean useRoles;
   }
 }

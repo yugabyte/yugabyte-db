@@ -25,8 +25,8 @@ import { RbacUserWithResources } from '../users/interface/Users';
 import { initialMappingValue } from '../users/components/CreateUsers';
 import { ForbiddenRoles, Role } from '../roles';
 
-import { ReactComponent as BulbIcon } from '../../../assets/bulb.svg';
-import { ReactComponent as Close } from '../../../assets/close copy.svg';
+import BulbIcon from '../../../assets/bulb.svg';
+import Close from '../../../assets/close copy.svg';
 import { YBTabPanel, YBTab, YBTabs } from '../../../components/YBTabs/YBTabs';
 
 const useStyles = makeStyles((theme) => ({

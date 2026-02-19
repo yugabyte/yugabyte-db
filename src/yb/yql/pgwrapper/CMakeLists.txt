@@ -51,6 +51,7 @@ add_dependencies(
   )
 
 set(PQ_UTILS_SRCS
+    libpq_test_utils.cc
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
     pq
@@ -114,6 +115,7 @@ ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(clockbound_clock-test)
 ADD_YB_TEST(colocation-test)
+ADD_YB_TEST(create_abort-test)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_alter_add_column_default-test)
@@ -131,6 +133,7 @@ ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_cbo_dependent_flags-test)
 ADD_YB_TEST(pg_clock_skew-test)
+ADD_YB_TEST(pg_concurrent_ddls-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_copy-test)
 ADD_YB_TEST(pg_create_database-test)
@@ -175,6 +178,7 @@ ADD_YB_TEST(pg_tablespaces-test)
 ADD_YB_TEST(pg_tablet_shutdown-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_temp_toast-test)
+ADD_YB_TEST(pg_terminate_backend-test)
 ADD_YB_TEST(pg_type-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_txn_status-test)
@@ -188,6 +192,8 @@ ADD_YB_TEST(pg_advisory_lock-test)
 ADD_YB_TEST(pg_yb_index_check-test)
 ADD_YB_TEST(pg_skip_prefix_lock-test)
 ADD_YB_TEST(pg_intents_flush_opid_modify-test)
+
+ADD_YB_TEST_DEPENDENCIES(pg_packed_row-test log-dump)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

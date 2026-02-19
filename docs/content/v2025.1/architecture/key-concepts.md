@@ -69,7 +69,7 @@ YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions
 
 ## Leader balancing
 
-YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load.
+YugabyteDB tries to keep the number of leaders evenly distributed across the [nodes](#node) in a cluster to ensure an even distribution of load. {{<link dest="../docdb-sharding/cluster-balancing/">}}
 
 ## Leader election
 
@@ -136,6 +136,8 @@ Data is brought into the read replica clusters through asynchronous replication 
 ## Rebalancing
 
 Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link dest="../../explore/linear-scalability/data-distribution/#rebalancing">}}
+
+For detailed information on cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../docdb-sharding/cluster-balancing/).
 
 ## Region
 

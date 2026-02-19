@@ -107,14 +107,14 @@ Status ExecContext::PrepareChildTransaction(
 
   // Set the deadline to be the earlier of the input deadline and the current timestamp
   // plus the waiting time for the prepare child
-  auto now = CoarseMonoClock::Now();
+  auto start = CoarseMonoClock::Now();
   auto threshold = MonoDelta::FromMilliseconds(FLAGS_cql_prepare_child_threshold_ms);
   CoarseTimePoint future_deadline;
   // If timeout 2 times greater than threshold, then use half of timeout for create child.
-  if (threshold != MonoDelta::kZero && now + threshold * 2 < deadline) {
-    future_deadline = now + (deadline - now) / 2;
+  if (threshold != MonoDelta::kZero && start + threshold * 2 < deadline) {
+    future_deadline = start + (deadline - start) / 2;
   } else {
-    future_deadline = std::min(deadline, now + threshold);
+    future_deadline = std::min(deadline, start + threshold);
   }
 
   auto future_status = future.wait_until(future_deadline);
@@ -124,8 +124,12 @@ Status ExecContext::PrepareChildTransaction(
     return Status::OK();
   }
 
-  auto message = Format("Timed out waiting for prepare child status, left to deadline: $0",
-                        MonoDelta(deadline - CoarseMonoClock::now()));
+  auto wait_limit = MonoDelta(future_deadline - start);
+  auto request_remaining = MonoDelta(deadline - future_deadline);
+  auto message = Format(
+      "Timed out waiting for prepare child status after waiting up to $0; "
+      "overall CQL request deadline in $1",
+      wait_limit, request_remaining);
   LOG(INFO) << message;
   return STATUS(TimedOut, message);
 }

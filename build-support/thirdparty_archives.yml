@@ -1,121 +1,116 @@
-sha: cd08ec4a550433ac7b83b69937c57aa300ef8872
+sha: 8c6db387c5f1711766aec2b53f949a0c94fbe193
 archives:
 
   - os_type: almalinux8
     architecture: aarch64
-    compiler_type: clang17
-    tag: v20250926211322-cd08ec4a55-almalinux8-aarch64-clang17
-
-  - os_type: almalinux8
-    architecture: aarch64
-    compiler_type: clang17
-    lto_type: full
-    tag: v20250926211215-cd08ec4a55-almalinux8-aarch64-clang17-full-lto
-
-  - os_type: almalinux8
-    architecture: aarch64
     compiler_type: clang19
-    tag: v20250926211011-cd08ec4a55-almalinux8-aarch64-clang19
+    tag: v20260212172439-8c6db387c5-almalinux8-aarch64-clang19
 
   - os_type: almalinux8
     architecture: aarch64
     compiler_type: clang19
     lto_type: full
-    tag: v20250926211309-cd08ec4a55-almalinux8-aarch64-clang19-full-lto
+    tag: v20260212172529-8c6db387c5-almalinux8-aarch64-clang19-full-lto
 
   - os_type: almalinux8
-    architecture: x86_64
-    compiler_type: clang17
-    tag: v20250926211630-cd08ec4a55-almalinux8-x86_64-clang17
+    architecture: aarch64
+    compiler_type: clang21
+    tag: v20260212172603-8c6db387c5-almalinux8-aarch64-clang21
 
   - os_type: almalinux8
-    architecture: x86_64
-    compiler_type: clang17
+    architecture: aarch64
+    compiler_type: clang21
     lto_type: full
-    tag: v20250926211151-cd08ec4a55-almalinux8-x86_64-clang17-full-lto
+    tag: v20260212172541-8c6db387c5-almalinux8-aarch64-clang21-full-lto
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang19
-    tag: v20250926211149-cd08ec4a55-almalinux8-x86_64-clang19
+    tag: v20260212172547-8c6db387c5-almalinux8-x86_64-clang19
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: clang19
     lto_type: full
-    tag: v20250926211247-cd08ec4a55-almalinux8-x86_64-clang19-full-lto
+    tag: v20260212172428-8c6db387c5-almalinux8-x86_64-clang19-full-lto
 
   - os_type: almalinux8
     architecture: x86_64
-    compiler_type: gcc11
-    tag: v20250926211149-cd08ec4a55-almalinux8-x86_64-gcc11
+    compiler_type: clang21
+    tag: v20260212172433-8c6db387c5-almalinux8-x86_64-clang21
+
+  - os_type: almalinux8
+    architecture: x86_64
+    compiler_type: clang21
+    lto_type: full
+    tag: v20260212172429-8c6db387c5-almalinux8-x86_64-clang21-full-lto
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20250926211202-cd08ec4a55-almalinux8-x86_64-gcc12
+    tag: v20260212172434-8c6db387c5-almalinux8-x86_64-gcc12
 
   - os_type: almalinux8
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20250926211332-cd08ec4a55-almalinux8-x86_64-gcc13
+    tag: v20260212172513-8c6db387c5-almalinux8-x86_64-gcc13
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: clang19
-    tag: v20250926211410-cd08ec4a55-almalinux9-x86_64-clang19
+    tag: v20260212172439-8c6db387c5-almalinux9-x86_64-clang19
+
+  - os_type: almalinux9
+    architecture: x86_64
+    compiler_type: clang21
+    tag: v20260212172607-8c6db387c5-almalinux9-x86_64-clang21
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20250926211214-cd08ec4a55-almalinux9-x86_64-gcc12
+    tag: v20260212172459-8c6db387c5-almalinux9-x86_64-gcc12
 
   - os_type: almalinux9
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20250926211316-cd08ec4a55-almalinux9-x86_64-gcc13
+    tag: v20260212172504-8c6db387c5-almalinux9-x86_64-gcc13
 
   - os_type: macos
     architecture: arm64
     compiler_type: clang
-    tag: v20250926210926-cd08ec4a55-macos-arm64
+    tag: v20260212172244-8c6db387c5-macos-arm64
 
   - os_type: macos
     architecture: x86_64
     compiler_type: clang
-    tag: v20250926211322-cd08ec4a55-macos-x86_64
-
-  - os_type: ubuntu22.04
-    architecture: x86_64
-    compiler_type: clang17
-    tag: v20250926211228-cd08ec4a55-ubuntu2204-x86_64-clang17
+    tag: v20260212172417-8c6db387c5-macos-x86_64
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: clang19
-    tag: v20250926211230-cd08ec4a55-ubuntu2204-x86_64-clang19
+    tag: v20260212172446-8c6db387c5-ubuntu2204-x86_64-clang19
 
   - os_type: ubuntu22.04
     architecture: x86_64
-    compiler_type: gcc11
-    tag: v20250926211639-cd08ec4a55-ubuntu2204-x86_64-gcc11
+    compiler_type: clang21
+    tag: v20260212172455-8c6db387c5-ubuntu2204-x86_64-clang21
 
   - os_type: ubuntu22.04
     architecture: x86_64
     compiler_type: gcc12
-    tag: v20250926211738-cd08ec4a55-ubuntu2204-x86_64-gcc12
-
-  - os_type: ubuntu24.04
-    architecture: x86_64
-    compiler_type: clang17
-    tag: v20250926211518-cd08ec4a55-ubuntu2404-x86_64-clang17
+    tag: v20260212172437-8c6db387c5-ubuntu2204-x86_64-gcc12
 
   - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: clang19
-    tag: v20250926211316-cd08ec4a55-ubuntu2404-x86_64-clang19
+    tag: v20260212172507-8c6db387c5-ubuntu2404-x86_64-clang19
+
+  - os_type: ubuntu24.04
+    architecture: x86_64
+    compiler_type: clang21
+    tag: v20260212172506-8c6db387c5-ubuntu2404-x86_64-clang21
 
   - os_type: ubuntu24.04
     architecture: x86_64
     compiler_type: gcc13
-    tag: v20250926211303-cd08ec4a55-ubuntu2404-x86_64-gcc13
+    tag: v20260212172517-8c6db387c5-ubuntu2404-x86_64-gcc13

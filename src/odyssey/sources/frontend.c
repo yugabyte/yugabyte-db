@@ -183,11 +183,7 @@ static int od_frontend_startup(od_client_t *client)
 
 		int rc = kiwi_be_read_startup(
 			machine_msg_data(msg), machine_msg_size(msg),
-			&client->startup,
-			instance->config.yb_use_auth_backend ?
-				&client->yb_startup_settings :
-				&client->yb_vars_session,
-			yb_od_instance_should_parse_startup_options(instance));
+			&client->startup, &client->yb_startup_settings, true);
 		machine_msg_free(msg);
 		if (rc == -1)
 			goto error;
@@ -232,12 +228,9 @@ static int od_frontend_startup(od_client_t *client)
 			      client->config_listen->client_login_timeout);
 	if (msg == NULL)
 		return -1;
-	rc = kiwi_be_read_startup(
-		machine_msg_data(msg), machine_msg_size(msg), &client->startup,
-		instance->config.yb_use_auth_backend ?
-			&client->yb_startup_settings :
-			&client->yb_vars_session,
-		yb_od_instance_should_parse_startup_options(instance));
+	rc = kiwi_be_read_startup(machine_msg_data(msg), machine_msg_size(msg),
+				  &client->startup,
+				  &client->yb_startup_settings, true);
 	machine_msg_free(msg);
 	if (rc == -1)
 		goto error;
@@ -399,117 +392,10 @@ od_frontend_attach_and_deploy(od_client_t *client, char *context)
 	return OD_OK;
 }
 
-static inline od_frontend_status_t od_frontend_setup_params(od_client_t *client)
-{
-	od_instance_t *instance = client->global->instance;
-	od_router_t *router = client->global->router;
-	od_route_t *route = client->route;
-
-	/* ensure route has cached server parameters */
-	int rc;
-	/*
-	 * YB NOTE: use the cached server parameters if we are using
-	 * auth-passthrough.
-	 */
-	if (!instance->config.yb_use_auth_backend)
-	{
-		rc = kiwi_params_lock_count(&route->params);
-		if (rc == 0) {
-			kiwi_params_t route_params;
-			kiwi_params_init(&route_params);
-
-			od_frontend_status_t status;
-			status = od_frontend_attach(client, "setup", &route_params);
-			if (status != OD_OK) {
-				kiwi_params_free(&route_params);
-				return status;
-			}
-
-			// close backend connection
-			od_router_close(router, client);
-
-			/* There is possible race here, so we will discard our
-			 * attempt if params are already set */
-			rc = kiwi_params_lock_set_once(&route->params, &route_params);
-			if (!rc)
-				kiwi_params_free(&route_params);
-		}
-	}
-
-	/* YB: ParameterStatus messages are sent in od_backend_startup() in case of auth backend */
-	if (!instance->config.yb_use_auth_backend) {
-		od_debug(&instance->logger, "setup", client, NULL,
-			 "sending params:");
-
-		/* send parameters set by client or cached by the route */
-		kiwi_param_t *param = route->params.params.list;
-
-		machine_msg_t *stream = machine_msg_create(0);
-		if (stream == NULL)
-			return OD_EOOM;
-
-		while (param) {
-#ifndef YB_GUC_SUPPORT_VIA_SHMEM
-			kiwi_var_t *var;
-			var = yb_kiwi_vars_get(
-				&client->yb_vars_session,
-				kiwi_param_name(param),
-				yb_od_instance_should_lowercase_guc_name(
-					instance));
-#else
-			kiwi_var_type_t type;
-			type = kiwi_vars_find(&client->vars, kiwi_param_name(param),
-								  param->name_len);
-			kiwi_var_t *var;
-			var = kiwi_vars_get(&client->vars, type);
-#endif
-
-			machine_msg_t *msg;
-			if (var) {
-				msg = kiwi_be_write_parameter_status(stream, var->name,
-									var->name_len,
-									var->value,
-									var->value_len);
-
-				od_debug(&instance->logger, "setup", client, NULL,
-					" %.*s = %.*s", var->name_len, var->name,
-					var->value_len, var->value);
-			} else {
-				msg = kiwi_be_write_parameter_status(
-					stream, kiwi_param_name(param), param->name_len,
-					kiwi_param_value(param), param->value_len);
-
-				od_debug(&instance->logger, "setup", client, NULL,
-					" %.*s = %.*s", param->name_len,
-					kiwi_param_name(param), param->value_len,
-					kiwi_param_value(param));
-			}
-			if (msg == NULL) {
-				machine_msg_free(stream);
-				return OD_EOOM;
-			}
-
-			param = param->next;
-		}
-
-		rc = od_write(&client->io, &stream);
-		if (rc == -1)
-			return OD_ECLIENT_WRITE;
-	}
-
-	return OD_OK;
-}
-
 static inline od_frontend_status_t od_frontend_setup(od_client_t *client)
 {
 	od_instance_t *instance = client->global->instance;
 	od_route_t *route = client->route;
-
-	/* set paremeters */
-	od_frontend_status_t status;
-	status = od_frontend_setup_params(client);
-	if (status != OD_OK)
-		return status;
 
 	if (route->rule->pool->reserve_prepared_statement) {
 		if (od_client_init_hm(client) != OK_RESPONSE) {
@@ -1699,7 +1585,6 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 				od_stat_parse(&route->stats);
 				rc = machine_iov_add(relay->iov, msg_new);
-				retstatus = OD_SKIP;
 				if (rc == -1) {
 					od_error(&instance->logger,
 						 "rewrite parse", NULL, server,
@@ -2907,6 +2792,12 @@ int yb_execute_on_control_connection(od_client_t *client,
 			control_conn_client, NULL,
 			"failed to allocate internal client for the control connection");
 		goto failed_to_acquire_control_connection;
+	}
+
+	if (client->startup.replication.value_len != 0) {
+		yb_kiwi_var_set(&control_conn_client->startup.replication,
+			client->startup.replication.value,
+			client->startup.replication.value_len);
 	}
 
 	/* set control connection route user and database */

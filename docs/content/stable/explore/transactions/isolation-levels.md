@@ -3,7 +3,7 @@ title: Isolation levels
 headerTitle: Isolation levels
 linkTitle: Isolation levels
 description: Isolation Levels in YugabyteDB.
-headcontent: Serializable, Snapshot, and Read committed isolation in YugabyteDB
+headcontent: Serializable, Snapshot, and Read Committed isolation in YugabyteDB
 menu:
   stable:
     name: Isolation levels
@@ -35,17 +35,17 @@ YugabyteDB supports three isolation levels in the transactional layer:
 
 - Serializable
 - Snapshot
-- Read committed
+- Read Committed
 
-The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
+The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's REPEATABLE READ) because, by default, Read Committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
 However, for new universes running v2025.2 or later, Read Committed is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
 
-In versions of YugabyteDB prior to v2025.2, or for manually deployed universes, to enable Read committed, you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` , and the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. This makes the default isolation level for the YSQL API effectively Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
+In versions of YugabyteDB prior to v2025.2, or for manually deployed universes, to enable Read Committed, you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` , and the Read Committed isolation level of YugabyteDB's transactional layer falls back to the stricter Snapshot isolation. This makes the default isolation level for the YSQL API effectively Snapshot because Read Committed, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation.
 
 {{< tip title="Tip" >}}
 
-To avoid serializable errors (that is, to run applications with no retry logic), keep the default `READ COMMITTED` isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
+To avoid serializable errors (that is, to run applications with no retry logic), keep the default Read Committed isolation (`--ysql_default_transaction_isolation`), and set the YB-TServer `--yb_enable_read_committed_isolation` flag to true. This enables read committed isolation.
 
 {{< /tip >}}
 
@@ -53,14 +53,14 @@ To set the transaction isolation level of a transaction, use the command `SET TR
 
 ## Isolation levels in PostgreSQL and YSQL
 
-PostgreSQL (and the SQL standard) has four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted.
+PostgreSQL (and the SQL standard) has four isolation levels: Serializable, Repeatable read, Read Committed, and Read Uncommitted.
 
 The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
 
 | PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
 | :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
-| Read uncommitted | Read Committed | Allowed, but not in YSQL |  Possible | Possible | Possible |
-| Read committed   | Read Committed | Not possible | Possible     | Possible | Possible |
+| Read Uncommitted | Read Committed | Allowed, but not in YSQL |  Possible | Possible | Possible |
+| Read Committed   | Read Committed | Not possible | Possible     | Possible | Possible |
 | Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |
 | Serializable     | Serializable                  | Not possible | Not possible | Not possible | Not possible |
 
@@ -187,8 +187,7 @@ update account
 ```
 
 ```output
-ERROR:  40001: Operation failed.
-  Try again.: Transaction aborted: XXXX
+ERROR:  deadlock detected
 ```
 
   </td>
@@ -254,7 +253,7 @@ Next, connect to the universe using two independent ysqlsh instances, referred t
 Begin a transaction in session #1 with the Snapshot isolation level, meaning it will work against a snapshot of the database as of this point:
 
 ```sql
-BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
   </td>
@@ -292,8 +291,9 @@ SELECT * FROM example;
 Insert a different row. Verify that the row inserted in the transaction in session #1 is not visible in this session, as follows:
 
 ```sql
-BEGIN TRANSACTION ISOLATION LEVEL SNAPSHOT;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO example VALUES (2);
+COMMIT;
 SELECT * FROM example;
 ```
 
@@ -353,11 +353,11 @@ SELECT * FROM example;
 
 </table>
 
-## Read committed isolation
+## Read Committed isolation
 
-Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
+Read Committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 
-Consider an example of transactions' behavior under the Read committed isolation level.
+Consider an example of transactions' behavior under the Read Committed isolation level.
 
 Create a table, as follows:
 

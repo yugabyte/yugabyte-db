@@ -112,6 +112,9 @@ YbcStatus YBCPgSetTserverCatalogMessageList(
     YbcPgOid db_oid, bool is_breaking_change, uint64_t new_catalog_version,
     const YbcCatalogMessageList *message_list);
 
+YbcStatus YBCGetYbSystemTableInfo(
+    YbcPgOid namespace_oid, const char* table_name, YbcPgOid* oid, YbcPgOid* relfilenode);
+
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
 
@@ -631,9 +634,10 @@ YbcStatus YBCPgNewSample(const YbcPgOid database_oid,
 
 YbcStatus YBCPgSampleNextBlock(YbcPgStatement handle, bool *has_more);
 
-YbcStatus YBCPgExecSample(YbcPgStatement handle);
+YbcStatus YBCPgExecSample(YbcPgStatement handle, YbcPgExecParameters* exec_params);
 
-YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, double *liverows, double *deadrows);
+YbcStatus YBCPgGetEstimatedRowCount(YbcPgStatement handle, int *sampledrows, double *liverows,
+                                    double *deadrows);
 
 // INSERT ------------------------------------------------------------------------------------------
 
@@ -731,7 +735,7 @@ YbcStatus YBCFinalizeFunctionTargets(YbcPgFunction handle);
 YbcStatus YBCPgBeginTransaction(int64_t start_time);
 YbcStatus YBCPgRecreateTransaction();
 YbcStatus YBCPgRestartTransaction();
-YbcStatus YBCPgResetTransactionReadPoint();
+YbcStatus YBCPgResetTransactionReadPoint(bool is_catalog_snapshot);
 YbcStatus YBCPgEnsureReadPoint();
 YbcStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
@@ -742,6 +746,7 @@ YbcStatus YBCPgAbortPlainTransaction();
 YbcStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YbcStatus YBCPgSetTransactionReadOnly(bool read_only);
 YbcStatus YBCPgSetTransactionDeferrable(bool deferrable);
+void YBCPgSetClampUncertaintyWindow(bool clamp);
 YbcStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YbcStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YbcStatus YBCPgSetEnableTracing(bool tracing);
@@ -958,6 +963,8 @@ YbcStatus YBCPgNewCreateReplicationSlot(const char *slot_name,
                                         YbcPgStatement *handle);
 YbcStatus YBCPgExecCreateReplicationSlot(YbcPgStatement handle,
                                          uint64_t *consistent_snapshot_time);
+
+YbcStatus YBCPgListSlotEntries(YbcSlotEntryDescriptor** slot_entries, size_t* num_slot_entries);
 
 YbcStatus YBCPgListReplicationSlots(
     YbcReplicationSlotDescriptor **replication_slots, size_t *numreplicationslots);

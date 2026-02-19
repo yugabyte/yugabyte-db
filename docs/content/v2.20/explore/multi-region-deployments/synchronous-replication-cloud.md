@@ -42,15 +42,15 @@ This deployment provides the following advantages:
 
 ## Create a Replicate across regions cluster
 
-Before you can create a multi-region cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/preview/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/preview/yugabyte-cloud/managed-freetrial/).
+Before you can create a multi-region cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
 
-To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](/preview/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
+To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
-- Each region in a multi-region cluster must be [deployed in a VPC](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
-- Set up a [peering connection](/preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
+- Each region in a multi-region cluster must be [deployed in a VPC](/stable/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/). In AWS, this means creating a VPC for each region. In GCP, make sure your VPC includes the regions where you want to deploy the cluster. You need to create the VPCs before you deploy the cluster.
+- Set up a [peering connection](/stable/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-peering/) to an application VPC where you can host the YB Workload Simulator application. If your cluster is deployed in AWS (that is, has a separate VPC for each region), peer the application VPC with each cluster VPC.
 - Copy the YB Workload Simulator application to the peered VPC and run it from there.
 
-YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Aeon](/preview/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
+YB Workload Simulator uses the YugabyteDB JDBC Smart Driver. You can run the application from your computer by [enabling Public Access](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster, but to use the load balancing features of the driver, an application must be deployed in a VPC that has been peered with the cluster VPC. For more information, refer to [Using smart drivers with YugabyteDB Aeon](/stable/develop/drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
 
 ## Start a workload
 
@@ -60,7 +60,7 @@ Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install 
 
 The YugabyteDB JDBC Smart Driver performs uniform load balancing by default, meaning it uniformly distributes application connections across all the nodes in the cluster. However, in a multi-region cluster, it's more efficient to target regions closest to your application.
 
-If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
+If you are running the workload simulator from a peered VPC, you can configure the smart driver with [topology load balancing](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to limit connections to the closest region.
 
 To turn on topology load balancing, start the application as usual, adding the following flag:
 
@@ -86,7 +86,7 @@ To view a table of per-node statistics for the cluster, in YugabyteDB Aeon, do t
 
 Note that read/write operations are roughly the same across all the nodes, indicating uniform load across the nodes.
 
-To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Aeon, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
+To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Aeon, select the cluster [Performance](/stable/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
 ![Performance charts for 3 regions](/images/ce/multisync-managed-charts.png)
 

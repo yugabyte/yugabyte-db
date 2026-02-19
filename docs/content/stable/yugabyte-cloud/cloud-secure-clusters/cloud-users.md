@@ -30,7 +30,7 @@ yugabyte=> \du
                                                          List of roles
   Role name   |                         Attributes                         |                     Member of
 --------------+------------------------------------------------------------+---------------------------------------------------------------
- admin        | Create role, Create DB, Bypass RLS                         | {yb_superuser}
+ admin        | Create role, Create DB, Replication, Bypass RLS            | {yb_superuser}
  postgres     | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yb_db_admin  | No inheritance, Cannot login                               | {}
  yb_extension | Cannot login                                               | {}
@@ -59,11 +59,20 @@ When creating a YugabyteDB cluster in YugabyteDB Aeon, you set up the credential
 
 Although not a superuser, `yb_superuser` includes sufficient privileges to perform all the required operations on a database, including creating other yb_superuser users, as follows:
 
-- Has the following role options: `INHERIT`, `CREATEROLE`, `CREATEDB`, and `BYPASSRLS`.
+- Has the following role attributes: `INHERIT`, `CREATEROLE`, `CREATEDB`, `REPLICATION`, and `BYPASSRLS`.
 
 - Member of the following roles: `pg_read_all_stats`, `pg_signal_backend`, `yb_db_admin`, and [yb_extension](#yb-extension).
 
 `yb_superuser` is the highest privileged role you have access to in YugabyteDB Aeon. You can't delete, change the passwords, or login using the `postgres` or `yugabyte` superuser roles.
+
+To create another database admin user with the same attributes, grant the `yb_superuser` role. For example:
+
+```sql
+CREATE ROLE my_dbadmin WITH CREATEROLE CREATEDB BYPASSRLS LOGIN PASSWORD 'password';
+GRANT yb_superuser to my_dbadmin;
+```
+
+To add the REPLICATION attribute to a role, you must use the `enable_replication_role()` function; refer to [Manage CDC](../../cloud-clusters/aeon-cdc/#manage-cdc).
 
 ### yb_db_admin
 

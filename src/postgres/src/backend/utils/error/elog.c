@@ -840,9 +840,11 @@ errfinish(const char *filename, int lineno, const char *funcname)
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
 	if (!edata->backtrace &&
-		edata->funcname &&
-		backtrace_functions &&
-		matches_backtrace_functions(edata->funcname))
+		((edata->funcname &&
+		  backtrace_functions &&
+		  matches_backtrace_functions(edata->funcname)) ||
+		 (IsYugaByteEnabled() && elevel >= yb_log_min_backtraces &&
+		  edata->sqlerrcode != ERRCODE_TOO_MANY_CONNECTIONS)))
 		set_backtrace(edata, 2);
 
 	/*

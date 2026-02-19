@@ -600,14 +600,16 @@ class AsyncRemoveTableFromTablet : public RetryingTSRpcTaskWithTable {
 class AsyncGetTabletSplitKey : public AsyncTabletLeaderTask {
  public:
   struct Data {
-    const std::string& split_encoded_key;
-    const std::string& split_partition_key;
+    // TODO(nway-tsplit): Consider avoiding the cost of string copy by storing references.
+    std::vector<std::string> split_encoded_keys;
+    std::vector<std::string> split_partition_keys;
   };
   using DataCallbackType = std::function<void(const Result<Data>&)>;
 
   AsyncGetTabletSplitKey(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      ManualSplit is_manual_split, LeaderEpoch epoch, DataCallbackType result_cb);
+      ManualSplit is_manual_split, int split_factor, LeaderEpoch epoch,
+      DataCallbackType result_cb);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kGetTabletSplitKey;
@@ -631,9 +633,9 @@ class AsyncSplitTablet : public AsyncTabletLeaderTask {
  public:
   AsyncSplitTablet(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
-      const std::array<TabletId, kDefaultNumSplitParts>& new_tablet_ids,
-      const std::string& split_encoded_key, const std::string& split_partition_key,
-      LeaderEpoch epoch);
+      const std::vector<TabletId>& new_tablet_ids,
+      const std::vector<std::string>& split_encoded_keys,
+      const std::vector<std::string>& split_partition_keys, LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kSplitTablet;

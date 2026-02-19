@@ -489,29 +489,33 @@ public class NodeAgentPoller {
           ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
       nodeAgentClient.executeCommand(nodeAgent, command).processErrors();
     }
-    installerFiles.getCopyFileInfos().stream()
-        .forEach(
-            f -> {
-              log.info(
-                  "Uploading {} to {} on node agent {}",
-                  f.getSourcePath(),
-                  f.getTargetPath(),
-                  nodeAgent);
-              int perm = 0;
-              if (StringUtils.isNotBlank(f.getPermission())) {
-                try {
-                  perm = Integer.parseInt(f.getPermission().trim(), 8);
-                } catch (NumberFormatException e) {
+    try {
+      installerFiles.getCopyFileInfos().stream()
+          .forEach(
+              f -> {
+                log.info(
+                    "Uploading {} to {} on node agent {}",
+                    f.getSourcePath(),
+                    f.getTargetPath(),
+                    nodeAgent);
+                int perm = 0;
+                if (StringUtils.isNotBlank(f.getPermission())) {
+                  try {
+                    perm = Integer.parseInt(f.getPermission().trim(), 8);
+                  } catch (NumberFormatException e) {
+                  }
                 }
-              }
-              nodeAgentClient.uploadFile(
-                  nodeAgent,
-                  f.getSourcePath().toString(),
-                  f.getTargetPath().toString(),
-                  null /*user*/,
-                  perm,
-                  null /*timeout*/);
-            });
+                nodeAgentClient.uploadFile(
+                    nodeAgent,
+                    f.getSourcePath().toString(),
+                    f.getTargetPath().toString(),
+                    null /*user*/,
+                    perm,
+                    null /*timeout*/);
+              });
+    } finally {
+      installerFiles.cleanupCopiedFiles();
+    }
   }
 
   void syncNodeAgentTargetJsons() {

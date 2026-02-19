@@ -21,10 +21,10 @@ processors:
     - {action: upsert, key: yugabyte.zone, value: ''}
     - {action: upsert, key: yugabyte.purpose, value: DATA_DOG_METRICS_EXPORT}
     - {action: upsert, key: tag, value: value}
-  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
-    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
   memory_limiter/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$MemoryLimiterProcessor {
     check_interval: 10s, limit_mib: 2048}
+  batch/metrics_00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$BatchProcessor {
+    send_batch_max_size: 1000, send_batch_size: 100, timeout: 10s}
 receivers:
   prometheus/yugabyte: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$PrometheusReceiver
     config:
@@ -56,14 +56,14 @@ receivers:
         scheme: http
         static_configs:
         - labels: {export_type: master_export, __param_metrics: 'async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size',
-            __param_show_help: 'false', service: yb-master, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
+            __param_show_help: 'true', service: yb-master, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
           targets: ['127.0.0.1:7000']
         - labels: {export_type: tserver_export, __param_metrics: 'async_replication_sent_lag_micros,async_replication_committed_lag_micros,block_cache_,cpu_utime,cpu_stime,generic_current_allocated_bytes,generic_heap_size,glog,follower_lag_ms,handler_latency_yb_consensus_ConsensusService,handler_latency_yb_cqlserver_SQLProcessor,handler_latency_yb_cqlserver_CQLServerService,handler_latency_yb_master,handler_latency_yb_tserver_TabletServerService,handler_latency_yb_redisserver_RedisServerService_,handler_latency_yb_client,handler_latency_yb_ysqlserver_SQLProcessor,handler_latency_outbound_transfer,handler_latency_outbound_call_queue_time,threads_running,threads_started,involuntary_context_switches,voluntary_context_switches,spinlock_contention_time,majority_sst_files_rejections,leader_memory_pressure_rejections,follower_memory_pressure_rejections,operation_memory_pressure_rejections,rocksdb_current_version_sst_files_size,rpc_connections_alive,rpc_inbound_calls_created,rpc_incoming_queue_time,rpcs_in_queue,rpcs_queue_overflow,rpcs_timed_out_in_queue,transaction_pool_cache,yb_ysqlserver_connection_total,yb_ysqlserver_active_connection_total,yb_ysqlserver_new_connection_total,yb_ysqlserver_connection_over_limit_total,hybrid_clock_skew,log_wal_size',
-            __param_show_help: 'false', service: yb-tserver, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
+            __param_show_help: 'true', service: yb-tserver, __param_priority_regex: 'async_replication_[^_]+_lag_micros|majority_sst_files_rejections|follower_lag_ms|[^_]+_memory_pressure_rejections|rocksdb_current_version_sst_files_size|log_wal_size'}
           targets: ['127.0.0.1:9000']
-        - labels: {export_type: ysql_export, __param_show_help: 'false', service: yb-tserver}
+        - labels: {export_type: ysql_export, __param_show_help: 'true', service: yb-tserver}
           targets: ['127.0.0.1:13000']
-        - labels: {export_type: cql_export, __param_show_help: 'false', service: yb-tserver}
+        - labels: {export_type: cql_export, __param_show_help: 'true', service: yb-tserver}
           targets: ['127.0.0.1:12000']
         tls_config: {insecure_skip_verify: true}
       - job_name: node
@@ -173,8 +173,8 @@ service:
   pipelines:
     metrics/metrics_00000000-0000-0000-0000-000000000000:
       exporters: [datadog/metrics_00000000-0000-0000-0000-000000000000]
-      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, batch/metrics_00000000-0000-0000-0000-000000000000,
-        memory_limiter/metrics_00000000-0000-0000-0000-000000000000]
+      processors: [attributes/metrics_00000000-0000-0000-0000-000000000000, memory_limiter/metrics_00000000-0000-0000-0000-000000000000,
+        batch/metrics_00000000-0000-0000-0000-000000000000]
       receivers: [prometheus/yugabyte]
   telemetry:
     logs:

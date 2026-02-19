@@ -20,9 +20,10 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | [Scaling](configure-clusters/) | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
 | [Read replicas](managed-read-replica/) | Add read replicas to lower read latencies in regions that are distant from your primary cluster. |
 | [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, restore from backups, and set up remote backup replication. |
-| [Point in time recovery](aeon-pitr/) | Create a database clone at a point in time for recovery or testing. |
+| [Point-in-time recovery](aeon-pitr/) | Create a database clone at a point in time for recovery or testing. |
 | [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
 | [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
+| [Change Data Capture](aeon-cdc/) | Capture and stream changes made to data in the database to external processes, applications, or other databases. |
 
 ### Pause, resume, and delete clusters
 
@@ -43,7 +44,7 @@ Cluster infrastructure operations lock the cluster while they are in progress, a
 | Locking Operation | Subtask | Restart |
 | :--- | :--- | :--- |
 | [Backup and restore](backup-clusters/) | | |
-| [Point-in-time reecovery and clone](aeon-pitr/) | | |
+| [Point-in-time recovery and clone](aeon-pitr/) | | |
 | Pause and resume | | |
 | [Cluster Edit](configure-clusters/) | Add or remove nodes | |
 | [Cluster Edit](configure-clusters/) | Change vCPUs, increase disk size, or change IOPS | Yes |
@@ -122,5 +123,11 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
     icon="/images/section_icons/explore/administer.png">}}
+
+  {{<index/item
+    title="Change Data Capture"
+    body="Capture changes made to data in the database."
+    href="aeon-cdc/"
+    icon="fa-thin fa-arrows-rotate">}}
 
 {{</index/block>}}

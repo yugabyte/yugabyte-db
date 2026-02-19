@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 )
 
-const ModuleName = "Preprovision"
+const ModuleName = "UpdateOS"
 
-type Preprovision struct {
+type UpdateOS struct {
 	*config.BaseModule
 }
 
-func NewPreprovision(basePath string) config.Module {
-	return &Preprovision{
+func NewUpdateOS(basePath string) config.Module {
+	return &UpdateOS{
 		BaseModule: config.NewBaseModule(ModuleName, filepath.Join(basePath, "update_os")),
 	}
 }

@@ -122,6 +122,7 @@ public class ProviderValidator extends BaseBeanValidator {
             ? new HashSet<>()
             : existingProvider.getAllRegions().stream()
                 .flatMap(r -> r.getAllZones().stream())
+                .filter(z -> z.isActive()) // Excluding deleted (they are handled)
                 .filter(az -> !modifiedOrAddedZoneUuids.contains(az.getUuid()))
                 .map(AvailabilityZone::getCode)
                 .collect(Collectors.toCollection(HashSet::new));
@@ -146,8 +147,11 @@ public class ProviderValidator extends BaseBeanValidator {
         providerFieldsValidator.validate(requestedProvider);
       }
     } catch (RuntimeException e) {
+      log.error("Failed to validate provider payload", e);
       if (!(e instanceof PlatformServiceException)) {
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to validate provider payload. Please check for malformed or incorrect fields");
       }
       throw e;
     }

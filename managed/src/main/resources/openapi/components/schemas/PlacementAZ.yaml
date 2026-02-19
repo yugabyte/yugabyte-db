@@ -27,7 +27,7 @@ properties:
     description: Affinitizes raft leaders to this AZ.
     type: boolean
   leader_preference:
-    description: Priority of zone (for leaders placement). Values have to be contiguous non-zero integers. Multiple zones can have the same value. A lower value indicates higher zone priority.
+    description: Priority of zone (for leaders placement). Values have to be contiguous non-negative integers. Zero means non-prioritized. Multiple zones can have the same value. A lower value indicates higher zone priority.
     type: integer
     format: int32
   lb_name:

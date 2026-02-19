@@ -96,11 +96,14 @@ class ObjectLockSharedStateManager {
   size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
   size_t ConsumeAndAcquireExclusiveLockIntents(
-      const LockRequestConsumer& consume, std::span<const ObjectLockPrefix*> object_ids);
+      const LockRequestConsumer& consume,
+      std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries);
 
-  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, size_t count = 1);
+  void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state);
 
   [[nodiscard]] TransactionId TEST_last_owner() const;
+
+  [[nodiscard]] bool TEST_has_exclusive_intents() const;
 
  private:
   template<typename ConsumeMethod>
@@ -118,7 +121,7 @@ class ObjectLockSharedStateManager {
   // bootstrap. If these are not released before shared memory is set up, they must be transferred
   // to shared memory before PG has a chance to use the fastpath. We track them here until setup
   // time.
-  std::unordered_map<ObjectLockPrefix, size_t> pre_setup_locks_ GUARDED_BY(setup_mutex_);
+  std::unordered_map<ObjectLockPrefix, LockState> pre_setup_locks_ GUARDED_BY(setup_mutex_);
 };
 
 } // namespace yb::docdb

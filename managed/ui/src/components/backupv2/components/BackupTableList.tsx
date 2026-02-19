@@ -20,7 +20,7 @@ import { BACKUP_REFETCH_INTERVAL, calculateDuration } from '../common/BackupUtil
 import { formatBytes } from '@app/utils/Formatters';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { TableType } from '../../../redesign/helpers/dtos';
-import Timer from '../../universes/images/timer.svg';
+import Timer from '../../universes/images/timer.svg?img';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { IncrementalBackupProps } from './BackupDetails';

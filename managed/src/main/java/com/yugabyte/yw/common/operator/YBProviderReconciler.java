@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue.ResourceAction;
+import com.yugabyte.yw.common.operator.utils.ResourceAnnotationKeys;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -108,8 +109,24 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       throws Exception {
     log.info("Handling deletion of provider {} from CRD", provider.getMetadata().getName());
     String mapKey = OperatorWorkQueue.getWorkQueueKey(provider.getMetadata());
-    Provider existingProvider =
-        Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    Provider existingProvider;
+    if (provider.getMetadata().getAnnotations() != null
+        && provider
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      existingProvider =
+          Provider.get(
+              cust.getUuid(),
+              UUID.fromString(
+                  provider
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      existingProvider =
+          Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    }
     if (existingProvider != null) {
       // Ensure that the provider is not in use by any universe
       if (existingProvider.getUniverseCount() != 0) {
@@ -145,8 +162,24 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   @Override
   protected void createActionReconcile(YBProvider provider, Customer cust) throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(provider.getMetadata());
-    Provider existingProvider =
-        Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    Provider existingProvider;
+    if (provider.getMetadata().getAnnotations() != null
+        && provider
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      existingProvider =
+          Provider.get(
+              cust.getUuid(),
+              UUID.fromString(
+                  provider
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      existingProvider =
+          Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    }
     if (existingProvider != null) {
       log.info("Provider {} already exists in the system.", provider.getMetadata().getName());
       if (existingProvider.getUsabilityState() == Provider.UsabilityState.ERROR) {
@@ -168,18 +201,25 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   // Case 2: Provider is Active and requires edit: Create edit task with latest params
   @Override
   protected void updateActionReconcile(YBProvider provider, Customer cust) throws Exception {
-    Provider existingProvider =
-        Provider.get(cust.getUuid(), UUID.fromString(provider.getStatus().getResourceUUID()));
+    Provider existingProvider;
+    if (provider.getMetadata().getAnnotations() != null
+        && provider
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      existingProvider =
+          Provider.get(
+              cust.getUuid(),
+              UUID.fromString(
+                  provider
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      existingProvider =
+          Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    }
     if (existingProvider != null) {
-      long univCount = existingProvider.getUniverseCount();
-      if (univCount > 0) {
-        log.error(
-            "Provider {} is in use by {} universes. Cannot update.",
-            existingProvider.getName(),
-            univCount);
-        throw new Exception(
-            "Provider " + existingProvider.getName() + " is in use by universes. Cannot update.");
-      }
       if (existingProvider.getUsabilityState() == Provider.UsabilityState.ERROR) {
         log.info(
             "Updating provider {} in error state with latest params", existingProvider.getName());
@@ -210,9 +250,24 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   protected void noOpActionReconcile(YBProvider provider, Customer cust) throws Exception {
     String mapKey = OperatorWorkQueue.getWorkQueueKey(provider.getMetadata());
     String providerName = provider.getMetadata().getName();
-    Provider existingProvider =
-        Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
-
+    Provider existingProvider;
+    if (provider.getMetadata().getAnnotations() != null
+        && provider
+            .getMetadata()
+            .getAnnotations()
+            .containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      existingProvider =
+          Provider.get(
+              cust.getUuid(),
+              UUID.fromString(
+                  provider
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID)));
+    } else {
+      existingProvider =
+          Provider.get(cust.getUuid(), provider.getMetadata().getName(), CloudType.kubernetes);
+    }
     TaskInfo taskInfo = getCurrentTaskInfo(provider);
     if (taskInfo != null) {
       if (TaskInfo.INCOMPLETE_STATES.contains(taskInfo.getTaskState())) {
@@ -336,16 +391,18 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
 
       Provider reqProvider = operatorUtils.getProviderReqFromProviderDetails(reqProviderJson);
       reqProvider.setVersion(existingProvider.getVersion());
-
+      KubernetesResourceDetails kubernetesResourceDetails =
+          KubernetesResourceDetails.fromResource(provider);
       UUID taskUuid =
-          cloudProviderHandler.editProvider(cust, existingProvider, reqProvider, true, false);
+          cloudProviderHandler.editProvider(
+              cust, existingProvider, reqProvider, true, false, kubernetesResourceDetails);
       if (taskUuid != null) {
         providerTaskMap.put(OperatorWorkQueue.getWorkQueueKey(provider.getMetadata()), taskUuid);
       }
       return taskUuid;
     } catch (PlatformServiceException e) {
       log.error("Provider edit failed: {}", e.getMessage());
-      updateProviderStatus(provider, e.getMessage());
+      updateProviderStatus(provider, "Provider edit failed: " + e.getMessage());
       throw e;
     }
   }
@@ -363,7 +420,6 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     ObjectNode payload = objectMapper.createObjectNode();
     payload.put("name", provider.getMetadata().getName());
     payload.put("code", "kubernetes");
-    payload.put("kubernetesProvider", "custom");
     String providerNamespace = provider.getMetadata().getNamespace();
     addProviderLevelCloudInfoToPayload(
         payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
@@ -406,29 +462,29 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   }
 
   private void addProviderLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
-    addCloudInfoToPayload(targetNode, cloudInfo, true);
-  }
-
-  private void addZoneLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
-    addCloudInfoToPayload(targetNode, cloudInfo, false);
-  }
-
-  private void addCloudInfoToPayload(
-      ObjectNode targetNode, ObjectNode cloudInfo, boolean isProviderLevel) {
     if (cloudInfo == null || cloudInfo.isEmpty()) {
       log.warn("Cloud info is null or empty, skipping.");
       return;
     }
-    if (isProviderLevel) {
-      cloudInfo.put("kubernetesPullSecretContent", defaultKubernetesPullSecretContent);
-      cloudInfo.put("kubernetesImagePullSecretName", defaultKubernetesPullSecretName);
-      cloudInfo.put("kubernetesPullSecretName", defaultKubernetesPullSecretName);
-    } else {
-      JsonNode kubernetesOverrides = cloudInfo.get("overrides");
-      if (kubernetesOverrides != null) {
-        cloudInfo.put("overrides", operatorUtils.getKubernetesOverridesString(kubernetesOverrides));
-      }
+    cloudInfo.put("kubernetesPullSecretContent", defaultKubernetesPullSecretContent);
+    cloudInfo.put("kubernetesImagePullSecretName", defaultKubernetesPullSecretName);
+    cloudInfo.put("kubernetesPullSecretName", defaultKubernetesPullSecretName);
+    finalizeCloudInfo(targetNode, cloudInfo);
+  }
+
+  private void addZoneLevelCloudInfoToPayload(ObjectNode targetNode, ObjectNode cloudInfo) {
+    if (cloudInfo == null || cloudInfo.isEmpty()) {
+      log.warn("Cloud info is null or empty, skipping.");
+      return;
     }
+    JsonNode kubernetesOverrides = cloudInfo.get("overrides");
+    if (kubernetesOverrides != null) {
+      cloudInfo.put("overrides", operatorUtils.getKubernetesOverridesString(kubernetesOverrides));
+    }
+    finalizeCloudInfo(targetNode, cloudInfo);
+  }
+
+  private void finalizeCloudInfo(ObjectNode targetNode, ObjectNode cloudInfo) {
     cloudInfo.put("legacyK8sProvider", false);
     cloudInfo.put("isKubernetesOperatorControlled", true);
     maybeExtractKubeConfig(cloudInfo);
@@ -440,6 +496,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   void maybeExtractKubeConfig(ObjectNode cloudInfo) {
     JsonNode secretRef = cloudInfo.get("kubeConfigSecret");
     if (secretRef == null || !secretRef.has("name") || !secretRef.has("namespace")) {
+      cloudInfo.put("kubeConfig", ""); // empty string to use in-cluster credentials
       return;
     }
 
@@ -459,6 +516,11 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       log.info("Kubeconfig cache miss for {}, fetching secret", kubeConfigFileName);
       Secret secret = operatorUtils.getSecret(secretName, secretNamespace);
       if (secret != null) {
+        resourceTracker.trackDependency(currentReconcileResource, secret);
+        log.trace(
+            "Tracking secret {} as dependency of {}",
+            secret.getMetadata().getName(),
+            currentReconcileResource);
         String kubeConfigContent = operatorUtils.parseSecretForKey(secret, "kubeconfig");
         cloudInfo.put("kubeConfigName", kubeConfigFileName);
         cloudInfo.put("kubeConfigContent", kubeConfigContent);

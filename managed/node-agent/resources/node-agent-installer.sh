@@ -45,6 +45,7 @@ INSTALLER_NAME="node-agent-installer.sh"
 SYSTEMD_PATH="/etc/systemd/system"
 SERVICE_NAME="yb-node-agent.service"
 SERVICE_RESTART_INTERVAL_SEC=2
+SERVICE_TIMEOUT_STOP_SEC=10
 SESSION_INFO_URL=""
 EXISTING_SYSTEMD_USER_ID=-1
 
@@ -82,8 +83,7 @@ check_run_as_super_user() {
 
 # Function to run systemd commands as the target user
 run_as_target_user() {
-  local cmd=$1
-  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) $cmd
+  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) "$@"
 }
 
 export_path() {
@@ -177,7 +177,7 @@ uninstall_node_agent() {
     fi
   fi
   set -e
-  echo "Node agent uninstalled successfully. Directory $NODE_AGENT_HOME can be removed manually."
+  echo "Node agent uninstalled successfully. Node agent directory can be removed manually."
 }
 
 download_package() {
@@ -217,8 +217,8 @@ extract_package() {
     pushd "$NODE_AGENT_RELEASE_PATH"
     set +o pipefail
     # Look for the folder containing the version file.
-    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "version_metadata.json" | awk -F '/' \
-    '$2{print $2;exit}')
+    VERSION=$(tar -tzf "$NODE_AGENT_PKG_TGZ" | grep "/version_metadata.json" | awk -F '/' \
+    '$2{print $(NF-1);exit}')
     set -o pipefail
     if [ -z "$VERSION" ]; then
       echo "Node agent version cannot be determined"
@@ -333,10 +333,10 @@ stop_systemd_service() {
     run_as_super_user rm -f "$UNIT_FILE"
     run_as_super_user systemctl daemon-reload
   else
-    systemctl --user stop $SERVICE_NAME >/dev/null 2>&1
-    systemctl --user disable $SERVICE_NAME >/dev/null 2>&1
+    run_as_target_user systemctl --user stop $SERVICE_NAME >/dev/null 2>&1
+    run_as_target_user systemctl --user disable $SERVICE_NAME >/dev/null 2>&1
     rm -f "$UNIT_FILE"
-    systemctl --user daemon-reload
+    run_as_target_user systemctl --user daemon-reload
   fi
   set -e
 }
@@ -358,11 +358,52 @@ install_systemd_service() {
     modify_firewall
   fi
   echo "* Installing Node Agent Systemd Service"
-  # Define the path to the service file.
-  SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+  write_systemd_service_file "$USER_SCOPED_UNIT"
+  echo "* Starting the systemd service"
 
-  # Check if USER_SCOPED_UNIT is defined.
   if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    #To enable the node-agent service on reboot.
+    run_as_super_user systemctl enable $SERVICE_NAME
+    run_as_super_user systemctl restart $SERVICE_NAME
+  else
+    run_as_target_user systemctl --user enable $SERVICE_NAME
+    run_as_target_user systemctl --user restart $SERVICE_NAME
+  fi
+
+  echo "* Started the systemd service"
+  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM status $SERVICE_NAME' to check\
+ the status of the $SERVICE_NAME"
+  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM stop $SERVICE_NAME' to stop\
+ the $SERVICE_NAME service"
+}
+
+# Upgrade existing systemd service if it exists. Used internally.
+upgrade_systemd_service() {
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq -1 ]; then
+    # User systemd unit does not exist.
+    return
+  fi
+  echo "* Upgrading Node Agent Systemd Service"
+  local USER_SCOPED_UNIT="true"
+  # Not possible to have user systemd and root user.
+  # If it is systemd user, the current user is always the systemd user.
+  # So, check only the case for root systemd.
+  if [ "$EXISTING_SYSTEMD_USER_ID" -eq 0 ]; then
+    # Systemd unit is installed as root.
+    if [ "$INSTALL_USER_ID" -ne 0 ]; then
+      # Current user is non-root. It cannot do anything.
+      return
+    fi
+    USER_SCOPED_UNIT="false"
+  fi
+  write_systemd_service_file "$USER_SCOPED_UNIT"
+}
+
+write_systemd_service_file() {
+  local USE_USER_SYSTEMD="${1:-true}"
+  local SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+  # Check if USER_SCOPED_UNIT is defined.
+  if [ "$USE_USER_SYSTEMD" = "false" ]; then
     run_as_super_user tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
@@ -379,11 +420,17 @@ install_systemd_service() {
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+  KillMode=process
+  KillSignal=SIGTERM
+  TimeoutStopSec=$SERVICE_TIMEOUT_STOP_SEC
+  FinalKillSignal=SIGKILL
 
   [Install]
   WantedBy=default.target
 EOF
   else
+    SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
+    SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
     tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
@@ -397,33 +444,23 @@ EOF
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+  KillMode=process
+  KillSignal=SIGTERM
+  TimeoutStopSec=$SERVICE_TIMEOUT_STOP_SEC
+  FinalKillSignal=SIGKILL
 
   [Install]
   WantedBy=default.target
 EOF
+  fi
   # Set the permissions after file creation. This is needed so that the service file
   # is executable during restart of systemd unit.
   chmod 755 "$SERVICE_FILE_PATH"
-  fi
-
-  echo "* Starting the systemd service"
-
-  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+  if [ "$USE_USER_SYSTEMD" = "false" ]; then
     run_as_super_user systemctl daemon-reload
-    #To enable the node-agent service on reboot.
-    run_as_super_user systemctl enable $SERVICE_NAME
-    run_as_super_user systemctl restart $SERVICE_NAME
   else
-    run_as_target_user "systemctl --user daemon-reload"
-    run_as_target_user "systemctl --user enable $SERVICE_NAME"
-    run_as_target_user "systemctl --user restart $SERVICE_NAME"
+    run_as_target_user systemctl --user daemon-reload
   fi
-
-  echo "* Started the systemd service"
-  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM status $SERVICE_NAME' to check\
- the status of the $SERVICE_NAME"
-  echo "* Run '${SUDO_PARAM}systemctl $SCOPE_PARAM stop $SERVICE_NAME' to stop\
- the $SERVICE_NAME service"
 }
 
 #The usage shows only the ones available to end users.
@@ -486,6 +523,7 @@ main() {
     extract_package > /dev/null
     setup_symlink > /dev/null
     set_log_dir_permission > /dev/null
+    upgrade_systemd_service > /dev/null
   elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then

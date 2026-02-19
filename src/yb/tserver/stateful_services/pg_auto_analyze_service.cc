@@ -42,6 +42,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/pg_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/status.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -90,18 +91,30 @@ DEFINE_RUNTIME_uint32(ysql_auto_analyze_max_cooldown_per_table,
                       "and ysql_auto_analyze_cooldown_per_table_scale_factor is 2, "
                       "then the cooldowns will be 1s, 2s, 4s, 8s, 10s, 10s, 10s, ...");
 DEFINE_RUNTIME_uint32(ysql_auto_analyze_min_cooldown_per_table,
-                       10000,
-                       "The minimum cooldown time in milliseconds for the auto analyze service "
-                       "to trigger an ANALYZE on a table again after it has been analyzed.");
+                      10000,
+                      "The minimum cooldown time in milliseconds for the auto analyze service "
+                      "to trigger an ANALYZE on a table again after it has been analyzed.");
 DEFINE_RUNTIME_uint32(ysql_auto_analyze_db_connect_timeout_ms, 5000,
                       "The timeout when trying to connect to the local PG instance for the PG "
                       "auto analyze service.");
+DEFINE_RUNTIME_int32(ysql_auto_analyze_max_retry_backoff, 600,
+                     "The maximum backoff of a failed ANALYZE.");
 DEFINE_test_flag(uint64, ysql_auto_analyze_max_history_entries, 5,
                  "The maximum number of analyze history entries to keep for each table.");
 DECLARE_bool(ysql_enable_auto_analyze);
 
 using namespace std::chrono_literals;
 using std::chrono::system_clock;
+
+namespace {
+
+const std::unordered_set<yb::PgOid> kSkipAnalyzeOids = {
+    yb::kPgYbInvalidationMessagesTableOid,
+    // Analyzing catalog version table can hold up DDLs that need an exclusive lock on this table.
+    yb::kPgYbCatalogVersionTableOid
+  };
+
+}  // namespace
 
 namespace yb {
 
@@ -482,6 +495,11 @@ Result<PgAutoAnalyzeService::NamespaceTablesMap> PgAutoAnalyzeService::Determine
   VLOG_WITH_FUNC(3);
   NamespaceTablesMap namespace_id_to_analyze_target_tables;
   for (const auto& [table_id, table_info] : table_id_to_info_maps) {
+    auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+    if (kSkipAnalyzeOids.contains(table_oid)) {
+      VLOG(1) << "Skipping table OID " << table_oid << " from auto-analyze";
+      continue;
+    }
     auto it = table_tuple_count_.find(table_id);
     if (it == table_tuple_count_.end()) {
       VLOG(1) << "Table not in table_tuple_count_, so skipping: " << table_id;
@@ -585,6 +603,21 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
     const std::string analyze_query = "ANALYZE ";
     std::vector<TableId> batched_tables;
     for (auto& table_id : tables_to_analyze) {
+      // Skip tables if they need retry backoff.
+      if (failed_table_id_to_wait_cycle_.contains(table_id)) {
+        DCHECK_GE(failed_table_id_to_wait_cycle_[table_id].first, -1);
+        if (failed_table_id_to_wait_cycle_[table_id].first == -1) {
+            // Clean up this table because it succeeds one ANALYZE.
+            failed_table_id_to_wait_cycle_.erase(table_id);
+        } else if (failed_table_id_to_wait_cycle_[table_id].first == 0) {
+            // The table is ready for ANALYZE. Reduce its wait cycle to -1, so that we can clean
+            // it up after one successful retry.
+            --failed_table_id_to_wait_cycle_[table_id].first;
+        } else {
+            --failed_table_id_to_wait_cycle_[table_id].first;
+            continue;
+        }
+      }
       batched_tables.push_back(table_id);
       // FLAGS_ysql_auto_analyze_batch_size == 0 has the effect of batching all tables
       // in one single ANALYZE statement.
@@ -620,6 +653,25 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
                 // analyze. Allow subsequent ANALYZEs to run.
                 LOG(WARNING) << "In YSQL database: " << dbname <<  ", failed ANALYZE statement: "
                              << analyze_query << table_name << " with error: " << str;
+                // Exponential retry backoff for failed tables.
+                if (failed_table_id_to_wait_cycle_.contains(table_id)) {
+                    int wait_cycle = failed_table_id_to_wait_cycle_[table_id].second;
+                    if (wait_cycle < FLAGS_ysql_auto_analyze_max_retry_backoff) {
+                        // Add some randomness to space out retries.
+                        wait_cycle = std::min(
+                            FLAGS_ysql_auto_analyze_max_retry_backoff,
+                            static_cast<int>(wait_cycle * 2 + RandomUniformInt(0, 10)));
+                        failed_table_id_to_wait_cycle_[table_id] = std::make_pair(wait_cycle,
+                                                                                  wait_cycle);
+                    } else {
+                        failed_table_id_to_wait_cycle_[table_id] =
+                            std::make_pair(FLAGS_ysql_auto_analyze_max_retry_backoff,
+                                           FLAGS_ysql_auto_analyze_max_retry_backoff);
+                    }
+                } else {
+                    failed_table_id_to_wait_cycle_[table_id] = std::make_pair(initial_backoff,
+                                                                              initial_backoff);
+                }
               } else {
                 // Check if the table is deleted or renamed.
                 auto renamed = VERIFY_RESULT(conn.FetchRow<bool>(
@@ -646,7 +698,7 @@ Result<std::pair<std::vector<TableId>, std::vector<TableId>>>
     }
   }
 
-  return make_pair(analyzed_tables, deleted_tables);
+  return std::make_pair(analyzed_tables, deleted_tables);
 }
 
 // Update the table mutations by subtracting the mutations count we fetched
@@ -782,9 +834,8 @@ Result<pgwrapper::PGConn> PgAutoAnalyzeService::EstablishDBConnection(
       // If the database is renamed, we need to refresh name cache so that tables in the renamed
       // database can be analyzed in the next iteration of TriggerAnalyze.
       master::GetNamespaceInfoResponsePB resp;
-      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, "", YQL_DATABASE_PGSQL,
-                                                           &resp));
-      if (resp.namespace_().name() != dbname) { // renamed
+      RETURN_NOT_OK(client_future_.get()->GetNamespaceInfo(namespace_id, &resp));
+      if (resp.namespace_().name() != dbname) {  // renamed
         VLOG(4) << "Database " << dbname << " was renamed to " << resp.namespace_().name();
         refresh_name_cache_ = true;
         *is_deleted_or_renamed = true;

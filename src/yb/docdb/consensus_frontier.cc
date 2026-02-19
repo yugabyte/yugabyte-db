@@ -279,38 +279,38 @@ namespace {
 // then there is no error.
 template<typename T>
 bool IsUpdateValidForField(
-    const T& this_value, const T& updated_value, rocksdb::UpdateUserValueType update_type) {
+    const T& this_value, const T& updated_value, storage::UpdateUserValueType update_type) {
   if (!this_value || !updated_value) {
     // If any of the two values is undefined, we don't treat this as an error.
     return true;
   }
   switch (update_type) {
-    case rocksdb::UpdateUserValueType::kLargest:
+    case storage::UpdateUserValueType::kLargest:
       return updated_value >= this_value;
-    case rocksdb::UpdateUserValueType::kSmallest:
+    case storage::UpdateUserValueType::kSmallest:
       return updated_value <= this_value;
   }
-  FATAL_INVALID_ENUM_VALUE(rocksdb::UpdateUserValueType, update_type);
+  FATAL_INVALID_ENUM_VALUE(storage::UpdateUserValueType, update_type);
 }
 
 template<typename T>
 void UpdateField(
-    T* this_value, const T& new_value, rocksdb::UpdateUserValueType update_type) {
+    T* this_value, const T& new_value, storage::UpdateUserValueType update_type) {
   switch (update_type) {
-    case rocksdb::UpdateUserValueType::kLargest:
+    case storage::UpdateUserValueType::kLargest:
       MakeAtLeast(new_value, this_value);
       return;
-    case rocksdb::UpdateUserValueType::kSmallest:
+    case storage::UpdateUserValueType::kSmallest:
       MakeAtMost(new_value, this_value);
       return;
   }
-  FATAL_INVALID_ENUM_VALUE(rocksdb::UpdateUserValueType, update_type);
+  FATAL_INVALID_ENUM_VALUE(storage::UpdateUserValueType, update_type);
 }
 
 } // anonymous namespace
 
 void ConsensusFrontier::Update(
-    const rocksdb::UserFrontier& pre_rhs, rocksdb::UpdateUserValueType update_type) {
+    const storage::UserFrontier& pre_rhs, storage::UpdateUserValueType update_type) {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
   UpdateField(&op_id_, rhs.op_id_, update_type);
   UpdateField(&hybrid_time_, rhs.hybrid_time_, update_type);
@@ -331,7 +331,7 @@ void ConsensusFrontier::Update(
       UpdateField(&it->second, p.second, update_type);
     }
   }
-  if (update_type == rocksdb::UpdateUserValueType::kLargest) {
+  if (update_type == storage::UpdateUserValueType::kLargest) {
     if (rhs.backfill_done_) {
       SetBackfillDone();
     } else if (rhs.backfill_key_ > backfill_key_) {
@@ -357,7 +357,7 @@ void ConsensusFrontier::CotablesFilter(
 }
 
 bool ConsensusFrontier::IsUpdateValid(
-    const rocksdb::UserFrontier& pre_rhs, rocksdb::UpdateUserValueType update_type) const {
+    const storage::UserFrontier& pre_rhs, storage::UpdateUserValueType update_type) const {
   const ConsensusFrontier& rhs = down_cast<const ConsensusFrontier&>(pre_rhs);
 
   // We don't check history cutoff here, because it is not an error when the the history cutoff
@@ -368,7 +368,7 @@ bool ConsensusFrontier::IsUpdateValid(
 }
 
 void ConsensusFrontier::UpdateSchemaVersion(
-    const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type) {
+    const Uuid& table_id, SchemaVersion version, storage::UpdateUserValueType type) {
   if (table_id.IsNil()) {
     UpdateField(&primary_schema_version_, std::optional(version), type);
   } else {

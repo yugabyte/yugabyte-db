@@ -32,6 +32,7 @@
 #include "replication/walsender_private.h"
 #include "replication/yb_decode.h"
 #include "utils/rel.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 static void YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record);
@@ -39,8 +40,6 @@ static void YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 static void YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record);
 static void YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record);
 
-static HeapTuple YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
-										  enum ReorderBufferChangeType change_type);
 static int	YBFindAttributeIndexInDescriptor(TupleDesc tupdesc, const char *column_name);
 static void YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record);
 
@@ -66,16 +65,18 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 {
 	TimestampTz start_time = GetCurrentTimestamp();
 
+	YbcPgRowMessageAction action = record->yb_virtual_wal_record->action;
+
 	elog(DEBUG4,
 		 "YBLogicalDecodingProcessRecord: Decoding record with action = %d. "
 		 "yb_read_time is set to %d",
-		 record->yb_virtual_wal_record->action, yb_is_read_time_ht);
+		 action, yb_is_read_time_ht);
 
 	/* Check if we need a relcache refresh. */
 	YBHandleRelcacheRefresh(ctx, record);
 
 	/* Now delegate to specific handlers depending on the action type. */
-	switch (record->yb_virtual_wal_record->action)
+	switch (action)
 	{
 			/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
@@ -167,7 +168,7 @@ YBDecodeInsert(LogicalDecodingContext *ctx, XLogReaderState *record)
 	 * copy the tuple contents into it. Finally, we free the first tuple
 	 * created.
 	 */
-	tuple = YBGetHeapTuplesForRecord(yb_record, REORDER_BUFFER_CHANGE_INSERT);
+	tuple = YBGetHeapTuplesForRecord(yb_record);
 	tuple_buf =
 		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
 	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
@@ -255,6 +256,14 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 * ybc_pggate.
 		 */
 		Assert(col->column_name);
+
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
 
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
@@ -377,7 +386,7 @@ YBDecodeDelete(LogicalDecodingContext *ctx, XLogReaderState *record)
 							ctx->reader->ReadRecPtr);
 
 	/* See the comment in YBDecodeInsert on why we create tuples twice. */
-	tuple = YBGetHeapTuplesForRecord(yb_record, REORDER_BUFFER_CHANGE_DELETE);
+	tuple = YBGetHeapTuplesForRecord(yb_record);
 	tuple_buf =
 		ReorderBufferGetTupleBuf(ctx->reorder, tuple->t_len + HEAPTUPLESIZE);
 	yb_heap_copytuple_with_tuple(tuple, &tuple_buf->tuple);
@@ -437,14 +446,15 @@ YBDecodeCommit(LogicalDecodingContext *ctx, XLogReaderState *record)
 		 yb_record->xid, commit_lsn, end_lsn);
 }
 
-static HeapTuple
-YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
-						 enum ReorderBufferChangeType change_type)
+HeapTuple
+YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record)
 {
 	Relation	relation;
 	TupleDesc	tupdesc;
 	int			nattrs;
 	HeapTuple	tuple;
+
+	YbcPgRowMessageAction action = yb_record->action;
 
 	/*
 	 * Note that we don't strictly need to overwrite the replica identity in
@@ -469,13 +479,20 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 	for (int col_idx = 0; col_idx < yb_record->col_count; col_idx++)
 	{
 		const YbcPgDatumMessage *col = &yb_record->cols[col_idx];
+		/*
+		 * 'ybrowid' is an internal primary key column added by DocDB for tables
+		 * without a primary key. Skip this column.
+		 */
+		if (YBGetTablePrimaryKeyBms(relation) == NULL &&
+			strcmp(col->column_name, "ybrowid") == 0)
+			continue;
 		int			attr_idx = YBFindAttributeIndexInDescriptor(tupdesc,
 																col->column_name);
 
-		datums[attr_idx] = ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+		datums[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
 							col->after_op_datum :
 							col->before_op_datum);
-		is_nulls[attr_idx] = ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+		is_nulls[attr_idx] = ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
 							  col->after_op_is_null :
 							  col->before_op_is_null);
 	}
@@ -489,7 +506,7 @@ YBGetHeapTuplesForRecord(const YbVirtualWalRecord *yb_record,
 
 		elog(DEBUG2,
 			 "yb_decode: The heap tuple: %s for operation: %s", tuple_string,
-			 ((change_type == REORDER_BUFFER_CHANGE_INSERT) ?
+			 ((action == YB_PG_ROW_MESSAGE_ACTION_INSERT) ?
 			  "INSERT" :
 			  "DELETE"));
 

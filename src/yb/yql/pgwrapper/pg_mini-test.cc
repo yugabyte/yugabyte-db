@@ -72,6 +72,7 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -151,25 +152,17 @@ METRIC_DECLARE_gauge_uint64(wal_replayable_applied_transactions);
 namespace yb::pgwrapper {
 namespace {
 
-Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
-    return conn->FetchRow<PGUint64>(
-        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
-  }
-  return conn->FetchRow<PGUint64>("SELECT current_version FROM pg_yb_catalog_version");
-}
-
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
-  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  auto version_getter =
+      [conn]() { return GetCatalogVersion(conn, FLAGS_ysql_enable_db_catalog_version_mode); };
+  const auto initial_version = VERIFY_RESULT(version_getter());
   RETURN_NOT_OK(conn->Execute(ddl_query));
-  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+  return initial_version != VERIFY_RESULT(version_getter());
 }
 
 Status IsReplicaIdentityPopulatedInTabletPeers(
-    PgReplicaIdentity expected_replica_identity, std::vector<tablet::TabletPeerPtr> tablet_peers,
-    std::string table_id) {
+    PgReplicaIdentity expected_replica_identity,
+    const std::vector<tablet::TabletPeerPtr>& tablet_peers, const std::string& table_id) {
   for (const auto& peer : tablet_peers) {
     auto replica_identity =
         peer->tablet_metadata()->schema(table_id)->table_properties().replica_identity();
@@ -1023,14 +1016,13 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
     });
 
     while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
-      ASSERT_OK(connection.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-      for (int j = 0; j != kBatchSize; ++j) {
-        connection.CopyStartRow(2);
-        connection.CopyPutInt32(++key);
-        connection.CopyPutString(RandomHumanReadableString(kValueSize));
-      }
-
-      ASSERT_OK(connection.CopyEnd());
+      ASSERT_OK(connection.CopyFromStdin(
+          kTableName,
+          [&key](PGConn::RowMaker<int32_t, std::string_view>& row) {
+            for (int j = 0; j != kBatchSize; ++j) {
+              row(++key, RandomHumanReadableString(kValueSize));
+            }
+          }));
     }
   });
 
@@ -2592,14 +2584,13 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value BYTEA) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(conn.CopyBegin("COPY t FROM STDIN WITH BINARY"));
-  for (auto key : Range(kNumRows)) {
-    conn.CopyStartRow(2);
-    conn.CopyPutInt32(key);
-    conn.CopyPutString(RandomString(kValueSize));
-  }
-  ASSERT_OK(conn.CopyEnd());
-
+  ASSERT_OK(conn.CopyFromStdin(
+      "t",
+      [](PGConn::RowMaker<int32_t, std::string_view>& row) {
+        for (auto key : Range(kNumRows)) {
+          row(key, RandomString(kValueSize));
+        }
+      }));
   FlushAndCompactTablets();
 
   LOG(INFO) << "Rows: " << ASSERT_RESULT(conn.FetchAllAsString("SELECT key FROM t"));
@@ -3261,7 +3252,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
     auto partition = tablet->metadata()->partition();
 
     // Check if this tablet contains our hash code
-    auto hash_bounds = dockv::PartitionSchema::GetHashPartitionBounds(*partition);
+    auto hash_bounds = ASSERT_RESULT(partition->GetKeysAsHashBoundsInclusive());
     uint16_t start_hash = hash_bounds.first;
     uint16_t end_hash = hash_bounds.second;
 
@@ -3309,6 +3300,25 @@ TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
   ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
       << "OID mismatch: pg_class returned " << pg_class_oid
       << " but yb_tablet_metadata returned " << tablet_metadata_oid;
+}
+
+TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  auto local_tserver_uuid = ASSERT_RESULT(pg_conn.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  auto expected_uuid = ASSERT_RESULT(
+      Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid()));
+  ASSERT_EQ(local_tserver_uuid, expected_uuid)
+      << "Local tserver UUID mismatch";
+}
+
+Status FetchMatrix(PGConn& conn, const std::string& command, int rows, int cols) {
+  auto res = VERIFY_RESULT(conn.FetchRows<RowAsString>(command));
+  SCHECK_EQ(res.size(), rows, RuntimeError, "Unexpected number of rows");
+  if (!res.empty()) {
+    SCHECK_EQ(res.front().size(), cols, RuntimeError, "Unexpected number of cols");
+  }
+  return Status::OK();
 }
 
 }  // namespace yb::pgwrapper

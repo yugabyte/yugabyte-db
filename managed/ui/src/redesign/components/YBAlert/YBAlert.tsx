@@ -2,11 +2,11 @@ import { FC, ReactNode } from 'react';
 import clsx from 'clsx';
 import { makeStyles, Snackbar, Fade, Box } from '@material-ui/core';
 import { Close as CloseIcon } from '@material-ui/icons';
-import { ReactComponent as WarningIcon } from '../../assets/alert.svg';
-import { ReactComponent as ErrorIcon } from '../../assets/warning.svg';
-import { ReactComponent as SuccessIcon } from '../../assets/circle-check.svg';
-import { ReactComponent as InfoIcon } from '../../assets/info.svg';
-import { ReactComponent as LoadingIcon } from '../../assets/default-loading-circles.svg';
+import WarningIcon from '../../assets/alert.svg';
+import ErrorIcon from '../../assets/warning.svg';
+import SuccessIcon from '../../assets/circle-check.svg';
+import InfoIcon from '../../assets/info.svg';
+import LoadingIcon from '../../assets/default-loading-circles.svg';
 
 export enum AlertVariant {
   Info = 'info',

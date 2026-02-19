@@ -2,7 +2,7 @@
 title: YSQL Connection Manager best practices
 headerTitle: Best practices
 linkTitle: Best practices
-description: Best practices
+description: Best practices for YSQL Connection Manager
 headcontent: How to get the most from YSQL Connection Manager
 menu:
   v2024.2:
@@ -48,7 +48,7 @@ In a YugabyteDB node, the TServer and PostgreSQL (YSQL) processes run side-by-si
 - The TServer handles data storage, replication (DocDB), and tablet-level operations.
 - The PostgreSQL process provides the SQL layer (YSQL), but it's tightly integrated and communicates with the TServer over RPCs.
 
-For optimal distribution of memory between TServer and PostgreSQL processes, set the `use_memory_defaults_optimized_for_ysql` flag to true when you create a cluster. Refer to [Memory division smart defaults](../../../reference/configuration/smart-defaults/#memory-division-smart-defaults) for more details.
+For optimal distribution of memory between TServer and PostgreSQL processes, set the `use_memory_defaults_optimized_for_ysql` flag to true when you create a cluster. Refer to [Memory division smart defaults](../../../reference/configuration/yb-tserver/#memory-division-flags) for more details.
 
 Note that when Connection Manager is enabled, an instance of the odyssey process is also run on each database node, which can take up to 200MB of RAM.
 

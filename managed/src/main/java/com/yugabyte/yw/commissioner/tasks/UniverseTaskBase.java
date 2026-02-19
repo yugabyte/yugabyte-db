@@ -4279,9 +4279,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   backupParams.backupDBStates.get(paramsEntry.backupParamsIdentifier)
                       .currentYbcTaskId;
               backupYbcParams.scheduleRetention = scheduleRetention;
-              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
               backupYbcParams.setRevertToPreRolesBehaviour(
                   backupParams.getRevertToPreRolesBehaviour());
+              backupYbcParams.setEnableBackupsDuringDDL(backupParams.getEnableBackupsDuringDDL());
               task.initialize(backupYbcParams);
               task.setUserTaskUUID(getUserTaskUUID());
               doneGroup.addSubTask(task);
@@ -4982,6 +4982,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
       }
     }
+  }
+
+  /**
+   * Disables master on non-master nodes after validating that they are not in the master config.
+   *
+   * @param nodes List of nodes to disable master on.
+   * @param subTaskGroupType Sub task group type for tasks.
+   */
+  public void createDisableMasterOnNonMasterNodesTasks(
+      List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    Universe universe = getUniverse();
+    // Filter out all nodes that are not masters according to both YBA and YBDB.
+    nodes =
+        nodes.stream()
+            .filter(node -> !node.isMaster)
+            .filter(node -> !nodeInMasterConfig(universe, node))
+            .collect(Collectors.toList());
+
+    if (nodes.isEmpty()) {
+      log.info("No non-master nodes to disable master on");
+      return;
+    }
+    log.info("Disabling master on non-master nodes: {}", nodes);
+    createServerControlTasks(nodes, ServerType.MASTER, "stop")
+        .setSubTaskGroupType(subTaskGroupType);
   }
 
   /**

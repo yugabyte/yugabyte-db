@@ -17,7 +17,7 @@ This tutorial shows how you can use [LocalAI](https://localai.io/) to create an 
 
 ## Prerequisites
 
-* YugabyteDB [v2.25.1](https://download.yugabyte.com/) or later
+* YugabyteDB [v2025.1](https://download.yugabyte.com/) or later
 * [LocalAI](https://localai.io/basics/getting_started/)
 * Python 3.11
 * Docker

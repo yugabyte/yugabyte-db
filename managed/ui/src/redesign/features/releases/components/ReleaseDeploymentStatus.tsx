@@ -4,8 +4,8 @@ import clsx from 'clsx';
 import { getDeploymentStatus } from '../helpers/utils';
 import { Releases, ReleaseState } from './dtos';
 
-import Check from '../../../assets/check-new.svg';
-import Revoke from '../../../assets/revoke.svg';
+import Check from '../../../assets/check-new.svg?img';
+import Revoke from '../../../assets/revoke.svg?img';
 
 interface ReleaseDeploymentStatusProps {
   data: Releases | null;

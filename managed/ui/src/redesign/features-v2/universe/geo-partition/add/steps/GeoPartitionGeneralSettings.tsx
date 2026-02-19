@@ -1,7 +1,10 @@
+import { useContext } from 'react';
+import { FormProvider, useForm } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
+import * as Yup from 'yup';
 import { mui, yba, YBInput, YBInputField, YBTag } from '@yugabyte-ui-library/core';
 import { UniverseActionButtons } from '../../../create-universe/components/UniverseActionButtons';
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
-import { useContext } from 'react';
 import {
   AddGeoPartitionContext,
   AddGeoPartitionContextMethods,
@@ -10,8 +13,6 @@ import {
   initialAddGeoPartitionFormState
 } from '../AddGeoPartitionContext';
 import { getExistingGeoPartitions, useGeoPartitionNavigation } from '../AddGeoPartitionUtils';
-import { Trans, useTranslation } from 'react-i18next';
-import { FormProvider, useForm } from 'react-hook-form';
 import {
   StyledContent,
   StyledHeader,
@@ -19,10 +20,10 @@ import {
 } from '../../../create-universe/components/DefaultComponents';
 import { getFlagFromRegion } from '../../../create-universe/helpers/RegionToFlagUtils';
 
-import { ReactComponent as InfoIcon } from '@app/redesign/assets/book_open_blue.svg';
+import { yupResolver } from '@hookform/resolvers/yup';
+import InfoIcon from '@app/redesign/assets/book_open_blue.svg';
 
 const { Box, styled, Typography, typographyClasses } = mui;
-const { YBButton } = yba;
 
 const StyledDefaultRegionsInGeoPartition = styled('div')(({ theme }) => ({
   padding: `16px 24px`,
@@ -80,9 +81,15 @@ export const GeoPartitionGeneralSettings = () => {
     defaultValues: {
       name: currentGeoPartition.name,
       tablespaceName: currentGeoPartition.tablespaceName
-    }
+    },
+    resolver: yupResolver(
+      Yup.object({
+        tablespaceName: Yup.string().required(t('tablespaceNameRequiredError')),
+        name: Yup.string().required(t('displayNameRequiredError'))
+      })
+    )
   });
-  const { control } = form;
+  const { control, handleSubmit, setValue } = form;
 
   const alreadyExistingGeoParitionsCount = getExistingGeoPartitions(
     addGeoPartitionContext.universeData!
@@ -125,8 +132,10 @@ export const GeoPartitionGeneralSettings = () => {
         <StyledPanel>
           <StyledHeader>{t('title')}</StyledHeader>
           <StyledContent>
-            <YBInput
+            <YBInputField
+              name="name"
               label={t('displayName')}
+              control={control}
               dataTestId="geo-partition-name-input"
               value={currentGeoPartition.name}
               onChange={(e) => {
@@ -137,6 +146,7 @@ export const GeoPartitionGeneralSettings = () => {
                   },
                   activeGeoPartitionIndex
                 });
+                setValue('name', e.target.value);
               }}
             />
             <YBInputField
@@ -153,6 +163,7 @@ export const GeoPartitionGeneralSettings = () => {
                   },
                   activeGeoPartitionIndex
                 });
+                setValue('tablespaceName', e.target.value);
               }}
               helperText={
                 <Trans t={t} i18nKey="tablespaceNameHelpText" components={{ b: <b /> }} />
@@ -163,13 +174,17 @@ export const GeoPartitionGeneralSettings = () => {
                 <Typography variant="body2" color="textDisabled">
                   {t('existingRegions')}
                 </Typography>
-                {currentGeoPartition?.resilience?.regions.map((region) => (
-                  <StyledRegionContainer key={region.uuid}>
-                    <YBTag key={region.uuid} size="medium" disabled variant="light">
-                      {getFlagFromRegion(region.code)} {region.name} ({region.code})
-                    </YBTag>
-                  </StyledRegionContainer>
-                ))}
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', flexDirection: 'row', gap: '8px' }}
+                >
+                  {currentGeoPartition?.resilience?.regions.map((region) => (
+                    <StyledRegionContainer key={region.uuid}>
+                      <YBTag key={region.uuid} size="medium" disabled variant="light">
+                        {getFlagFromRegion(region.code)} {region.name} ({region.code})
+                      </YBTag>
+                    </StyledRegionContainer>
+                  ))}
+                </Box>
               </StyledDefaultRegionsInGeoPartition>
             )}
           </StyledContent>
@@ -191,11 +206,13 @@ export const GeoPartitionGeneralSettings = () => {
                 ? t('addNewGeoPartition')
                 : t('next', { keyPrefix: 'common' }),
             onClick: () => {
-              if (activeGeoPartitionIndex === 0 && isNewGeoPartition) {
-                addNewGeoPartition();
-              } else {
-                moveToNextPage(addGeoPartitionContext);
-              }
+              handleSubmit(() => {
+                if (activeGeoPartitionIndex === 0 && isNewGeoPartition) {
+                  addNewGeoPartition();
+                } else {
+                  moveToNextPage(addGeoPartitionContext);
+                }
+              })();
             }
           }}
         />

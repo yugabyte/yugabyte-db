@@ -20,7 +20,6 @@
 
 #include "yb/client/yb_op.h"
 
-#include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 
 #include "yb/dockv/doc_key.h"
@@ -35,7 +34,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-#include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -62,8 +60,8 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     for (const auto& d : *data) {
       results.emplace_back(d);
     }
-    result_stream_ = std::make_unique<CachedPgDocResultStream>(std::move(results));
-    VLOG(3) << "Created CachedPgDocResultStream";
+    result_stream_ = std::make_unique<CachedPgDocOpFetchStream>(std::move(results));
+    VLOG(3) << "Created CachedPgDocOpFetchStream";
   }
 
   Status FetchMoreResults() override {
@@ -87,8 +85,11 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override {
-    return STATUS(InternalError, "DoPopulateMergeStreams is not defined for PgDocReadOpCached");
+  Status DoPopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind,
+      InPermutationGenerator&& merge_streams) override {
+    return STATUS(InternalError,
+                  "DoPopulateMergeStreamRequests is not defined for PgDocReadOpCached");
   }
 
   Result<bool> DoCreateRequests() override {
@@ -258,422 +259,6 @@ LWPgsqlReadRequestPB& AsReadReq(const PgsqlOpPtr& op) {
 
 } // namespace
 
-DocResult::DocResult(rpc::SidecarHolder data)
-    : data_(std::move(data)), current_row_idx_(0) {
-  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
-}
-
-DocResult::DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
-    : DocResult(std::move(data)) {
-  if (row_count_ > 0 && !response.batch_orders().empty()) {
-    const auto& orders = response.batch_orders();
-    row_orders_.assign(orders.begin(), orders.end());
-    DCHECK(row_orders_.size() == static_cast<size_t>(row_count_))
-        << "Number of the row orders does not match the number of rows";
-  }
-}
-
-Status DocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple *pg_tuple) {
-  for (auto* target : targets) {
-    if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
-      target->SetNull(pg_tuple);
-    } else {
-      target->SetValue(&row_iterator_, pg_tuple);
-    }
-  }
-  ++current_row_idx_;
-  return Status::OK();
-}
-
-Status DocResult::NextPgTuple() {
-  DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
-  return Status::OK();
-}
-
-int DocResult::CompareTo(DocResult& other) {
-  DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
-  DCHECK(!row_orders_.empty());
-  DCHECK(other.current_row_idx_ < static_cast<size_t>(other.row_count_));
-  DCHECK(!other.row_orders_.empty());
-  auto lhs = row_orders_[current_row_idx_];
-  auto rhs = other.row_orders_[other.current_row_idx_];
-  if (lhs < rhs) return -1;
-  if (lhs > rhs) return 1;
-  return 0;
-}
-
-Result<Slice> DocResult::ReadYbctid(Slice& data) {
-  SCHECK(!PgDocData::ReadHeaderIsNull(&data), InternalError, "System column ybctid cannot be NULL");
-  const auto data_size = PgDocData::ReadNumber<int64_t>(&data);
-  const auto* data_ptr = data.data();
-  Slice ybctid{data_ptr, data_ptr + data_size};
-  data.remove_prefix(data_size);
-  return ybctid;
-}
-
-PgDocResult::PgDocResult(rpc::SidecarHolder data, FetchedTargetsPtr targets,
-                         MergeSortKeysPtr merge_sort_keys, size_t nattrs)
-    : DocResult(data),
-      mem_context_(YBCCreateMemoryContext(nullptr, "PgDocResultData")),
-      targets_(targets),
-      merge_sort_keys_(merge_sort_keys),
-      nattrs_(nattrs),
-      pg_tuple_(MakePgTuple()) {}
-
-PgTuple PgDocResult::MakePgTuple() {
-  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs_
-                    << " sort keys: " << merge_sort_keys_->size();
-  auto save = YBCSwitchMemoryContext(mem_context_.ptr);
-  datums_ = static_cast<uint64_t*>(YBCPAlloc(nattrs_ * sizeof(uint64_t)));
-  isnulls_ = static_cast<bool*>(YBCPAlloc(nattrs_ * sizeof(bool)));
-  memset(isnulls_, true, nattrs_ * sizeof(bool));
-  memset(&syscols_, 0, sizeof(YbcPgSysColumns));
-  YBCSwitchMemoryContext(save);
-#ifdef PGTUPLE_DEBUG
-  return PgTuple(nattrs_, datums_, isnulls_, &syscols_);
-#else
-  return PgTuple(datums_, isnulls_, &syscols_);
-#endif
-}
-
-PgDocResult::PgMemoryContextWrapper::~PgMemoryContextWrapper() {
-  if (ptr) {
-    YBCDeleteMemoryContext(ptr);
-  }
-}
-
-int PgDocResult::CompareTo(PgDocResult& other) {
-  DCHECK(merge_sort_keys_);
-  DCHECK(other.merge_sort_keys_->size() == merge_sort_keys_->size());
-  DCHECK(pg_tuple_is_valid_);
-  DCHECK(other.pg_tuple_is_valid_);
-  for (const auto& sort_key : *merge_sort_keys_) {
-    const auto idx = sort_key.value_idx;
-    auto datum1 = datums_[idx];
-    auto isnull1 = isnulls_[idx];
-    auto datum2 = other.datums_[idx];
-    auto isnull2 = other.isnulls_[idx];
-    auto cmp_result = sort_key.comparator(datum1, isnull1, datum2, isnull2, sort_key.sortstate);
-    if (cmp_result != 0) return cmp_result;
-  }
-  return 0;
-}
-
-Status PgDocResult::WritePgTuple(const std::vector<PgFetchedTarget*>& targets, PgTuple* pg_tuple) {
-  RSTATUS_DCHECK_EQ(targets.size(), targets_->size(), InvalidArgument, "Unmatching fetch targets");
-  return WritePgTuple(pg_tuple);
-}
-
-Status PgDocResult::WritePgTuple(PgTuple* pg_tuple) {
-  if (pg_tuple_is_valid_) {
-    pg_tuple->CopyFrom(pg_tuple_, nattrs_);
-    pg_tuple_is_valid_ = false;
-    return Status::OK();
-  }
-  auto save = YBCSwitchMemoryContext(mem_context_.ptr);
-  auto status = DocResult::WritePgTuple(*targets_, pg_tuple);
-  YBCSwitchMemoryContext(save);
-  return status;
-}
-
-Status PgDocResult::NextPgTuple() {
-  if (!pg_tuple_is_valid_) {
-    DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
-    auto save = YBCSwitchMemoryContext(mem_context_.ptr);
-    auto status = DocResult::WritePgTuple(*targets_, &pg_tuple_);
-    YBCSwitchMemoryContext(save);
-    RETURN_NOT_OK(status);
-    pg_tuple_is_valid_ = true;
-  }
-  return Status::OK();
-}
-
-Status PgDocResult::ProcessYbctids(const YbctidProcessor& processor) {
-  RETURN_NOT_OK(NextPgTuple());
-  processor(VERIFY_RESULT(ReadYbctid(row_iterator_)), data_.first);
-  pg_tuple_is_valid_ = false;
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-template <class R>
-StreamFetchStatus DocResultStream<R>::FetchStatus() const {
-  for (const auto& result : results_queue_) {
-    if (!result.is_eof()) {
-      return StreamFetchStatus::kHasLocalData;
-    }
-  }
-  return (op_ && op_->is_active()) ? StreamFetchStatus::kNeedsFetch : StreamFetchStatus::kDone;
-}
-
-template <class R>
-void DocResultStream<R>::Detach() {
-  if (op_) {
-    DCHECK(!op_->is_active());
-    op_ = nullptr;
-  }
-}
-
-template <class R>
-R* DocResultStream<R>::GetNextDocResult() {
-  while (!results_queue_.empty() && results_queue_.front().is_eof()) {
-    if (old_results_holder_) {
-      old_results_holder_->splice(
-          old_results_holder_->end(), results_queue_, results_queue_.begin());
-    } else {
-      results_queue_.pop_front();
-    }
-  }
-  return results_queue_.empty() ? nullptr : &results_queue_.front();
-}
-
-Result<bool> PgDocResultStream::GetNextRow(PgTuple* pg_tuple) {
-  auto* result = VERIFY_RESULT(NextDocResult());
-  if (result) {
-    RSTATUS_DCHECK(targets_, InternalError, "Fetch targets are not provided");
-    RETURN_NOT_OK(result->WritePgTuple(*targets_, pg_tuple));
-    return true;
-  }
-  return false;
-}
-
-// Append another batch of the fetched data to the queue
-template<class R>
-template<typename... Args>
-uint64_t DocResultStream<R>::EmplaceDocResult(Args&&... args) {
-  results_queue_.emplace_back(std::forward<Args>(args)...);
-  uint64_t rows_affected = results_queue_.back().row_count();
-  VLOG_WITH_FUNC(3) << "Operation " << (op_ ? op_->ToString() : "<empty>")
-                    << " received new response with " << rows_affected
-                    << " rows. Now has " << results_queue_.size() << " responses in the queue";
-  // immediately discard empty response
-  if (results_queue_.back().is_eof()) {
-    results_queue_.pop_back();
-    return 0;
-  }
-  return rows_affected;
-}
-
-template <class R, typename... Args>
-uint64_t PgDocResultStream::EmplaceDocResult(DocResultStream<R>& stream, Args&&... args) {
-  return stream.EmplaceDocResult(std::forward<Args>(args)...);
-}
-
-ParallelPgDocResultStream::ParallelPgDocResultStream(
-    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops)
-    : PgDocResultStream(fetch_func) {
-  ResetOps(ops);
-}
-
-void ParallelPgDocResultStream::ResetOps() {
-  for (auto& stream : read_streams_) {
-    stream.Detach();
-  }
-}
-
-void ParallelPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
-  for (const auto& op : ops) {
-    read_streams_.emplace_back(op);
-  }
-}
-
-Result<uint64_t> ParallelPgDocResultStream::EmplaceOpDocResult(
-    const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  return EmplaceDocResult(VERIFY_RESULT_REF(FindReadStream(op)), std::move(data));
-}
-
-Result<DocResult*> ParallelPgDocResultStream::NextDocResult() {
-  for (;;) {
-    for (auto it = read_streams_.begin(); it != read_streams_.end();) {
-      switch (it->FetchStatus()) {
-        case StreamFetchStatus::kHasLocalData:
-          return it->GetNextDocResult();
-        case StreamFetchStatus::kNeedsFetch:
-          ++it;
-          break;
-        case StreamFetchStatus::kDone:
-          it = read_streams_.erase(it);  // erase returns the next valid iterator
-          break;
-        default:
-          LOG(FATAL) << "Invalid stream fetch status: " << it->FetchStatus();
-      }
-    }
-
-    if (read_streams_.empty()) {
-      return nullptr;
-    }
-
-    RETURN_NOT_OK(fetch_func_());
-  }
-
-  return STATUS(RuntimeError, "Unreachable statement");
-}
-
-Result<DocResultStream<DocResult>&> ParallelPgDocResultStream::FindReadStream(
-    const PgsqlOpPtr& op) {
-  auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
-  if (it == read_streams_.end()) {
-    return STATUS(RuntimeError, Format("Operation $0 not found", op));
-  }
-  return *it;
-}
-
-CachedPgDocResultStream::CachedPgDocResultStream(std::list<DocResult>&& results)
-    : PgDocResultStream([]() {
-          return STATUS(RuntimeError, "CachedPgDocResultStream does not fetch");
-      }),
-      read_stream_(std::move(results)) {}
-
-void CachedPgDocResultStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
-  LOG(FATAL) << "Can't reset CachedPgDocResultStream";
-}
-
-Result<uint64_t> CachedPgDocResultStream::EmplaceOpDocResult(
-    const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  return STATUS(RuntimeError, Format("Operation $0 not found", op));
-}
-
-Result<DocResult*> CachedPgDocResultStream::NextDocResult() {
-  if (read_stream_.FetchStatus() != StreamFetchStatus::kDone) {
-    return read_stream_.GetNextDocResult();
-  }
-  return nullptr;
-}
-
-template <class R>
-MergingPgDocResultStream<R>::MergingPgDocResultStream(
-    PgDocFetchCallback fetch_func, const std::vector<PgsqlOpPtr>& ops, size_t nattrs)
-    : PgDocResultStream(fetch_func),
-      nattrs_(nattrs) {
-  ResetOps(ops);
-}
-
-template <class R>
-void MergingPgDocResultStream<R>::ResetOps() {
-  for (auto& stream : read_streams_) {
-    stream.Detach();
-  }
-}
-
-template <class R>
-void MergingPgDocResultStream<R>::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
-  current_stream_ = nullptr;
-  if (!read_queue_.empty()) {
-    MergeSortPQ pq;
-    read_queue_.swap(pq);
-  }
-  for (auto& op : ops) {
-    read_streams_.emplace_back(op);
-  }
-  started_ = false;
-}
-
-template <class R>
-Result<uint64_t> MergingPgDocResultStream<R>::EmplaceOpDocResult(
-    const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  return EmplaceDocResult(
-      VERIFY_RESULT_REF(FindReadStream(op, response)), std::move(data), response);
-}
-
-template <>
-Result<uint64_t> MergingPgDocResultStream<PgDocResult>::EmplaceOpDocResult(
-    const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
-  VLOG_WITH_FUNC(4) << "targets: " << targets_->size() << " nattrs: " << nattrs_
-                    << " merge sort keys: " << merge_sort_keys_->size();
-  return EmplaceDocResult(
-      VERIFY_RESULT_REF(FindReadStream(op, response)),
-      std::move(data),
-      targets_,
-      merge_sort_keys_,
-      nattrs_);
-}
-
-template <class R>
-Result<DocResultStream<R>&> MergingPgDocResultStream<R>::FindReadStream(
-    const PgsqlOpPtr& op, const LWPgsqlResponsePB& response) {
-  if (!op->is_merge_stream() && response.has_paging_state()) {
-    // If request paginates, we don't know what it exactly means, has DocDB hit some limit and
-    // stopped, but requested rows are still being fetched in order, or tablet has split and some
-    // rows are to be fetched from other tablet. Here we assume the worst, that is, some requested
-    // rows are missing and will come in the next response, ordered, but probably not in the order
-    // continuing this response.
-    // Since rows within single response are properly ordered, data from this response would be
-    // valid participant of the merge sort. So we add it to the read list. And we separate them out
-    // from this operation's stream, as we don't know if next page will be valid continuation.
-    // Therefore this operation's stream continues to require fetch, and we won't start the merge
-    // sort as of yet.
-    // TODO: have DocDB to hint us. If DocDB is fetching specific rows with predefined order, it
-    // is OK to enqueue the request at the operation's stream as long as DocDB has found all
-    // requested rows so far in the list.
-    // When we fetching from the tablet in some order that is not predefined, and is not matching
-    // natural row order, (i.e. following vector index), if target tablet is split, the operation
-    // should actively split, too. Original operation's range should be truncated to tablet
-    // boundaries and new active operation should be created covering remaining range.
-    // Large part of such split is beyond the scope of the result stream management structures.
-    VLOG_WITH_FUNC(2) << "Adding split stream for operation " << op;
-    read_streams_.emplace_back(nullptr);
-    return read_streams_.back();
-  }
-  auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
-  if (it == read_streams_.end()) {
-    return STATUS(RuntimeError, Format("Operation $0 not found", op));
-  }
-  return *it;
-}
-
-template <class R>
-Result<DocResult*> MergingPgDocResultStream<R>::NextDocResult() {
-  if (!started_) {
-    VLOG_WITH_FUNC(2) << "Initialize merge sort of " << read_streams_.size() << " streams";
-    DCHECK(current_stream_ == nullptr);
-    while (true) {
-      size_t num_not_ready = 0;
-      for (const auto& stream : read_streams_) {
-        if (stream.FetchStatus() == StreamFetchStatus::kNeedsFetch) {
-          ++num_not_ready;
-        }
-      }
-      if (num_not_ready == 0) {
-        VLOG_WITH_FUNC(3) << "All streams are ready";
-        break;
-      }
-      VLOG_WITH_FUNC(3) << num_not_ready << " streams need data, continue fetching";
-      RETURN_NOT_OK(fetch_func_());
-    }
-    for (auto it = read_streams_.begin(); it != read_streams_.end(); ++it) {
-      if (it->FetchStatus() == StreamFetchStatus::kHasLocalData) {
-        RETURN_NOT_OK(it->GetNextDocResult()->NextPgTuple());
-        read_queue_.push(&*it);
-      }
-    }
-    started_ = true;
-    VLOG_WITH_FUNC(2) << "Start merging " << read_queue_.size() << " streams";
-  } else if (current_stream_) {
-    // If the last read stream has more data to read, return it to the read queue.
-    while (current_stream_->FetchStatus() == StreamFetchStatus::kNeedsFetch) {
-      VLOG_WITH_FUNC(2) << "Current stream needs data to be returned to the read queue";
-      RETURN_NOT_OK(fetch_func_());
-    }
-    if (current_stream_->FetchStatus() == StreamFetchStatus::kHasLocalData) {
-      RETURN_NOT_OK(current_stream_->GetNextDocResult()->NextPgTuple());
-      read_queue_.push(current_stream_);
-    }
-    current_stream_ = nullptr;
-  }
-
-  if (read_queue_.empty()) {
-    VLOG_WITH_FUNC(2) << "Merging is done";
-    return nullptr;
-  }
-
-  // Take first element out of the queue. After reading it may have different priority when
-  // entering the queue again
-  current_stream_ = read_queue_.top();
-  read_queue_.pop();
-  return current_stream_->GetNextDocResult();
-}
-
 //--------------------------------------------------------------------------------------------------
 
 PgDocResponse::PgDocResponse(PerformFuture&& future, const MetricInfo& info)
@@ -761,8 +346,8 @@ Status PgDocOp::FetchMoreResults() {
   return Status::OK();
 }
 
-PgDocResultStream& PgDocOp::ResultStream() {
-  static CachedPgDocResultStream dummy_stream({});
+PgDocOpFetchStream& PgDocOp::ResultStream() {
+  static CachedPgDocOpFetchStream dummy_stream({});
   return result_stream_ ? *result_stream_ : dummy_stream;
 }
 
@@ -848,29 +433,33 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
-  YbcReadPointHandle current_read_time_serial_no = YbcInvalidReadPointHandle;
   YbcReadPointHandle catalog_read_time_serial_no = YbcInvalidReadPointHandle;
+  TxnReadPoint read_point_before_catalog_op{};
   if (!YBCIsLegacyModeForCatalogOps() &&
       table_->schema().table_properties().is_ysql_catalog_table()) {
     // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
     // writes.
     force_non_bufferable = ForceNonBufferable::kTrue;
-    current_read_time_serial_no = pg_session_->GetCurrentReadPoint();
+    read_point_before_catalog_op = pg_session_->GetCurrentReadPointState();
     // Switch to catalog snapshot's read time serial no.
     catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
         table_->pg_table_id().object_oid, true /* create_if_not_exists */);
-    VLOG(2) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-            << " and saving current read time serial number: " << current_read_time_serial_no;
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
+                << " and saving read time serial no "
+                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
+                << read_point_before_catalog_op.txn;
+    }
     RSTATUS_DCHECK(
         catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
     RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
   }
   response_ = VERIFY_RESULT(sender_(
-      pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, is_write));
+      pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
+      {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, is_write));
   if (!result_stream_) {
-    // Default PgDocResultStream
-    result_stream_ = std::make_unique<ParallelPgDocResultStream>(
+    // Default PgDocOpFetchStream
+    result_stream_ = std::make_unique<ParallelPgDocOpFetchStream>(
         [this]() { return this->FetchMoreResults(); }, pgsql_ops_);
     if (targets_) {
       result_stream_->SetFetchedTargets(targets_);
@@ -878,11 +467,13 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table() &&
-      current_read_time_serial_no != catalog_read_time_serial_no) {
-    // Switch back to earlier read time serial no.
-    VLOG(2) << "Restoring current read time serial number: " << current_read_time_serial_no;
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(current_read_time_serial_no));
+      table_->schema().table_properties().is_ysql_catalog_table()) {
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Restoring read time serial no after catalog operation to "
+                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
+                << read_point_before_catalog_op.txn;
+    }
+    RETURN_NOT_OK(pg_session_->RestoreReadPoint(read_point_before_catalog_op));
   }
   return Status::OK();
 }
@@ -1022,8 +613,9 @@ Result<bool> PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, Keep
   return false;
 }
 
-Result<bool> PgDocOp::PopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
-  RETURN_NOT_OK(DoPopulateMergeStreams(merge_sort_keys));
+Result<bool> PgDocOp::PopulateMergeStreamRequests(
+    MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams) {
+  RETURN_NOT_OK(DoPopulateMergeStreamRequests(merge_sort_keys, bind, std::move(merge_streams)));
   request_population_completed_ = true;
   if (HasActiveOps()) {
     RETURN_NOT_OK(CompleteRequests());
@@ -1049,12 +641,12 @@ Result<size_t> PgDocOp::CompleteRequests() {
 }
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
-    PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
+    PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
+    const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
   PgDocResponse::MetricInfo metrics{
-    ResolveRelationType(**ops, table), is_write, IsOpBuffered(!force_non_bufferable)};
-  auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, in_txn_limit, force_non_bufferable)), metrics};
+    ResolveRelationType(*ops.front(), table), is_write,
+    IsOpBuffered(!options.force_non_bufferable)};
+  auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(ops, table, options)), metrics};
   if (!result.Valid()) {
     // session->RunAsync() calls PgSession::DoRunAsync() -> RunHelper::Flush().
     // RunHelper::Flush() returns PerformFuture() (empty constructor) when ops_info_.ops.Empty()
@@ -1232,7 +824,7 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
-  if (!VERIFY_RESULT(SetScanBounds(read_op_->read_request()))) {
+  if (!VERIFY_RESULT(SetScanBounds(table_, read_op_->read_request()))) {
     DCHECK(!HasActiveOps());
     end_of_data_ = true;
     return Status::OK();
@@ -1246,8 +838,8 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   return Status::OK();
 }
 
-Result<bool> PgDocReadOp::SetScanBounds(LWPgsqlReadRequestPB& request) {
-  if (table_->schema().num_hash_key_columns() > 0) {
+Result<bool> PgDocReadOp::SetScanBounds(PgTable& table, LWPgsqlReadRequestPB& request) {
+  if (table->schema().num_hash_key_columns() > 0) {
     // TODO: figure out if we can clarify bounds of a hash table scan
     return true;
   }
@@ -1265,14 +857,14 @@ Result<bool> PgDocReadOp::SetScanBounds(LWPgsqlReadRequestPB& request) {
   }
   std::vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
   RETURN_NOT_OK(client::GetRangePartitionBounds(
-      table_->schema(), request, &lower_range_components, &upper_range_components));
+      table->schema(), request, &lower_range_components, &upper_range_components));
   if (lower_range_components.empty() && upper_range_components.empty()) {
     return true;
   }
   auto lower_bound = dockv::DocKey(
-      table_->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
+      table->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
   auto upper_bound = dockv::DocKey(
-      table_->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
+      table->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
   VLOG_WITH_FUNC(4) << "Lower bound: " << Slice(lower_bound).ToDebugHexString()
                     << ", upper bound: " << Slice(upper_bound).ToDebugHexString();
   return ApplyBounds(request, lower_bound, true, upper_bound, false);
@@ -1357,10 +949,10 @@ Status PgDocReadOp::DoPopulateByYbctidOps(const YbctidGenerator& generator, Keep
   VLOG(1) << "Row order " << (keep_order ? "is" : "is not") << " important";
   if (keep_order) {
     if (!result_stream_) {
-      result_stream_ = std::make_unique<MergingPgDocResultStream<DocResult>>(
+      result_stream_ = std::make_unique<MergingPgDocOpFetchStream<DocResult>>(
           [this]() { return this->FetchMoreResults(); }, pgsql_ops_, 0);
       result_stream_->SetFetchedTargets(targets_);
-      VLOG(3) << "Created MergingPgDocResultStream";
+      VLOG(3) << "Created MergingPgDocOpFetchStream";
     }
   }
   while (true) {
@@ -1437,60 +1029,29 @@ void PgDocReadOp::InitializeYbctidOperators() {
   ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
-Status PgDocReadOp::DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
+Status PgDocReadOp::DoPopulateMergeStreamRequests(
+    MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams) {
   DCHECK(merge_sort_keys && !merge_sort_keys->empty());
-  InPermutationBuilder builder(table_);
-  auto sortkey_it = merge_sort_keys->cbegin();
-  size_t c_idx = 0;
-  // All partition_column_values are expected to have merge stream conditions
-  for (const auto& col_expr : read_op_->read_request().partition_column_values()) {
-    DCHECK_LT(c_idx, sortkey_it->att_idx) << "Can't merge sort by a hash column";
-    DCHECK_NE(col_expr.expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
-        << "Missing condition on a merge stream column at " << c_idx;
-    VLOG_WITH_FUNC(4) << "Merge stream condition found on a hash column at index " << c_idx;
-    builder.AddExpression(c_idx, &col_expr);
-    ++c_idx;
-  }
-  // range_column_values preceding any of the sort columns are expected to have
-  // merge stream conditions
-  auto col_expr_it = read_op_->read_request().range_column_values().cbegin();
-  for (; c_idx < table_->num_key_columns(); ++c_idx) {
-    if (c_idx == sortkey_it->att_idx) { // sort column
-      VLOG_WITH_FUNC(4) << "Sort column at index " << c_idx
-                        << ", target value at " << sortkey_it->value_idx;
-      // no expressions should be after the last sort column
-      if (++sortkey_it == merge_sort_keys->cend()) {
-        DCHECK(col_expr_it == read_op_->read_request().range_column_values().cend())
-            << "Found an expression after all sort columns at " << c_idx;
-        break;
-      }
-    } else { // merge stream column
-      DCHECK(col_expr_it != read_op_->read_request().range_column_values().cend())
-          << "Missing condition on a merge stream column at " << c_idx;
-      DCHECK_LT(c_idx, sortkey_it->att_idx) << "Merge sort key is out of order";
-      DCHECK_NE(col_expr_it->expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
-          << "Missing values on a merge stream column at " << c_idx;
-      VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
-      builder.AddExpression(c_idx, &*col_expr_it);
-      ++col_expr_it;
-    }
-  }
-  DCHECK(sortkey_it == merge_sort_keys->cend())
-      << "Sort key is not an index key: " << sortkey_it->att_idx;
-  auto merge_streams = builder.Build();
   ClonePgsqlOps(merge_streams.Size());
+  size_t active_op_count = 0;
   for (size_t idx = 0; idx < merge_streams.Size(); ++idx) {
     DCHECK(merge_streams.HasPermutation());
     auto& read_op = GetReadOp(idx);
-    read_op.read_request().mutable_range_column_values()->clear();
-    if (VERIFY_RESULT(BindExprsRegular(read_op.read_request(), merge_streams.NextPermutation()))) {
+    auto& read_req = read_op.read_request().has_index_request()
+        ? *read_op.read_request().mutable_index_request()
+        : read_op.read_request();
+    read_req.mutable_range_column_values()->clear();
+    if (VERIFY_RESULT(BindExprsRegular(bind, read_req, merge_streams.NextPermutation()))) {
       read_op.set_active(true);
       read_op.set_is_merge_stream(true);
+      ++active_op_count;
     }
   }
   DCHECK(!merge_streams.HasPermutation());
   MoveInactiveOpsOutside();
-  if (HasActiveOps()) {
+  // We need a specialized result stream to merge results from multiple active operations.
+  // If there is only one, default result stream is good; no active ops means no execution.
+  if (active_op_count > 1) {
     DCHECK(!result_stream_);
     // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
     // for them. So reserve space for all regular attributes.
@@ -1498,7 +1059,7 @@ Status PgDocReadOp::DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
         table_->schema().columns().cbegin(),
         table_->schema().columns().cend(),
         [](const ColumnSchema& c) { return c.order() > 0; });
-    result_stream_ = std::make_unique<MergingPgDocResultStream<PgDocResult>>(
+    result_stream_ = std::make_unique<MergingPgDocOpFetchStream<PgDocResult>>(
         [this]() { return this->FetchMoreResults(); }, pgsql_ops_, nattrs);
     result_stream_->SetFetchedTargets(targets_);
     result_stream_->SetMergeSortKeys(merge_sort_keys);
@@ -1507,27 +1068,27 @@ Status PgDocReadOp::DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
 }
 
 Result<bool> PgDocReadOp::BindExprsRegular(
-    LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
-  if (table_->num_hash_key_columns() > 0) {
-    std::span hash_values(values.begin(), table_->num_hash_key_columns());
-    auto hash = VERIFY_RESULT(table_->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
+    PgTable& table, LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
+  if (table->num_hash_key_columns() > 0) {
+    std::span hash_values(values.begin(), table->num_hash_key_columns());
+    auto hash = VERIFY_RESULT(table->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
     const auto lower_bound =
-        HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive */, true /* is_lower */);
+        HashCodeToDocKeyBound(table->schema(), hash, true /* is_inclusive */, true /* is_lower */);
     const auto upper_bound = HashCodeToDocKeyBound(
-        table_->schema(), hash, true /* is_inclusive */, false /* is_lower */);
+        table->schema(), hash, true /* is_inclusive */, false /* is_lower */);
     if (!ApplyBounds(
             read_req, lower_bound, false /* lower_bound_is_inclusive */, upper_bound,
             false /* upper_bound_is_inclusive */)) {
       return false;
     }
     read_req.mutable_partition_column_values()->clear();
-    for (size_t index = 0; index < table_->num_hash_key_columns(); ++index) {
+    for (size_t index = 0; index < table->num_hash_key_columns(); ++index) {
       auto* partition_column_value = read_req.add_partition_column_values()->mutable_value();
       *partition_column_value = *values[index];
     }
   }
 
-  for (size_t index = table_->num_hash_key_columns(); index < table_->num_key_columns(); ++index) {
+  for (size_t index = table->num_hash_key_columns(); index < table->num_key_columns(); ++index) {
     auto* elem = values[index];
     if (elem) {
       if (!read_req.has_condition_expr()) {
@@ -1536,12 +1097,12 @@ Result<bool> PgDocReadOp::BindExprsRegular(
       auto* op = read_req.mutable_condition_expr()->mutable_condition()->add_operands();
       auto* pgcond = op->mutable_condition();
       pgcond->set_op(QL_OP_EQUAL);
-      pgcond->add_operands()->set_column_id(table_.ColumnForIndex(index).id());
+      pgcond->add_operands()->set_column_id(table.ColumnForIndex(index).id());
       *pgcond->add_operands()->mutable_value() = *elem;
     }
   }
-  if (table_->num_hash_key_columns() == 0) {
-    return SetScanBounds(read_req);
+  if (table->num_hash_key_columns() == 0) {
+    return SetScanBounds(table, read_req);
   }
   return true;
 }
@@ -1651,7 +1212,8 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   } else {
     for (auto it = pgsql_ops_.begin();
          it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {
-      if (VERIFY_RESULT(BindExprsRegular(AsReadReq(*it), hash_permutations_->NextPermutation()))) {
+      if (VERIFY_RESULT(BindExprsRegular(
+          table_, AsReadReq(*it), hash_permutations_->NextPermutation()))) {
         (**it).set_active(true);
       }
     }
@@ -1694,7 +1256,8 @@ Result<bool> PgDocReadOp::PopulateParallelSelectOps() {
   // the following calculation needs to be refined before it can be used for all statements.
   auto parallelism_level = FLAGS_ysql_select_parallelism;
   if (parallelism_level < 0) {
-    int tserver_count = VERIFY_RESULT(pg_session_->TabletServerCount(true /* primary_only */));
+    auto tserver_count = VERIFY_RESULT(pg_session_->pg_client().TabletServerCount(
+        true /* primary_only */));
 
     // Establish lower and upper bounds on parallelism.
     int kMinParSelParallelism = 1;

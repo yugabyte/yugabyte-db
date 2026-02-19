@@ -48,7 +48,7 @@ var installCmd = &cobra.Command{
 		}
 		// Save the services installed
 		state.Services.PerfAdvisor = viper.GetBool("perfAdvisor.enabled")
-		state.Services.Platform = !viper.GetBool("perfAdvisor.enabled")
+		state.Services.Platform = true
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
 		}
@@ -71,15 +71,15 @@ var installCmd = &cobra.Command{
 
 		if common.IsPerfAdvisorEnabled() && common.IsPostgresEnabled() {
 			// Run both Perf Advisor and Postgres checks, then merge results
-    	paResults := preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
-    	pgResults := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
-    	results = checks.MergeMappedResults(paResults, pgResults)
+			paResults := preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+			pgResults := preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
+			results = checks.MergeMappedResults(paResults, pgResults)
 
 			combined := append(preflight.InstallPerfAdvisorChecks, preflight.InstallChecksWithPostgres...)
 			deduped := deduplicateChecks(combined)
 			results = preflight.Run(deduped, skippedPreflightChecks...)
-		}	else if common.IsPerfAdvisorEnabled() {
-    	results = preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
+		} else if common.IsPerfAdvisorEnabled() {
+			results = preflight.Run(preflight.InstallPerfAdvisorChecks, skippedPreflightChecks...)
 		} else if common.IsPostgresEnabled() {
 			results = preflight.Run(preflight.InstallChecksWithPostgres, skippedPreflightChecks...)
 		} else {
@@ -90,6 +90,10 @@ var installCmd = &cobra.Command{
 			preflight.PrintPreflightResults(results)
 			log.Fatal("Preflight checks failed. To skip (not recommended), " +
 				"rerun the command with --skip_preflight <check name1>,<check name2>")
+		}
+
+		if err := ybactlstate.ValidatePrometheusScrapeConfig(); err != nil {
+			log.Fatal("failed to validate prometheus scrape config: " + err.Error())
 		}
 
 		// Mark install start.
@@ -176,16 +180,16 @@ func getAndPrintStatus(state *ybactlstate.State) {
 
 // Deduplicate checks by Name
 func deduplicateChecks(checks []preflight.Check) []preflight.Check {
-  seen := make(map[string]bool)
-  unique := make([]preflight.Check, 0, len(checks))
+	seen := make(map[string]bool)
+	unique := make([]preflight.Check, 0, len(checks))
 
-  for _, check := range checks {
+	for _, check := range checks {
 		if !seen[check.Name()] {
 			seen[check.Name()] = true
 			unique = append(unique, check)
 		}
-  }
-  return unique
+	}
+	return unique
 }
 
 func init() {

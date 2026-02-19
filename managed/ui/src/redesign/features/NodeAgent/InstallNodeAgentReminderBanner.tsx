@@ -3,7 +3,7 @@ import { Box, Collapse, makeStyles, Typography, useTheme } from '@material-ui/co
 import { Trans, useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 
-import { ReactComponent as MegaphoneIcon } from '../../assets/megaphone.svg';
+import MegaphoneIcon from '../../assets/megaphone.svg';
 import { NODE_AGENT_FAQ_DOCS_URL, NODE_AGENT_PREREQ_DOCS_URL } from './constants';
 import { YBButton } from '../../components/YBButton/YBButton';
 import { YBExternalLink } from '../../components/YBLink/YBExternalLink';

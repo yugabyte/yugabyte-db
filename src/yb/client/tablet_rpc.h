@@ -19,8 +19,9 @@
 #include <string>
 #include <unordered_set>
 
-#include "yb/util/flags.h"
 #include <gtest/gtest_prod.h>
+
+#include "yb/ash/wait_state.h"
 
 #include "yb/client/client_fwd.h"
 
@@ -36,6 +37,7 @@
 #include "yb/tserver/tserver_types.messages.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_fwd.h"
@@ -186,9 +188,11 @@ class TabletInvoker {
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
   // the rpc after a short delay.
-  void LookupTabletCb(const Result<RemoteTabletPtr>& result);
+  void LookupTabletCb(
+      ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result);
 
-  void InitialLookupTabletDone(const Result<RemoteTabletPtr>& result);
+  void InitialLookupTabletDone(
+      ash::WaitStateSnapshot snapshot, const Result<RemoteTabletPtr>& result);
 
   // If we receive TABLET_NOT_FOUND and current_ts_ is set, that means we contacted a tserver
   // with a tablet_id, but the tserver no longer has that tablet.

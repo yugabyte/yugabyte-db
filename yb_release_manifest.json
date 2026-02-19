@@ -12,10 +12,12 @@
     ],
     "bin": [
       "$BUILD_ROOT/bin/clockbound_dump",
+      "$BUILD_ROOT/bin/flamegraph.pl",
       "$BUILD_ROOT/bin/ldb",
       "$BUILD_ROOT/bin/log-dump",
       "$BUILD_ROOT/bin/odyssey",
       "$BUILD_ROOT/bin/sst_dump",
+      "$BUILD_ROOT/bin/stackcollapse-perf.pl",
       "$BUILD_ROOT/bin/yb-admin",
       "$BUILD_ROOT/bin/yb-bulk_load",
       "$BUILD_ROOT/bin/yb-generate_partitions_main",

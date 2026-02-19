@@ -16,7 +16,8 @@ import {
   fetchAuthConfigList,
   fetchAuthConfigListResponse,
   deleteKMSProviderConfig,
-  deleteKMSProviderConfigResponse
+  deleteKMSProviderConfigResponse,
+  refreshKMSConfig
 } from '../../../actions/cloud';
 import { fetchTaskProgress, fetchTaskProgressResponse } from '../../../actions/tasks';
 import { toast } from 'react-toastify';
@@ -76,7 +77,17 @@ const mapDispatchToProps = (dispatch) => {
         })
         .catch((err) => toast.error(`Error submitting KMS configuration: ${err}`));
     },
-
+    refreshKMSConfig: (configUUID) => {
+        refreshKMSConfig(configUUID).then((response) => {
+          if (response.status === 200) {
+            toast.success(response.data.message);
+          } else {
+            toast.error(response.data.message);
+          }
+        }).catch((err) => {
+          toast.error(`Error refreshing KMS token: ${err}`);
+        });
+    },
     updateKMSConfig: (configUUID, body) => {
       return dispatch(editKMSProviderConfig(configUUID, body))
         .then?.((response) => {

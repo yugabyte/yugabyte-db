@@ -166,7 +166,7 @@ public class CreateTableSpacesTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(universeUUID);
 
     CreateTableSpaces task =
-        new CreateTableSpaces(mockBaseTaskDependencies, mockNodeUniverseManager) {
+        new CreateTableSpaces(mockBaseTaskDependencies) {
           @Override
           protected void waitFor(Duration duration) {
             // Noop as no actual task is running.

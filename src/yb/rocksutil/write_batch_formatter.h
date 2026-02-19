@@ -61,7 +61,7 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  Status Frontiers(const rocksdb::UserFrontiers& range) override;
+  Status Frontiers(const yb::storage::UserFrontiers& range) override;
 
   std::string str() { return out_.str(); }
 

@@ -977,8 +977,8 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
 
   RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
     master::GetNamespaceInfoResponsePB resp;
-    auto namespace_status = cluster->client_->GetNamespaceInfo(
-        /*namespace_id=*/"", namespace_name, YQL_DATABASE_PGSQL, &resp);
+    auto namespace_status =
+        cluster->client_->GetNamespaceInfo(namespace_name, YQL_DATABASE_PGSQL, &resp);
     if (!namespace_status.ok()) {
       if (namespace_status.IsNotFound()) {
         RETURN_NOT_OK(CreateDatabase(cluster, namespace_name, params.is_colocated));
@@ -1152,4 +1152,14 @@ Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
   LOG(INFO) << "PITR has been completed";
   return Status::OK();
 }
+
+Result<YBTableName> XClusterYsqlTestBase::CreateMaterializedView(
+    Cluster& cluster, const YBTableName& table) {
+  auto conn = EXPECT_RESULT(cluster.ConnectToDB(table.namespace_name()));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE MATERIALIZED VIEW $0_mv AS SELECT COUNT(*) FROM $0", table.table_name()));
+  return GetYsqlTable(
+      &cluster, table.namespace_name(), table.pgschema_name(), table.table_name() + "_mv");
+}
+
 }  // namespace yb

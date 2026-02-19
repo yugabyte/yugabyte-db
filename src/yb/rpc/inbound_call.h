@@ -32,44 +32,33 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 #include "yb/ash/wait_state.h"
 
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_call.h"
-#include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/thread_pool.h"
 #include "yb/rpc/wait_state_if.h"
 
-#include "yb/yql/cql/ql/ql_session.h"
-
-#include "yb/util/faststring.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
-#include "yb/util/logging.h"
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 
-namespace google {
-namespace protobuf {
+namespace google::protobuf {
 class Message;
-}  // namespace protobuf
-}  // namespace google
+} // namespace google::protobuf
+
 
 namespace yb {
-
 class EventStats;
 class Histogram;
 class Trace;
@@ -108,7 +97,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
               CallProcessedListener* call_processed_listener,
               CallStateListenerFactory* call_state_listener_factory);
-  virtual ~InboundCall();
+  ~InboundCall() override;
 
   void SetRpcMethodMetrics(std::reference_wrapper<const RpcMethodMetrics> value);
 
@@ -148,6 +137,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // and should only be called once on a given instance.
   // Not thread-safe. Should only be called by the current "owner" thread.
   virtual void RecordHandlingStarted(scoped_refptr<EventStats> incoming_queue_time);
+
+  void RecordCallRejectedDueToMemoryPressure() const;
 
   // When RPC call Handle() completed execution on the server side.
   // Updates the Histogram with time elapsed since the call was started,
@@ -314,7 +305,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
     void Done(const Status& status) override;
 
-    virtual ~InboundCallTask() = default;
+    ~InboundCallTask() override = default;
 
    private:
     InboundCallHandler* handler_;

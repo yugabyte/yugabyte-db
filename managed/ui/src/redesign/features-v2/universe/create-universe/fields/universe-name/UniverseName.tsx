@@ -7,14 +7,17 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { YBInputFieldProps, yba } from '@yugabyte-ui-library/core';
+import { useEffectOnce } from 'react-use';
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
+import { YBInputFieldProps, yba } from '@yugabyte-ui-library/core';
+import { generateUniqueName } from '@app/redesign/helpers/utils';
+import { GeneralSettingsProps } from '../../steps/general-settings/dtos';
 
 const { YBInputField } = yba;
 
 interface UniverseNameFieldProps<T extends FieldValues>
   extends Omit<YBInputFieldProps<T>, 'name' | 'control'> {
-  name: Path<T>;
+  name: Path<GeneralSettingsProps>;
   label: string;
   placeholder?: string;
   type?: string;
@@ -27,7 +30,14 @@ export const UniverseNameField = <T extends FieldValues>({
   type = 'text',
   sx
 }: UniverseNameFieldProps<T>) => {
-  const { control } = useFormContext<T>();
+  const { control, setValue, getValues } = useFormContext<GeneralSettingsProps>();
+
+  useEffectOnce(() => {
+    if (!getValues(name)) {
+      //set deafault value only for the first time
+      setValue(name, generateUniqueName());
+    }
+  });
 
   return (
     <Controller

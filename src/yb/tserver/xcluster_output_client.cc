@@ -71,6 +71,10 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
+DEFINE_test_flag(bool, xcluster_increment_logical_commit_time, false,
+    "When set, increments the logical component of commit_hybrid_time in xCluster records to "
+    "ensure it is non-zero.");
+
 DECLARE_bool(TEST_running_test);
 
 #define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) \
@@ -110,6 +114,22 @@ namespace yb {
 namespace tserver {
 
 namespace {
+
+std::optional<cdc::CDCRecordPB> TEST_MaybeModifyLogicalCommitTime(
+    const cdc::CDCRecordPB& record) {
+  if (!FLAGS_TEST_xcluster_increment_logical_commit_time || !record.has_transaction_state() ||
+      !record.transaction_state().has_commit_hybrid_time()) {
+    return std::nullopt;
+  }
+  // Increment the logical component of the commit hybrid time by 1 to ensure that it is non-zero.
+  HybridTime commit_ht(record.transaction_state().commit_hybrid_time());
+  commit_ht = HybridTime::FromMicrosecondsAndLogicalValue(
+      commit_ht.GetPhysicalValueMicros(), commit_ht.GetLogicalValue() + 1);
+  auto modified_record = record;
+  modified_record.mutable_transaction_state()->set_commit_hybrid_time(commit_ht.ToUint64());
+  return modified_record;
+}
+
 Result<ColocationId> DecodeColocationId(const cdc::CDCRecordPB& record) {
   if (record.changes().empty()) {
     return kColocationIdNotSet;
@@ -430,19 +450,24 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
-  if (is_ddl_queue_client_ && record.operation() == cdc::CDCRecordPB::APPLY) {
-    ddl_queue_commit_times_.insert(HybridTime(record.transaction_state().commit_hybrid_time()));
+
+  auto modified_record = TEST_MaybeModifyLogicalCommitTime(record);
+  const auto& record_to_process = modified_record ? *modified_record : record;
+
+  if (is_ddl_queue_client_ && record_to_process.operation() == cdc::CDCRecordPB::APPLY) {
+    ddl_queue_commit_times_.insert(
+        HybridTime(record_to_process.transaction_state().commit_hybrid_time()));
   }
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
     cdc::XClusterSchemaVersionMap schema_versions_map;
-    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record));
+    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record_to_process));
     if (PREDICT_TRUE(FLAGS_xcluster_enable_packed_rows_support) &&
-        !record.changes().empty() &&
-        (record.operation() == cdc::CDCRecordPB::WRITE ||
-         record.operation() == cdc::CDCRecordPB::DELETE)) {
-      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record, colocation_id));
+        !record_to_process.changes().empty() &&
+        (record_to_process.operation() == cdc::CDCRecordPB::WRITE ||
+         record_to_process.operation() == cdc::CDCRecordPB::DELETE)) {
+      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record_to_process, colocation_id));
     }
 
     auto status = write_strategy_->ProcessRecord(
@@ -450,7 +475,7 @@ Status XClusterOutputClient::ProcessRecord(
             .tablet_id = tablet_id,
             .schema_versions_map = schema_versions_map,
             .colocation_id = colocation_id},
-        record);
+        record_to_process);
     if (!status.ok()) {
       error_status_ = status;
       return status;
@@ -607,11 +632,23 @@ Result<bool> XClusterOutputClient::ProcessMetaOp(const cdc::CDCRecordPB& record)
   if (record.operation() == cdc::CDCRecordPB::SPLIT_OP) {
     // Construct and send the update request.
     master::ProducerSplitTabletInfoPB split_info;
-    split_info.set_tablet_id(record.split_tablet_request().tablet_id());
-    split_info.set_new_tablet1_id(record.split_tablet_request().new_tablet1_id());
-    split_info.set_new_tablet2_id(record.split_tablet_request().new_tablet2_id());
-    split_info.set_split_encoded_key(record.split_tablet_request().split_encoded_key());
-    split_info.set_split_partition_key(record.split_tablet_request().split_partition_key());
+    const auto& split_req = record.split_tablet_request();
+    split_info.set_tablet_id(split_req.tablet_id());
+    split_info.set_deprecated_new_tablet1_id(split_req.deprecated_new_tablet1_id());
+    split_info.set_deprecated_new_tablet2_id(split_req.deprecated_new_tablet2_id());
+    split_info.set_deprecated_split_encoded_key(split_req.deprecated_split_encoded_key());
+    split_info.set_deprecated_split_partition_key(split_req.deprecated_split_partition_key());
+    if (split_req.new_tablet_ids_size() > 0) {
+      SCHECK_EQ(
+          split_req.new_tablet_ids_size() - 1, split_req.split_encoded_keys_size(), IllegalState,
+          "Unexpected number of encoded keys");
+      SCHECK_EQ(
+          split_req.new_tablet_ids_size() - 1, split_req.split_partition_keys_size(), IllegalState,
+          "Unexpected number of partition keys");
+      *split_info.mutable_new_tablet_ids() = split_req.new_tablet_ids();
+      *split_info.mutable_split_encoded_keys() = split_req.split_encoded_keys();
+      *split_info.mutable_split_partition_keys() = split_req.split_partition_keys();
+    }
 
     if (PREDICT_FALSE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op)) {
       return STATUS(

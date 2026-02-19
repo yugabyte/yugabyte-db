@@ -8,10 +8,8 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -20,19 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
 
-  private final NodeUniverseManager nodeUniverseManager;
-  private final YsqlQueryExecutor ysqlQueryExecutor;
-
   private static final String UPGRADE_SUPERUSER = "yugabyte_upgrade";
 
   @Inject
-  protected ManageCatalogUpgradeSuperUser(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeUniverseManager nodeUniverseManager,
-      YsqlQueryExecutor ysqlQueryExecutor) {
+  protected ManageCatalogUpgradeSuperUser(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   public enum Action {

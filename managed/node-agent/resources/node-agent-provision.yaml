@@ -57,6 +57,9 @@ yba:
   # Example: 'https://yba.example.com'.
   url: <url>
 
+  # Skip TLS certificate verification.
+  skip_tls_verify: false
+
   # The UUID of the customer in Yugabyte Anywhere.
   # This is a unique identifier provided by YBA.
   customer_uuid: <customer_uuid>

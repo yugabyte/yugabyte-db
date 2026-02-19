@@ -24,14 +24,11 @@ setup_reboot_process() {
     CLEAR_REBOOT_SCRIPT_PATH="/usr/local/bin/clear-reboot-required.sh"
     SERVICE_FILE_PATH="/etc/systemd/system/clear-reboot-required.service"
 
-    # Replace placeholder with actual value
-    TMP_DIRECTORY="{{ tmp_directory }}"
-
     # Create the schedule reboot script
     cat > "$SCHEDULE_REBOOT_SCRIPT_PATH" <<'EOF'
 #!/bin/bash
 
-MARKER_FILE="$TMP_DIRECTORY/.reboot-required"
+MARKER_FILE="{{tmp_directory}}/.reboot-required"
 
 if [ -f "$MARKER_FILE" ]; then
     echo "Reboot is already scheduled."

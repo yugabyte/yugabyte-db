@@ -30,6 +30,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*
@@ -140,6 +141,14 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*
@@ -175,6 +184,14 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 		MarkLockClear(locallock);
 	}
 
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
+
 	return true;
 }
 
@@ -204,6 +221,14 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*
@@ -339,7 +364,7 @@ CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 	 * We always return true here because we assume that the caller has already
 	 * tried to acquire the lock.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 		return true;
 
 	LOCKTAG		tag;
@@ -574,6 +599,11 @@ UnlockPage(Relation relation, BlockNumber blkno, LOCKMODE lockmode)
 void
 LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -582,7 +612,7 @@ LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	uint32		block_num = 0;
 	uint16		offset_num = 0;
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
 		offset_num = ItemPointerGetOffsetNumber(tid);
@@ -606,6 +636,10 @@ LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 bool
 ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return true;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -614,7 +648,7 @@ ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	uint32		block_num = 0;
 	uint16		offset_num = 0;
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
 		offset_num = ItemPointerGetOffsetNumber(tid);
@@ -635,6 +669,10 @@ ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 void
 UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -643,7 +681,7 @@ UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 	uint32		block_num = 0;
 	uint16		offset_num = 0;
 
-	if (YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() == PG_OBJECT_LOCK_MODE)
 	{
 		block_num = ItemPointerGetBlockNumber(tid);
 		offset_num = ItemPointerGetOffsetNumber(tid);
@@ -674,7 +712,7 @@ XactLockTableInsert(TransactionId xid)
 	 * TODO(#27154): Need additional logic to handle xact object locks such
 	 * that locks on different nodes with same transaction ids don't conflict.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -699,7 +737,7 @@ XactLockTableDelete(TransactionId xid)
 	/*
 	 * TODO(#27154): Need additional logic to handle xact object locks.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -735,7 +773,7 @@ XactLockTableWait(TransactionId xid, Relation rel, ItemPointer ctid,
 	/*
 	 * TODO(#27154): Need additional logic to handle xact object locks.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -813,7 +851,7 @@ ConditionalXactLockTableWait(TransactionId xid)
 	/*
 	 * TODO(#27154): Need additional logic to handle xact object locks.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return true;
 	}
@@ -888,7 +926,7 @@ SpeculativeInsertionLockRelease(TransactionId xid)
 	/*
 	 * TODO(#27154): Need additional logic to handle xact object locks.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -912,7 +950,7 @@ SpeculativeInsertionWait(TransactionId xid, uint32 token)
 	/*
 	 * TODO(#27154): Need additional logic to handle xact object locks.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -1006,7 +1044,7 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	/*
 	 * TODO(#27719): Propagate wait to tserver's object lock manager.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -1089,7 +1127,7 @@ WaitForLockers(LOCKTAG heaplocktag, LOCKMODE lockmode, bool progress)
 	/*
 	 * TODO(#27719): Propagate wait to tserver's object lock manager.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -1239,7 +1277,7 @@ LockSharedObjectForSession(Oid classid, Oid objid, uint16 objsubid,
 	 * TODO(#27120): Propagate call to tserver once support for session object
 	 * locking is enabled.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}
@@ -1266,7 +1304,7 @@ UnlockSharedObjectForSession(Oid classid, Oid objid, uint16 objsubid,
 	 * TODO(#27120): Propagate call to tserver once support for session object
 	 * locking is enabled.
 	 */
-	if (!YBIsPgLockingEnabled())
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
 	{
 		return;
 	}

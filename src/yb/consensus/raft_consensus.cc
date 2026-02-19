@@ -52,14 +52,12 @@
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/strand.h"
 
 #include "yb/server/clock.h"
 
@@ -70,8 +68,8 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
@@ -168,10 +166,11 @@ DEFINE_test_flag(bool, request_vote_respond_leader_still_alive, false,
                  "Fake rejection to vote due to leader still alive");
 
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
-                      "Follower Memory Pressure Rejections",
-                      yb::MetricUnit::kRequests,
-                      "Number of RPC requests rejected due to "
-                      "memory pressure while FOLLOWER.");
+    "Follower Memory Pressure Rejections (deprecated)",
+    yb::MetricUnit::kRequests,
+    "Once was number of RPC requests rejected due to "
+    "memory pressure while FOLLOWER, now always zero.");
+
 METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Raft Consensus Term",
                           yb::MetricUnit::kUnits,
@@ -270,14 +269,13 @@ DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
 DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
                  "Whether to pause before triggering pending operations in RaftConsensus::Start");
 
-namespace yb {
-namespace consensus {
+namespace yb::consensus {
 
 using rpc::PeriodicTimer;
 using std::shared_ptr;
+using std::string;
 using std::unique_ptr;
 using std::weak_ptr;
-using std::string;
 using strings::Substitute;
 using tserver::TabletServerErrorPB;
 
@@ -423,18 +421,15 @@ shared_ptr<RaftConsensus> RaftConsensus::Create(
 
 RaftConsensus::RaftConsensus(
     const ConsensusOptions& options, std::unique_ptr<ConsensusMetadata> cmeta,
-    std::unique_ptr<PeerProxyFactory> proxy_factory,
-    std::unique_ptr<PeerMessageQueue> queue,
+    std::unique_ptr<PeerProxyFactory> proxy_factory, std::unique_ptr<PeerMessageQueue> queue,
     std::unique_ptr<PeerManager> peer_manager,
     std::unique_ptr<ThreadPoolToken> raft_pool_concurrent_token,
     const scoped_refptr<MetricEntity>& table_metric_entity,
-    const scoped_refptr<MetricEntity>& tablet_metric_entity,
-    const std::string& peer_uuid, const scoped_refptr<server::Clock>& clock,
-    ConsensusContext* consensus_context, const scoped_refptr<log::Log>& log,
-    shared_ptr<MemTracker> parent_mem_tracker,
+    const scoped_refptr<MetricEntity>& tablet_metric_entity, const std::string& peer_uuid,
+    const scoped_refptr<server::Clock>& clock, ConsensusContext* consensus_context,
+    const scoped_refptr<log::Log>& log, shared_ptr<MemTracker> parent_mem_tracker,
     Callback<void(std::shared_ptr<StateChangeContext> context)> mark_dirty_clbk,
-    TableType table_type,
-    RetryableRequests* retryable_requests)
+    TableType table_type, RetryableRequests* retryable_requests)
     : raft_pool_concurrent_token_(std::move(raft_pool_concurrent_token)),
       log_(log),
       clock_(clock),
@@ -447,8 +442,9 @@ RaftConsensus::RaftConsensus(
           "step_down_check_tracker", &peer_proxy_factory_->messenger()->scheduler()),
       mark_dirty_clbk_(std::move(mark_dirty_clbk)),
       shutdown_(false),
-      follower_memory_pressure_rejections_(tablet_metric_entity->FindOrCreateMetric<Counter>(
-          &METRIC_follower_memory_pressure_rejections)),
+      deprecated_follower_memory_pressure_rejections_(
+          tablet_metric_entity->FindOrCreateMetric<Counter>(
+              &METRIC_follower_memory_pressure_rejections)),
       term_metric_(tablet_metric_entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
           &METRIC_raft_term, cmeta->current_term())),
       follower_last_update_time_ms_metric_(
@@ -1268,7 +1264,7 @@ Status RaftConsensus::CheckLeasesUnlocked(const ConsensusRoundPtr& round) {
                          "Old leader may have hybrid time lease, while adding: $0",
                          OperationType_Name(op_type));
   }
-  lease_status = state_->GetLeaderLeaseStatusUnlocked(nullptr);
+  lease_status = state_->GetLeaderLeaseStatusUnlocked(/*remaining_old_leader_lease=*/nullptr);
   if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
     return STATUS_FORMAT(LeaderHasNoLease,
                          "Old leader may have lease, while adding: $0",
@@ -1352,7 +1348,7 @@ Status RaftConsensus::DoAppendNewRoundsToQueueUnlocked(
 
     auto s = state_->AddPendingOperation(round, OperationMode::kLeader);
     if (!s.ok()) {
-      RollbackIdAndDeleteOpId(round->replicate_msg(), false /* should_exists */);
+      RollbackIdAndDeleteOpId(round->replicate_msg(), /*should_exists=*/false);
       return s;
     }
 
@@ -1983,8 +1979,6 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
 
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForUpdate(&lock));
-
-  const auto old_leader = state_->GetLeaderUuidUnlocked();
 
   auto prev_committed_op_id = state_->GetCommittedOpIdUnlocked();
 
@@ -3324,7 +3318,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
       *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked(
-          nullptr, nullptr, /* check_no_op_committed= */ true);
+          /*remaining_old_leader_lease=*/nullptr, /*now=*/nullptr, /*check_no_op_committed=*/true);
     } else {
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
@@ -3808,5 +3802,4 @@ Result<OpId> RaftConsensus::TEST_GetLastOpIdWithType(OpIdType opid_type, Operati
   return queue_->TEST_GetLastOpIdWithType(VERIFY_RESULT(GetLastOpId(opid_type)).index, op_type);
 }
 
-}  // namespace consensus
-}  // namespace yb
+} // namespace yb::consensus

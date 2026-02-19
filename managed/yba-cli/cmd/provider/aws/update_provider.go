@@ -378,7 +378,9 @@ func init() {
 			" The default for SSH Port is 22, IMDSv2 ("+
 			"This should be true if the Image bundle requires Instance Metadata Service v2)"+
 			" is false. Default marks the image bundle as default for the provider. "+
-			"Allowed values for architecture are x86_64 and arm64/aarch64."+
+			"If default is not specified, the bundle will automatically be set as default "+
+			"if no other default bundle exists for the same architecture. "+
+			"Allowed values for architecture are x86_64 and arm64/aarch64. "+
 			"Each image bundle can be added using separate --add-image-bundle flag.")
 	updateAWSProviderCmd.Flags().StringArray("add-image-bundle-region-override", []string{},
 		"[Optional] Add Image bundle region overrides associated with the provider. "+
@@ -793,6 +795,23 @@ func addAWSImageBundles(
 				formatter.Colorize(errMessage, formatter.YellowColor),
 			)
 			defaultBundle = false
+		}
+
+		// If default not explicitly set, check if there's already a default bundle
+		// for this architecture. If not, set this bundle as default.
+		if !defaultBundle {
+			arch := strings.ToLower(bundle["arch"])
+			hasDefaultForArch := false
+			for _, existingBundle := range providerImageBundles {
+				existingArch := strings.ToLower(existingBundle.Details.GetArch())
+				if existingArch == arch && existingBundle.GetUseAsDefault() {
+					hasDefaultForArch = true
+					break
+				}
+			}
+			if !hasDefaultForArch {
+				defaultBundle = true
+			}
 		}
 
 		useIMDSv2, err := strconv.ParseBool(bundle["imdsv2"])

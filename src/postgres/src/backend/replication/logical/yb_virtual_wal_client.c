@@ -99,6 +99,8 @@ static List *YBCGetTables(List *publication_names, bool *yb_is_pub_all_tables);
 static List *YBCGetTablesWithRetryIfNeeded(List *publication_names,
 										   bool *yb_is_pub_all_tables,
 										   bool *skip_setting_yb_read_time);
+static void YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables);
+
 static void InitVirtualWal(List *publication_names,
 						   const YbcReplicationSlotHashRange *slot_hash_range);
 
@@ -250,7 +252,34 @@ YBCGetTablesWithRetryIfNeeded(List *publication_names, bool *yb_is_pub_all_table
 	}
 	PG_END_TRY();
 
+	/*
+	 * Remove tables without primary key if replication slot does not allow them.
+	 */
+	YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(&tables);
+
 	return tables;
+}
+
+static void
+YBCRemoveTablesWithoutPrimaryKeyIfNotAllowedBySlot(List **tables)
+{
+	if (MyReplicationSlot->data.yb_allow_tables_without_primary_key)
+		return;
+
+	ListCell   *lc;
+
+	foreach (lc, *tables)
+	{
+		Oid table_oid = lfirst_oid(lc);
+		Relation rel = RelationIdGetRelation(table_oid);
+		bool has_pk = false;
+
+		Assert(RelationIsValid(rel));
+		has_pk = YBGetTablePrimaryKeyBms(rel) != NULL;
+		RelationClose(rel);
+		if (!has_pk)
+			*tables = foreach_delete_current(*tables, lc);
+	}
 }
 
 static void
@@ -362,7 +391,29 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 }
 
 YbVirtualWalRecord *
-YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
+YBXLogReadRecord(XLogReaderState *state, List *publication_names,
+				 char **errormsg)
+{
+	/* reset error state */
+	*errormsg = NULL;
+	state->errormsg_buf[0] = '\0';
+
+	YBResetDecoder(state);
+
+	YbVirtualWalRecord *record = YBCReadRecord(publication_names);
+
+	if (record)
+	{
+		state->ReadRecPtr = record->lsn;
+		state->yb_virtual_wal_record = record;
+		TrackUnackedTransaction(record);
+	}
+
+	return record;
+}
+
+YbVirtualWalRecord *
+YBCReadRecord(List *publication_names)
 {
 	MemoryContext caller_context;
 	YbVirtualWalRecord *record = NULL;
@@ -374,12 +425,6 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 
 	caller_context = MemoryContextSwitchTo(cached_records_context);
 
-	/* reset error state */
-	*errormsg = NULL;
-	state->errormsg_buf[0] = '\0';
-
-	YBResetDecoder(state);
-
 	/* Fetch a batch of changes from CDC service if needed. */
 	if (cached_records == NULL ||
 		cached_records_last_sent_row_idx >= cached_records->row_count)
@@ -390,7 +435,7 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 		{
 			StartTransactionCommand();
 
-			Assert(yb_read_time < publication_refresh_time);
+			Assert(yb_read_time <= publication_refresh_time);
 
 			elog(DEBUG2,
 				 "Setting yb_read_time to new pub_refresh_time: %" PRIu64,
@@ -456,11 +501,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	}
 
 	last_getconsistentchanges_response_empty = false;
-	record = &cached_records->rows[cached_records_last_sent_row_idx++];
-	state->ReadRecPtr = record->lsn;
-	state->yb_virtual_wal_record = record;
 
-	TrackUnackedTransaction(record);
+	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 
 	MemoryContextSwitchTo(caller_context);
 	return record;
@@ -729,7 +771,8 @@ YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables)
 	YbcReplicationSlotDescriptor *yb_replication_slot;
 	int			replica_identity_idx = 0;
 
-	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
+	YBCGetReplicationSlot(MyReplicationSlot->data.name.data,
+						  &yb_replication_slot, /* if_exists */ false);
 
 	/* Populate the replica identities for new tables in MyReplicationSlot. */
 	for (replica_identity_idx = 0;
@@ -776,7 +819,7 @@ ValidateAndExtractHashRange(const char *hash_range_str, uint32_t *hash_range)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid value for hash_range")));
 
-	if (parsed_range < 0 || parsed_range > (PG_UINT16_MAX + 1))
+	if (parsed_range > (PG_UINT16_MAX + 1))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("hash_range out of bound")));

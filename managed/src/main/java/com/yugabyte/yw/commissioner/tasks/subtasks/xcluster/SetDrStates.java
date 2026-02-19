@@ -6,6 +6,8 @@ import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -16,10 +18,15 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class SetDrStates extends XClusterConfigTaskBase {
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
   protected SetDrStates(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -118,6 +125,7 @@ public class SetDrStates extends XClusterConfigTaskBase {
       }
 
       drConfig.update();
+      kubernetesStatus.updateDrConfigStatus(drConfig, "Task In Progress", getUserTaskUUID());
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

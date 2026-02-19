@@ -10,16 +10,20 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
+import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -146,6 +150,9 @@ public class OperatorImportResource extends UniverseTaskBase {
         if (taskParams().backupScheduleUUID == null) {
           throw new IllegalArgumentException("Backup schedule UUID must be provided");
         }
+        if (taskParams().storageConfigName == null) {
+          throw new IllegalArgumentException("Storage config name must be provided");
+        }
         Schedule.getOrBadRequest(taskParams().backupScheduleUUID);
         break;
       case BACKUP:
@@ -154,6 +161,9 @@ public class OperatorImportResource extends UniverseTaskBase {
         }
         if (taskParams().customerUUID == null) {
           throw new IllegalArgumentException("Customer UUID must be provided");
+        }
+        if (taskParams().storageConfigName == null) {
+          throw new IllegalArgumentException("Storage config name must be provided");
         }
         Backup.getOrBadRequest(taskParams().customerUUID, taskParams().backupUUID);
         break;
@@ -201,8 +211,17 @@ public class OperatorImportResource extends UniverseTaskBase {
       }
       log.info("Successfully imported resource type: {}", taskParams().resourceType);
     } catch (Exception e) {
-      log.error("Failed to import resource type: {}", taskParams().resourceType, e);
-      throw new RuntimeException("Failed to import resource", e);
+      String resourceIdentifier = getResourceIdentifier();
+      log.error(
+          "Failed to import resource type: {} (identifier: {})",
+          taskParams().resourceType,
+          resourceIdentifier,
+          e);
+      throw new RuntimeException(
+          String.format(
+              "Failed to import resource %s (identifier: %s)",
+              taskParams().resourceType, resourceIdentifier),
+          e);
     }
   }
 
@@ -308,7 +327,8 @@ public class OperatorImportResource extends UniverseTaskBase {
         Customer.get(provider.getCustomerUUID())
             .getUniversesForProvider(provider.getUuid())
             .stream()
-            .filter(u -> u.getUniverseUUID().equals(taskParams().universeUUID))
+            // Skip the universe that is being imported
+            .filter(u -> !u.getUniverseUUID().equals(taskParams().universeUUID))
             .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
             .collect(Collectors.toList());
     if (nonOperatorBasedUniverses.size() > 0) {
@@ -318,8 +338,42 @@ public class OperatorImportResource extends UniverseTaskBase {
     }
 
     log.info("Importing provider: {}", taskParams().providerUUID);
-    // For now, just log the provider info
-    // In a real implementation, you might want to create a Provider CRD or similar
+    KubernetesProviderFormData providerData = new KubernetesProviderFormData();
+    providerData.name = provider.getName();
+    // Always try to use the cloud info from the provider details before using the config.
+    if (provider.getDetails().getCloudInfo() != null
+        && provider.getDetails().getCloudInfo().getKubernetes() != null) {
+      providerData.config = provider.getDetails().getCloudInfo().getKubernetes().getEnvVars();
+    } else {
+      log.trace("Provider {} details are not available, using config", provider.getName());
+      providerData.config = provider.getConfig();
+    }
+    List<KubernetesProviderFormData.RegionData> regionList = new ArrayList<>();
+    for (Region region : provider.getRegions()) {
+      KubernetesProviderFormData.RegionData regionData =
+          new KubernetesProviderFormData.RegionData();
+      regionData.code = region.getCode();
+      regionData.name = region.getName();
+      for (AvailabilityZone zone : region.getZones()) {
+        KubernetesProviderFormData.RegionData.ZoneData zoneData =
+            new KubernetesProviderFormData.RegionData.ZoneData();
+        zoneData.code = zone.getCode();
+        zoneData.name = zone.getName();
+        // Always try to use the cloud info from the zone details before using the config.
+        if (zone.getDetails().getCloudInfo() != null
+            && zone.getDetails().getCloudInfo().getKubernetes() != null) {
+          zoneData.config = zone.getDetails().getCloudInfo().getKubernetes().getEnvVars();
+        } else {
+          log.trace("Zone {} details are not available, using config", zone.getCode());
+          zoneData.config = zone.getConfig();
+        }
+        regionData.zoneList.add(zoneData);
+      }
+      regionList.add(regionData);
+    }
+    providerData.regionList = regionList;
+    operatorUtils.createProviderCrFromProviderEbean(
+        providerData, getNamespace(), provider.getUuid(), false, taskParams().secretMap);
     log.info("Provider {} imported successfully", provider.getName());
   }
 
@@ -373,7 +427,7 @@ public class OperatorImportResource extends UniverseTaskBase {
     Backup backup = Backup.getOrBadRequest(taskParams().customerUUID, taskParams().backupUUID);
 
     try {
-      operatorUtils.createBackupCr(backup, getNamespace());
+      operatorUtils.createBackupCr(backup, taskParams().storageConfigName, getNamespace());
     } catch (Exception e) {
       log.error("Failed to create backup: {}", backup.getBackupUUID(), e);
       throw new RuntimeException("Failed to create backup", e);
@@ -394,15 +448,54 @@ public class OperatorImportResource extends UniverseTaskBase {
     // Get namespace from environment or configuration
     // This is safe, as prechecks should have validated that the taskParams.namespace is the same
     // as the operator namespace.
-    if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace) != null) {
-      log.info(
-          "Forcing namespace that operator is running in: {}",
-          confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace));
-      return confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    String confNamespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    if (confNamespace != null && !confNamespace.isEmpty()) {
+      log.info("Forcing namespace that operator is running in: {}", confNamespace);
+      return confNamespace;
     }
     if (taskParams().namespace != null && !taskParams().namespace.isEmpty()) {
       return taskParams().namespace;
     }
-    return null;
+    log.warn("No namespace found, using default namespace");
+    return "default";
+  }
+
+  private String getResourceIdentifier() {
+    switch (taskParams().resourceType) {
+      case UNIVERSE:
+        return taskParams().universeUUID != null
+            ? "UUID: " + taskParams().universeUUID
+            : "name: unknown";
+      case PROVIDER:
+        return taskParams().providerUUID != null
+            ? "UUID: " + taskParams().providerUUID
+            : "name: unknown";
+      case STORAGE_CONFIG:
+        return taskParams().storageConfigUUID != null
+            ? "UUID: " + taskParams().storageConfigUUID
+            : "name: unknown";
+      case BACKUP:
+        return taskParams().backupUUID != null
+            ? "UUID: " + taskParams().backupUUID
+            : "name: unknown";
+      case BACKUP_SCHEDULE:
+        return taskParams().backupScheduleUUID != null
+            ? "UUID: " + taskParams().backupScheduleUUID
+            : "name: unknown";
+      case RELEASE:
+        return taskParams().releaseVersion != null
+            ? "version: " + taskParams().releaseVersion
+            : "version: unknown";
+      case CERTIFICATE:
+        return taskParams().certificateUUID != null
+            ? "UUID: " + taskParams().certificateUUID
+            : "name: unknown";
+      case SECRET:
+        return taskParams().secretName != null
+            ? "name: " + taskParams().secretName
+            : "name: unknown";
+      default:
+        return "unknown";
+    }
   }
 }

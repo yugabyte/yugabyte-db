@@ -44,7 +44,7 @@
 
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
@@ -509,23 +509,18 @@ TEST_F(MetricsTest, JsonPrintTest) {
   ASSERT_OK(entity_->WriteAsJson(&writer, MetricJsonOptions()));
 
   // Now parse it back out.
-  JsonReader reader(out.str());
-  ASSERT_OK(reader.Init());
+  JsonDocument doc;
+  auto metrics = ASSERT_RESULT(doc.Parse(out.str()))["metrics"];
 
-  vector<const rapidjson::Value*> metrics;
-  ASSERT_OK(reader.ExtractObjectArray(reader.root(), "metrics", &metrics));
-  ASSERT_EQ(1, metrics.size());
-  string metric_name;
-  ASSERT_OK(reader.ExtractString(metrics[0], "name", &metric_name));
+  auto size = ASSERT_RESULT(metrics.size());
+  ASSERT_EQ(1, size);
+  auto metric_name = ASSERT_RESULT(metrics[0]["name"].GetString());
   ASSERT_EQ("reqs_pending", metric_name);
-  int64_t metric_value;
-  ASSERT_OK(reader.ExtractInt64(metrics[0], "value", &metric_value));
+  auto metric_value = ASSERT_RESULT(metrics[0]["value"].GetInt64());
   ASSERT_EQ(1L, metric_value);
 
-  const rapidjson::Value* attributes;
-  ASSERT_OK(reader.ExtractObject(reader.root(), "attributes", &attributes));
-  string attr_value;
-  ASSERT_OK(reader.ExtractString(attributes, "test_attr", &attr_value));
+  auto attributes = doc.Root()["attributes"];
+  auto attr_value = ASSERT_RESULT(attributes["test_attr"].GetString());
   ASSERT_EQ("attr_val", attr_value);
 }
 

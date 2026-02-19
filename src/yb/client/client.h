@@ -115,6 +115,7 @@ struct CDCSDKStreamInfo {
   ReplicationSlotName cdcsdk_ysql_replication_slot_name;
   std::string cdcsdk_ysql_replication_slot_plugin_name;
   tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
+  bool allow_tables_without_primary_key;
   std::unordered_map<std::string, std::string> options;
 
   template <class PB>
@@ -130,6 +131,7 @@ struct CDCSDKStreamInfo {
     if (replication_slot_lsn_type) {
       pb->set_yb_lsn_type(replication_slot_lsn_type);
     }
+    pb->set_allow_tables_without_primary_key(allow_tables_without_primary_key);
   }
 
   template <class PB>
@@ -149,6 +151,7 @@ struct CDCSDKStreamInfo {
         .cdcsdk_ysql_replication_slot_plugin_name = pb.cdcsdk_ysql_replication_slot_plugin_name(),
         .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
             pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
+        .allow_tables_without_primary_key = pb.allow_tables_without_primary_key(),
         .options = std::move(options)};
 
     return stream_info;
@@ -276,15 +279,14 @@ class YBClientBuilder {
       rpc::Messenger* messenger = nullptr, const server::ClockPtr& clock = nullptr);
 
   // Creates the client which gets the messenger ownership and shuts it down on client shutdown.
-  Result<std::unique_ptr<YBClient>> Build(std::unique_ptr<rpc::Messenger>&& messenger,
-                                          const server::ClockPtr& clock);
+  Result<std::unique_ptr<YBClient>> Build(
+      std::unique_ptr<rpc::Messenger>&& messenger, const server::ClockPtr& clock);
 
  private:
   class Data;
 
-  Status DoBuild(rpc::Messenger* messenger,
-                 server::ClockPtr clock,
-                 std::unique_ptr<client::YBClient>* client);
+  Status DoBuild(
+      rpc::Messenger* messenger, server::ClockPtr clock, std::unique_ptr<client::YBClient>* client);
 
   std::unique_ptr<Data> data_;
 
@@ -324,13 +326,11 @@ class YBClient {
   std::unique_ptr<YBTableCreator> NewTableCreator();
 
   // set 'create_in_progress' to true if a CreateTable operation is in-progress.
-  Status IsCreateTableInProgress(const YBTableName& table_name,
-                                 bool *create_in_progress);
+  Status IsCreateTableInProgress(const YBTableName& table_name, bool *create_in_progress);
 
   // Wait for create table to finish.
   Status WaitForCreateTableToFinish(const YBTableName& table_name);
-  Status WaitForCreateTableToFinish(const YBTableName& table_name,
-                                    const CoarseTimePoint& deadline);
+  Status WaitForCreateTableToFinish(const YBTableName& table_name, const CoarseTimePoint& deadline);
 
   Status WaitForCreateTableToFinish(const TableId& table_id);
   Status WaitForCreateTableToFinish(const TableId& table_id, const CoarseTimePoint& deadline);
@@ -345,8 +345,8 @@ class YBClient {
   Status TruncateTables(const TableIds& table_ids, bool wait = true);
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
-  Status BackfillIndex(const TableId& table_id, bool wait = true,
-                       CoarseTimePoint deadline = CoarseTimePoint());
+  Status BackfillIndex(
+      const TableId& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
@@ -428,20 +428,20 @@ class YBClient {
       const TableId& table_id,
       bool *alter_in_progress);
 
-  Status GetTableSchema(const YBTableName& table_name,
-                        YBSchema* schema,
-                        dockv::PartitionSchema* partition_schema);
-  Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
-                        StatusCallback callback);
+  Status GetTableSchema(
+      const YBTableName& table_name, YBSchema* schema, dockv::PartitionSchema* partition_schema);
+  Status GetYBTableInfo(
+      const YBTableName& table_name, std::shared_ptr<YBTableInfo> info, StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
   Result<YBTableInfo> GetYBTableInfoById(const TableId& table_id, bool include_hidden);
 
-  Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
-                            StatusCallback callback);
+  Status GetTableSchemaById(
+      const TableId& table_id, std::shared_ptr<YBTableInfo> info, StatusCallback callback);
 
-  Status GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
-                                 std::shared_ptr<std::vector<YBTableInfo>> info,
-                                 StatusCallback callback);
+  Status GetTablegroupSchemaById(
+      const TablegroupId& tablegroup_id,
+      std::shared_ptr<std::vector<YBTableInfo>> info,
+      StatusCallback callback);
 
   Result<IndexPermissions> GetIndexPermissions(
       const TableId& table_id,
@@ -534,6 +534,9 @@ class YBClient {
       bool use_secondary_space, uint32_t* begin_oid, uint32_t* end_oid,
       uint32_t* oid_cache_invalidations_count = nullptr);
 
+  Status GetYsqlYbSystemTableInfo(
+      PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode);
+
   // Deprecated. Use instead per-db version below.
   Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
@@ -557,8 +560,13 @@ class YBClient {
 
   // Get namespace information.
   Status GetNamespaceInfo(
-      const NamespaceId& namespace_id, const NamespaceName& namespace_name,
-      const std::optional<YQLDatabase>& database_type, master::GetNamespaceInfoResponsePB* ret);
+      const NamespaceName& namespace_name, const std::optional<YQLDatabase>& database_type,
+      master::GetNamespaceInfoResponsePB* ret);
+
+  Status GetNamespaceInfo(const NamespaceId& namespace_id, master::GetNamespaceInfoResponsePB* ret);
+
+  Status GetNamespaceInfoByTableId(
+      const TableId& table_id, master::GetNamespaceInfoResponsePB* ret);
 
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
@@ -593,10 +601,9 @@ class YBClient {
 
   // Authentication and Authorization
   // Create a new role.
-  Status CreateRole(const RoleName& role_name,
-                    const std::string& salted_hash,
-                    const bool login, const bool superuser,
-                    const RoleName& creator_role_name);
+  Status CreateRole(
+      const RoleName& role_name, const std::string& salted_hash,
+      const bool login, const bool superuser, const RoleName& creator_role_name);
 
   // Alter an existing role.
   Status AlterRole(
@@ -813,38 +820,50 @@ class YBClient {
   Result<cdc::CompositeAttsMap> GetPgCompositeAttsMap(const NamespaceName& ns_name);
 
   Result<std::pair<Schema, uint32_t>> GetTableSchemaFromSysCatalog(
-      const TableId& table_id, const uint64_t read_time);
+      const TableId& table_id, uint64_t read_time);
 
   // List all running tablets' uuids for this table.
-  // 'tablets' is appended to only on success.
+  // Output arguments:
+  // `tablet_uuids` is appended to only on success.
+  // `ranges` and `locations` are optional arguments (pass nullptr to ignore).
   Status GetTablets(
       const YBTableName& table_name,
-      const int32_t max_tablets,
+      int32_t max_tablets,
       std::vector<TabletId>* tablet_uuids,
       std::vector<std::string>* ranges,
       std::vector<master::TabletLocationsPB>* locations = nullptr,
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletsAndUpdateCache(
-      const YBTableName& table_name,
-      const int32_t max_tablets,
-      std::vector<TabletId>* tablet_uuids,
-      std::vector<std::string>* ranges,
-      std::vector<master::TabletLocationsPB>* locations);
-
-  Status GetTabletsFromTableId(
-      const TableId& table_id, const int32_t max_tablets,
-      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
-
-  // partition_list_version is an output-only parameter.
+  // List all running tablets' locations for this table.
+  // Output arguments:
+  // `tablets` is appended to only on success.
+  // `partition_list_version` is an optional argument (pass nullptr to ignore).
   Status GetTablets(
       const YBTableName& table_name,
-      const int32_t max_tablets,
+      int32_t max_tablets,
       google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
       PartitionListVersion* partition_list_version,
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
+
+  Status GetTabletsAndUpdateCache(
+      const YBTableName& table_name,
+      int32_t max_tablets,
+      std::vector<TabletId>* tablet_uuids,
+      std::vector<std::string>* ranges = nullptr,
+      std::vector<master::TabletLocationsPB>* locations = nullptr);
+
+  Status GetTabletsFromTableId(
+      const TableId& table_id, int32_t max_tablets,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+
+  Status GetTabletsFromTableId(
+      const TableId& table_id,
+      int32_t max_tablets,
+      std::vector<TabletId>* tablet_uuids,
+      std::vector<std::string>* ranges = nullptr,
+      std::vector<master::TabletLocationsPB>* locations = nullptr);
 
   Result<yb::master::GetTabletLocationsResponsePB> GetTabletLocations(
       const std::vector<TabletId>& tablet_ids);
@@ -912,9 +931,10 @@ class YBClient {
       master::GetTableSchemaResponsePB* resp = nullptr);
 
   void OpenTableAsync(const YBTableName& table_name, const OpenTableAsyncCallback& callback);
-  void OpenTableAsync(TableIdView table_id, const OpenTableAsyncCallback& callback,
-                      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
-                      master::GetTableSchemaResponsePB* resp = nullptr);
+  void OpenTableAsync(
+      TableIdView table_id, const OpenTableAsyncCallback& callback,
+      master::IncludeHidden include_hidden = master::IncludeHidden::kFalse,
+      master::GetTableSchemaResponsePB* resp = nullptr);
 
   Result<YBTablePtr> OpenTable(const TableId& table_id);
   Result<YBTablePtr> OpenTable(const YBTableName& name);
@@ -1165,6 +1185,11 @@ class YBClient {
       std::shared_ptr<YBTableInfo> info, const OpenTableAsyncCallback& callback, const Status& s);
 
   CoarseTimePoint PatchAdminDeadline(CoarseTimePoint deadline) const;
+
+  Status GetNamespaceInfo(
+      const NamespaceId& namespace_id, const NamespaceName& namespace_name,
+      const std::optional<YQLDatabase>& database_type, const TableId& table_id,
+      master::GetNamespaceInfoResponsePB* ret);
 
   YBClient();
 

@@ -9,14 +9,21 @@ menu:
     identifier: live-fall-forward
     parent: migration-types
     weight: 103
-tags:
-  feature: tech-preview
 type: docs
 ---
 
 When migrating using YugabyteDB Voyager, it is prudent to have a backup strategy if the new database doesn't work as expected. A fall-forward approach consists of creating a third database (the source-replica database) that is a replica of your original source database.
 
 A fall-forward approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+
+## Feature availability
+
+Live migration availability varies by the source database type as described in the following table:
+
+| Source database | Feature Maturity |
+| :--- | :--- |
+| PostgreSQL | {{<tags/feature/ga>}} when using [YugabyteDB Connector](/stable/additional-features/change-data-capture/using-logical-replication/). <br> {{<tags/feature/tp>}} when using [YugabyteDB gRPC Connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).|
+| Oracle | {{<tags/feature/tp>}} |
 
 ## Fall-forward workflow
 
@@ -93,6 +100,8 @@ Create a new database user, and assign the necessary user permissions.
 </ul>
 <div class="tab-content">
   <div id="oracle" class="tab-pane fade show active" role="tabpanel" aria-labelledby="oracle-tab">
+
+Live migration is {{<tags/feature/tp>}} for Oracle source databases.
 
 {{< tabpane text=true >}}
 
@@ -380,11 +389,13 @@ You can use only one of the following arguments in the `source` parameter (confi
   </div>
   <div id="pg" class="tab-pane fade" role="tabpanel" aria-labelledby="pg-tab">
 
+Live migration for PostgreSQL source database (using YugabyteDB Connector) is {{<tags/feature/ga>}}.
+
 {{< tabpane text=true >}}
 
   {{% tab header="Standalone PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. You can check this using following the steps:
 
     1. Run the command `SHOW wal_level` on the database to check the value.
 
@@ -400,9 +411,18 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    The script does the following:
+
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
+
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
@@ -422,7 +442,7 @@ You can use only one of the following arguments in the `source` parameter (confi
 
   {{% tab header="RDS PostgreSQL" %}}
 
-1. yb_voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
+1. yb-voyager requires `wal_level` to be logical. This is controlled by a database parameter `rds.logical_replication` which needs to be set to 1. You can check this using following the steps:
 
     1. Run the command `SHOW rds.logical_replication` on the database to check whether the parameter is set.
 
@@ -438,9 +458,18 @@ You can use only one of the following arguments in the `source` parameter (confi
     CREATE USER ybvoyager PASSWORD 'password';
     ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (which can be found at `/opt/yb-voyager/guardrails-scripts`. For brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`).
 
-    _Warning_: This script transfers ownership of all tables in the specified schemas to the specified replication group. The migration user and the original owner of the tables will be added to the replication group.
+    The script does the following:
+
+    - Grants permissions to the migration user (`ybvoyager`). This script provides two options for granting permissions:
+
+        - Transfer ownership: Transfers ownership of all tables in the specified schemas to the specified replication group, and adds the original table owners and the migration user to that group.
+        - Grant owner role: Grants the original table owner role of each table to the migration user, without transferring table ownership.
+
+    - Sets [Replica identity](/stable/additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/#replica-identity) FULL on all tables in the specified schemas.
+
+    Use the script to grant the required permissions as follows:
 
     ```sql
     psql -h <host> \
@@ -466,7 +495,9 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ## Prepare the target database
 
-Make sure the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. The ports are used during the `export data from target` phase (after the `cutover to target` step) when using the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) to initiate Change Data Capture (CDC) from the target and begin streaming ongoing changes.
+If you plan to use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), ensure that the TServer (9100) and Master (7100) ports are open on the target YugabyteDB cluster. These ports are required during the `export data from target` phase (after the `cutover to target` step) to initiate Change Data Capture (CDC) from the target and stream ongoing changes.
+
+However, if you are using the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/), no additional port configuration or setup is required.
 
 Prepare your target YugabyteDB database cluster by creating a database, and a user for your cluster.
 
@@ -1370,14 +1401,17 @@ yb-voyager initiate cutover to target --config-file <path-to-config-file>
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager initiate cutover to target --export-dir <EXPORT_DIR> --use-yb-grpc-connector true
+yb-voyager initiate cutover to target --export-dir <EXPORT_DIR>
 ```
 
 {{% /tab %}}
 
     {{< /tabpane >}}
 
-    If the target database is on [YugabyteDB Aeon](/stable/yugabyte-cloud), use `--use-yb-grpc-connector false` to allow the workflow to use the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/).
+    {{< note title="CDC options" >}}
+The [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) is the default and GA option (supported in YugabyteDB v2024.2.4+), and is recommended for all deployments. To use the [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), explicitly enable it using the `use-yb-grpc-connector` flag or configuration parameter; this connector requires access to the TServer (9100) and Master (7100) ports.
+    {{</ note >}}
+
     Refer to [initiate cutover to target](../../reference/cutover-archive/cutover/#cutover-to-target) for more information.
 
     As part of the cutover process, the following occurs in the background:
@@ -1639,6 +1673,9 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 
 - For [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/), fall-forward is unsupported with a YugabyteDB cluster running on YugabyteDB Aeon.
 - For YugabyteDB gRPC Connector, [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity) is partially supported for export or streaming events from YugabyteDB during `export data from target`. Basic SSL and server authentication via root certificate is supported. Client authentication is not supported.
-- For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE.
-- Currently, the [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) has a known limitation. Refer to GitHub issue [27248](https://github.com/yugabyte/yugabyte-db/issues/27248) for more details.
+- For YugabyteDB gRPC Connector, the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TSVECTOR, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, HSTORE, CITEXT, LTREE, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ, user-defined types, and array of user-defined types.
+- For YugabyteDB Connector (logical replication), the following data types are unsupported when exporting from the target YugabyteDB: BOX, CIRCLE, LINE, LSEG, PATH, PG_LSN, POINT, POLYGON, TSQUERY, TXID_SNAPSHOT, GEOMETRY, GEOGRAPHY, RASTER, INT4MULTIRANGE, INT8MULTIRANGE, NUMMULTIRANGE, TSMULTIRANGE, TSTZMULTIRANGE, DATEMULTIRANGE, VECTOR, TIMETZ, and user-defined range types.
 - [Export data from target](../../reference/data-migration/export-data/#export-data-from-target) supports DECIMAL/NUMERIC datatypes for YugabyteDB versions 2.20.1.1 and later.
+- [Savepoint](/stable/explore/ysql-language-features/advanced-features/savepoints/) statements within transactions on the target database are not supported. Transactions rolling back to some savepoint may cause data inconsistency between the databases.
+- Rows larger than 4MB in the target database can cause consistency issues during migration. Refer to [TA-29060](/stable/releases/techadvisories/ta-29060/) for more details.
+- Workloads with [Read Committed isolation level](/stable/architecture/transactions/read-committed/) are not fully supported. It is recommended to use [Repeatable Read or Serializable isolation levels](/stable/architecture/transactions/isolation-levels/) for the duration of the migration.

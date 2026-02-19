@@ -749,4 +749,93 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       }
     }
   }
+
+  @Test
+  public void testExecutingResetWithinATransaction() throws Exception {
+    // Test geqo parameter behavior with startup packet, transaction, SET, RESET, and rollback
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c geqo=off")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Check that geqo is off from startup packet
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off from startup packet", "off", geqoValue);
+      }
+
+      // Start a transaction
+      stmt.execute("BEGIN");
+
+      // Set geqo to on within the transaction
+      stmt.execute("SET geqo = on");
+
+      // Check that geqo is now on
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on after SET", "on", geqoValue);
+      }
+
+      // Reset geqo within the transaction
+      stmt.execute("RESET geqo");
+
+      // Check that geqo is back to startup value (off)
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after RESET", "off", geqoValue);
+      }
+
+      // Set geqo to on again to test rollback behavior
+      stmt.execute("SET geqo = on");
+
+      // Verify it's on before rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on before rollback", "on", geqoValue);
+      }
+
+      // Rollback the transaction
+      stmt.execute("ROLLBACK");
+
+      // Check that geqo is back to startup value (off) after rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after rollback", "off", geqoValue);
+      }
+    }
+  }
+
+  @Test
+  public void testSettingBackendContextVariable() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c ignore_system_indexes=true")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Verify the startup option works correctly on all backends in the pool
+      for (int i = 0; i < 5; i++) {
+        try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          String value = rs.getString(1);
+          assertEquals("ignore_system_indexes should be on", "on", value);
+        }
+      }
+
+      // PGC_BACKEND parameters cannot be set after connection start
+      try {
+        stmt.execute("SET ignore_system_indexes = on");
+        fail("SET ignore_system_indexes should have failed");
+      } catch (Exception e) {
+        assertTrue("Expected error about parameter cannot be set after connection start",
+            e.getMessage().contains("cannot be set after connection start"));
+      }
+    }
+  }
 }

@@ -639,7 +639,12 @@ message ListNamespacesResponsePB {
 }
 
 message GetNamespaceInfoRequestPB {
+  // These fields are used to specify the namespace to look up.
+  // Clients only need to specify one.
+  // If namespace is set, it is preferred.
   optional NamespaceIdentifierPB namespace = 1;
+  // When namespace is not set, table_id can be set to look up a namespace by a table it contains.
+  optional bytes table_id = 2;
 }
 
 message GetNamespaceInfoResponsePB {
@@ -828,6 +833,8 @@ message AcquireObjectLocksGlobalRequestPB {
   optional fixed64 propagated_hybrid_time = 7;
   reserved 8;  // ASH metadata is now passed in RequestHeader PB
   optional bytes status_tablet = 9;
+  // Used for ignoring conflicts between transactional object locks and host session object locks.
+  optional bytes background_transaction_id = 10;
 }
 
 message AcquireObjectLocksGlobalResponsePB {
@@ -848,6 +855,7 @@ message ReleaseObjectLocksGlobalRequestPB {
   // Should generally not be used. Only used by yb-admin to manually
   // clear out locks (that may have leaked).
   optional bool wait_for_completion = 8;
+  repeated docdb.ObjectLockPB object_locks = 9;
 }
 
 message ReleaseObjectLocksGlobalResponsePB {

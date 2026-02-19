@@ -201,13 +201,25 @@ source:
 ```
 
 | Path of the file containing source SSL Root Certificate. |
+| --primary-only |
+
+```yaml{.nocopy}
+source:
+      primary-only:
+```
+
+| Skip read replica discovery and assessment, and assess only the primary database. PostgreSQL migrations only.<br>Default: false |
 | --source-read-replica-endpoints |
 
 ```yaml{.nocopy}
 source:
       read-replica-endpoints:
 ```
-| (PostgreSQL only) Comma-separated list of read replica endpoints. Format endpoints as `host:port`. For example, `host1:5432, host2:5433`. <br/>Default port: 5432 |
+
+| Comma-separated list of read replica endpoints. PostgreSQL migrations only.<br>
+Format endpoints as `host:port`.<br>
+For example, `host1:5432, host2:5433`.<br>
+Default port: 5432 |
 | -e, --export-dir |
 
 ```yaml{.nocopy}

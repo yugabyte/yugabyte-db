@@ -103,7 +103,7 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 1800,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
@@ -114,11 +114,6 @@ DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
     "Abort active transactions during xcluster and cdc bootstrapping. Inconsistent replicated data "
     "may be produced if this is disabled.");
 TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
-
-DEFINE_test_flag(double, fault_crash_leader_before_changing_role, 0.0,
-                 "The leader will crash before changing the role (from PRE_VOTER or PRE_OBSERVER "
-                 "to VOTER or OBSERVER respectively) of the tablet server it is remote "
-                 "bootstrapping.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -1158,6 +1153,18 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
   return yb::OpId();
 }
 
+bool TabletPeer::is_cdc_min_replicated_index_stale(double* seconds_since_last_refresh_ptr) const {
+  std::lock_guard l(cdc_min_replicated_index_lock_);
+  auto seconds_since_last_refresh =
+      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
+  if (seconds_since_last_refresh_ptr) {
+    *seconds_since_last_refresh_ptr = seconds_since_last_refresh;
+  }
+  return (
+      seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs));
+}
+
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
   VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
@@ -1175,14 +1182,11 @@ Status TabletPeer::set_cdc_min_replicated_index(int64_t cdc_min_replicated_index
 }
 
 Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
-  std::lock_guard l(cdc_min_replicated_index_lock_);
-  auto seconds_since_last_refresh =
-      MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh >
-      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
-    RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
+    RETURN_NOT_OK(set_cdc_min_replicated_index(std::numeric_limits<int64_t>::max()));
   }
   return Status::OK();
 }
@@ -1227,6 +1231,21 @@ bool TabletPeer::is_under_cdc_sdk_replication() {
   return meta_->is_under_cdc_sdk_replication();
 }
 
+Status TabletPeer::reset_all_cdc_retention_barriers_if_stale() {
+  double seconds_since_last_refresh;
+  if (is_cdc_min_replicated_index_stale(&seconds_since_last_refresh)) {
+    VLOG_WITH_PREFIX(1) << "Trying to reset cdc retention barriers. Seconds since last update: "
+                        << seconds_since_last_refresh;
+    RETURN_NOT_OK(SetAllCDCRetentionBarriers(
+        std::numeric_limits<int64_t>::max() /* cdc_wal_index */,
+        OpId::Max() /* cdc_sdk_intents_op_id */, MonoDelta::kZero /* cdc_sdk_op_id_expiration */,
+        HybridTime::kInvalid /* cdc_sdk_history_cutoff */, true /* require_history_cutoff */,
+        false /* initial_retention_barrier */));
+    TEST_SYNC_POINT("TabletPeer::reset_all_cdc_retention_barriers_if_stale::End");
+  }
+  return Status::OK();
+}
+
 OpId TabletPeer::GetLatestCheckPoint() {
   auto tablet = shared_tablet_maybe_null();
   if (tablet) {
@@ -1240,7 +1259,9 @@ OpId TabletPeer::GetLatestCheckPoint() {
 
 Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet());
-  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(*tablet->metadata(), *client_future().get()));
+  auto& tablet_metadata = *tablet->metadata();
+  RETURN_NOT_OK(BackfillNamespaceIdIfNeeded(
+      tablet_metadata.table_id(), tablet_metadata, *client_future().get()));
   auto namespace_id = tablet->metadata()->namespace_id();
   RSTATUS_DCHECK(
       !namespace_id.empty(), IllegalState, "Namespace ID is empty for tablet $0",
@@ -1562,6 +1583,12 @@ void TabletPeer::RegisterMaintenanceOps(MaintenanceManager* maint_mgr) {
   maint_mgr->RegisterOp(log_gc.get());
   maintenance_ops_.push_back(std::move(log_gc));
   LOG_WITH_PREFIX(INFO) << "Registered log gc";
+
+  auto reset_stale_retention_barriers_op =
+      std::make_unique<ResetStaleRetentionBarriersOp>(this, *tablet_result);
+  maint_mgr->RegisterOp(reset_stale_retention_barriers_op.get());
+  maintenance_ops_.push_back(std::move(reset_stale_retention_barriers_op));
+  LOG_WITH_PREFIX(INFO) << "Registered stale retention barrier resetter";
 }
 
 void TabletPeer::UnregisterMaintenanceOps() {
@@ -1756,59 +1783,6 @@ rpc::Scheduler& TabletPeer::scheduler() const {
   return messenger_->scheduler();
 }
 
-// Called from within RemoteBootstrapSession and RemoteBootstrapServiceImpl.
-Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
-  MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_before_changing_role);
-  auto consensus = VERIFY_RESULT_PREPEND(GetConsensus(), "Unable to change role for tablet peer");
-
-  // If peer being bootstrapped is already a VOTER, don't send the ChangeConfig request. This could
-  // happen when a tserver that is already a VOTER in the configuration tombstones its tablet, and
-  // the leader starts bootstrapping it.
-  const auto config = consensus->CommittedConfig();
-  for (const RaftPeerPB& peer_pb : config.peers()) {
-    if (peer_pb.permanent_uuid() != requestor_uuid) {
-      continue;
-    }
-
-    switch (peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER: [[fallthrough]];
-      case PeerMemberType::VOTER:
-        LOG(WARNING) << "Peer " << peer_pb.permanent_uuid() << " is a "
-                     << PeerMemberType_Name(peer_pb.member_type())
-                     << " Not changing its role after remote bootstrap";
-
-        // Even though this is an error, we return Status::OK() so the remote server doesn't
-        // tombstone its tablet.
-        return Status::OK();
-
-      case PeerMemberType::PRE_OBSERVER: [[fallthrough]];
-      case PeerMemberType::PRE_VOTER: {
-        consensus::ChangeConfigRequestPB req;
-        consensus::ChangeConfigResponsePB resp;
-
-        req.set_tablet_id(tablet_id());
-        req.set_type(consensus::CHANGE_ROLE);
-        RaftPeerPB* peer = req.mutable_server();
-        peer->set_permanent_uuid(requestor_uuid);
-
-        std::optional<TabletServerErrorPB::Code> error_code;
-        return consensus->ChangeConfig(req, &DoNothingStatusCB, &error_code);
-      }
-      case PeerMemberType::UNKNOWN_MEMBER_TYPE:
-        return STATUS(
-            IllegalState,
-            Substitute(
-                "Unable to change role for peer $0 in config for "
-                "tablet $1. Peer has an invalid member type $2",
-                peer_pb.permanent_uuid(), tablet_id(), PeerMemberType_Name(peer_pb.member_type())));
-    }
-    LOG(FATAL) << "Unexpected peer member type " << PeerMemberType_Name(peer_pb.member_type());
-  }
-  return STATUS(
-      IllegalState,
-      Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
-}
-
 void TabletPeer::EnableFlushBootstrapState() {
   flush_bootstrap_state_enabled_.store(true, std::memory_order_relaxed);
 }
@@ -1999,33 +1973,18 @@ void TabletPeer::RegisterAsyncWriteCompletion(const OpId& op_id, StdStatusCallba
 }
 
 Status BackfillNamespaceIdIfNeeded(
-    tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
+    const TableId& table_id, tablet::RaftGroupMetadata& metadata, client::YBClient& client) {
   auto namespace_id = metadata.namespace_id();
   if (!namespace_id.empty()) {
     return Status::OK();
   }
-
   // If the namespace ID hasn't been backfilled yet, fetch it from master and populate the tablet
   // metadata.
   master::GetNamespaceInfoResponsePB resp;
-  auto namespace_name = metadata.namespace_name();
-  auto db_type = YQL_DATABASE_CQL;
-  switch (metadata.table_type()) {
-    case PGSQL_TABLE_TYPE:
-      db_type = YQL_DATABASE_PGSQL;
-      break;
-    case REDIS_TABLE_TYPE:
-      db_type = YQL_DATABASE_REDIS;
-      break;
-    default:
-      db_type = YQL_DATABASE_CQL;
-  }
-
-  RETURN_NOT_OK(client.GetNamespaceInfo(
-      /*namespace_id=*/{}, namespace_name, db_type, &resp));
+  RETURN_NOT_OK(client.GetNamespaceInfoByTableId(table_id, &resp));
   namespace_id = resp.namespace_().id();
   SCHECK_FORMAT(
-      !namespace_id.empty(), IllegalState, "Could not get namespace ID for $0", namespace_name);
+      !namespace_id.empty(), IllegalState, "Could not get namespace ID for table $0", table_id);
   return metadata.set_namespace_id(namespace_id);
 }
 

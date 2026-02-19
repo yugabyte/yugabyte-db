@@ -180,7 +180,13 @@ std::shared_ptr<MemTracker> CreateRootTracker() {
 
   ConsumptionFunctor consumption_functor;
 
-#if YB_TCMALLOC_ENABLED
+  bool log_root_tracker_details = true;
+  const char* in_postgres = std::getenv("YB_ENABLED_IN_POSTGRES");
+  if (in_postgres != NULL && strcmp(in_postgres, "1") == 0) {
+    log_root_tracker_details = VLOG_IS_ON(1);
+  }
+
+  #if YB_TCMALLOC_ENABLED
   consumption_functor = &GetTCMallocActualHeapSizeBytes;
 
   if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
@@ -191,11 +197,12 @@ std::shared_ptr<MemTracker> CreateRootTracker() {
         std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
   }
 
-  LOG(INFO) << "Creating root MemTracker with garbage collection threshold "
-            << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
+  LOG_IF(INFO, log_root_tracker_details)
+      << "Creating root MemTracker with garbage collection threshold "
+      << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
 #endif
 
-  LOG(INFO) << "Root memory limit is " << limit;
+  LOG_IF(INFO, log_root_tracker_details) << "Root memory limit is " << limit;
   return std::make_shared<MemTracker>(
       limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kFalse,
       CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);

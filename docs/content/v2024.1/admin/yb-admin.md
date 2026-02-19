@@ -19,7 +19,7 @@ It invokes the [yb-master](../../reference/configuration/yb-master/) and [yb-tse
 
 yb-admin is intended to be used to administer manually created and managed universes only.
 
-If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/preview/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/preview/yugabyte-cloud/managed-automation/).
+If you are using [YugabyteDB Anywhere](../../yugabyte-platform/) or [YugabyteDB Aeon](/stable/yugabyte-cloud/), administer your universes using the respective UI, or, to use automation, use the respective API or CLI. For more information, refer to [YugabyteDB Anywhere automation](../../yugabyte-platform/anywhere-automation/) and [YugabyteDB Aeon automation](/stable/yugabyte-cloud/managed-automation/).
 
 **If you perform tasks on a YugabyteDB Anywhere-managed universe using yb-admin, the changes may not be reflected in YugabyteDB Anywhere.**
 
@@ -70,7 +70,7 @@ To display the online help, run `yb-admin --help` from the YugabyteDB home direc
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [xCluster replication](#xcluster-replication-commands)
 * [Decommissioning](#decommissioning-commands)
-* [Rebalancing](#rebalancing-commands)
+* [Cluster balancing](#cluster-balancing-commands)
 * [Upgrade](#upgrade)
 
 ---
@@ -1480,7 +1480,7 @@ Having all tablet leaders reside in a single region reduces the number of networ
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
 
-* If the client application uses a smart driver, set the [topology keys](/preview/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
+* If the client application uses a smart driver, set the [topology keys](/stable/develop/drivers-orms/smart-drivers/#topology-aware-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -2482,15 +2482,17 @@ If specified, `des_ts_uuid` becomes the new leader. If the argument is empty (`"
 
 ---
 
-### Rebalancing commands
+### Cluster balancing commands
 
-For information on YB-Master load balancing, see [Data placement and load balancing](../../architecture/yb-master/#tablet-assignments).
+YugabyteDB automatically balances the cluster via the [YB-Master](../../architecture/yb-master/) service. The following manual commands are for advanced use cases.
 
-For YB-Master load balancing flags, see [Load balancing flags](../../reference/configuration/yb-master/#load-balancing-flags).
+For detailed information on automatic cluster balancing scenarios, monitoring, and configuration, see [Cluster balancing](../../architecture/docdb-sharding/cluster-balancing/).
+
+For YB-Master cluster balancing flags, see [Cluster balancing flags](../../reference/configuration/yb-master/#cluster-balancing-flags).
 
 #### set_load_balancer_enabled
 
-Enables or disables the load balancer.
+Enables or disables the cluster balancer.
 
 **Syntax**
 
@@ -2571,7 +2573,7 @@ Returns the following percentage:
 
 #### get_is_load_balancer_idle
 
-Finds out if the load balancer is idle.
+Finds out if the cluster balancer is idle.
 
 **Syntax**
 

@@ -16,24 +16,26 @@
 #include <queue>
 #include <thread>
 
+#include <boost/function.hpp>
 #include <boost/intrusive/list.hpp>
 
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/rpc/thread_pool.h"
+
+#include "yb/storage/frontier.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/unique_lock.h"
 
 #include "yb/vector_index/vector_lsm_metadata.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_reads, 0,
     "Max number of concurrent reads on vector index chunk. 0 - use number of CPUs for it");
@@ -237,10 +239,8 @@ class VectorLSMInsertTask :
   using InsertCallback = boost::function<void(const Status&)>;
   using VectorIndexPtr = typename VectorLSM<Vector, DistanceResult>::VectorIndexPtr;
 
-  explicit VectorLSMInsertTask(InsertRegistry& registry) : registry_(registry) {
-  }
-
-  void Bind(const VectorIndexPtr& index, InsertCallback insert_callback) {
+  void Bind(const VectorIndexPtr& index, std::shared_ptr<InsertRegistry> registry,
+            InsertCallback insert_callback) {
     DCHECK(index);
     DCHECK(insert_callback);
     DCHECK(!index_);
@@ -248,6 +248,7 @@ class VectorLSMInsertTask :
     DCHECK(vectors_.empty());
 
     index_ = index;
+    registry_ = std::move(registry);
     insert_callback_ = std::move(insert_callback);
   }
 
@@ -261,19 +262,18 @@ class VectorLSMInsertTask :
   }
 
   void Done(const Status&) override {
+    std::shared_ptr<InsertRegistry> registry;
     {
       std::lock_guard lock(mutex_);
       index_ = nullptr;
+      registry = std::move(registry_);
       vectors_.clear();
     }
 
     // We are not really interested in the status as it could indicate shutting down
     // or abortion due to shutting down only. Make sure to unset done_callback_ before calling it.
-    registry_.TaskDone(this);
-  }
-
-  const InsertRegistry& registry() const {
-    return registry_;
+    DCHECK(registry);
+    registry->TaskDone(this);
   }
 
  protected:
@@ -286,7 +286,7 @@ class VectorLSMInsertTask :
   }
 
   mutable rw_spinlock mutex_;
-  InsertRegistry& registry_;
+  std::shared_ptr<InsertRegistry> registry_;
   VectorIndexPtr index_;
   InsertCallback insert_callback_;
   std::vector<std::pair<VectorId, Vector>> vectors_;
@@ -326,7 +326,8 @@ class VectorLSMInsertTaskSearchWrapper final : public VectorLSMInsertTask<Vector
 
 // Registry for all active Vector LSM insert subtasks.
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class VectorLSMInsertRegistryBase {
+class VectorLSMInsertRegistryBase
+    : public std::enable_shared_from_this<VectorLSMInsertRegistryBase<Vector, DistanceResult>> {
  public:
   using InsertTask = VectorLSMInsertTask<Vector, DistanceResult>;
   using InsertTaskList = boost::intrusive::list<InsertTask>;
@@ -339,7 +340,7 @@ class VectorLSMInsertRegistryBase {
       {
         std::lock_guard lock(mutex_);
         stopping_ = true;
-        if (active_tasks_.empty() && allocated_tasks_ == 0) {
+        if (allocated_tasks_ == 0) {
           break;
         }
       }
@@ -358,7 +359,6 @@ class VectorLSMInsertRegistryBase {
 
   void TaskDone(InsertTask* raw_task) EXCLUDES(mutex_) {
     DCHECK_ONLY_NOTNULL(raw_task);
-    DCHECK_EQ(this, &raw_task->registry());
 
     InsertTaskPtr task(raw_task);
     {
@@ -399,14 +399,14 @@ class VectorLSMInsertRegistryBase {
     for (size_t left = num_tasks; left-- > 0;) {
       InsertTaskPtr task;
       if (task_pool_.empty()) {
-        task = std::make_unique<InsertTask>(*this);
+        task = std::make_unique<InsertTask>();
       } else {
         task = std::move(task_pool_.back());
         task_pool_.pop_back();
       }
 
       // Make sure insert_callback is not moved but copied as it is used in several tasks.
-      task->Bind(index, insert_callback);
+      task->Bind(index, this->shared_from_this(), insert_callback);
 
       result.push_back(*task.release());
     }
@@ -539,7 +539,7 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // is set and it is safe to trigger save_callback only when num_tasks < kRunningMark.
   std::function<void()> save_callback;
 
-  rocksdb::UserFrontiersPtr user_frontiers;
+  storage::UserFrontiersPtr user_frontiers;
 
   // Used to indicates this chunk insertion failed and hence save_callback should not be called.
   std::atomic<bool> insertion_failed { false };
@@ -548,14 +548,14 @@ struct VectorLSM<Vector, DistanceResult>::MutableChunk {
   // Invoked when owning VectorLSM holds the mutex.
   bool RegisterInsert(
       const std::vector<InsertEntry>& entries, const Options& options, size_t new_tasks,
-      const rocksdb::UserFrontiers* frontiers) {
+      const storage::UserFrontiers* frontiers) {
     if (num_entries && num_entries + entries.size() > index->Capacity()) {
       return false;
     }
     num_entries += entries.size();
     num_tasks += new_tasks;
     if (frontiers) {
-      rocksdb::UpdateFrontiers(user_frontiers, *frontiers);
+      storage::UpdateFrontiers(user_frontiers, *frontiers);
     }
     return true;
   }
@@ -600,7 +600,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   VectorIndexPtr index;
 
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
-  const rocksdb::UserFrontiersPtr user_frontiers;
+  const storage::UserFrontiersPtr user_frontiers;
 
  private:
   // Must be accessed under LSM::mutex_ lock to guarantee thread-safety.
@@ -613,7 +613,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
       size_t order_no_,
       VectorLSMFileMetaDataPtr&& file_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      storage::UserFrontiersPtr&& user_frontiers_,
       ImmutableChunkState state_)
       : file(std::move(file_)),
         order_no(order_no_),
@@ -625,7 +625,7 @@ struct VectorLSM<Vector, DistanceResult>::ImmutableChunk {
   ImmutableChunk(
       size_t order_no_,
       VectorIndexPtr&& index_,
-      rocksdb::UserFrontiersPtr&& user_frontiers_,
+      storage::UserFrontiersPtr&& user_frontiers_,
       std::promise<Status>* flush_promise_)
       : order_no(order_no_),
         state(ImmutableChunkState::kInMemory),
@@ -905,12 +905,12 @@ class VectorLSM<Vector, DistanceResult>::CompactionTask : public PriorityThreadP
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    return rocksdb::internal::kTopDiskCompactionPriority - active_tasks;
+    return PriorityThreadPool::kPriorityGroupBase - active_tasks;
   }
 
   int CalculatePriority() const {
     if (lsm_.IsShuttingDown()) {
-      return rocksdb::internal::kShuttingDownPriority;
+      return PriorityThreadPool::kPriorityShuttingDown;
     }
 
     const int num_chunks  = narrow_cast<int>(lsm_.NumSavedImmutableChunks());
@@ -1106,9 +1106,9 @@ Status VectorLSM<Vector, DistanceResult>::Open(Options options) {
   if (options_.metric_entity) {
     metrics_ = std::make_unique<vector_index::VectorLSMMetrics>(options_.metric_entity);
   }
-  insert_registry_ = std::make_unique<InsertRegistry>(
+  insert_registry_ = std::make_shared<InsertRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
-  merge_registry_ = std::make_unique<MergeRegistry>(
+  merge_registry_ = std::make_shared<MergeRegistry>(
       options_.log_prefix, *options_.insert_thread_pool);
 
   RETURN_NOT_OK(env_->CreateDirs(options_.storage_dir));
@@ -1405,13 +1405,13 @@ auto VectorLSM<Vector, DistanceResult>::Search(
   auto indexes = VERIFY_RESULT(AllIndexes());
   bool dump_stats = FLAGS_vector_index_dump_stats;
 
-  auto start_registry_search = MonoTime::NowIf(dump_stats);
+  auto start_registry_search = MonoTime::Now();
   auto intermediate_results = insert_registry_->Search(query_vector, options);
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Results from registry: " << AsString(intermediate_results);
   size_t num_results_from_insert_registry = intermediate_results.size();
 
   size_t sum_num_found_entries = 0;
-  auto start_chunks_search = MonoTime::NowIf(dump_stats);
+  auto start_chunks_search = MonoTime::Now();
   for (const auto& index : indexes) {
     auto chunk_results = VERIFY_RESULT(index->Search(query_vector, options));
     VLOG_WITH_PREFIX_AND_FUNC(4)
@@ -1419,14 +1419,24 @@ auto VectorLSM<Vector, DistanceResult>::Search(
     sum_num_found_entries += chunk_results.size();
     MergeChunkResults(intermediate_results, chunk_results, options.max_num_results);
   }
-  auto stop_search = MonoTime::NowIf(dump_stats);
+  auto stop_search = MonoTime::Now();
+  auto search_insert_registry_time = start_chunks_search - start_registry_search;
+  auto chunks_search_time = stop_search - start_chunks_search;
+
+  if (metrics_) {
+    metrics_->num_chunks->Increment(indexes.size());
+    metrics_->total_found_entries->Increment(sum_num_found_entries);
+    metrics_->insert_registry_entries->Increment(num_results_from_insert_registry);
+    metrics_->insert_registry_search_us->Increment(search_insert_registry_time.ToMicroseconds());
+    metrics_->chunks_search_us->Increment(chunks_search_time.ToMicroseconds());
+  }
 
   LOG_IF_WITH_PREFIX_AND_FUNC(INFO, dump_stats)
       << "VI_STATS: Number of chunks: " << indexes.size() << ", entries found in all chunks: "
       << sum_num_found_entries << ", entries found in insert registry: "
       << num_results_from_insert_registry << ", time to search insert registry: "
-      << (start_chunks_search - start_registry_search).ToPrettyString()
-      << ", time to search index chunks: " << (stop_search - start_chunks_search).ToPrettyString();
+      << search_insert_registry_time.ToPrettyString()
+      << ", time to search index chunks: " << chunks_search_time.ToPrettyString();
 
   return intermediate_results;
 }
@@ -1793,8 +1803,8 @@ Status VectorLSM<Vector, DistanceResult>::Flush(bool wait) {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
-  rocksdb::UserFrontierPtr result;
+storage::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier() {
+  storage::UserFrontierPtr result;
   std::lock_guard lock(mutex_);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "immutable_chunks: " << AsString(immutable_chunks_);
 
@@ -1802,24 +1812,24 @@ rocksdb::UserFrontierPtr VectorLSM<Vector, DistanceResult>::GetFlushedFrontier()
     if (!chunk->IsInManifest()) {
       continue;
     }
-    rocksdb::UserFrontier::Update(
-        &chunk->user_frontiers->Largest(), rocksdb::UpdateUserValueType::kLargest, &result);
+    storage::UserFrontier::Update(
+        &chunk->user_frontiers->Largest(), storage::UpdateUserValueType::kLargest, &result);
   }
   return result;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-rocksdb::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
+storage::FlushAbility VectorLSM<Vector, DistanceResult>::GetFlushAbility() {
   std::lock_guard lock(mutex_);
   for (const auto& chunk : immutable_chunks_) {
     if (!chunk->IsInManifest()) {
-      return rocksdb::FlushAbility::kAlreadyFlushing;
+      return storage::FlushAbility::kAlreadyFlushing;
     }
   }
   if (mutable_chunk_ && mutable_chunk_->num_entries) {
-    return rocksdb::FlushAbility::kHasNewData;
+    return storage::FlushAbility::kHasNewData;
   }
-  return rocksdb::FlushAbility::kNoNewData;
+  return storage::FlushAbility::kNoNewData;
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
@@ -2311,7 +2321,7 @@ class FilteringIterator {
 
       while (inner_it_ != inner_end_) {
         value_ = *inner_it_;
-        if (filter_.Filter(value_.first) == rocksdb::FilterDecision::kKeep) {
+        if (filter_.Filter(value_.first) == storage::FilterDecision::kKeep) {
           return true;
         }
         ++inner_it_;
@@ -2450,14 +2460,14 @@ VectorLSM<Vector, DistanceResult>::DoCompactChunks(const ImmutableChunkPtrs& inp
 
   // Collect indexes and frontiers.
   size_t input_size = 0;
-  rocksdb::UserFrontiersPtr merged_frontiers;
+  storage::UserFrontiersPtr merged_frontiers;
   for (const auto& chunk : input_chunks) {
     if (chunk->index) {
       indexes.push_back(chunk->index);
       input_size += indexes.back()->Size();
     }
     if (chunk->user_frontiers) {
-      rocksdb::UpdateFrontiers(merged_frontiers, *(chunk->user_frontiers));
+      UpdateFrontiers(merged_frontiers, *(chunk->user_frontiers));
     }
   }
 

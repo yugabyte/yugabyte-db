@@ -179,6 +179,9 @@ class SysCatalogTable {
       int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term);
 
+  Result<bool> GetYsqlYbSystemTableInfo(
+      PgOid relnamespace, const TableName& table_name, PgOid* oid, PgOid* relfilenode);
+
   // ==================================================================
   // Static schema related methods.
   // ==================================================================
@@ -370,6 +373,8 @@ class SysCatalogTable {
   tablet::TabletPeerPtr TEST_GetTabletPeer() {
     return tablet_peer_;
   }
+
+  Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
 
  private:
   friend class CatalogManager;

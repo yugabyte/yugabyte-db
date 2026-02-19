@@ -62,11 +62,6 @@ DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_bool(enable_flush_retryable_requests);
 
-DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
-                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
-                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
-                 "server it is remote bootstrapping, but before it sends a success response.");
-
 DEFINE_test_flag(int32, rbs_sleep_after_taking_metadata_ms, 0,
                  "Sleep after tablet metadata was taken during remote boostrap session init.");
 
@@ -74,6 +69,10 @@ DEFINE_RUNTIME_int32(rbs_init_max_number_of_retries, 5,
                      "Max number of retries during remote bootstrap session initialisation, "
                      "when metadata before and after checkpoint does not match. "
                      "0 - to disable retry logic.");
+
+DEFINE_test_flag(bool, rbs_fail_checkpoint, false,
+                 "Fail all attempts to checkpoint data when retries still exist.");
+
 
 namespace yb {
 namespace tserver {
@@ -108,33 +107,7 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
 
   // No lock taken in the destructor, should only be 1 thread with access now.
   CHECK_OK(UnregisterAnchorIfNeededUnlocked());
-
-  // Delete checkpoint directory.
-  if (!checkpoint_dir_.empty()) {
-    auto s = env()->DeleteRecursively(checkpoint_dir_);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to delete checkpoint directory " << checkpoint_dir_;
-    } else {
-      LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
-    }
-  } else {
-    LOG(INFO) << "No checkpoint directory was created for this session";
-  }
-
-}
-
-Status RemoteBootstrapSession::ChangeRole() {
-  CHECK(Succeeded());
-  CHECK(ShouldChangeRole());
-
-  LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
-            << session_id_;
-  auto status = rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
-                                   : tablet_peer_->ChangeRole(requestor_uuid_);
-  if (status.ok()) {
-    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
-  }
-  return status;
+  RemoveCheckpointDir();
 }
 
 Status RemoteBootstrapSession::SetInitialCommittedState() {
@@ -155,7 +128,6 @@ Status RemoteBootstrapSession::InitSnapshotTransferSession() {
   RETURN_NOT_OK(InitSources());
 
   start_time_ = MonoTime::Now();
-  should_try_change_role_ = false;
 
   return Status::OK();
 }
@@ -199,6 +171,9 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
         LOG(INFO) << status;
         return status;
       }
+      if (PREDICT_FALSE(FLAGS_TEST_rbs_fail_checkpoint) && retry + 1 < max_retries) {
+        LOG_AND_RETURN(WARNING, STATUS_FORMAT(TryAgain, "FLAGS_TEST_rbs_fail_checkpoint set"));
+      }
     }
 
     *kv_store->mutable_rocksdb_files() = VERIFY_RESULT(tablet::ListFiles(checkpoint_dir_));
@@ -207,6 +182,20 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   }
 
   return last_logged_opid;
+}
+
+void RemoteBootstrapSession::RemoveCheckpointDir() {
+  // Delete checkpoint directory.
+  if (checkpoint_dir_.empty()) {
+    LOG(INFO) << "No checkpoint directory was created for this session";
+    return;
+  }
+  auto s = env()->DeleteRecursively(checkpoint_dir_);
+  if (!s.ok()) {
+    LOG(WARNING) << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
+    return;
+  }
+  LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
 }
 
 Status RemoteBootstrapSession::InitBootstrapSession() {
@@ -226,6 +215,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       last_logged_opid = *res;
       break;
     }
+    RemoveCheckpointDir();
     if (!res.status().IsTryAgain()) {
       return res.status();
     }
@@ -579,7 +569,7 @@ Status RemoteBootstrapSession::OpenLogSegment(
   auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
   // Otherwise entries at end of previously active log segment could be missing.
-  if (opened_log_segment_active_) {
+  if (opened_log_segment_active_ && segment_seqno != opened_log_segment_seqno_) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }
@@ -623,16 +613,15 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 void RemoteBootstrapSession::SetSuccess() {
   std::lock_guard lock(mutex_);
   succeeded_ = true;
+  // Can early clear the checkpoints dir since the session already succeeded (data sent to client),
+  // and we don't need the snapshot anymore. In case of failure, the session is removed right away
+  // which would anyways clear the checkpoints dir.
+  RemoveCheckpointDir();
 }
 
 bool RemoteBootstrapSession::Succeeded() {
   std::lock_guard lock(mutex_);
   return succeeded_;
-}
-
-bool RemoteBootstrapSession::ShouldChangeRole() {
-  std::lock_guard lock(mutex_);
-  return should_try_change_role_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {

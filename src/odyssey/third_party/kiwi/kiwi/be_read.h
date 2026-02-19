@@ -317,7 +317,10 @@ KIWI_API static inline int kiwi_be_read_parse(char *data, uint32_t size,
 	int rc = kiwi_read(&len, &data, &size);
 	if (kiwi_unlikely(rc != 0))
 		return -1;
-	if (kiwi_unlikely(header->type != KIWI_FE_PARSE))
+	/* YB: Also parse new YB parse packets as they have the same format */
+	if (kiwi_unlikely(header->type != KIWI_FE_PARSE &&
+			  header->type != YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE &&
+			  header->type != YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

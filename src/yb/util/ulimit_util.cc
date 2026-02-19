@@ -44,8 +44,8 @@
 
 using std::string;
 using std::stringstream;
-using yb::operator"" _KB;
-using yb::operator"" _MB;
+using yb::operator""_KB;
+using yb::operator""_MB;
 
 // These flags allow operators to define process resource soft limits at runtime. Note that on some
 // systems, RLIM_INFINITY is defined as -1, and setting these flags to that value will result in an

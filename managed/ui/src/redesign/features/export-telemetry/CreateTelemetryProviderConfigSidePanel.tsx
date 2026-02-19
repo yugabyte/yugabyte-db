@@ -25,8 +25,10 @@ import {
   ExportLogPayload,
   TelemetryProviderItem
 } from './types';
-import { DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
+import { DATADOG_SITES, LOKI_AUTH_TYPES, OTLP_AUTH_TYPES, OTLP_PROTOCOLS } from './constants';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
+import InfoIcon from '../../assets/info-message.svg?img';
+
 //RBAC
 import { RuntimeConfigKey } from '../../helpers/constants';
 import { hasNecessaryPerm } from '../rbac/common/RbacApiPermValidator';
@@ -35,7 +37,6 @@ import { RBAC_ERR_MSG_NO_PERM } from '../rbac/common/validator/ValidatorUtils';
 
 //styles
 import { useExportTelemetryStyles } from './styles';
-import InfoIcon from '../../assets/info-message.svg';
 import { usePillStyles } from '@app/redesign/styles/styles';
 
 interface CreateTelemetryProviderConfigSidePanelProps {
@@ -89,7 +90,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
 
   const providerTypeValue = watch('config.type');
   const dataDogSiteValue = watch('config.site');
-  const lokiAuthTypeValue = watch('config.authType');
+  const authTypeValue = watch('config.authType');
 
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs()
@@ -97,6 +98,9 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
   const isLokiTelemetryEnabled =
     runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.LOKI_TELEMETRY_ALLOW)
+      ?.value ?? false;
+  const isOtlpTelemetryEnabled =
+    runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.OTLP_TELEMETRY_ALLOW)
       ?.value ?? false;
 
   const handleFormSubmit = handleSubmit(async (values) => {
@@ -141,7 +145,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         payload.config.roleARN = values.config?.roleARN;
         payload.config.endpoint = values.config?.endpoint;
       }
-      if (values.config.type == TelemetryProviderType.LOKI) {
+      if (values.config.type === TelemetryProviderType.LOKI) {
         payload.config.endpoint = values.config?.endpoint;
 
         payload.config.organizationID = values.config?.organizationID;
@@ -153,8 +157,23 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         }
       }
       if (values.config.type === TelemetryProviderType.DYNATRACE) {
-        payload.config.endpoint = values.config?.endpointUrl;
+        payload.config.endpoint = values.config?.endpoint;
         payload.config.apiToken = values.config?.apiToken;
+      }
+      if (values.config.type === TelemetryProviderType.OTLP) {
+        payload.config.endpoint = values.config?.endpoint;
+        payload.config.protocol = values.config?.protocol ?? 'gRPC';
+        payload.config.authType = values.config?.authType ?? 'NoAuth';
+        if (values.config?.basicAuth) {
+          payload.config.basicAuth = values.config.basicAuth;
+        }
+        if (values.config?.bearerToken?.token) {
+          payload.config.bearerToken = { token: values.config.bearerToken.token };
+        }
+        payload.config.logsEndpoint = values.config?.logsEndpoint ?? undefined;
+        payload.config.metricsEndpoint = values.config?.metricsEndpoint ?? undefined;
+        payload.config.compression = values.config?.compression ?? 'gzip';
+        payload.config.timeoutSeconds = values.config?.timeoutSeconds ?? 5;
       }
       return await createTelemetryProvider.mutateAsync(payload);
     } catch (e) {}
@@ -356,7 +375,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             orientation={RadioGroupOrientation.VERTICAL}
             isDisabled={isViewMode}
           />
-          {lokiAuthTypeValue === 'BasicAuth' && renderLokiBasicAuthForm()}
+          {authTypeValue === 'BasicAuth' && renderLokiBasicAuthForm()}
         </Box>
       </>
     );
@@ -538,7 +557,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
    * component.
    * Given we are supporting more providers, we should refactor this so each provider
    * integration is a separate file.
-   * Opened a ticket to track this refactoring:
+   * Opened a ticket to track this refactoring: PLAT-18780
    */
   const renderDynatraceForm = () => {
     return (
@@ -559,7 +578,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           </YBLabel>
           <YBInputField
             control={control}
-            name="config.endpointUrl"
+            name="config.endpoint"
             fullWidth
             disabled={isViewMode}
             inputProps={{
@@ -627,6 +646,136 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               />
             </Typography>
           </Box>
+        </Box>
+      </>
+    );
+  };
+
+  const renderOtlpForm = () => {
+    return (
+      <>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.endpoint')}
+            <YBTooltip title={t('otlp.endpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.endpoint"
+            fullWidth
+            placeholder="https://"
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-Endpoint' }}
+            required={true}
+            rules={{ required: t('otlp.validationEndpointRequired') }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('otlp.protocol')}</YBLabel>
+          <YBRadioGroupField
+            name="config.protocol"
+            control={control}
+            options={OTLP_PROTOCOLS}
+            orientation={RadioGroupOrientation.HORIZONTAL}
+            isDisabled={isViewMode}
+            rules={{ required: t('otlp.validationProtocolRequired') }}
+          />
+        </Box>
+        <Box className={classes.mainFieldContainer} mt={3}>
+          <YBLabel>{t('authType')}</YBLabel>
+          <YBRadioGroupField
+            name="config.authType"
+            control={control}
+            options={OTLP_AUTH_TYPES}
+            orientation={RadioGroupOrientation.VERTICAL}
+            isDisabled={isViewMode}
+            rules={{ required: t('otlp.validationFieldRequired') }}
+          />
+          {authTypeValue === 'BasicAuth' && (
+            <>
+              <Box display="flex" flexDirection="column" width="100%" mt={2}>
+                <YBLabel>{t('lokiUsername')}</YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.basicAuth.username"
+                  fullWidth
+                  disabled={isViewMode}
+                  rules={{ required: t('otlp.validationFieldRequired') }}
+                />
+              </Box>
+              <Box display="flex" flexDirection="column" width="100%" mt={2}>
+                <YBLabel>{t('lokiPassword')}</YBLabel>
+                <YBPasswordField
+                  control={control}
+                  name="config.basicAuth.password"
+                  fullWidth
+                  disabled={isViewMode}
+                  rules={{ required: t('otlp.validationFieldRequired') }}
+                />
+              </Box>
+            </>
+          )}
+          {authTypeValue === 'BearerToken' && (
+            <Box display="flex" flexDirection="column" width="100%" mt={2}>
+              <YBLabel>{t('otlp.bearerToken')}</YBLabel>
+              <YBPasswordField
+                control={control}
+                name="config.bearerToken.token"
+                fullWidth
+                disabled={isViewMode}
+                rules={{ required: t('otlp.validationFieldRequired') }}
+              />
+            </Box>
+          )}
+        </Box>
+        <Box mt={3}>
+          <Divider />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.logsEndpoint')}
+            <YBTooltip title={t('otlp.logsEndpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.logsEndpoint"
+            fullWidth
+            placeholder={t('otlp.logsEndpointPlaceholder')}
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-LogsEndpoint' }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.metricsEndpoint')}
+            <YBTooltip title={t('otlp.metricsEndpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.metricsEndpoint"
+            fullWidth
+            placeholder={t('otlp.metricsEndpointPlaceholder')}
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-MetricsEndpoint' }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('otlp.timeoutSeconds')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.timeoutSeconds"
+            fullWidth
+            type="number"
+            disabled={isViewMode}
+            placeholder={t('otlp.timeoutSecondsPlaceholder')}
+            inputProps={{ 'data-testid': 'OtlpForm-Timeout', min: 1 }}
+          />
         </Box>
       </>
     );
@@ -719,6 +868,22 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </div>
       ),
       value: TelemetryProviderType.DYNATRACE
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.otlp')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.metrics')}
+            </div>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.OTLP
     }
   ];
   return (
@@ -784,6 +949,9 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               isLokiTelemetryEnabled &&
               renderLokiForm()}
             {providerTypeValue === TelemetryProviderType.DYNATRACE && renderDynatraceForm()}
+            {providerTypeValue === TelemetryProviderType.OTLP &&
+              (isOtlpTelemetryEnabled || isViewMode) &&
+              renderOtlpForm()}
           </Box>
         </Box>
       </FormProvider>

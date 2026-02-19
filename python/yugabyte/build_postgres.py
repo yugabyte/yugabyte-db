@@ -444,6 +444,7 @@ class PostgresBuilder(YbBuildToolBase):
         if self.is_clang():
             additional_c_cxx_flags += [
                 '-Wno-shorten-64-to-32',
+                '-Wno-gnu-folding-constant',
             ]
 
         if is_make_step:
@@ -610,7 +611,7 @@ class PostgresBuilder(YbBuildToolBase):
             configure_cmd_line += ['--without-readline']
 
         if self.build_type not in \
-                ['asan_release', 'tsan_release', 'release', 'prof_gen', 'prof_use']:
+                ['asan_release', 'tsan_release', 'release', 'prof_gen']:
             configure_cmd_line += ['--enable-cassert']
         # Unset YB_SHOW_COMPILER_COMMAND_LINE when configuring postgres to avoid unintended side
         # effects from additional compiler output.

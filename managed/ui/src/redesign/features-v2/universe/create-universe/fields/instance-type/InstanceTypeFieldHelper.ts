@@ -115,7 +115,7 @@ export const sortAndGroup = (data?: InstanceType[], cloud?: CloudType): Instance
   return _.sortBy(result, ['groupName', 'label', 'numCores']);
 };
 
-export const useGetZones = (provider?: ProviderType, regionList?: Region[]) => {
+export const useGetZones = (provider?: Partial<ProviderType>, regionList?: Region[]) => {
   const [zones, setZones] = useState<Placement[]>([]);
 
   const { data: allRegions, isLoading: isLoadingZones } = useQuery(

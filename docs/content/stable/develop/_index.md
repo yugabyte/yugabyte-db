@@ -9,6 +9,10 @@ cascade:
   unversioned: true
 ---
 
+{{< tip title="Docs MCP Server" >}}
+Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../reference/docs-mcp-server/).
+{{< /tip >}}
+
 ## Tutorials
 
 Get started with step-by-step guides for building scalable and fault-tolerant applications using YugabyteDB and your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.

@@ -29,10 +29,12 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/handle_new_schema_for_automatic_xcluster_target_task.h"
@@ -43,7 +45,6 @@
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -1159,9 +1160,17 @@ Status XClusterTargetManager::SetupUniverseReplication(
 
   {
     std::lock_guard l(replication_setup_tasks_mutex_);
-    SCHECK(
-        !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
-        "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    if (setup_replication_task->IsAlterReplication()) {
+      // For alter replication groups, we can retry so return TryAgain.
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), TryAgain,
+          "Alter replication group already running for xCluster ReplicationGroup $0",
+          setup_replication_task->Id());
+    } else {
+      SCHECK_FORMAT(
+          !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
+          "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    }
     replication_setup_tasks_[setup_replication_task->Id()] = setup_replication_task;
   }
 

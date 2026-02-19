@@ -13,30 +13,21 @@
 
 #pragma once
 
-#include "yb/master/master_ddl.pb.h"
-
-#include "yb/rpc/rpc_context.h"
-
-#include "yb/server/server_base_options.h"
-
-#include "yb/tserver/tserver.pb.h"
+#include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/ysql_lease.h"
 
 namespace yb::tserver {
 
 class YSQLLeaseManager {
  public:
-  YSQLLeaseManager(TabletServer& server, server::MasterAddressesPtr master_addresses);
+  explicit YSQLLeaseManager(TabletServer& server);
   ~YSQLLeaseManager();
 
   YSQLLeaseInfo GetYSQLLeaseInfo() const;
-  Status ProcessLeaseUpdate(const master::RefreshYsqlLeaseInfoPB& lease_refresh_info);
   void UpdateMasterAddresses(const server::MasterAddressesPtr& master_addresses);
   Status StartYSQLLeaseRefresher();
   void StartTSLocalLockManager();
-  Status Stop();
+  void Shutdown();
   std::future<Status> RelinquishLease(MonoDelta timeout) const;
 
   TSLocalLockManagerPtr ts_local_lock_manager() const;

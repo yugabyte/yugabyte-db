@@ -253,6 +253,10 @@ CREATE TABLE aws_wildcard_table (id INTEGER, field text)
   TABLESPACE aws_wildcard_tablespace;
 ```
 
+{{< note title="Tablet distribution" >}}
+There is no guarantee that tablets are uniformly distributed over independent AZs in this case. Comment on issue {{<issue 19862>}} if this is a feature that you are interested in.
+{{</note>}}
+
 ## Leader preference
 
 {{< note title=" " >}}
@@ -330,6 +334,50 @@ You can specify non-zero contiguous integer values for each zone. When multiple 
 You can check the overall leader distribution and [cluster level leader preference](../../../admin/yb-admin/#set-preferred-zones) on the [tablet-servers page](http://127.0.0.1:7000/tablet-servers).
 
 ![Multi Region Table](/images/explore/tablespaces/leader_preference_admin_ui.png)
+
+## Read replicas
+
+{{<tags/feature/ea idea="2006">}}[Read replica](../../multi-region-deployments/read-replicas-ysql/) clusters in YugabyteDB are a set of follower nodes that maintain asynchronously replicated copies of tablets in the primary cluster. These TServers are configured using their own [placement_uuid](../../../reference/configuration/yb-tserver/#placement-uuid) flag that is different from that of the primary cluster.
+
+You configure tablespaces with read replica nodes using the `read_replica_placement` configuration option. Tables that you add to the tablespace automatically have copies of their tablets placed on the read replica nodes.
+
+For example, the following commands create a tablespace with a read replica, and then create a table with 3 copies in us-east-1a (the primary cluster) and 2 copies on the read replica in us-east-2a. Note that this assumes that read replica TServers have already been started, as described in [Read replica deployment](../../../deploy/multi-dc/read-replica-clusters/).
+
+```sql
+CREATE TABLESPACE us_east_1_with_rr_tablespace WITH (
+  replica_placement='{
+  "num_replicas": 3,
+  "placement_blocks": [
+    {
+      "cloud": "aws",
+      "region": "us-east-1",
+      "zone": "us-east-1a",
+      "min_num_replicas": 3
+    }
+  ]
+}', read_replica_placement='[
+  {
+    "num_replicas": 2,
+    "placement_uuid": "9d8f5715-2e7c-4e64-8e34-35f510c12e66",
+    "placement_blocks": [
+      {
+        "cloud": "aws",
+        "region": "us-east-2",
+        "zone": "us-east-2a",
+        "min_num_replicas": 2
+      },
+      }
+    ]
+  }
+]');
+
+CREATE TABLE single_zone_table_with_read_replica (id INTEGER, field text)
+  TABLESPACE us_east_1_with_rr_tablespace;
+```
+
+The `placement_uuid` field in the `read_replica_placement` section needs to be set to the [placement ID of the read replica cluster](../../../admin/yb-admin/#add-read-replica-placement-info). To obtain the placement ID, use the [get-universe-config](../../../admin/yb-admin/#get-universe-config) yb-admin command.
+
+You can also use the [wildcard](#use-wildcards-for-zones) `*` when specifying placement in read replicas.
 
 ## Indexes
 

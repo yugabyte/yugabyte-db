@@ -89,7 +89,7 @@ class ProvisionCommand(Command):
                         temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
                         temp_file.write("\n)\n")
-                        self.add_exit_code_check(temp_file)
+                        self.add_exit_code_check(temp_file, key)
                     else:
                         temp_file.write(f"echo \"Executing module {key}\"\n")
                         temp_file.write(template)
@@ -112,13 +112,13 @@ class ProvisionCommand(Command):
         logger.info("Return Code: %s", result.returncode)
         return result
 
-    def add_exit_code_check(self, file):
+    def add_exit_code_check(self, file, key):
         file.write(
-            """
+            f"""
             exit_code=$?
             if [ $exit_code -ne 0 ]; then
                 parent_exit_code=$exit_code
-                err="Module {{ key }} failed with code $exit_code"
+                err="Module {key} failed with code $exit_code"
                 errors+=("$err")
                 echo "$err"
             fi
@@ -204,6 +204,10 @@ class ProvisionCommand(Command):
                 continue
             if key in self.cloud_only_modules and \
                     self.config[key].get('is_cloud', 'False') == 'False':
+                print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
+                continue
+            if key in self.onprem_only_modules and \
+                    self.config[key].get('is_cloud', 'False') == 'True':
                 print(f"Skipping {key} because is_cloud is {self.config[key].get('is_cloud')}")
                 continue
             if key == 'InstallNodeAgent' and \
@@ -312,8 +316,8 @@ class ProvisionCommand(Command):
             self._check_package(package)
         key = next(iter(self.config), None)
         context = self.config[key]
-        is_cloud = context.get('is_cloud')
-        if is_cloud:
+        is_cloud = context.get('is_cloud', 'False')
+        if is_cloud == 'True':
             cloud_only_packages = ['gzip']
             for package in cloud_only_packages:
                 self._check_package(package)
@@ -356,10 +360,13 @@ class ProvisionCommand(Command):
                 # Define the full path to the ynp_version file
                 ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
+                current_user_id = os.getuid()
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
-                if uid == 0:
+                if current_user_id == 0 and current_user_id != uid:
+                    # Change ownership only if running as root and yb_user is different
+                    # from current user.
                     os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")

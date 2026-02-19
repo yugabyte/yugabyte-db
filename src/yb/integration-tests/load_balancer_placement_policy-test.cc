@@ -422,7 +422,7 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
   const yb::client::YBTableName placement_table(
     YQL_DATABASE_CQL, table_name().namespace_name(), table);
 
-  TestWorkload workload(external_mini_cluster());
+  TestYcqlWorkload workload(external_mini_cluster());
   workload.set_table_name(placement_table);
   workload.set_sequential_write(true);
   workload.Setup();
@@ -1077,6 +1077,56 @@ TEST_F(TablespaceReadReplicaTest, TestTablespaceReadReplicaAlter) {
   WaitForLoadBalancer();
   counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
   expected_counts_per_ts = {1, 1, 1, 1, 0};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+}
+
+// Test that when a table with read replicas is altered to use a tablespace without read replicas,
+// the read replicas are removed.
+TEST_F(TablespaceReadReplicaTest, TestAlterTableToTablespaceWithoutReadReplica) {
+  const auto kTablespaceNoReadReplica = "ts_no_rr";
+  const auto kDatabaseName = "yugabyte";
+  const auto kPgTableName = "test_pg_table";
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(
+      "c.r.z0,c.r.z1,c.r.z2", 3 /* replication_factor */, ""));
+
+  size_t num_tservers = num_tablet_servers();
+  AddNewTserverToZone("z3", ++num_tservers, kReadReplicaPlacementUuid);
+  AddNewTserverToZone("z4", ++num_tservers, kReadReplicaPlacementUuid);
+  ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+      "c.r.z3,c.r.z4", 2 /* replication_factor */, kReadReplicaPlacementUuid));
+
+  DeleteTable();
+  auto pg_conn = ASSERT_RESULT(external_mini_cluster()->ConnectToDB());
+
+  // Create a table in the default tablespace. This table will inherit read replicas
+  // from the cluster-level configuration.
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 1 TABLETS", kPgTableName));
+
+  WaitForLoadBalancerToBeIdle();
+
+  const TableId table_id = ASSERT_RESULT(FindYsqlTableId(kDatabaseName, kPgTableName));
+
+  vector<int> counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+  vector<int> expected_counts_per_ts = {1, 1, 1, 1, 1};
+  ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+  // Create a tablespace without read replicas
+  const test::Tablespace tablespace_no_read_replica(
+      kTablespaceNoReadReplica,
+      /* numReplicas = */ 3,
+      {test::PlacementBlock("c", "r", "z0", 1), test::PlacementBlock("c", "r", "z1", 1),
+       test::PlacementBlock("c", "r", "z2", 1)});
+
+  ASSERT_OK(pg_conn.Execute(tablespace_no_read_replica.CreateCmd()));
+
+  ASSERT_OK(pg_conn.ExecuteFormat(
+      "ALTER TABLE $0 SET TABLESPACE $1", kPgTableName, tablespace_no_read_replica.name));
+  WaitForLoadBalancer();
+
+  counts_per_ts = ASSERT_RESULT(GetLoadOnTserversByTableId(table_id, num_tservers));
+  expected_counts_per_ts = {1, 1, 1, 0, 0};
   ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
 }
 

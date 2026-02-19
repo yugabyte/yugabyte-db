@@ -20,6 +20,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 
@@ -52,25 +53,42 @@ namespace yb::tablet {
 
 namespace {
 
-METRIC_DEFINE_entity(vector_index);
-
-class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
+class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingReader {
  public:
-  IndexedTableContext(Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id)
+  Status Init(const Tablet& tablet, const ReadHybridTime& read_ht) {
+    rocksdb_op_ = tablet.CreateScopedRWOperationBlockingRocksDbShutdownStart();
+    RETURN_NOT_OK(rocksdb_op_);
+
+    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(read_ht));
+    return Status::OK();
+  }
+
+  Result<Slice> Fetch(Slice key) override {
+    return std::get<docdb::IntentAwareIteratorPtr>(iter_holder_)->FetchValue(key);
+  }
+
+ private:
+  ScopedRWOperation rocksdb_op_;
+  docdb::IntentAwareIteratorWithBounds iter_holder_;
+};
+
+class IndexContext : public docdb::DocVectorIndexContext {
+ public:
+  IndexContext(Tablet& tablet, const TableInfo& indexed_table, ColumnId vector_column_id)
       : tablet_(tablet),
         indexed_table_id_(indexed_table.table_id),
         projection_(indexed_table.schema(), { vector_column_id }) {
   }
 
-  Result<docdb::DocRowwiseIteratorPtr> CreateIterator(HybridTime read_ht) const override {
-    return CreateIterator(read_ht, std::nullopt);
+  Result<docdb::DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
+      const ReadHybridTime& read_ht) const override {
+    auto reader = std::make_unique<IndexReverseMappingReader>();
+    RETURN_NOT_OK(reader->Init(tablet_, read_ht));
+    return reader;
   }
 
-  Result<docdb::DocRowwiseIteratorPtr> CreateIterator(
+  Result<docdb::DocRowwiseIteratorPtr> CreateVectorColumnIterator(
       HybridTime read_ht, std::optional<Slice> start_key) const {
-    // TODO(vector_index): for reverse mapping we probably do not need to create txn_op_ctx inside
-    // NewUninitializedDocRowIterator as the mapping is located only in regular db; this will
-    // allow to save Seek and Next on intent_iter_ of IntentAwareIterator.
     auto result = VERIFY_RESULT(tablet_.NewUninitializedDocRowIterator(
         projection_, ReadHybridTime::SingleTime(read_ht), indexed_table_id_));
     RETURN_NOT_OK(result->InitForTableType(
@@ -79,7 +97,7 @@ class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
     return result;
   }
 
-  const dockv::ReaderProjection& projection() const {
+  const dockv::ReaderProjection& vector_column_projection() const {
     return projection_;
   }
 
@@ -92,12 +110,12 @@ class IndexedTableContext : public docdb::DocVectorIndexedTableContext {
 class IndexedTableReader {
  public:
   explicit IndexedTableReader(const docdb::DocVectorIndex& vector_index)
-      : context_(down_cast<const IndexedTableContext&>(vector_index.indexed_table_context())),
-        row_(context_.projection()) {
+      : context_(down_cast<const IndexContext&>(vector_index.context())),
+        row_(context_.vector_column_projection()) {
   }
 
   Status Init(HybridTime read_ht, Slice start_key) {
-    iter_ = VERIFY_RESULT(context_.CreateIterator(read_ht, start_key));
+    iter_ = VERIFY_RESULT(context_.CreateVectorColumnIterator(read_ht, start_key));
     return Status::OK();
   }
 
@@ -124,7 +142,7 @@ class IndexedTableReader {
   }
 
  private:
-  const IndexedTableContext& context_;
+  const IndexContext& context_;
   dockv::PgTableRow row_;
   docdb::DocRowwiseIteratorPtr iter_;
 };
@@ -206,27 +224,19 @@ Status TabletVectorIndexes::DoCreateIndex(
     };
   };
 
-  auto indexed_table_context = std::make_unique<IndexedTableContext>(
+  auto index_context = std::make_unique<IndexContext>(
       tablet(), *indexed_table, ColumnId(index_table.index_info->vector_idx_options().column_id()));
 
   MetricEntityPtr vector_index_metric_entity;
   if (metric_registry_) {
-    MetricEntity::AttributeMap attrs;
-    attrs["table_id"] = index_table.table_id;
-    attrs["table_name"] = index_table.table_name;
-    attrs["table_type"] = TableType_Name(index_table.table_type);
-    // Use the namespace name from the base table since the namespace name is not populated in
-    // index_table object.
-    attrs["namespace_name"] = indexed_table->namespace_name;
-    vector_index_metric_entity =
-        METRIC_ENTITY_vector_index.Instantiate(metric_registry_, index_table.table_id, attrs);
+    vector_index_metric_entity = index_table.CreateMetricEntity(metric_registry_);
   }
 
   auto vector_index = VERIFY_RESULT(docdb::CreateDocVectorIndex(
       AddSuffixToLogPrefix(LogPrefix(), Format(" VI $0", index_table.table_id)),
       metadata().vector_index_dir(index_table.index_info->vector_idx_options()),
       vector_index_thread_pool_provider, indexed_table->doc_read_context->table_key_prefix(),
-      index_table.hybrid_time, *index_table.index_info, std::move(indexed_table_context),
+      index_table.hybrid_time, *index_table.index_info, std::move(index_context),
       block_cache_, MemTracker::CreateTracker(-1, index_table.table_id, mem_tracker_),
       vector_index_metric_entity));
 
@@ -645,14 +655,12 @@ Status TabletVectorIndexes::Verify() {
         index_table->index_info->indexed_table_id()));
     IndexedTableReader reader(*vector_index);
     RETURN_NOT_OK(reader.Init(read_ht, Slice()));
-    auto reverse_index_iterator = VERIFY_RESULT(
-        vector_index->indexed_table_context().CreateIterator(read_ht));
+    auto reverse_mapping_reader = VERIFY_RESULT(
+        vector_index->context().CreateReverseMappingReader(ReadHybridTime::SingleTime(read_ht)));
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
-      auto vector_id_key = dockv::DocVectorKey(vector_id);
-      // TODO(vector_index): does it handle kTombstone in reader.current_ybctid()?
-      auto ybctid = CHECK_RESULT(reverse_index_iterator->FetchDirect(vector_id_key));
+      auto ybctid = CHECK_RESULT(reverse_mapping_reader->Fetch(vector_id));
       if (reader.current_ybctid() != ybctid) {
         LOG_WITH_FUNC(DFATAL)
             << "Wrong reverse record for: " << vector_id << ": " << ybctid.ToDebugHexString()
@@ -664,6 +672,27 @@ Status TabletVectorIndexes::Verify() {
     }
   }
   return Status::OK();
+}
+
+Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(
+    const ReadHybridTime& read_ht) const {
+  static std::array<char, 2> upper_bound {
+      dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,
+      dockv::KeyEntryTypeAsChar::kMaxByte
+  };
+
+  docdb::ReadOperationData read_operation_data;
+  RETURN_NOT_OK(tablet().GetSafeTimeReadOperationData(read_ht, read_operation_data));
+
+  // TODO(vector_index): do we need to specify bloom filter options?
+  auto iter = docdb::CreateIntentAwareIterator(
+      tablet().doc_db().FromRegularUnbounded(), docdb::BloomFilterOptions::Inactive(),
+      rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data);
+  auto bounds = std::make_unique<docdb::IntentAwareIteratorBoundsScope>(
+      Slice{&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1}, Slice{upper_bound}, iter.get()
+  );
+
+  return docdb::IntentAwareIteratorWithBounds { std::move(iter), std::move(bounds) };
 }
 
 Status VectorIndexList::WaitForFlush() {
@@ -719,7 +748,6 @@ Status VectorIndexList::WaitForCompaction() {
 
   return Status::OK();
 }
-
 
 std::string VectorIndexList::ToString() const {
   return list_ ? AsString(*list_) : AsString(list_);

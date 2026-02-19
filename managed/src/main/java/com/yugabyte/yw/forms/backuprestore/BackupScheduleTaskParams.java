@@ -25,7 +25,6 @@ public class BackupScheduleTaskParams extends UpgradeTaskParams {
   public UUID scheduleUUID;
   public UUID customerUUID;
   public BackupRequestParams scheduleParams;
-  public static final UpgradeOption upgradeOption = UpgradeOption.NON_RESTART_UPGRADE;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {

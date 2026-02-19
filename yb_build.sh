@@ -815,10 +815,6 @@ if [[ ${build_java} != "true" && ${resolve_java_dependencies} == "true" ]]; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
 fi
 
-if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
-  fatal "Please set --pgo-data-path path/to/pgo/data"
-fi
-
 if [[ "${should_use_packaged_targets}" == "true" ]]; then
   use_packaged_targets
 fi
@@ -1027,8 +1023,19 @@ if [[ ${use_google_tcmalloc} == "true" ]]; then
   cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi
 
+if [[ $build_type == "prof_gen" ]]; then
+  if [[ $pgo_instrument_type == "" ]]; then
+    fatal "Please set --pgo-instrument-type"
+  fi
+  cmake_opts+=( "-DYB_PGO_INSTRUMENT_TYPE=$pgo_instrument_type" )
+fi
+
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
+fi
+
+if [[ $bolt_enabled == "true" ]]; then
+  cmake_opts+=( "-DYB_BOLT_ENABLED=on" )
 fi
 
 detect_num_cpus_and_set_make_parallelism

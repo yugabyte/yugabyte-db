@@ -121,7 +121,8 @@ using AddTableListener = std::function<Status(const TableInfo&)>;
 YB_STRONGLY_TYPED_BOOL(AllowBootstrappingState);
 YB_STRONGLY_TYPED_BOOL(ResetSplit);
 
-struct AdminCompactionOptions {
+struct ManualCompactionOptions {
+  rocksdb::CompactionReason compaction_reason = rocksdb::CompactionReason::kUnknown;
   StdStatusCallback compaction_completion_callback;
   TableIdsPtr vector_index_ids;
   VectorIndexOnly vector_index_only = VectorIndexOnly::kTrue;
@@ -176,7 +177,7 @@ class Tablet : public AbstractTablet,
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<qlexpr::IndexInfo>& indexes,
+      const qlexpr::IndexInfo& index,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -185,7 +186,7 @@ class Tablet : public AbstractTablet,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
-      std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+      double* num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -352,7 +353,7 @@ class Tablet : public AbstractTablet,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers& frontiers,
+      const storage::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -557,7 +558,7 @@ class Tablet : public AbstractTablet,
   // request in state. Due to acquiring locks it can block the thread.
   void AcquireLocksAndPerformDocOperations(std::unique_ptr<WriteQuery> query);
 
-  // Given a propopsed "history cutoff" timestamp, returns either that value, if possible, or a
+  // Given a proposed "history cutoff" timestamp, returns either that value, if possible, or a
   // smaller value corresponding to the oldest active reader, whichever is smaller. This ensures
   // that data needed by active read operations is not compacted away.
   //
@@ -641,13 +642,17 @@ class Tablet : public AbstractTablet,
         .metrics = metrics ? metrics : metrics_.get() };
   }
 
-  // Returns approximate middle key for tablet split:
-  // - for hash-based partitions: encoded hash code in order to split by hash code.
-  // - for range-based partitions: encoded doc key in order to split by row.
-  // If `partition_split_key` is specified it will be updated with partition middle key for
-  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
-  // range-based partitions always matches the returned middle key.
-  Result<std::string> GetEncodedMiddleSplitKey(std::string *partition_split_key = nullptr) const;
+  struct SplitKeysData {
+    std::vector<std::string> encoded_keys;
+    std::vector<std::string> partition_keys;
+  };
+
+  // Returns a set of split keys that split the tablet data into split_factor number of
+  // approximately even partitions.
+  // - When the split_factor is 2, an approximate middle key is determined.
+  // - When the split_factor is greater than 2 and with hash-partitioning, a placeholder
+  //   logic returns a set of split keys.
+  Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
       docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
@@ -751,6 +756,10 @@ class Tablet : public AbstractTablet,
     return *vector_indexes_;
   }
 
+  const TabletVectorIndexes& vector_indexes() const {
+    return *vector_indexes_;
+  }
+
   SnapshotCoordinator* snapshot_coordinator() {
     return snapshot_coordinator_;
   }
@@ -826,7 +835,7 @@ class Tablet : public AbstractTablet,
   Status TriggerManualCompactionIfNeeded(rocksdb::CompactionReason reason);
 
   // Triggers an admin full compaction on this tablet.
-  Status TriggerAdminFullCompactionIfNeeded(const AdminCompactionOptions& options);
+  Status TriggerAdminFullCompactionIfNeeded(const ManualCompactionOptions& options);
 
   bool HasActiveFullCompaction();
   bool HasActiveFullCompactionUnlocked() const REQUIRES(full_compaction_token_mutex_);
@@ -996,6 +1005,21 @@ class Tablet : public AbstractTablet,
 
   void SetAllowCompactionFailures(rocksdb::AllowCompactionFailures allow_compaction_failures);
 
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time, CoarseTimePoint deadline,
+      docdb::ReadOperationData& read_operation_data) const;
+
+  Status GetSafeTimeReadOperationData(
+      const ReadHybridTime& read_hybrid_time,
+      docdb::ReadOperationData& read_operation_data) const {
+    return GetSafeTimeReadOperationData(
+        read_hybrid_time, CoarseTimePoint::max(), read_operation_data);
+  }
+
+  Status DumpTabletData(
+      WritableFile* file, uint64_t read_ht, CoarseTimePoint deadline, uint64_t& xor_hash,
+      uint64_t& row_count) const;
+
  private:
   friend class Iterator;
   friend class TabletPeerTest;
@@ -1017,7 +1041,7 @@ class Tablet : public AbstractTablet,
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
-      const rocksdb::UserFrontiers& frontiers);
+      const storage::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,
@@ -1049,9 +1073,9 @@ class Tablet : public AbstractTablet,
       rocksdb::CompactionReason reason,
       rocksdb::SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe);
 
-  Status TriggerManualCompactionSync(rocksdb::CompactionReason reason) {
-    return TriggerManualCompactionSyncUnsafe(reason, rocksdb::SkipCorruptDataBlocksUnsafe::kFalse);
-  }
+  Status TriggerManualCompactionSyncUnsafe(const ManualCompactionOptions& options);
+
+  Status TriggerManualCompactionSync(const ManualCompactionOptions& options);
 
   Status TriggerVectorIndexCompactionSync(const TableIds& vector_index_ids);
 
@@ -1081,6 +1105,17 @@ class Tablet : public AbstractTablet,
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, Direction direction, uint32_t max_key_length,
       std::function<void(Slice key)> callback, TableIdView colocated_table_id) const;
+
+  // Returns approximate middle key for tablet split:
+  // - for hash-based partitions: encoded hash code in order to split by hash code.
+  // - for range-based partitions: encoded doc key in order to split by row.
+  // If `partition_split_key` is specified it will be updated with partition middle key for
+  // hash-based partitions only (to prevent additional memory copying), as partition middle key for
+  // range-based partitions always matches the returned middle key.
+  Result<std::string> GetEncodedMiddleSplitKey(std::string* partition_split_key = nullptr) const;
+
+  // Refer to Tablet::GetSplitKeys(...) for the description.
+  Result<SplitKeysData> DoGetSplitKeys(int split_factor) const;
 
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;

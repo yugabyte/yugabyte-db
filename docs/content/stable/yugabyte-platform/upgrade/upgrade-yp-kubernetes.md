@@ -42,7 +42,14 @@ helm repo update
 To upgrade to a specific version while preserving overrides you might have applied to your initial YugabyteDB Anywhere installation or previous upgrades, execute the following command:
 
 ```sh
-helm upgrade yw-test yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}} -n yb-platform --reset-then-reuse-values --set image.tag={{<yb-version version="stable" format="build">}} --wait
+helm upgrade yw-test yugabytedb/yugaware \
+  --version {{<yb-version version="stable" format="short">}} \
+  -n yb-platform \
+  --reset-then-reuse-values \
+  --set image.tag={{<yb-version version="stable" format="build">}} \
+  --atomic \
+  --timeout 30m \
+  --wait
 ```
 
 To obtain the value for `--set image.tag`, execute the following command:
@@ -52,6 +59,12 @@ helm list | awk '{if (NR!=1) print $NF}'
 ```
 
 If you do not wish to port your overrides, do not include `--reset-then-reuse-values`. Instead, you may choose to pass your existing overrides file by adding `--values custom-values.yaml` to your command during the upgrade.
+
+When `--atomic` is used, if the upgrade fails for any reason (pods not Ready, hooks fail, timeout, and so on), Helm will automatically roll back to the last successful release.
+
+Use `--timeout` to give the upgrade enough time; if the upgrade exceeds this time, Helm treats it as a failure, and (if `--atomic` is set) triggers a rollback.
+
+When `--wait` is used, Helm waits for workloads to become Ready.
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 

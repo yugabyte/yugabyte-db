@@ -134,7 +134,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			 "HINT: %s", error.hint);
 		hint_len = strlen(error.hint);
 
-		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
+		if (strcmp(error.hint, "Database may have been dropped and recreated") == 0)
 		{
 			/* Reset the route and close the client */
 			yb_mark_routes_inactive(server->global->router,
@@ -245,9 +245,25 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return 0;
 }
 
-static inline int yb_send_parameter_status(od_io_t *io, char *name,
-					   int name_len, char *value,
-					   int value_len)
+static inline int yb_send_parameter_status_async(od_relay_t *relay, char *name,
+						 int name_len, char *value,
+						 int value_len)
+{
+	machine_msg_t *msg = kiwi_be_write_parameter_status(
+		NULL, name, name_len, value, value_len);
+	if (msg == NULL) {
+		return -1;
+	}
+	int rc = machine_iov_add(relay->iov, msg);
+	if (rc != 0) {
+		return -1;
+	}
+	return 0;
+}
+
+static inline int yb_send_parameter_status_sync(od_io_t *io, char *name,
+						int name_len, char *value,
+						int value_len)
 {
 	machine_msg_t *msg = kiwi_be_write_parameter_status(
 		NULL, name, name_len, value, value_len);
@@ -493,7 +509,7 @@ static inline int od_backend_startup(od_server_t *server,
 				 * We only care about reported variables when
 				 * auth backend starts
 				 */
-				int rc = yb_send_parameter_status(
+				int rc = yb_send_parameter_status_sync(
 					&client->yb_external_client->io, name,
 					name_len, value, value_len);
 				if (rc != 0) {
@@ -507,18 +523,9 @@ static inline int od_backend_startup(od_server_t *server,
 				}
 			}
 
-			/*
-			 * TODO(arpit.saxena): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
-			 * ensure that either the auth backend stays or we make a new sticky backend
-			 * and pass the external client's startup settings. This is because client
-			 * has set a variable through the startup packet which can't be set using
-			 * SET statements
-			 */
-
 			if (is_authenticating) {
 				if (flags &
-				    (YB_PARAM_STATUS_CONTEXT_BACKEND |
-				     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+				     YB_PARAM_STATUS_SOURCE_STARTUP) {
 					/*
 					 * The parameters here are the ones set by the startup packet in
 					 * the auth backend. These are the parameters that have to be replayed
@@ -539,11 +546,21 @@ static inline int od_backend_startup(od_server_t *server,
 				// set server parameters, ignore startup session_authorization
 				// session_authorization is sent by the server during startup,
 				// if not ignored, will make every connection sticky
-				kiwi_vars_update(
-					&server->vars, name, name_len, value,
-					value_len,
-					yb_od_instance_should_lowercase_guc_name(
-						instance));
+				if (flags &
+
+				     YB_PARAM_STATUS_SOURCE_STARTUP)
+					kiwi_vars_update(
+						&server->yb_vars_default, name,
+						name_len, value, value_len,
+						yb_od_instance_should_lowercase_guc_name(
+							instance));
+				else if (flags &
+					 YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
+					kiwi_vars_update(
+						&server->yb_vars_session, name,
+						name_len, value, value_len,
+						yb_od_instance_should_lowercase_guc_name(
+							instance));
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -1033,8 +1050,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (!server_only && flags & YB_PARAM_STATUS_REPORT_ENABLED) {
 		/* Send ParameterStatus to client if GUC_REPORT is enabled */
-		int rc = yb_send_parameter_status(&client->io, name, name_len,
-						  value, value_len);
+		int rc = yb_send_parameter_status_async(
+			&server->relay, name, name_len, value, value_len);
 		if (rc != 0) {
 			od_error(&instance->logger, context, NULL, server,
 				 "Unable to send ParameterStatus to client");
@@ -1057,25 +1074,29 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	 * to be removed from server and client variable lists
 	 */
 
-	if (flags & (YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION |
-		     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
-		kiwi_vars_update(&server->vars, name, name_len, value,
-				 value_len, should_lowercase_name);
-	} else {
-		yb_kiwi_vars_remove_if_exists(&server->vars, name, name_len,
-					      should_lowercase_name);
-	}
+	if (flags & YB_PARAM_STATUS_SOURCE_STARTUP)
+		kiwi_vars_update(&server->yb_vars_default, name, name_len,
+				 value, value_len, should_lowercase_name);
+	else if (flags & YB_PARAM_STATUS_DEFAULT_VAL_RESET)
+		yb_kiwi_vars_remove_if_exists(&server->yb_vars_default, name,
+					      name_len, should_lowercase_name);
+
+	if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
+		kiwi_vars_update(&server->yb_vars_session, name, name_len,
+				 value, value_len, should_lowercase_name);
+	else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
+		yb_kiwi_vars_remove_if_exists(&server->yb_vars_session, name,
+					      name_len, should_lowercase_name);
 
 	if (!server_only) {
-		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION) {
+		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 			kiwi_vars_update(&client->yb_vars_session, name,
 					 name_len, value, value_len,
 					 should_lowercase_name);
-		} else {
+		else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
 						      name, name_len,
 						      should_lowercase_name);
-		}
 	}
 
 	return 0;

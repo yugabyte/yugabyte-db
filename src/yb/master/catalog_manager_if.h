@@ -266,7 +266,8 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(
-      const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) = 0;
+      const TabletId& tablet_id, ManualSplit is_manual_split, int split_factor,
+      const LeaderEpoch& epoch) = 0;
 
   virtual Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;

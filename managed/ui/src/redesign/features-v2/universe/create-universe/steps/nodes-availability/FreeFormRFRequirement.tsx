@@ -1,10 +1,14 @@
-import { styled } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
-import { NodeAvailabilityProps } from './dtos';
+import { mui } from '@yugabyte-ui-library/core';
 import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
 import { getNodeCount } from '../../CreateUniverseUtils';
-import { ReactComponent as Return } from '../../../../../assets/tree.svg';
+import { NodeAvailabilityProps } from './dtos';
+
+//icons
+import Return from '../../../../../assets/tree.svg';
+
+const { styled } = mui;
 
 const StyledContainer = styled('div')(({ theme }) => ({
   border: `1px solid ${theme.palette.grey[300]}`,

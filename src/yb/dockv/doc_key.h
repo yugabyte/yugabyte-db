@@ -228,7 +228,8 @@ class DocKey {
 
   // Converts the document key to a human-readable representation.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
-  static std::string DebugSliceToString(Slice slice);
+  static std::string DebugSliceToString(
+      Slice slice, DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey);
 
   // Check if it is an empty key.
   bool empty() const {

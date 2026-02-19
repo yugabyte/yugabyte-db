@@ -273,6 +273,23 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " a support bundle.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<String> supportBundleApplicationLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.application_logs_regex_pattern",
+          ScopeType.GLOBAL,
+          "Application Logs Regex Pattern",
+          "Regex pattern used to filter application log files when creating support bundles.",
+          ConfDataType.RegexStringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> supportBundleApplicationLogsSdfPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.application_logs_sdf_pattern",
+          ScopeType.GLOBAL,
+          "Application Logs SDF Pattern",
+          "SimpleDateFormat pattern used to parse dates from application log file names when"
+              + " creating support bundles.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -1917,6 +1934,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_s3_backup_proxy",
+          ScopeType.GLOBAL,
+          "Enable S3 Backup Proxy",
+          "Enable proxy configuration for S3 backup storage",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.max_retries",
@@ -1977,4 +2002,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable golang YNP driver to use python instead",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Integer> nodeAgentServerRequestLogLevel =
+      new ConfKeyInfo<>(
+          "yb.node_agent.server.request_log_level",
+          ScopeType.GLOBAL,
+          "Node Agent Server Log Level Per Request",
+          "Log level for Node Agent server per request (0 for debug, -1 for default)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disablePlatformHARestoreTransaction =
+      new ConfKeyInfo<>(
+          "yb.ha.disable_platform_ha_restore_transaction",
+          ScopeType.GLOBAL,
+          "Disable Platform HA Restore Transaction",
+          "Disable running platform HA restore operations in a transaction",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

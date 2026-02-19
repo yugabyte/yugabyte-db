@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/db.h"
@@ -38,7 +39,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -89,8 +90,29 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
-  void TestCQLPreparedStmtStats();
+
+  void WaitForReadPermsOnAllIndexes(const string& table_name,
+                                    const std::vector<string>& index_names);
 };
+
+void CqlTest::WaitForReadPermsOnAllIndexes(const string& table_name,
+                                           const std::vector<string>& index_names) {
+  // Wait here for the indexes creation end.
+  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
+  const YBTableName yb_table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, table_name);
+  for (const auto& index_name : index_names) {
+    const client::YBTableName yb_index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, index_name);
+    ASSERT_OK(LoggedWaitFor(
+        [this, yb_table_name, yb_index_name]() {
+          auto result = client_->WaitUntilIndexPermissionsAtLeast(
+              yb_table_name, yb_index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+        },
+        90s,
+        "wait for create index '" + index_name + "' to complete",
+        12s));
+  }
+}
 
 TEST_F(CqlTest, ProcessorsLimit) {
   constexpr int kSessions = 10;
@@ -406,6 +428,61 @@ TEST_F(CqlTest, TestTruncateTable) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_disable_truncate_table) = true;
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
+}
+
+TEST_F(CqlTest, TestTruncateTableWithIndexes) {
+  master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
+      cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
+
+  cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
+      "with transactions = {'enabled' : true} and tablets = 1");
+
+  constexpr int num_indexes = 5;
+  std::vector<string> index_names;
+  for (int i = 1; i <= num_indexes; ++i) {
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1) with tablets = 32", index_name, i));
+  }
+
+  // Wait here for the creation end.
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
+
+  for (int j = 1; j <= 20; ++j) {
+    cql(Format("insert into tbl (h1, c1, c2, c3, c4, c5) VALUES ($0, $0, $0, $0, $0, $0)", j));
+  }
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
+  const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
+  const master::TableInfoPtr table = ASSERT_RESULT(catalog_manager.FindTableById(table_id));
+
+  std::array<master::TableInfoPtr, num_indexes> index;
+  for (int i = 0; i < num_indexes; ++i) {
+    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, Format("i$0", i + 1));
+    const TableId index_id = ASSERT_RESULT(client::GetTableId(client_.get(), index_name));
+    index[i] = ASSERT_RESULT(catalog_manager.FindTableById(index_id));
+  }
+
+  auto check_no_truncate_tasks = [](const master::TableInfoPtr& table_info, const string& label) {
+    LOG(INFO) << "Checking " << label;
+    ASSERT_FALSE(table_info->HasTasks(server::MonitoredTaskType::kTruncateTablet));
+  };
+
+  auto check_table_and_indexes = [&](const string& comment) {
+    LOG(INFO) << comment;
+    for (int i = num_indexes - 1; i >= 0; --i) {
+        check_no_truncate_tasks(index[i], Format("index i$0", i + 1));
+    }
+    check_no_truncate_tasks(table, "main table tbl");
+  };
+
+  check_table_and_indexes("Check tasks before TRUNCATE tbl");
+  cql("truncate table tbl");
+  check_table_and_indexes("Check tasks after TRUNCATE tbl");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
 // This test ensure that read correctly timeout under the scenarios where many rows
@@ -915,28 +992,23 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   }
 
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
-  ASSERT_EQ(2, stmt_stats.size());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats = root["prepared_statements"];
+  ASSERT_EQ(2, ASSERT_RESULT(stmt_stats.size()));
 
-  const rapidjson::Value* insert_stat = stmt_stats[1];
-  string insert_query;
-  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  const auto& insert_stat = stmt_stats[1];
+  auto insert_query = ASSERT_RESULT(insert_stat["query"].GetString());
   ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
 
-  int64 insert_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(insert_stat, "calls", &insert_num_calls));
+  auto insert_num_calls = ASSERT_RESULT(insert_stat["calls"].GetInt64());
   ASSERT_EQ(10, insert_num_calls);
 
-  const rapidjson::Value* select_stat = stmt_stats[0];
-  string select_query;
-  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  auto select_stat = stmt_stats[0];
+  auto select_query = ASSERT_RESULT(select_stat["query"].GetString());
   ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
 
-  int64 select_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(select_stat, "calls", &select_num_calls));
+  auto select_num_calls = ASSERT_RESULT(select_stat["calls"].GetInt64());
   ASSERT_EQ(5, select_num_calls);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -973,29 +1045,26 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   faststring buf;
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
 
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "unprepared_statements", &stmt_stats));
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
 
   string query_text;
-  int64 obtained_num_calls = 0;
-  for (auto const& stmt_stat : stmt_stats) {
-    ASSERT_OK(r.ExtractString(stmt_stat, "query", &query_text));
+  for (auto const& stmt_stat : ASSERT_RESULT(root["unprepared_statements"].GetArray())) {
+    auto query_text = ASSERT_RESULT(stmt_stat["query"].GetString());
     if (query_text == create_table_stmt) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == select_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     } else if (query_text == select_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     }
   }
@@ -1006,11 +1075,8 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
                                               ToString(addrs[0])), &buf));
 
-  JsonReader json_post_reset(buf.ToString());
-  ASSERT_OK(json_post_reset.Init());
-  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
-  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
-                                               &stmt_stats_post_reset));
+  auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());
   ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -1405,27 +1471,16 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }
 
   const int num_indexes = 5;
+  std::vector<string> index_names;
   // Initiate the Index Backfilling.
   for (int i = 1; i <= num_indexes; ++i) {
-    cql(Format("create index i$0 on tbl (c$0)", i));
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1)", index_name, i));
   }
 
   // Wait here for the creation end.
-  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
-  const YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
-  for (int i = 1; i <= num_indexes; ++i) {
-    const TableName name = Format("i$0", i);
-    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, name);
-    ASSERT_OK(LoggedWaitFor(
-        [this, table_name, index_name]() {
-          auto result = client_->WaitUntilIndexPermissionsAtLeast(
-              table_name, index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
-        },
-        90s,
-        "wait for create index '" + name + "' to complete",
-        12s));
-  }
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
 
   class CheckHelper {
     master::CatalogManager& catalog_manager;
@@ -1508,6 +1563,7 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
     }
   } check(cluster_.get());
 
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
   const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
 
   // IsDeleteTableDone() for RUNNING table should fail.
@@ -1553,7 +1609,7 @@ TEST_F(CqlTest, RetainSchemaPacking) {
 
   // Get the namespace ID for the "test" namespace
   master::GetNamespaceInfoResponsePB namespace_resp;
-  ASSERT_OK(client_->GetNamespaceInfo("", "test", YQL_DATABASE_CQL, &namespace_resp));
+  ASSERT_OK(client_->GetNamespaceInfo("test", YQL_DATABASE_CQL, &namespace_resp));
   auto namespace_id = namespace_resp.namespace_().id();
 
   auto snapshot_id = ASSERT_RESULT(snapshot_util.StartSnapshot(

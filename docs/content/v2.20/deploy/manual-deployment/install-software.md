@@ -19,7 +19,7 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 ## Download YugabyteDB
 
-The following instructions are for downloading the stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+The following instructions are for downloading the stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/stable/releases/).
 
 {{<note title="Which release should I use?">}}
 For production deployments, install a stable release.
@@ -37,6 +37,7 @@ Download and extract YugabyteDB as follows:
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="v2.20">}}/yugabyte-{{< yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2.20">}}/yugabyte-{{< yb-version version="v2.20" format="build">}}-linux-x86_64-tar.gz.sha) *yugabyte-{{< yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="v2.20" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="v2.20">}}/
 ```
 
@@ -46,6 +47,7 @@ tar xvfz yugabyte-{{< yb-version version="v2.20" format="build">}}-linux-x86_64.
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="v2.20">}}/yugabyte-{{< yb-version version="v2.20" format="build">}}-el8-aarch64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2.20">}}/yugabyte-{{< yb-version version="v2.20" format="build">}}-el8-aarch64-tar.gz.sha) *yugabyte-{{< yb-version version="v2.20" format="build">}}-el8-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="v2.20" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="v2.20">}}/
 ```
 

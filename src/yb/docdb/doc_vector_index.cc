@@ -40,6 +40,35 @@
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
     "Number of vector in initial vector index chunk");
 
+METRIC_DEFINE_event_stats(table, vector_index_convert_us,
+    "Time to convert list of vector ids to ybctids", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent converting list of vector ids to ybctids.");
+METRIC_DEFINE_event_stats(table, vector_index_filter_checked,
+    "Checked entries during vector index search", yb::MetricUnit::kEntries,
+    "Number of entries checked by filter during vector index search.");
+METRIC_DEFINE_event_stats(table, vector_index_filter_accepted,
+    "Accepted entries during vector index search", yb::MetricUnit::kEntries,
+    "Number of entries passed the filter during vector index search.");
+METRIC_DEFINE_event_stats(table, vector_index_filter_removed,
+    "Removed entries during vector index search", yb::MetricUnit::kEntries,
+    "Number of removed entries touched during vector index search.");
+METRIC_DEFINE_event_stats(table, vector_index_read_data_us,
+    "Time to read data for vector index entries", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent reading data for found vectors.");
+METRIC_DEFINE_event_stats(table, vector_index_read_intents_us,
+    "Time to read data for vector index intents", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent reading vector index intents.");
+METRIC_DEFINE_event_stats(table, vector_index_merge_us,
+    "Time to merge vector index entries from LSM and intents", yb::MetricUnit::kMicroseconds,
+    "Time (microseconds) that operations spent merging vector index entries found in intents and "
+    "LSM.");
+METRIC_DEFINE_event_stats(table, vector_index_found_intents,
+    "Found intents during vector index search", yb::MetricUnit::kEntries,
+    "Number of intents found during vector index search.");
+METRIC_DEFINE_event_stats(table, vector_index_result_size,
+    "Resulting entries of vector index search", yb::MetricUnit::kEntries,
+    "Number of entries returned by vector index search.");
+
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(vector_index_skip_filter_check);
 
@@ -160,8 +189,8 @@ EncodedDistance EncodeDistance(float distance) {
 class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
  public:
   VectorMergeFilter(
-      const std::string& log_prefix, docdb::DocRowwiseIteratorPtr iter)
-      : log_prefix_(log_prefix), iter_(std::move(iter)) {
+      const std::string& log_prefix, DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader)
+      : log_prefix_(log_prefix), reverse_mapping_reader_(std::move(reverse_mapping_reader)) {
   }
 
   const std::string& LogPrefix() const {
@@ -175,8 +204,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
     // Let's not filter the vector in case of error.
     auto decision = rocksdb::FilterDecision::kKeep;
-    auto key = dockv::DocVectorKey(vector_id);
-    auto ybctid = iter_->FetchDirect(key);
+    auto ybctid = reverse_mapping_reader_->Fetch(vector_id);
     if (!ybctid.ok()) {
       LOG_WITH_PREFIX(DFATAL) << "Failed to fetch ybctid, status: " << ybctid.status();
     } else if ((*ybctid).empty()) {
@@ -191,7 +219,7 @@ class VectorMergeFilter : public vector_index::VectorLSMMergeFilter {
 
  private:
   const std::string& log_prefix_;
-  docdb::DocRowwiseIteratorPtr iter_;
+  DocVectorIndexReverseMappingReaderPtr reverse_mapping_reader_;
 };
 
 template<vector_index::IndexableVectorType Vector,
@@ -200,15 +228,16 @@ class DocVectorIndexImpl : public DocVectorIndex {
  public:
   DocVectorIndexImpl(
       const TableId& table_id, const PgVectorIdxOptionsPB& options, HybridTime hybrid_time,
-      Slice indexed_table_key_prefix, DocVectorIndexedTableContextPtr indexed_table_context,
+      Slice indexed_table_key_prefix, DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
       : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
         options_(options), hybrid_time_(hybrid_time),
-        indexed_table_context_(std::move(indexed_table_context)),
+        context_(std::move(vector_index_context)),
         block_cache_(block_cache), mem_tracker_(mem_tracker),
-        metric_entity_(metric_entity) {
-    DCHECK_ONLY_NOTNULL(indexed_table_context_.get());
+        metric_entity_(metric_entity),
+        metrics_(metric_entity) {
+    DCHECK_ONLY_NOTNULL(context_.get());
   }
 
   const TableId& table_id() const override {
@@ -235,16 +264,21 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return hybrid_time_;
   }
 
-  const DocVectorIndexedTableContext& indexed_table_context() const override {
-    return *indexed_table_context_;
+  const DocVectorIndexContext& context() const override {
+    return *context_;
+  }
+
+  const DocVectorIndexMetrics& metrics() const override {
+    return metrics_;
   }
 
   Status Open(const std::string& log_prefix,
               const std::string& storage_dir,
               const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
-      auto iter = VERIFY_RESULT(indexed_table_context_->CreateIterator(HybridTime::kMax));
-      return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(iter));
+      auto reader = VERIFY_RESULT(
+          context_->CreateReverseMappingReader(ReadHybridTime::Max()));
+      return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(reader));
     };
 
     name_ = RemoveLogPrefixColon(log_prefix);
@@ -272,7 +306,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers& frontiers) override {
+      const storage::UserFrontiers& frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {
@@ -291,9 +325,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
     auto dump_stats = FLAGS_vector_index_dump_stats;
-    auto start_time = MonoTime::NowIf(dump_stats);
+    auto start_time = MonoTime::Now();
 
-    auto iter = VERIFY_RESULT(indexed_table_context_->CreateIterator(HybridTime::kMax));
+    auto reverse_mapping_reader = VERIFY_RESULT(
+        context_->CreateReverseMappingReader(ReadHybridTime::Max()));
 
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
@@ -303,8 +338,9 @@ class DocVectorIndexImpl : public DocVectorIndex {
         could_have_missing_entries && entries.size() >= options.max_num_results;
     result.entries.reserve(entries.size());
     for (auto& entry : entries) {
-      auto key = dockv::DocVectorKey(entry.vector_id);
-      auto ybctid = VERIFY_RESULT(iter->FetchDirect(key));
+      auto ybctid = VERIFY_RESULT(reverse_mapping_reader->Fetch(entry.vector_id));
+      VLOG_WITH_FUNC(4)
+          << "vector_id: " << entry.vector_id << ", ybctid: " << ybctid.ToDebugHexString();
       if (ybctid.empty()) {
         if (could_have_missing_entries) {
           continue;
@@ -326,9 +362,12 @@ class DocVectorIndexImpl : public DocVectorIndex {
 #endif
     }
 
+    auto passed = MonoTime::Now() - start_time;
+    metrics_.convert_us->Increment(passed.ToMicroseconds());
+
     LOG_IF(INFO, dump_stats)
         << "VI_STATS: Convert vector id to ybctid time: "
-        << (MonoTime::Now() - start_time).ToPrettyString()
+        << passed.ToPrettyString()
         << ", entries: " << result.entries.size()
         << ", could_have_more_data: " << result.could_have_more_data;
 
@@ -397,6 +436,10 @@ class DocVectorIndexImpl : public DocVectorIndex {
     return lsm_.TEST_HasBackgroundInserts();
   }
 
+  size_t TEST_NextManifestFileNo() const override {
+    return lsm_.TEST_NextManifestFileNo();
+  }
+
  private:
   using LSM = vector_index::VectorLSM<Vector, DistanceResult>;
 
@@ -404,16 +447,35 @@ class DocVectorIndexImpl : public DocVectorIndex {
   const KeyBuffer indexed_table_key_prefix_;
   const PgVectorIdxOptionsPB options_;
   const HybridTime hybrid_time_;
-  const DocVectorIndexedTableContextPtr indexed_table_context_;
+  const DocVectorIndexContextPtr context_;
   const hnsw::BlockCachePtr block_cache_;
   const MemTrackerPtr mem_tracker_;
   const MetricEntityPtr metric_entity_;
+  const DocVectorIndexMetrics metrics_;
 
   std::string name_;
   LSM lsm_;
 };
 
 } // namespace
+
+Result<Slice> DocVectorIndexReverseMappingReader::Fetch(
+    const vector_index::VectorId& vector_id) {
+  auto key = dockv::DocVectorKey(vector_id);
+  return Fetch(key);
+}
+
+Result<Slice> DocVectorIndexReverseMappingReader::FetchYbctid(
+    const vector_index::VectorId& vector_id) {
+  auto value = VERIFY_RESULT(Fetch(vector_id));
+
+  // All non-ybctid values should be excluded.
+  if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
+    return Slice{};
+  }
+
+  return value;
+}
 
 bool DocVectorIndex::BackfillDone() {
   if (backfill_done_cache_.load()) {
@@ -442,15 +504,27 @@ Result<DocVectorIndexPtr> CreateDocVectorIndex(
     Slice indexed_table_key_prefix,
     HybridTime hybrid_time,
     const qlexpr::IndexInfo& index_info,
-    DocVectorIndexedTableContextPtr indexed_table_context,
+    DocVectorIndexContextPtr vector_index_context,
     const hnsw::BlockCachePtr& block_cache,
     const MemTrackerPtr& mem_tracker,
     const MetricEntityPtr& metric_entity) {
   auto result = std::make_shared<DocVectorIndexImpl<std::vector<float>, float>>(
       index_info.table_id(), index_info.vector_idx_options(), hybrid_time, indexed_table_key_prefix,
-      std::move(indexed_table_context), block_cache, mem_tracker, metric_entity);
+      std::move(vector_index_context), block_cache, mem_tracker, metric_entity);
   RETURN_NOT_OK(result->Open(log_prefix, storage_dir, thread_pool_provider));
   return result;
+}
+
+DocVectorIndexMetrics::DocVectorIndexMetrics(const MetricEntityPtr& metric_entity)
+    : convert_us(METRIC_vector_index_convert_us.Instantiate(metric_entity)),
+      filter_checked(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_accepted(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      filter_removed(METRIC_vector_index_filter_checked.Instantiate(metric_entity)),
+      read_data_us(METRIC_vector_index_read_data_us.Instantiate(metric_entity)),
+      read_intents_us(METRIC_vector_index_read_intents_us.Instantiate(metric_entity)),
+      merge_us(METRIC_vector_index_merge_us.Instantiate(metric_entity)),
+      found_intents(METRIC_vector_index_found_intents.Instantiate(metric_entity)),
+      result_size(METRIC_vector_index_result_size.Instantiate(metric_entity)) {
 }
 
 } // namespace yb::docdb
