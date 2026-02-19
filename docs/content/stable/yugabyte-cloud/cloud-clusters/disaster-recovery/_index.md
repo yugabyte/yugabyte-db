@@ -60,7 +60,7 @@ DR further allows for the role of each cluster to switch during planned switchov
 
 ## Limitations
 
-- Disaster recovery requires both clusters to be running the same version of YugabyteDB, and the version must be {{<release "2025.2">}} or later.
+- Disaster recovery requires both clusters to be running the same version of YugabyteDB, and the version must be {{<release "2025.2.1.0">}} or later.
 
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the Source.
 
