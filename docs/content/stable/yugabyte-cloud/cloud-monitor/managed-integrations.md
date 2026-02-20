@@ -262,7 +262,7 @@ To create an export configuration, do the following:
 
 1. On the **Integrations** page, click **Configure** for the **Amazon S3** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
-1. Enter the bucket name in the format `s3://bucket_name`.
+1. Enter the bucket name.
 1. Enter the bucket region. You can find your S3 bucket's region under **Properties > Bucket overview** in the AWS console.
 1. Provide the access key and secret.
 1. Enter a path to the location where you want to store your logs. The path must end in `/`; enter `/` alone to store logs at the root.
@@ -270,7 +270,7 @@ To create an export configuration, do the following:
 1. Choose a partition strategy to determine how frequently logs are collected into a file. Minute partitioning creates more granular files suitable for high-volume scenarios, while hour partitioning (the default) reduces file count and is more cost-effective for lower volumes.
 1. Click **Create Configuration**.
 
-YugabyteDB Aeon cannot detect errors in configuration. To verify your settings are correct, after creating the configuration, monitor your bucket to ensure logs are being written.
+Note that YugabyteDB Aeon _cannot detect errors_ in configuration. To verify your settings are correct, after creating the configuration, monitor your bucket to ensure logs are being written.
 
 <!--### Dynatrace
 
