@@ -361,6 +361,9 @@ Tablespace: "regress_tblspace"
 SET default_tablespace TO regress_tblspace;
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
    Index "testschema.test_index1"
  Column |  Type  | Key? | Definition 
@@ -412,6 +415,9 @@ SELECT * FROM testschema.test_default_tab;
 SET default_tablespace TO '';
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
     Index "testschema.test_index1"
  Column |  Type   | Key? | Definition 
