@@ -15,7 +15,7 @@ rightNav:
   hideH4: true
 ---
 
-Most endpoint protection tools (AV/EDR) work by intercepting file and process activity at the OS level. Common mechanisms include:
+Most endpoint protection tools (antivirus (AV) or endpoint detection and response (EDR)) work by intercepting file and process activity at the OS level. Common mechanisms include:
 
 - Real-time (on-access) scanning
 
@@ -64,7 +64,7 @@ Default paths (adjust to match your deployment):
 - /var/lib/yugabyte/
 - /home/yugabyte/master/logs/
 - /home/yugabyte/tserver/logs/
-- /home/yugabyte/controller/logs
+- /home/yugabyte/controller/logs/
 - Any custom directories configured via:
 
   - [--fs_data_dirs](../../reference/configuration/yb-tserver/#fs-data-dirs)
@@ -84,11 +84,11 @@ To preserve security visibility, exclusions should not usually include:
 - Operating system paths such as /usr, /etc, /lib
 - Backup repositories (unless files and directories are regularly rewritten and the performance impact has been identified).
 
-If required, YugabyteDB Support can assist in validating an exclusion list based on your deployment configuration.
+If required, {{% support-general %}} can help you validate an exclusion list based on your deployment configuration.
 
 ## YugabyteDB Anywhere
 
-YugabyteDB Anywhere is the control plane that orchestrates universes, manages backups, executes automation tasks, handles credentials, and coordinates node agents. While YugabyteDB Anywhere is not on the hot data path like a YB-TServer, it still performs frequent file, process, and network activity that can be disrupted by aggressive antivirus (AV), EDR, or endpoint scanning policies.
+YugabyteDB Anywhere is the control plane that orchestrates universes, manages backups, executes automation tasks, handles credentials, and coordinates node agents. While YugabyteDB Anywhere is not on the hot data path like a YB-TServer, it still performs frequent file, process, and network activity that can be disrupted by aggressive AV, EDR, or endpoint scanning policies.
 
 YugabyteDB Anywhere hosts typically perform:
 
@@ -152,7 +152,7 @@ These symptoms frequently resolve once exclusions are applied.
 
 To preserve security posture, exclusions should not typically include:
 
-- Operating system paths (/usr, /etc, /lib, etc.)
+- Operating system paths (/usr, /etc, /lib, and so on)
 - System package managers
 - User home directories unrelated to YugabyteDB Anywhere
 - External backup repositories (unless confirmed as high-churn and problematic)

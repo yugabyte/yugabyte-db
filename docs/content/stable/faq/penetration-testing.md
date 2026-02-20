@@ -2,7 +2,7 @@
 title: Penetration testing recommendations
 headerTitle: Penetration testing
 linkTitle: Penetration testing
-description: Recommendations for configuring antivirus software for YugabyteDB
+description: Recommendations for conducting penetration testing on YugabyteDB and YugabyteDB Anywhere.
 menu:
   stable_faq:
     identifier: penetration-testing
@@ -30,11 +30,11 @@ This information is provided by YugabyteDB, Inc. ("Yugabyte") and is for general
 
 This guidance applies to YugabyteDB and YugabyteDB Anywhere.
 
-For clarity, YugabyteDB Inc does not allow any security, vulnerability, or penetration testing of any kind in any of its hosted environments; this includes YugabyteDB Aeon, the Yugabyte database SaaS product offering.
+For clarity, YugabyteDB, Inc. does not allow any security, vulnerability, or penetration testing of any kind in any of its hosted environments; this includes YugabyteDB Aeon, the Yugabyte database SaaS product offering.
 
 ## General guidelines
 
-There are various categories of penetration tests, each aligned with a specific methodology, such as Application Security Testing, Network (Stress)Testing, DDoS Simulation, Malware Insertion, and others. To avoid service disruption, compliance violations, or data loss, observe the following best practices:
+There are various categories of penetration tests, each aligned with a specific methodology, such as Application Security Testing, Network (Stress) Testing, DDoS Simulation, Malware Insertion, and others. To avoid service disruption, compliance violations, or data loss, observe the following best practices:
 
 1. Define the target system.
 
@@ -55,7 +55,7 @@ There are various categories of penetration tests, each aligned with a specific 
     - Use dedicated credentials with limited scope and visibility.
     - Have a rollback or incident response plan ready.
 
-    Optionally, reach out to the Yugabyte support team if you require urgent assistance.
+    Optionally, reach out to {{% support-general %}} if you require urgent assistance.
 
 1. Avoid disruptive testing.
 
