@@ -253,8 +253,10 @@ To create an export configuration, do the following:
 The [Amazon S3](https://aws.amazon.com/s3/) integration requires the following:
 
 - [AWS account](https://aws.amazon.com/console/)
-- [S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/GetStartedWithS3.html#creating-bucket)
-- Access Key ID and Secret Access Key of an IAM user with permissions for the S3 bucket, including the `s3:PutObject` permission. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+- [S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/GetStartedWithS3.html#creating-bucket). Ensure the bucket is accessible from the cluster regions.
+  - The S3 bucket must not have IP address filtering that excludes the cluster region.
+  - If VPC restrictions or NAT gateways are in place, they must allow traffic from the cluster regions; otherwise, PG logs export will fail silently.
+- Access Key ID and Secret Access Key of an IAM user with `s3:PutObject` permission for the S3 bucket. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 To create an export configuration, do the following:
 
@@ -267,6 +269,8 @@ To create an export configuration, do the following:
 1. Optionally, provide a prefix to add to all files exported to the bucket.
 1. Choose a partition strategy to determine how frequently logs are collected into a file. Minute partitioning creates more granular files suitable for high-volume scenarios, while hour partitioning (the default) reduces file count and is more cost-effective for lower volumes.
 1. Click **Create Configuration**.
+
+YugabyteDB Aeon cannot detect errors in configuration. To verify your settings are correct, after creating the configuration, monitor your bucket to ensure logs are being written.
 
 <!--### Dynatrace
 
