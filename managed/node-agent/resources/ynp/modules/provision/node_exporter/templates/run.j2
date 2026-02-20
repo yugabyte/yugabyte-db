@@ -16,11 +16,11 @@ arch=$(uname -m)
 
 # Set the appropriate file name based on architecture
 if [[ "$arch" == "x86_64" ]]; then
-    node_exporter_package="node_exporter-1.9.1.linux-amd64.tar.gz"
-    node_exported_package_name="node_exporter-1.9.1.linux-amd64"
+    node_exporter_package="node_exporter-1.10.2.linux-amd64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-amd64"
 elif [[ "$arch" == "aarch64" ]]; then
-    node_exporter_package="node_exporter-1.9.1.linux-arm64.tar.gz"
-    node_exported_package_name="node_exporter-1.9.1.linux-arm64"
+    node_exporter_package="node_exporter-1.10.2.linux-arm64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-arm64"
 else
     echo "Unsupported architecture: $arch"
     exit 1
