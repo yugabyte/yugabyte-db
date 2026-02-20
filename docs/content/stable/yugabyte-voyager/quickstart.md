@@ -40,14 +40,15 @@ Before you start, ensure that you have the following:
 
 ## Install YugabyteDB Voyager
 
-Install YugabyteDB Voyager on your machine as follows:
-
-1. In your YugabyteDB Aeon cluster page, click **Migrations**, and select **Migrate Database**.
-1. In **Prepare Voyager**, choose your operating system, run the installation commands on your machine, and verify the installation.
+To install YugabyteDB Voyager on your machine, follow the [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) steps.
 
 ## Prepare source and target databases
 
 ### Prepare source PostgreSQL database
+
+{{<note title="For MySQL or Oracle">}}
+To prepare a MySQL or an Oracle source database, refer to [Prepare the source database](../migrate/migrate-steps/#prepare-the-source-database) section in Offline migration.
+{{</note>}}
 
 Create a database user and provide the user with READ access to all the resources which need to be migrated. Run the following commands in a psql session:
 
