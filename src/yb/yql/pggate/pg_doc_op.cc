@@ -453,6 +453,8 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     RSTATUS_DCHECK(
         catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
     RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
+    // Avoid picking safe time for catalog reads.
+    RETURN_NOT_OK(pg_session_->EnsureReadPoint());
   }
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,

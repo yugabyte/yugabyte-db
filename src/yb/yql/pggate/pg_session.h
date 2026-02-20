@@ -228,6 +228,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_txn_manager_->RestoreReadPoint(saved_read_point);
   }
 
+  Status EnsureReadPoint() {
+    return pg_txn_manager_->EnsureReadPoint();
+  }
+
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
 
  private:

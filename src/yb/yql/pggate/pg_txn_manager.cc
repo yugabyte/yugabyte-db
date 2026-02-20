@@ -788,6 +788,7 @@ Status PgTxnManager::SetupPerformOptions(
       && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())
       && !options->use_catalog_session()) {
     options->set_clamp_uncertainty_window(true);
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
 
   if (!IsDdlModeWithSeparateTransaction()) {
