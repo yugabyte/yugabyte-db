@@ -560,9 +560,14 @@ export function getUniversePerNodeMetricsResponse(response) {
   };
 }
 
-export function performUniverseNodeAction(universeUUID, nodeName, actionType) {
+export function performUniverseNodeAction(
+  universeUUID,
+  nodeName,
+  actionType,
+  runOnlyPrechecks = false
+) {
   const requestUrl = `${getCustomerEndpoint()}/universes/${universeUUID}/nodes/${nodeName}`;
-  const request = axios.put(requestUrl, { nodeAction: actionType });
+  const request = axios.put(requestUrl, { nodeAction: actionType, runOnlyPrechecks });
   return {
     type: PERFORM_UNIVERSE_NODE_ACTION,
     payload: request

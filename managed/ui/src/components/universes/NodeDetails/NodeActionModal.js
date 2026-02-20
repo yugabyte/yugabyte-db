@@ -3,9 +3,11 @@ import { Component } from 'react';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import PropTypes from 'prop-types';
+import { YBButton } from '@app/redesign/components';
 import { YBModal } from '../../common/forms/fields';
 import { NodeAction } from '../../universes';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { createErrorMessage, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { getNodeActionStatusMsg } from '@app/utils/UniverseUtils';
 
 const nodeActionExpectedResult = {
   START: 'Live',
@@ -14,6 +16,7 @@ const nodeActionExpectedResult = {
   RELEASE: 'Unreachable',
   DELETE: 'Unreachable'
 };
+
 export default class NodeActionModal extends Component {
   static propTypes = {
     nodeInfo: PropTypes.object.isRequired,
@@ -44,7 +47,7 @@ export default class NodeActionModal extends Component {
     }
   }
 
-  performNodeAction = () => {
+  performNodeAction = (runOnlyPrechecks = false) => {
     const {
       universe: { currentUniverse },
       nodeInfo,
@@ -53,22 +56,31 @@ export default class NodeActionModal extends Component {
       onHide
     } = this.props;
     const universeUUID = currentUniverse.data.universeUUID;
-    performUniverseNodeAction(universeUUID, nodeInfo.name, actionType).then((response) => {
-      if (response.error !== true) {
-        this.pollNodeStatusUpdate(universeUUID, actionType, nodeInfo.name, response.payload);
-      } else if (response.error && response.payload.status !== 200) {
-        toast.error(createErrorMessage(response.payload));
+    performUniverseNodeAction(universeUUID, nodeInfo.name, actionType, runOnlyPrechecks).then(
+      (response) => {
+        if (response.error !== true) {
+          this.pollNodeStatusUpdate(universeUUID, actionType, nodeInfo.name, response.payload);
+        } else if (response.error && response.payload.status !== 200) {
+          toast.error(createErrorMessage(response.payload));
+        }
       }
-    });
+    );
     onHide();
-    browserHistory.push('/universes/' + universeUUID + '/nodes');
+    if (runOnlyPrechecks) {
+      // Redirect to tasks page to view precheck results before performing further node actions
+      browserHistory.push('/universes/' + universeUUID + '/tasks');
+    } else {
+      browserHistory.push('/universes/' + universeUUID + '/nodes');
+    }
   };
 
   render() {
-    const { visible, onHide, nodeInfo, actionType } = this.props;
+    const { visible, onHide, nodeInfo, actionType, precheckNodeActions } = this.props;
     if (actionType === null || nodeInfo === null) {
       return <span />;
     }
+
+    const modalMessage = getNodeActionStatusMsg(actionType);
 
     return (
       <div className="universe-apps-modal">
@@ -78,9 +90,35 @@ export default class NodeActionModal extends Component {
           onHide={onHide}
           showCancelButton={true}
           cancelLabel={'Cancel'}
-          onFormSubmit={this.performNodeAction}
+          onFormSubmit={() => this.performNodeAction(false)}
+          footerAccessory={
+            precheckNodeActions.includes(actionType) && (
+              <div>
+                <YBButton
+                  onClick={() => this.performNodeAction(true)}
+                  variant="primary"
+                  data-testid="FullMoveModal-RunPrechecksButton"
+                  size="large"
+                >
+                  {'Run Pre-check Only'}
+                </YBButton>
+              </div>
+            )
+          }
         >
-          Are you sure you want to {actionType.toLowerCase()} {nodeInfo.name}?
+          {`Are you sure you want to ${actionType.toLowerCase()}`}
+          <b>{` ${nodeInfo.name}?`}</b>
+          <br />
+          {modalMessage && modalMessage?.purpose && (
+            <>
+              <br />
+              <span style={{ whiteSpace: 'pre-line' }}>
+                <b>{modalMessage.purpose}</b>
+                <br />
+                {isNonEmptyString(modalMessage?.description) && `\n${modalMessage.description}`}
+              </span>
+            </>
+          )}
         </YBModal>
       </div>
     );
