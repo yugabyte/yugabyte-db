@@ -1,0 +1,5 @@
+comment = 'Distributed RAG (Retrieval-Augmented Generation) extension for PostgreSQL'
+default_version = '0.0.1'
+relocatable = false
+requires = 'vector'
+
