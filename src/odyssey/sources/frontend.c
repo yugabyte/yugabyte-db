@@ -2185,13 +2185,23 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	case OD_EATTACH_TOO_MANY_CONNECTIONS:
 		assert(server == NULL);
 		assert(client->route != NULL);
-		od_frontend_fatal(
-			client, KIWI_TOO_MANY_CONNECTIONS,
-			"too many active clients for user (pool_size for "
-			"user %s.%s reached %d)",
-			client->startup.database.value,
-			client->startup.user.value,
-			client->rule != NULL ? client->rule->pool->size : -1);
+		if (instance->config.yb_enable_multi_route_pool) {
+			od_frontend_fatal(
+				client, KIWI_TOO_MANY_CONNECTIONS,
+				"too many active clients across all pools, so no space for "
+				"pool %s.%s reached max connections limit %d",
+				client->startup.database.value,
+				client->startup.user.value,
+				instance->config.yb_ysql_max_connections);
+		} else {
+			od_frontend_fatal(
+				client, KIWI_TOO_MANY_CONNECTIONS,
+				"too many active clients for user (pool_size for "
+				"user %s.%s reached %d)",
+				client->startup.database.value,
+				client->startup.user.value,
+				client->rule != NULL ? client->rule->pool->size : -1);
+		}
 		break;
 
 	case OD_ECLIENT_READ:

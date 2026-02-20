@@ -72,7 +72,6 @@ public class TestAuthSocketCloseWithLoad extends BaseYsqlConnMgr {
         put("ysql_conn_mgr_superuser_sticky", "false");
         put("ysql_enable_auth", "true");
         put("ysql_hba_conf_csv", "host all all all password");
-        // put("ysql_conn_mgr_log_settings", "log_debug");
       }
     };
 
