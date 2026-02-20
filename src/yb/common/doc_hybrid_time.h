@@ -112,16 +112,16 @@ class DocHybridTime {
   static const DocHybridTime kMin;
   static const DocHybridTime kMax;
 
-  DocHybridTime() {}
+  constexpr DocHybridTime() {}
   explicit DocHybridTime(HybridTime hybrid_time)
       : hybrid_time_(hybrid_time) {
   }
 
-  DocHybridTime(HybridTime hybrid_time, IntraTxnWriteId write_id)
+  constexpr DocHybridTime(HybridTime hybrid_time, IntraTxnWriteId write_id)
       : hybrid_time_(hybrid_time), write_id_(write_id) {
   }
 
-  DocHybridTime(
+  constexpr DocHybridTime(
       MicrosTime micros, LogicalTimeComponent logical, IntraTxnWriteId write_id)
       : hybrid_time_(micros, logical), write_id_(write_id) {
   }
@@ -200,6 +200,16 @@ class DocHybridTime {
 
   IntraTxnWriteId write_id_ = kDefaultWriteId;
 };
+
+// It does not really matter what write id we use here. We determine DocHybridTime validity based
+// on its HybridTime component's validity. However, given that HybridTime::kInvalid is close to the
+// highest possible value of the underlying in-memory representation of HybridTime, we use
+// kMaxWriteId for the write id portion of this constant for consistency.
+inline constexpr DocHybridTime DocHybridTime::kInvalid =
+    DocHybridTime(HybridTime::kInvalid, kMaxWriteId);
+
+inline constexpr DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
+inline constexpr DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);
 
 inline std::ostream& operator<<(std::ostream& os, const DocHybridTime& ht) {
   return os << ht.ToString();

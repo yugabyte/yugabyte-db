@@ -2504,7 +2504,6 @@ Status HandleGetChangesForSnapshotRequest(
     *checkpoint_updated = true;
   } else {
     // Snapshot is already taken.
-    HybridTime ht;
     time = ReadHybridTime::FromUint64(from_op_id.snapshot_time());
     *safe_hybrid_time_resp = HybridTime(from_op_id.snapshot_time());
     const auto& next_key = from_op_id.key();

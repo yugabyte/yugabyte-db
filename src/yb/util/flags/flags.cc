@@ -659,8 +659,10 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   GoogleOnceInit(&once_register_vmodule_callback, []() {
     CHECK(google::RegisterFlagValidator(&FLAGS_vmodule, &ValidateVmodule));  // NOLINT
 
+    // NOLINTBEGIN(cppcoreguidelines-interfaces-global-init)
     flags_callback_internal::RegisterGlobalFlagUpdateCallback(
         &FLAGS_vmodule, "ValidateAndUpdateVmodule", &UpdateVmodule);
+    // NOLINTEND(cppcoreguidelines-interfaces-global-init)
   });
 
   CHECK_OK(LoadFlagsAllowlist());
