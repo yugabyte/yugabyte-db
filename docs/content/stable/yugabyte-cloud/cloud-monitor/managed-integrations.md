@@ -265,7 +265,7 @@ To create an export configuration, do the following:
 1. Provide the access key and secret.
 1. Enter a path to the location where you want to store your logs. The path must end in `/`; enter `/` alone to store logs at the root.
 1. Optionally, provide a prefix to add to all files exported to the bucket.
-1. Choose a partition strategy to determine how frequently logs are collected into a file. Minute partitioning creates more granular files suitable for high-volume scenarios, while hour partitioning reduces file count and is more cost-effective for lower volumes.
+1. Choose a partition strategy to determine how frequently logs are collected into a file. Minute partitioning creates more granular files suitable for high-volume scenarios, while hour partitioning (the default) reduces file count and is more cost-effective for lower volumes.
 1. Click **Create Configuration**.
 
 <!--### Dynatrace
