@@ -30,10 +30,6 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
 
-const char* kGlobalTransactionsTableName = "transactions";
-const std::string kMetricsSnapshotsTableName = "metrics";
-const std::string kTransactionTablePrefix = "transactions_";
-
 TransactionStatusResult::TransactionStatusResult(
     TransactionStatus status_, HybridTime status_time_, Status expected_deadlock_status_)
     : TransactionStatusResult(status_, status_time_, SubtxnSet(), expected_deadlock_status_) {}

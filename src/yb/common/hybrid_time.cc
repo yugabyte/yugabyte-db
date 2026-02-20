@@ -52,11 +52,6 @@ std::atomic<bool> pretty_to_string_mode_{false};
 
 }
 
-const HybridTime HybridTime::kMin(kMinHybridTimeValue);
-const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
-const HybridTime HybridTime::kInitial(kInitialHybridTimeValue);
-const HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
-
 bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v).ok();
 }
@@ -139,7 +134,6 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
 Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   boost::trim(input);
 
-  HybridTime ht;
   // The HybridTime is given in microseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
   if (std::regex_match(input, int_regex)) {
