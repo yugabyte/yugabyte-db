@@ -40,7 +40,7 @@ Before you start, ensure that you have the following:
 
 ## Install YugabyteDB Voyager
 
-To install YugabyteDB Voyager on your machine, follow the [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) steps.
+Install YugabyteDB Voyager v2025.11.2 or later on your machine using the [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) steps.
 
 ## Prepare source and target databases
 
@@ -117,12 +117,14 @@ Create a database user and provide the user with READ access to all the resource
     ```yaml
     # Global settings
     export-dir: <absolute-path-to-export-dir>
+    send-diagnostics: true
+    control-plane-type: ybaeon
+    domain: https://cloud.yugabyte.com
     apiKey: <API_KEY>
     accountId: // This will be autofilled in YugabyteDB Aeon
     projectId: // This will be autofilled in YugabyteDB Aeon
     clusterId: // This will be autofilled in YugabyteDB Aeon
-    domain: // This will be autofilled in YugabyteDB Aeon
-
+    
     # Source database (PostgreSQL)
     source:
       db-type: postgresql
@@ -135,15 +137,48 @@ Create a database user and provide the user with READ access to all the resource
 
     # Target database (YugabyteDB Aeon)
     target:
+      name:
       db-host: <your-cluster-host>
       db-port: 5433
       db-name: target_db
       db-user: ybvoyager
       db-password: 'your_yugabytedb_password'
-      ssl-mode: require
-      ssl-cert: /path/to/yugabyte.crt
-      ssl-key: /path/to/yugabyte.key
-      ssl-root-cert: /path/to/ca.crt
+
+    assess-migration:
+      iops-capture-interval: 0
+      target-db-version: <db-version>
+      report-unsupported-query-constructs: true
+      report-unsupported-plpgsql-objects: true
+    
+    export-data:
+      export-type: snapshot-and-changes
+
+    import-schema:
+      continue-on-error: true
+
+    export-data-from-target:
+      transaction-ordering: true
+      disable-pb: false
+
+    import-data-to-source:
+      parallel-jobs: 2
+      disable-pb: false
+
+    initiate-cutover-to-target:
+      prepare-for-fall-back: true
+
+    archive-changes:
+      delete-changes-without-archiving: true
+
+    finalize-schema-post-data-import:
+      continue-on-error: true
+      refresh-mviews: false
+
+    end-migration:
+      backup-log-files: false
+      backup-data-files: false
+      save-migration-reports: false
+      backup-schema-files: false
     ```
 
 ## Run migration assessment
