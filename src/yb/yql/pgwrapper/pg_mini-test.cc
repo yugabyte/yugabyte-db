@@ -3312,13 +3312,4 @@ TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
       << "Local tserver UUID mismatch";
 }
 
-Status FetchMatrix(PGConn& conn, const std::string& command, int rows, int cols) {
-  auto res = VERIFY_RESULT(conn.FetchRows<RowAsString>(command));
-  SCHECK_EQ(res.size(), rows, RuntimeError, "Unexpected number of rows");
-  if (!res.empty()) {
-    SCHECK_EQ(res.front().size(), cols, RuntimeError, "Unexpected number of cols");
-  }
-  return Status::OK();
-}
-
 }  // namespace yb::pgwrapper
