@@ -137,7 +137,7 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
 
   std::lock_guard spinlock(mutex_);
   // After re-registering, make the TS re-report its tablets.
-  has_tablet_report_ = false;
+  set_has_tablet_report_unlocked(false);
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
   if (instance.has_start_time_us()) {
     l.mutable_data()->pb.set_start_time_us(instance.start_time_us());
@@ -237,11 +237,15 @@ bool TSDescriptor::has_tablet_report() const {
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
   std::lock_guard l(mutex_);
-  has_tablet_report_ = has_report;
-  receiving_full_report_seq_no_ = 0;
+  set_has_tablet_report_unlocked(has_report);
 }
 
-int32_t TSDescriptor::receiving_full_report_seq_no() const {
+void TSDescriptor::set_has_tablet_report_unlocked(bool has_report) {
+  has_tablet_report_ = has_report;
+  receiving_full_report_seq_no_.reset();
+}
+
+std::optional<int32_t> TSDescriptor::receiving_full_report_seq_no() const {
   SharedLock lock(mutex_);
   return receiving_full_report_seq_no_;
 }
