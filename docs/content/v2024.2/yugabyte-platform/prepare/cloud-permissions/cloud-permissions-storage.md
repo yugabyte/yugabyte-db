@@ -114,11 +114,21 @@ The credentials for this account (in JSON format) are used when creating a backu
 
 When backing up to and/or restoring from Azure Storage, YBA and DB nodes must be able to write to and read from the storage blob.
 
+##### Shared Access Signature
+
 To grant the required access, create a [Shared Access Signature (SAS)](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview) token with the permissions as shown in the following illustration.
 
 ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
 
 The Connection string and SAS token are used when creating a backup [storage configuration](../../../back-up-restore-universes/configure-backup-storage/#azure-storage) for Azure.
+
+##### Azure Managed Identity
+
+{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations, providing an alternative to SAS tokens.
+
+Note that this feature is currently supported only for VM-based universes and via API.
+
+This requires configuring the VMs for YugabyteDB Anywhere and universe nodes with either a Managed Identity or Service Principal. For more information, refer to [Azure Managed Identity authentication](../../../back-up-restore-universes/configure-backup-storage/#azure-managed-identity-authentication).
 
 | Save for later | To configure |
 | :--- | :--- |
