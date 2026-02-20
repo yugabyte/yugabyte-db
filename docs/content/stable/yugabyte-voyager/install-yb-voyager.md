@@ -44,24 +44,6 @@ The node where you'll run the yb-voyager command should:
 
 YugabyteDB Voyager consists of the yb-voyager command line executable.
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li>
-    <a href="#local-machine" class="nav-link active" id="local-machine-tab" data-bs-toggle="tab" role="tab" aria-controls="local-machine" aria-selected="true">
-      <img src="/icons/database.svg" alt="Server Icon">
-      Local machine
-    </a>
-  </li>
-  <li>
-    <a href="#yugabytedb-aeon" class="nav-link" id="yugabytedb-aeon-tab" data-bs-toggle="tab" role="tab" aria-controls="yugabytedb-aeon" aria-selected="false">
-      <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Aeon
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="local-machine" class="tab-pane fade show active" role="tabpanel" aria-labelledby="local-machine-tab">
-
 Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisites) using one of the following options:
 
 <ul class="nav nav-tabs nav-tabs-yb">
@@ -398,32 +380,6 @@ You can download the oracle instant client RPM packages from the following links
   </div>
   <div id="github" class="tab-pane fade" role="tabpanel" aria-labelledby="github-tab">
 {{% readfile "./github.md" %}}
-  </div>
-</div>
-
-  </div>
-  <div id="yugabytedb-aeon" class="tab-pane fade" role="tabpanel" aria-labelledby="yugabytedb-aeon-tab">
-
-To install YugabyteDB Voyager via YugabyteDB Aeon, do the following:
-
-1. Create a YugabyteDB Aeon cluster as follows:
-
-    1. [Sign up](https://cloud.yugabyte.com) for YugabyteDB Aeon.
-
-    1. Create a cluster:
-       - Log in to your YugabyteDB Aeon account.
-       - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
-       - Select **Sandbox** for testing or **Dedicated** for production.
-       - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster, then click **Next**.
-       - Click **Add Current IP Address** to allow connections from your machine, and click **Next**.
-       - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
-       - Click **Create Cluster**.
-
-1. Install YugabyteDB Voyager on your machine as follows:
-
-    1. In your YugabyteDB Aeon cluster page, click **Migrations**, and select **Migrate Database**.
-    1. In **Prepare Voyager**, choose your operating system, run the installation commands on your machine, and verify the installation.
-
   </div>
 </div>
 
