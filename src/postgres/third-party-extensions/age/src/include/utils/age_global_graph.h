@@ -41,6 +41,7 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
                                                    Oid graph_oid);
 GRAPH_global_context *find_GRAPH_global_context(Oid graph_oid);
 bool is_ggctx_invalid(GRAPH_global_context *ggctx);
+void yb_invalidate_GRAPH_global_contexts(void); /* YB: graph cache invalidation */
 /* GRAPH retrieval functions */
 ListGraphId *get_graph_vertices(GRAPH_global_context *ggctx);
 vertex_entry *get_vertex_entry(GRAPH_global_context *ggctx,

@@ -147,8 +147,11 @@ CREATE FUNCTION ag_catalog.load_edges_from_file(graph_name name,
 -- graphid type
 --
 
--- define graphid as a shell type first
+-- YB: Set the hard coded oid.
+SET yb_binary_restore TO true;
+SELECT binary_upgrade_set_next_pg_type_oid(8113);
 CREATE TYPE graphid;
+SET yb_binary_restore TO false;
 
 CREATE FUNCTION ag_catalog.graphid_in(cstring)
     RETURNS graphid
@@ -349,6 +352,17 @@ AS 'MODULE_PATHNAME';
 --   3: compare a test value to a base value plus/minus an offset, and return
 --      true or false according to the comparison result (optional)
 CREATE OPERATOR CLASS graphid_ops DEFAULT FOR TYPE graphid USING btree AS
+  OPERATOR 1 <,
+  OPERATOR 2 <=,
+  OPERATOR 3 =,
+  OPERATOR 4 >=,
+  OPERATOR 5 >,
+  FUNCTION 1 ag_catalog.graphid_btree_cmp (graphid, graphid),
+  FUNCTION 2 ag_catalog.graphid_btree_sort (internal);
+
+-- LSM operator class for YugabyteDB
+-- YugabyteDB uses LSM (Log-Structured Merge) trees instead of B-trees for indexes
+CREATE OPERATOR CLASS graphid_ops DEFAULT FOR TYPE graphid USING lsm AS
   OPERATOR 1 <,
   OPERATOR 2 <=,
   OPERATOR 3 =,

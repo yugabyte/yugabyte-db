@@ -81,3 +81,24 @@ DEFAULT FOR TYPE agtype USING gin AS
   FUNCTION 6 ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
                                                  internal, internal, internal),
 STORAGE text;
+
+-- ybgin operator class for YugabyteDB
+-- YugabyteDB uses ybgin instead of gin for inverted indexes
+CREATE OPERATOR CLASS ag_catalog.ybgin_agtype_ops
+DEFAULT FOR TYPE agtype USING ybgin AS
+  OPERATOR 7 @>(agtype, agtype),
+  OPERATOR 8 <@(agtype, agtype),
+  OPERATOR 9 ?(agtype, agtype),
+  OPERATOR 10 ?|(agtype, agtype),
+  OPERATOR 11 ?&(agtype, agtype),
+  OPERATOR 12 @>>(agtype, agtype),
+  OPERATOR 13 <<@(agtype, agtype),
+  FUNCTION 1 ag_catalog.gin_compare_agtype(text,text),
+  FUNCTION 2 ag_catalog.gin_extract_agtype(agtype, internal),
+  FUNCTION 3 ag_catalog.gin_extract_agtype_query(agtype, internal, int2,
+                                                 internal, internal),
+  FUNCTION 4 ag_catalog.gin_consistent_agtype(internal, int2, agtype, int4,
+                                              internal, internal),
+  FUNCTION 6 ag_catalog.gin_triconsistent_agtype(internal, int2, agtype, int4,
+                                                 internal, internal, internal),
+STORAGE text;
