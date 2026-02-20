@@ -436,4 +436,9 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(opentelemetry_proto
    SHARED_LIB "${OTEL_PROTO_SHARED_LIB}")
 
+  ## libxml2
+  find_package(LibXml2 MODULE REQUIRED)
+  include_directories(SYSTEM ${LIBXML2_INCLUDE_DIR})
+  ADD_THIRDPARTY_LIB(libxml2 SHARED_LIB "${LIBXML2_SHARED_LIB}")
+
 endmacro()
