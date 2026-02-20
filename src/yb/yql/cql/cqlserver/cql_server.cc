@@ -104,7 +104,7 @@ Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
-  cql_service->CompleteInit();
+  RETURN_NOT_OK(cql_service->CompleteInit());
 
   cql_service_ = std::move(cql_service);
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service_));
