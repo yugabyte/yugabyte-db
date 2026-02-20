@@ -254,7 +254,7 @@ The [Amazon S3](https://aws.amazon.com/s3/) integration requires the following:
 
 - [AWS account](https://aws.amazon.com/console/)
 - [S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/GetStartedWithS3.html#creating-bucket)
-- Access Key ID and Secret Access Key of an IAM user with permissions for the S3 bucket, including the `s3:PutObject` permmission. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+- Access Key ID and Secret Access Key of an IAM user with permissions for the S3 bucket, including the `s3:PutObject` permission. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 To create an export configuration, do the following:
 
