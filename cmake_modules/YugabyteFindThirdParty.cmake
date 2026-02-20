@@ -216,7 +216,6 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(abseil
     STATIC_LIB "${ABSEIL_STATIC_LIB}"
     SHARED_LIB "${ABSEIL_SHARED_LIB}")
-  list(APPEND YB_BASE_LIBS abseil)
 
   # ------------------------------------------------------------------------------------------------
   # Deciding whether to use tcmalloc

@@ -620,8 +620,8 @@ class DBHolder {
   std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
-  static const std::string kKeyId;
-  static const std::string kKeyFile;
+  static constexpr const char* kKeyId = "key_id";
+  static constexpr const char* kKeyFile = "universe_key_file";
 
   // Skip some options, as they may not be applicable to a specific test.
   // To add more skip constants, use values 4, 8, 16, etc.

@@ -16,6 +16,12 @@ import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExecutionSummary;
+import api.v2.models.NodeScriptResult;
+import api.v2.models.NodeSelection;
+import api.v2.models.RunScriptRequest;
+import api.v2.models.RunScriptResponse;
+import api.v2.models.ScriptOptions;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
@@ -33,6 +39,8 @@ import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.LocalhostAccessChecker;
+import com.yugabyte.yw.common.NodeScriptRunner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -54,6 +62,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -76,16 +85,20 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.ebean.annotation.Transactional;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import play.mvc.Http.Request;
 
 @Slf4j
@@ -98,8 +111,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private Commissioner commissioner;
   @Inject private YsqlQueryExecutor ysqlQueryExecutor;
+  @Inject private NodeScriptRunner nodeScriptRunner;
+  @Inject private LocalhostAccessChecker localhostChecker;
 
   private static final String RELEASES_PATH = "yb.releases.path";
+
+  /** Default max script file size for audit logging (1 MB) */
+  private static final long DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES = 1024 * 1024;
 
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
@@ -853,5 +871,164 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
+  }
+
+  /**
+   * Runs a script on selected nodes in a universe and returns the results.
+   *
+   * @param request The HTTP request
+   * @param cUUID Customer UUID
+   * @param uniUUID Universe UUID
+   * @param runScriptRequest The request containing script options and node selection
+   * @return RunScriptResponse with execution results from all targeted nodes
+   */
+  public RunScriptResponse runScript(
+      Request request, UUID cUUID, UUID uniUUID, RunScriptRequest runScriptRequest) {
+    localhostChecker.checkLocalhost(request);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Check if the feature is enabled
+    boolean nodeScriptEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled);
+    if (!nodeScriptEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Node script execution API is not enabled for this universe. "
+              + "Please set the runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    // Validate request
+    ScriptOptions scriptOptions = runScriptRequest.getScriptOptions();
+    if (scriptOptions == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "script_options is required");
+    }
+
+    String scriptContent = scriptOptions.getScriptContent();
+    String scriptFile = scriptOptions.getScriptFile();
+
+    if (StringUtils.isBlank(scriptContent) && StringUtils.isBlank(scriptFile)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Either script_content or script_file must be provided");
+    }
+
+    if (StringUtils.isNotBlank(scriptContent) && StringUtils.isNotBlank(scriptFile)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only one of script_content or script_file should be provided");
+    }
+
+    // If script_file is provided, validate it exists and read the content for auditing
+    String scriptFileContents = null;
+    if (StringUtils.isNotBlank(scriptFile)) {
+      File file = new File(scriptFile);
+      if (!file.exists()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Script file not found: %s", scriptFile));
+      }
+      if (!file.canRead()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Script file is not readable: %s", scriptFile));
+      }
+      double fileSizeMB = file.length() / (1024.0 * 1024.0);
+      log.info("Script file {} size: {} MB", scriptFile, String.format("%.2f", fileSizeMB));
+      // Limit file size to avoid memory issues during auditing (default 1MB)
+      long maxFileSizeBytes =
+          scriptOptions.getMaxScriptFileSizeBytes() != null
+              ? scriptOptions.getMaxScriptFileSizeBytes()
+              : DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES;
+      if (file.length() > maxFileSizeBytes) {
+        log.warn(
+            "Script file {} exceeds max size ({} bytes), skipping content capture for auditing",
+            scriptFile,
+            maxFileSizeBytes);
+      } else {
+        try {
+          scriptFileContents = Files.readString(file.toPath());
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, String.format("Failed to read script file: %s", scriptFile));
+        }
+      }
+    }
+
+    // Build script params
+    long timeoutSecs =
+        scriptOptions.getTimeoutSecs() != null ? scriptOptions.getTimeoutSecs() : 60L;
+    String linuxUser = scriptOptions.getLinuxUser();
+    NodeScriptRunner.ScriptParams scriptParams =
+        NodeScriptRunner.ScriptParams.builder()
+            .scriptContent(scriptContent)
+            .scriptFile(scriptFile)
+            .params(scriptOptions.getParams())
+            .timeoutSecs(timeoutSecs)
+            .linuxUser(linuxUser)
+            .build();
+
+    // Build node filter
+    NodeScriptRunner.NodeFilter nodeFilter = null;
+    NodeSelection nodeSelection = runScriptRequest.getNodes();
+    if (nodeSelection != null) {
+      int maxParallelNodes =
+          nodeSelection.getMaxParallelNodes() != null ? nodeSelection.getMaxParallelNodes() : 50;
+      nodeFilter =
+          NodeScriptRunner.NodeFilter.builder()
+              .nodeNames(nodeSelection.getNodeNames())
+              .clusterUuid(nodeSelection.getClusterUuid())
+              .mastersOnly(nodeSelection.getMastersOnly())
+              .tserversOnly(nodeSelection.getTserversOnly())
+              .maxParallelNodes(maxParallelNodes)
+              .build();
+    }
+
+    // Execute via service
+    NodeScriptRunner.ExecutionResult result =
+        nodeScriptRunner.runScript(universe, scriptParams, nodeFilter);
+
+    if (result.getTotalNodes() == 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No nodes found matching the selection criteria");
+    }
+
+    // Map to API response
+    Map<String, NodeScriptResult> nodeResults = new LinkedHashMap<>();
+    for (Map.Entry<String, NodeScriptRunner.NodeResult> entry :
+        result.getNodeResults().entrySet()) {
+      NodeScriptRunner.NodeResult nr = entry.getValue();
+      nodeResults.put(
+          entry.getKey(),
+          new NodeScriptResult()
+              .nodeName(nr.getNodeName())
+              .nodeAddress(nr.getNodeAddress())
+              .exitCode(nr.getExitCode())
+              .stdout(nr.getStdout())
+              .executionTimeMs(nr.getExecutionTimeMs())
+              .success(nr.isSuccess())
+              .errorMessage(nr.getErrorMessage()));
+    }
+
+    ExecutionSummary summary =
+        new ExecutionSummary()
+            .totalNodes(result.getTotalNodes())
+            .successfulNodes(result.getSuccessfulNodes())
+            .failedNodes(result.getFailedNodes())
+            .totalExecutionTimeMs(result.getTotalExecutionTimeMs())
+            .allSucceeded(result.isAllSucceeded());
+
+    // Create audit entry with the script details including file contents if applicable
+    JsonNode additionalDetails = null;
+    if (scriptFileContents != null) {
+      additionalDetails = Json.newObject().put("script_file_contents", scriptFileContents);
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            uniUUID.toString(),
+            Audit.ActionType.RunScript,
+            Json.toJson(runScriptRequest),
+            null /* taskUUID - this is a synchronous operation */,
+            additionalDetails);
+
+    return new RunScriptResponse().summary(summary).results(nodeResults);
   }
 }

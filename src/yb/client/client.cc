@@ -1638,7 +1638,8 @@ Status YBClient::GetCDCStream(
     std::optional<std::string>* replication_slot_name,
     TableIds* unqualified_table_ids,
     std::optional<ReplicationSlotLsnType>* lsn_type,
-    std::optional<ReplicationSlotOrderingMode>* ordering_mode) {
+    std::optional<ReplicationSlotOrderingMode>* ordering_mode,
+    std::optional<bool>* detect_publication_changes_implicitly) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1706,6 +1707,11 @@ Status YBClient::GetCDCStream(
       resp.stream().cdc_stream_info_options().has_cdcsdk_ysql_replication_slot_ordering_mode()) {
     *ordering_mode =
         resp.stream().cdc_stream_info_options().cdcsdk_ysql_replication_slot_ordering_mode();
+  }
+
+  if (detect_publication_changes_implicitly &&
+      resp.stream().has_detect_publication_changes_implicitly()) {
+    *detect_publication_changes_implicitly = resp.stream().detect_publication_changes_implicitly();
   }
 
   return Status::OK();

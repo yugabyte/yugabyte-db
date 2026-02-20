@@ -3788,8 +3788,8 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	int			num_standbys;
 	int			i;
 
-	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t		yb_numreplicationslots = 0;
+	YbcSlotEntryDescriptor *yb_slot_entries = NULL;
+	size_t		yb_num_slot_entries = 0;
 
 	InitMaterializedSRF(fcinfo, 0);
 
@@ -3800,7 +3800,7 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
 
 	if (IsYugaByteEnabled())
-		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
+		YBCListSlotEntries(&yb_slot_entries, &yb_num_slot_entries);
 
 	for (i = 0; i < max_wal_senders; i++)
 	{
@@ -3920,9 +3920,9 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 				int64_t		lag_metric = -1;
 				int			slotno;
 
-				for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
+				for (slotno = 0; slotno < yb_num_slot_entries; slotno++)
 				{
-					YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
+					YbcSlotEntryDescriptor *slot = &yb_slot_entries[slotno];
 
 					if (slot->active_pid != pid)
 						continue;

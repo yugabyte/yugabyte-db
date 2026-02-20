@@ -275,6 +275,9 @@ public class KubernetesOperator {
                   PitrConfigReconciler pitrConfigReconciler =
                       reconcilerFactory.getPitrConfigReconciler(client);
 
+                  DrConfigReconciler drConfigReconciler =
+                      reconcilerFactory.getDrConfigReconciler(client);
+
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
                           ybSoftwareReleaseIndexInformer,
@@ -316,15 +319,6 @@ public class KubernetesOperator {
                           ybStorageConfigIndexInformer,
                           operatorUtils);
 
-                  DrConfigReconciler drConfigReconciler =
-                      new DrConfigReconciler(
-                          ybDrConfigIndexInformer,
-                          drConfigClient,
-                          drConfigHelper,
-                          namespace,
-                          ybStorageConfigIndexInformer,
-                          operatorUtils);
-
                   RestoreJobReconciler restoreJobReconciler =
                       new RestoreJobReconciler(
                           ybRestoreJobIndexInformer,
@@ -343,7 +337,6 @@ public class KubernetesOperator {
                   scReconciler.run();
                   ybCertificateReconciler.run();
                   backupReconciler.run();
-                  drConfigReconciler.run();
                   restoreJobReconciler.run();
                   supportBundleReconciler.run();
 
@@ -353,6 +346,7 @@ public class KubernetesOperator {
                       new Thread(() -> scheduledBackupReconciler.run());
                   Thread ybProviderReconcilerThread = new Thread(() -> ybProviderReconciler.run());
                   Thread pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
+                  Thread drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
                   if (confGetter.getGlobalConf(
                       GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
                     Thread.UncaughtExceptionHandler exceptionHandler = getExceptionHandler();
@@ -360,20 +354,24 @@ public class KubernetesOperator {
                     scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     ybProviderReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                   }
                   ybUniverseReconcilerThread.start();
                   scheduledBackupReconcilerThread.start();
                   ybProviderReconcilerThread.start();
                   pitrConfigReconcilerThread.start();
+                  drConfigReconcilerThread.start();
 
                   ybUniverseReconcilerThread.join();
                   scheduledBackupReconcilerThread.join();
                   ybProviderReconcilerThread.join();
                   pitrConfigReconcilerThread.join();
+                  drConfigReconcilerThread.join();
 
                   LOG.info(
                       "Finished running ybUniverseController, scheduledBackupReconciler,"
-                          + " ybProviderReconcilerThread, pitrConfigReconcilerThread");
+                          + " ybProviderReconcilerThread, pitrConfigReconcilerThread,"
+                          + " drConfigReconcilerThread");
                 } catch (KubernetesClientException | ExecutionException exception) {
                   LOG.error("Kubernetes Client Exception : ", exception);
                   throw new RuntimeException(

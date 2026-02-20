@@ -12,26 +12,43 @@
 //
 package org.yb.pgsql;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.junit.runners.Parameterized;
+import org.yb.util.YBParameterizedTestRunnerNonTsanOnly;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBParameterizedTestRunnerNonTsanOnly.class)
 public class TestPgRegressPgTable extends BasePgRegressTestPorted {
+  private final boolean concurrentDDLEnabled;
+
+  public TestPgRegressPgTable(boolean concurrentDDLEnabled) {
+    this.concurrentDDLEnabled = concurrentDDLEnabled;
+  }
+
+  @Parameterized.Parameters(name = "concurrentDDLEnabled={0}")
+  public static List<Boolean> parameters() {
+    return Arrays.asList(false, true);
+  }
+
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }
 
+  @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     // (Auto-Analyze #28393) error output is flaky.
     flagMap.put("ysql_enable_auto_analyze", "false");
+    appendToYsqlPgConf(
+        flagMap, "yb_fallback_to_legacy_catalog_read_time=" + !concurrentDDLEnabled);
     return flagMap;
   }
 

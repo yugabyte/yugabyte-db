@@ -143,6 +143,11 @@ class StreamMetadata {
     DCHECK(loaded_);
     return replication_slot_ordering_mode_;
   }
+  std::optional<bool> GetDetectPublicationChangesImplicitly() const {
+    std::lock_guard l_table(mutex_);
+    DCHECK(loaded_);
+    return detect_publication_changes_implicitly_;
+  }
 
   std::optional<uint32_t> GetDbOidToGetSequencesFor() const {
     std::lock_guard l_table(mutex_);
@@ -180,6 +185,7 @@ class StreamMetadata {
   std::optional<ReplicationSlotLsnType> replication_slot_lsn_type_ GUARDED_BY(mutex_);
   std::optional<ReplicationSlotOrderingMode> replication_slot_ordering_mode_ GUARDED_BY(mutex_);
   std::optional<std::string> replication_slot_name_ GUARDED_BY(mutex_);
+  std::optional<bool> detect_publication_changes_implicitly_ GUARDED_BY(mutex_);
   // xCluster: if we are a sequences_data stream, then this holds the OID of the DB we are supposed
   // to be getting sequences for.
   std::optional<uint32_t> db_oid_to_get_sequences_for_ GUARDED_BY(mutex_);

@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "es2022",
     "lib": ["dom", "dom.iterable", "es2022"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "vitest/globals", "testing-library__jest-dom"],
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,

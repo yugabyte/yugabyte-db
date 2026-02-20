@@ -926,6 +926,161 @@ TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfillsWithPartitions) {
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 }
 
+TEST_F(XClusterDDLReplicationTest, DropInvalidIndexDoesNotHaltReplication) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kBaseTableName = "test_invalid_idx";
+  const std::string kIndexName = "idx_invalid";
+  const std::string kColumn2Name = "value";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int);", kBaseTableName, kKeyColumnName,
+      kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Insert rows with duplicate values to cause unique index creation to fail.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 10), (2, 10), (3, 20);", kBaseTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kBaseTableName}));
+
+  // Create unique index fails due to duplicate key violation.
+  auto create_result = producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1($2)", kIndexName, kBaseTableName, kColumn2Name);
+  ASSERT_NOK(create_result);
+  ASSERT_STR_CONTAINS(create_result.ToString(), "duplicate key");
+
+  // Verify index is invalid on producer.
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)))
+      << "Index should be INVALID";
+
+  // Verify invalid index was not replicated to consumer using consumer_conn_ directly.
+  auto consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_FALSE(consumer_index_exists) << "INVALID index should not exist on consumer";
+
+  // Drop the invalid index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // Verify replication continues by writing more rows to the original table.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (4, 30), (5, 40);", kBaseTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kBaseTableName}));
+}
+
+
+TEST_F(XClusterDDLReplicationTest, DropPartitionedIndexOnOnlyReplicates) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTableName = "test_partitioned";
+  const std::string kPartitionName = "test_partitioned_p1";
+  const std::string kIndexName = "idx_partitioned_only";
+  const std::string kColumn2Name = "value";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int) PARTITION BY RANGE ($1);",
+      kParentTableName, kKeyColumnName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (1) TO (100);",
+      kPartitionName, kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // ON ONLY creates an index marked invalid until attached to a partition index.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON ONLY $1($2)", kIndexName, kParentTableName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify index is invalid on producer.
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)))
+      << "Index should be INVALID on producer";
+
+  // Verify the invalid index was replicated to consumer.
+  auto consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_TRUE(consumer_index_exists) << "Partitioned index should exist on consumer";
+
+  // Create a child index and attach it to verify the ATTACH PARTITION path.
+  const std::string kPartIdxName = "idx_partition_child";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2)", kPartIdxName, kPartitionName, kColumn2Name));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ATTACH PARTITION $1", kIndexName, kPartIdxName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify parent index is now valid on both clusters.
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)));
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kIndexName)))
+      << "Attached index did not become valid on consumer";
+
+  // Cleanup: drop the parent index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify the drop was replicated.
+  consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_FALSE(consumer_index_exists) << "Dropped index should not exist on consumer";
+
+  // Verify replication continues.
+  const std::string kSecondTableName = "verify_replication_works2";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY);", kSecondTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1), (2), (3);", kSecondTableName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kSecondTableName}));
+}
+
+TEST_F(XClusterDDLReplicationTest, AlterPhantomIndexLifecycleDoesNotHaltReplication) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kTableName = "schema_test_table";
+  const std::string kIdxName = "idx_phantom_schema";
+  const std::string kIdxNewName = "idx_phantom_renamed";
+  const std::string kSchemaName = "new_index_schema";
+
+  // Setup table with duplicate data and a new schema.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int);", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10), (2, 10);", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0;", kSchemaName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Create unique index fails on producer and is not created on consumer.
+  ASSERT_NOK_STR_CONTAINS(
+      producer_conn_->ExecuteFormat(
+          "CREATE UNIQUE INDEX $0 ON $1((val + 0));", kIdxName, kTableName),
+      "duplicate key");
+
+  // ALTER INDEX attribute change on the phantom index.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ALTER COLUMN 1 SET STATISTICS 100;", kIdxName));
+
+  // ALTER INDEX tablespace change on the phantom index.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLESPACE dummy_ts LOCATION '/tmp/dummy_path';"));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER INDEX $0 SET TABLESPACE dummy_ts;", kIdxName));
+
+  // Rename the phantom index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER INDEX $0 RENAME TO $1;", kIdxName, kIdxNewName));
+
+  // Move the parent table to a new schema (indexes follow implicitly).
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 SET SCHEMA $1;", kTableName, kSchemaName));
+
+  // Drop the phantom index (renamed, now in the new schema).
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0.$1;", kSchemaName, kIdxNewName));
+
+  // Verify replication continues by writing more rows to the original table.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0.$1 VALUES (3, 30), (4, 40);", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+}
+
 TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   // Test that DDLs are only replicated exactly once.
   const int kNumTablets = 3;

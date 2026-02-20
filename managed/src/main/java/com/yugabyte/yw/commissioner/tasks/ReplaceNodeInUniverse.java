@@ -5,12 +5,14 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Collections;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,11 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
         log.error(msg);
         throw new RuntimeException(msg);
       }
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(
+              UpgradeTaskBase.MastersAndTservers.from(currentNode, currentNode.getAllProcesses())),
+          null,
+          false);
 
       // Generate new nodeDetails from existing node.
       NodeDetails newNode = PlacementInfoUtil.createToBeAddedNode(currentNode);

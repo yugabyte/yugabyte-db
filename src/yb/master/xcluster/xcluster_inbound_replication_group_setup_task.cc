@@ -209,6 +209,12 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateInputArguments() {
         !IsColocatedDbParentTableId(source_table_id), NotSupported,
         "Pre GA colocated databases are not supported with xCluster replication: $0",
         source_table_id);
+    SCHECK_FORMAT(
+        is_db_scoped_ ||
+        xcluster::StripSequencesDataAliasIfPresent(source_table_id) != kPgSequencesDataTableId,
+        NotSupported,
+        "Replication of the sequences_data table is not supported: $0",
+        source_table_id);
     SCHECK(source_table_ids.insert(source_table_id).second, InvalidArgument,
            "Duplicate table source table id: $0", data_.source_table_ids);
   }

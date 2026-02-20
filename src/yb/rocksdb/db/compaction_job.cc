@@ -664,6 +664,11 @@ void CompactionJob::ProcessKeyValueCompaction(
       input->SeekToFirst();
     }
 
+    // Explicitly cleanup resource from previous iteration.
+    if (sub_compact->context) {
+      sub_compact->context->CompactionFinished();
+    }
+
     if (db_options_.compaction_context_factory) {
       auto context = CompactionContextOptions{
           .level0_inputs = *compact_->compaction->inputs(0),
@@ -810,6 +815,11 @@ void CompactionJob::ProcessKeyValueCompaction(
     if (prev_perf_level != PerfLevel::kEnableTime) {
       SetPerfLevel(prev_perf_level);
     }
+  }
+
+  if (sub_compact->context) {
+    // Must be triggered to maybe free the resource, despite the compaction result.
+    sub_compact->context->CompactionFinished();
   }
 
   sub_compact->c_iter = nullptr;

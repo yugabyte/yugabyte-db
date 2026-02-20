@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.ResourceTracker;
 import com.yugabyte.yw.common.operator.YBUniverseReconciler;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
@@ -34,7 +35,9 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -56,6 +59,7 @@ import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -781,12 +785,19 @@ public class OperatorUtils {
     log.info("Removed release {}", release.getMetadata().getName());
   }
 
-  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+  public String getAndParseSecretForKey(
+      String name,
+      @Nullable String namespace,
+      String key,
+      ResourceTracker resourceTracker,
+      KubernetesResourceDetails owner) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
+    resourceTracker.trackDependency(owner, secret);
+    log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
 
@@ -863,7 +874,7 @@ public class OperatorUtils {
             if (value != specParams.getDiskWriteBytesPerSec()) return true;
             break;
           default:
-            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            // This should only happen if a new throttle parameter is introduced and not added here.
             throw new RuntimeException("Unknown throttle parameter: " + key);
         }
       }
@@ -1424,20 +1435,18 @@ public class OperatorUtils {
     return createForm;
   }
 
-  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(DrConfig drConfig)
+      throws Exception {
     JsonNode crParams = objectMapper.valueToTree(drConfig.getSpec());
     DrConfigSetDatabasesForm drConfigSetDatabasesForm =
-        getDrConfigSetDatabasesFormFromCr(
-            crParams, drConfig.getMetadata().getNamespace(), scInformer);
+        getDrConfigSetDatabasesFormFromCr(crParams, drConfig.getMetadata().getNamespace());
     drConfigSetDatabasesForm.setKubernetesResourceDetails(
         KubernetesResourceDetails.fromResource(drConfig));
     return drConfigSetDatabasesForm;
   }
 
   @VisibleForTesting
-  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      JsonNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(JsonNode crParams, String namespace)
       throws Exception {
     Customer cust = getOperatorCustomer();
     String crSourceUniverseName = ((ObjectNode) crParams).get("sourceUniverse").asText();
@@ -1469,6 +1478,60 @@ public class OperatorUtils {
     ((ObjectNode) crParams).put("dbs", dbsArray);
 
     return validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigSetDatabasesForm.class);
+  }
+
+  public DrConfigFailoverForm getDrConfigFailoverFormFromCr(DrConfig drConfig) throws Exception {
+    DrConfigFailoverForm failoverForm =
+        getDrConfigFailoverFormFromCr(drConfig, drConfig.getMetadata().getNamespace());
+    failoverForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return failoverForm;
+  }
+
+  @VisibleForTesting
+  DrConfigFailoverForm getDrConfigFailoverFormFromCr(DrConfig drConfig, String namespace)
+      throws Exception {
+
+    // Get the DR config model to find the current primary and replica universes
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    DrConfigFailoverForm failoverForm = new DrConfigFailoverForm();
+    // drReplicaUniverseUuid is the current target (will become new primary)
+    failoverForm.drReplicaUniverseUuid = xClusterConfig.getTargetUniverseUUID();
+    // primaryUniverseUuid is the current source (old primary)
+    failoverForm.primaryUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    // namespaceIdSafetimeEpochUsMap is optional, leaving it null for unplanned failover
+
+    return failoverForm;
+  }
+
+  public DrConfigSwitchoverForm getDrConfigSwitchoverFormFromCr(DrConfig drConfig)
+      throws Exception {
+    DrConfigSwitchoverForm switchoverForm =
+        getDrConfigSwitchoverFormFromCr(drConfig, drConfig.getMetadata().getNamespace());
+    switchoverForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return switchoverForm;
+  }
+
+  @VisibleForTesting
+  DrConfigSwitchoverForm getDrConfigSwitchoverFormFromCr(DrConfig drConfig, String namespace)
+      throws Exception {
+
+    // Get the DR config model to find the current primary and replica universes
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    DrConfigSwitchoverForm switchoverForm = new DrConfigSwitchoverForm();
+    // primaryUniverseUuid is the current source (will become new replica after switchover)
+    switchoverForm.primaryUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    // drReplicaUniverseUuid is the current target (will become new primary after switchover)
+    switchoverForm.drReplicaUniverseUuid = xClusterConfig.getTargetUniverseUUID();
+
+    return switchoverForm;
   }
 
   /**
@@ -1980,5 +2043,62 @@ public class OperatorUtils {
         KubernetesResourceDetails.fromResource(pitrConfig));
 
     return updatePitrConfigParams;
+  }
+
+  public boolean requiresDrConfigDatabaseUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {
+    try {
+      if (xClusterConfig == null) {
+        return false;
+      }
+
+      // Get database names from CR spec
+      List<String> specDatabases = drConfig.getSpec().getDatabases();
+      if (specDatabases == null) {
+        specDatabases = Collections.emptyList();
+      }
+
+      // Get current database IDs from xCluster config
+      java.util.Set<String> currentDbIds = xClusterConfig.getDbIds();
+      if (currentDbIds == null) {
+        currentDbIds = Collections.emptySet();
+      }
+
+      // Quick size check first
+      if (specDatabases.size() != currentDbIds.size()) {
+        return true;
+      }
+
+      // If both are empty, no update needed
+      if (specDatabases.isEmpty() && currentDbIds.isEmpty()) {
+        return false;
+      }
+
+      // Resolve spec database names to IDs
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      TableType tableType = TableType.PGSQL_TABLE_TYPE;
+      YBClient client = ybService.getUniverseClient(sourceUniverse);
+      Map<String, String> namespaceNameToIdMap =
+          UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+
+      java.util.Set<String> specDbIds = new java.util.HashSet<>();
+      for (String dbName : specDatabases) {
+        String namespaceId = namespaceNameToIdMap.get(dbName.trim());
+        if (namespaceId != null) {
+          specDbIds.add(namespaceId);
+        } else {
+          // Database name not found - this might be a new database or typo
+          // Treat as requiring update so the actual task can handle the error
+          log.warn("Database '{}' not found in source universe, will attempt update", dbName);
+          return true;
+        }
+      }
+
+      // Compare the resolved IDs with current IDs
+      return !specDbIds.equals(currentDbIds);
+    } catch (Exception e) {
+      log.warn("Error checking DR config database update requirement: {}", e.getMessage());
+      // On error, return false to avoid unnecessary updates
+      return false;
+    }
   }
 }

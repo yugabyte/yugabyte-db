@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
 #include "yb/common/pg_types.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/master/async_rpc_tasks.h"
@@ -289,7 +290,15 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
         target_version_(target_version),
         requestor_ts_uuid_(requestor_ts_uuid),
         requestor_pg_backend_pid_(requestor_pg_backend_pid),
-        last_access_(CoarseMonoClock::Now()) {}
+        last_access_(CoarseMonoClock::Now()),
+        wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
+    if (wait_state_) {
+      if (const auto& current_state = ash::WaitStateInfo::CurrentWaitState()) {
+        wait_state_->UpdateMetadata(current_state->metadata());
+      }
+      wait_state_->UpdateAuxInfo({.method = "WaitForYsqlBackendsCatalogVersion"});
+    }
+  }
 
   std::shared_ptr<BackendsCatalogVersionJob> shared_from_this() {
     return std::static_pointer_cast<BackendsCatalogVersionJob>(
@@ -343,6 +352,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   const std::vector<Status>& failure_statuses() const {
     return failure_statuses_;
   }
+  const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
 
   std::string LogPrefix() const;
 
@@ -373,6 +383,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   // In case of failures, each failure status.  These can be communicated when responding to the
   // client.
   std::vector<Status> failure_statuses_;
+  // ASH wait state for propagating metadata to tserver RPCs.
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 class BackendsCatalogVersionTS : public RetryingTSRpcTask {

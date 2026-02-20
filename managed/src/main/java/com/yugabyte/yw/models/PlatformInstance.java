@@ -10,13 +10,17 @@
 
 package com.yugabyte.yw.models;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonSetter;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.HaConfigStates.InstanceState;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
@@ -25,17 +29,22 @@ import io.ebean.Model;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.persistence.Transient;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.EnumUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -71,15 +80,55 @@ public class PlatformInstance extends Model {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date lastBackup;
 
-  @Constraints.Required()
-  @Column(unique = true)
-  private Boolean isLeader;
-
   @Constraints.Required
-  @Column(unique = true)
-  private Boolean isLocal;
+  @Enumerated(EnumType.STRING)
+  private State state;
+
+  @JsonProperty("is_local")
+  @Constraints.Required
+  private boolean isLocal;
 
   @Transient private String ybaVersion = null;
+
+  /** State and the transitions. */
+  public enum State {
+    LEADER {
+      @Override
+      public Set<State> nextStates() {
+        return toSet(LEADER, STAND_BY);
+      }
+    },
+    STAND_BY {
+      @Override
+      public Set<State> nextStates() {
+        return toSet(STAND_BY, LEADER);
+      }
+    };
+
+    public abstract Set<State> nextStates();
+
+    public static State parse(String strType) {
+      State state = EnumUtils.getEnumIgnoreCase(State.class, strType);
+      if (state == null) {
+        throw new IllegalArgumentException("Unknown state: " + state);
+      }
+      return state;
+    }
+
+    private static Set<State> toSet(State... states) {
+      return states == null
+          ? Collections.emptySet()
+          : ImmutableSet.<State>builder().add(states).build();
+    }
+
+    public void validateTransition(State nextState) {
+      if (!this.nextStates().contains(nextState)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Invalid state transition from %s to %s", name(), nextState.name()));
+      }
+    }
+  }
 
   @JsonProperty("config_uuid")
   public UUID getConfigUuid() {
@@ -117,43 +166,27 @@ public class PlatformInstance extends Model {
     return false;
   }
 
+  // Backward compatibility.
   @JsonGetter("is_leader")
-  public boolean getIsLeader() {
-    return this.isLeader != null;
+  public boolean isLeader() {
+    return state == State.LEADER;
   }
 
-  @JsonGetter("is_local")
-  public Boolean getIsLocal() {
-    return this.isLocal != null;
-  }
-
-  @JsonSetter("is_leader")
-  public void setIsLeader(boolean isLeader) {
-    this.isLeader = isLeader ? true : null;
-  }
-
-  @JsonSetter("is_local")
-  public void setIsLocal(boolean isLocal) {
-    this.isLocal = isLocal ? true : null;
-  }
-
-  public void updateIsLocal(Boolean isLocal) {
-    this.setIsLocal(isLocal);
-    this.update();
+  public void updateLocal(boolean isLocal) {
+    setLocal(isLocal);
+    update();
   }
 
   public void promote() {
-    if (!this.getIsLeader()) {
-      this.setIsLeader(true);
-      this.update();
-    }
+    getState().validateTransition(State.LEADER);
+    setState(State.LEADER);
+    update();
   }
 
   public void demote() {
-    if (this.getIsLeader()) {
-      this.setIsLeader(false);
-      this.update();
-    }
+    getState().validateTransition(State.STAND_BY);
+    setState(State.STAND_BY);
+    update();
   }
 
   @JsonGetter("instance_state")
@@ -193,18 +226,17 @@ public class PlatformInstance extends Model {
     model.uuid = UUID.randomUUID();
     model.config = config;
     model.address = address;
-    model.setIsLeader(isLeader);
-    model.setIsLocal(isLocal);
+    model.setState(isLeader ? State.LEADER : State.STAND_BY);
+    model.setLocal(isLocal);
     model.save();
-
     return model;
   }
 
   public static void update(
       PlatformInstance instance, String address, boolean isLeader, boolean isLocal) {
     instance.setAddress(address);
-    instance.setIsLeader(isLeader);
-    instance.setIsLocal(isLocal);
+    instance.setState(isLeader ? State.LEADER : State.STAND_BY);
+    instance.setLocal(isLocal);
     instance.update();
   }
 

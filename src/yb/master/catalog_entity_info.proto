@@ -661,6 +661,10 @@ message SysCDCStreamEntryPB {
       14 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
 
   optional bool allow_tables_without_primary_key = 15 [default = false];
+
+  // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
+  // catalog tablet for detecting changes to publications.
+  optional bool detect_publication_changes_implicitly = 16 [default = false];
 }
 
 

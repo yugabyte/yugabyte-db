@@ -5,7 +5,10 @@ import {
   TimeAggregation
 } from '../../components/metrics/dtos';
 import { MetricName } from '../../components/xcluster/constants';
-import { AuditLogConfig } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
+import {
+  AuditLogConfig,
+  QueryLogConfig
+} from '../features/universe/universe-tabs/db-audit-logs/utils/types';
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
@@ -150,6 +153,7 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
   imageBundleUUID: string;
   auditLogConfig?: AuditLogConfig;
+  queryLogConfig?: QueryLogConfig;
   metricsExportConfig?: {
     scrapeIntervalSeconds: number;
     scrapeTimeoutSeconds: number;

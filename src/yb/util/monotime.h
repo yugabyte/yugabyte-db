@@ -116,7 +116,7 @@ class MonoDelta {
   MonoDelta operator-() const { return MonoDelta(-nano_delta_); }
 
  private:
-  typedef int64_t NanoDeltaType;
+  using NanoDeltaType = int64_t;
   static const NanoDeltaType kUninitialized;
 
   FRIEND_TEST(TestMonoTime, TestDeltaConversions);
@@ -207,16 +207,16 @@ class MonoTime {
   }
 
   // Return MonoTime equal to farthest possible time into the future.
-  static MonoTime Max();
+  static constexpr MonoTime Max();
 
   // Return MonoTime equal to farthest possible time into the past.
-  static MonoTime Min();
+  static constexpr MonoTime Min();
 
   // Return the earliest (minimum) of the two monotimes.
   static const MonoTime& Earliest(const MonoTime& a, const MonoTime& b);
 
-  MonoTime() noexcept {}
-  MonoTime(TimePoint value) : value_(value) {} // NOLINT
+  constexpr MonoTime() noexcept {}
+  constexpr MonoTime(TimePoint value) : value_(value) {} // NOLINT
 
   bool Initialized() const { return value_ != TimePoint(); }
 
@@ -258,6 +258,18 @@ class MonoTime {
 
   TimePoint value_;
 };
+
+constexpr MonoTime MonoTime::Min() {
+  return MonoTime(std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(1)));
+}
+
+constexpr MonoTime MonoTime::Max() {
+  return MonoTime(std::chrono::steady_clock::time_point::max());
+}
+
+inline constexpr MonoTime MonoTime::kMin = MonoTime::Min();
+inline constexpr MonoTime MonoTime::kMax = MonoTime::Max();
+inline constexpr MonoTime MonoTime::kUninitialized = MonoTime();
 
 inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
   lhs.AddDelta(rhs);
@@ -324,12 +336,12 @@ void SleepUntil(const MonoTime& deadline);
 // any use cases that just need a locally monotonic clock.
 class CoarseMonoClock {
  public:
-  typedef std::chrono::nanoseconds duration;
-  typedef duration Duration;
-  typedef std::chrono::time_point<CoarseMonoClock> time_point;
-  typedef time_point TimePoint;
-  typedef time_point::period period;
-  typedef time_point::rep rep;
+  using duration = std::chrono::nanoseconds;
+  using Duration = duration;
+  using time_point = std::chrono::time_point<CoarseMonoClock>;
+  using TimePoint = time_point;
+  using period = time_point::period;
+  using rep = time_point::rep;
 
   static constexpr bool is_steady = true;
 
@@ -345,8 +357,8 @@ typename Clock::duration ClockResolution() {
 template <>
 CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>();
 
-typedef CoarseMonoClock::TimePoint CoarseTimePoint;
-typedef CoarseMonoClock::Duration CoarseDuration;
+using CoarseTimePoint = CoarseMonoClock::TimePoint;
+using CoarseDuration = CoarseMonoClock::Duration;
 
 template <class Rep, class Period>
 int64_t ToMilliseconds(const std::chrono::duration<Rep, Period>& duration) {

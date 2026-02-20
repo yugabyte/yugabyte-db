@@ -771,7 +771,9 @@ MonoTime BackendsCatalogVersionTS::ComputeDeadline() const {
 
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
+  ash::WaitStateInfoPtr wait_state;
   if (auto job = job_.lock()) {
+    wait_state = job->wait_state();
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
     if (job->requestor_ts_uuid() == permanent_uuid()) {
@@ -782,6 +784,7 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
     AbortTask(STATUS(Aborted, "job was destroyed"));
     return false;
   }
+  ADOPT_WAIT_STATE(wait_state);
 
   ts_admin_proxy_->WaitForYsqlBackendsCatalogVersionAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()

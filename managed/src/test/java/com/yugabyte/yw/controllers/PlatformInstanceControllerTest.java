@@ -52,8 +52,10 @@ import play.libs.Json;
 import play.mvc.Result;
 
 public class PlatformInstanceControllerTest extends FakeDBApplication {
-  Customer customer;
-  Users user;
+  private Customer customer;
+  private Users user;
+  private PlatformInstanceClient mockPlatformInstanceClient;
+
   private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
       mock(PlatformInstanceClientFactory.class);
 
@@ -69,6 +71,9 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void setup() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
+    mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
+    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
+        .thenReturn(mockPlatformInstanceClient);
   }
 
   private String createClusterKey() {
@@ -161,9 +166,6 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreatePlatformInstanceWithLocalLeader() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
-    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
-        .thenReturn(mockPlatformInstanceClient);
     when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
@@ -175,9 +177,6 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
   public void testCreateRemotePlatformInstanceNoConnection() {
     JsonNode haConfigJson = createHAConfig();
     UUID configUUID = UUID.fromString(haConfigJson.get("uuid").asText());
-    PlatformInstanceClient mockPlatformInstanceClient = mock(PlatformInstanceClient.class);
-    when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
-        .thenReturn(mockPlatformInstanceClient);
     when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
     Result createResult = createPlatformInstance(configUUID, "http://abc.com/", true, true);
     assertOk(createResult);
@@ -404,8 +403,8 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
         Json.fromJson(Json.toJson(config), HighAvailabilityConfig.class);
     // Change isLocal for the remote node.
     remoteHAConfig.getInstances().stream()
-        .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
-        .forEach(i -> i.updateIsLocal(!i.getIsLocal()));
+        .sorted(Comparator.comparing(PlatformInstance::isLocal).reversed())
+        .forEach(i -> i.updateLocal(!i.isLocal()));
     // Save the local HA config before DB record is replaced in backup-restore during promotion.
     platformReplicationManager.saveLocalHighAvailabilityConfig(remoteHAConfig);
 

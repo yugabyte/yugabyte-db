@@ -1183,6 +1183,10 @@ Result<tserver::PgListClonesResponsePB> PgApiImpl::GetDatabaseClones() {
   return pg_client_.ListDatabaseClones();
 }
 
+Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid db_oid) {
+    return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
+}
+
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
   return table_desc->GetColumnInfo(attr_number);
 }
@@ -1530,8 +1534,9 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
 }
 
 Status PgApiImpl::NewInsert(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement **handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement **handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
     VERIFY_RESULT(PgInsert::Make(
@@ -1560,8 +1565,9 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting)),
@@ -1575,8 +1581,9 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting)),
@@ -1917,7 +1924,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         Format("Failed to find suitable shared memory index for db $0: $1$2",
                *db_oid, status.ToString(),
                status.IsTimedOut() ? ", there may be too many databases or "
-               "the database might have been dropped" : ""));
+               "the database may have been dropped" : ""));
 
     CHECK(catalog_version_db_index_);
   }
@@ -2082,6 +2089,10 @@ Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t 
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
   return pg_txn_manager_->SetDeferrable(deferrable);
+}
+
+void PgApiImpl::SetClampUncertaintyWindow(bool clamp) {
+  pg_txn_manager_->SetClampUncertaintyWindow(clamp);
 }
 
 Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
@@ -2403,6 +2414,10 @@ Status PgApiImpl::NewCreateReplicationSlot(
 Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicationSlot(
     PgStatement* handle) {
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
+}
+
+Result<tserver::PgListSlotEntriesResponsePB> PgApiImpl::ListSlotEntries() {
+  return pg_client_.ListSlotEntries();
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {

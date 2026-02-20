@@ -2053,7 +2053,8 @@
             "CloneNamespace",
             "UpdateAdditionalServicesState",
             "KubernetesToggleImmutableYbc",
-            "OperatorImportUniverse"
+            "OperatorImportUniverse",
+            "RunScript"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -14699,7 +14700,8 @@
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
             "XCLUSTER",
-            "DEBUG"
+            "DEBUG",
+            "TROUBLESHOOT"
           ],
           "type" : "string"
         },
@@ -14742,7 +14744,8 @@
             "UPDATE_PROFILE",
             "SUPER_ADMIN_ACTIONS",
             "XCLUSTER",
-            "DEBUG"
+            "DEBUG",
+            "TROUBLESHOOT"
           ],
           "type" : "string"
         },
@@ -15065,6 +15068,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "state" : {
+          "enum" : [
+            "LEADER",
+            "STAND_BY"
+          ],
+          "type" : "string"
+        },
         "uuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -15077,7 +15087,7 @@
         "address",
         "instance_state",
         "is_leader",
-        "is_local",
+        "state",
         "uuid",
         "ybaVersion"
       ],
@@ -35781,7 +35791,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,
@@ -36454,7 +36464,7 @@
             "type" : "string"
           },
           {
-            "default" : false,
+            "default" : true,
             "in" : "query",
             "name" : "validate",
             "required" : false,

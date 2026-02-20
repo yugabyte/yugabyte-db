@@ -134,7 +134,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_consistent_replication_from_hash_
     "Enable consumption of consistent changes via replication slots from "
     "a hash range of a table.");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, false,
+DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication, true,
     "When set to true, modifications to publication will be reflected implicitly. "
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");

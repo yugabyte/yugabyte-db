@@ -231,6 +231,7 @@ YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata
 YbcAshSample
+YbcAutoAnalyzeInfo
 YbcBindColumn
 YbcCatalogMessageList
 YbcCatalogMessageLists
@@ -332,6 +333,7 @@ YbcSamplingAlgorithmEnum
 YbcServerDescriptor
 YbcSliceSet
 YbcSliceVector
+YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
 YbcSwitchMemoryContextFn

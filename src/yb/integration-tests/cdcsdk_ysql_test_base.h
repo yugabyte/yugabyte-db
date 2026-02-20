@@ -147,6 +147,7 @@ DECLARE_int32(update_min_cdc_indices_master_interval_secs);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
 
 namespace yb {
 
@@ -539,7 +540,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
-      bool include_oid_to_relfilenode = false);
+      bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 

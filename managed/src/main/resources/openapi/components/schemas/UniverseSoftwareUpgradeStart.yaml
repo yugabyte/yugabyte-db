@@ -19,6 +19,10 @@ allOf:
         description: Upgrade the YugabyteDB Catalog
         type: boolean
         default: true
+      run_only_prechecks:
+        description: 'If true, only run prechecks for the upgrade without executing the upgrade.'
+        type: boolean
+        default: false
       version:
         description: The target release version to upgrade to.
         type: string

@@ -2487,30 +2487,19 @@ lint_java_code() {
     local java_test_file
     for java_test_file in "${java_test_files[@]}"; do
       local log_prefix="YB JAVA LINT: $java_test_file"
-      if ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBParameterizedTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunner\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonTsanAsan\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanitizersOrMac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonSanOrAArch64Mac\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerReleaseOnly\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerYsqlConnMgr\.class\)' \
-             "$java_test_file" &&
-         ! grep -Eq '@RunWith\((value[ ]*=[ ]*)?YBTestRunnerNonMac\.class\)' \
-             "$java_test_file"
-      then
+      local run_with_pattern='@RunWith\((value[ ]*=[ ]*)?('
+      run_with_pattern+='YBParameterizedTestRunnerNonTsanOnly|YBParameterizedTestRunner|'
+      run_with_pattern+='YBTestRunnerNonSanitizersOrMac|YBTestRunnerNonSanOrAArch64Mac|'
+      run_with_pattern+='YBTestRunnerNonTsanOnly|YBTestRunnerNonTsanAsan|'
+      run_with_pattern+='YBTestRunnerReleaseOnly|YBTestRunnerYsqlConnMgr|'
+      run_with_pattern+='YBTestRunnerNonMac|YBTestRunner)\.class\)'
+      if ! grep -Eq "$run_with_pattern" "$java_test_file"; then
         log "$log_prefix: neither YBTestRunner, YBParameterizedTestRunner, " \
-            "YBTestRunnerNonTsanOnly, YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
+            "YBParameterizedTestRunnerNonTsanOnly, YBTestRunnerNonTsanOnly, " \
+            " YBTestRunnerNonTsanAsan, YBTestRunnerNonSanitizersOrMac, " \
             "YBTestRunnerNonSanOrAArch64Mac, " \
-            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac are being " \
-            "used in test"
+            "YBTestRunnerReleaseOnly, YBTestRunnerYsqlConnMgr, nor YBTestRunnerNonMac " \
+            " are being used in test"
         num_errors+=1
       fi
       if grep -Fq 'import static org.junit.Assert' "$java_test_file" ||
@@ -2656,7 +2645,7 @@ check_arc_wrapper() {
     # This is a Yugabyte workstation or dev server.
     local arc_path
     set +e
-    arc_path=$( which arc )
+    arc_path=$( command -v arc )
     set -e
     if [[ ! -f $arc_path ]]; then
       # OK if arc is not found. Then people cannot "arc land" changes that do not pass tests.

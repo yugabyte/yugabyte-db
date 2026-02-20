@@ -649,7 +649,18 @@ typedef struct {
   uint64_t active_pid;
   bool expired;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
 } YbcReplicationSlotDescriptor;
+
+typedef struct {
+  const char *stream_id;
+  uint64_t confirmed_flush_lsn;
+  uint64_t restart_lsn;
+  uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
+  uint64_t last_pub_refresh_time;
+  uint64_t active_pid;
+} YbcSlotEntryDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
@@ -985,6 +996,12 @@ typedef struct {
   YbcCatalogMessageList* message_lists;
   int num_lists;
 } YbcCatalogMessageLists;
+
+typedef struct {
+  YbcPgOid table_oid;
+  uint64_t mutations;
+  char* last_analyze_info;
+} YbcAutoAnalyzeInfo;
 
 typedef enum {
   /*

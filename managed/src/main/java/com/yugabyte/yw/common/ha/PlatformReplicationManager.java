@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.PlatformInstance.State;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -243,7 +244,7 @@ public class PlatformReplicationManager {
         "Demoting local instance {} in favor of leader {}",
         localInstance.getAddress(),
         requestLeaderAddr);
-    if (!localInstance.getIsLocal()) {
+    if (!localInstance.isLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
     validateSwitchLeaderRequestForStaleness(config, requestLeaderAddr, requestLastFailover);
@@ -264,25 +265,25 @@ public class PlatformReplicationManager {
     // Stop the old backup schedule.
     stopAndDisable();
 
-    boolean wasLeader = localInstance.getIsLeader();
+    boolean wasLeader = localInstance.isLeader();
     // Demote the local instance to follower.
     localInstance.demote();
 
     // Set the existing leader to follower to avoid uniqueness violation.
     config.getInstances().stream()
-        .sorted(Comparator.comparing(PlatformInstance::getIsLeader).reversed())
+        .sorted(Comparator.comparing(PlatformInstance::isLeader).reversed())
         .forEach(
             i -> {
               boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
-              if (i.getIsLeader() ^ isNewLeader) {
+              if (i.isLeader() ^ isNewLeader) {
                 // Update only when there is a difference.
                 log.debug(
                     "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
                     i.getAddress(),
                     i.getUuid(),
-                    i.getIsLeader(),
+                    i.isLeader(),
                     isNewLeader);
-                i.setIsLeader(isNewLeader);
+                i.setState(State.LEADER);
                 i.update();
               }
             });
@@ -311,17 +312,17 @@ public class PlatformReplicationManager {
         localConfig.isPresent() ? localConfig.get().getLocal().orElse(null) : null;
     if (localInstance != null) {
       config.getInstances().stream()
-          .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
+          .sorted(Comparator.comparing(PlatformInstance::isLocal).reversed())
           .forEach(
               i -> {
                 log.debug(
                     "Updating instance {}(uuid={}, isLocal={}, isLeader={})",
                     i.getAddress(),
                     i.getUuid(),
-                    i.getIsLocal(),
-                    i.getIsLeader());
+                    i.isLocal(),
+                    i.isLeader());
                 boolean isLocal = i.getAddress().equals(localInstance.getAddress());
-                i.updateIsLocal(isLocal);
+                i.updateLocal(isLocal);
                 if (isLocal) {
                   updated.set(isLocal);
                 }
@@ -363,6 +364,10 @@ public class PlatformReplicationManager {
                 log.info("Cleaning up received backups from {}", instance.getAddress());
                 replicationHelper.cleanupReceivedBackups(Util.toURL(instance.getAddress()), 0);
               } catch (Exception ignored) {
+                log.warn(
+                    "Error cleaning up received backups from {} - {}",
+                    instance.getAddress(),
+                    ignored.getMessage());
               }
             });
   }
@@ -412,7 +417,7 @@ public class PlatformReplicationManager {
     // Get the leader instance. It must be present as the leader sends the request.
     PlatformInstance leaderInstance =
         newInstances.stream()
-            .filter(PlatformInstance::getIsLeader)
+            .filter(PlatformInstance::isLeader)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -447,7 +452,7 @@ public class PlatformReplicationManager {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     if (config.isPresent()) {
       // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
-      if (i.getIsLeader()) {
+      if (i.isLeader()) {
         Optional<PlatformInstance> existingLeader = config.get().getLeader();
         if (existingLeader.isPresent()
             && !existingLeader.get().getAddress().equals(i.getAddress())) {
@@ -459,11 +464,11 @@ public class PlatformReplicationManager {
         // Since we sync instances after sending backups, the leader instance has the source of
         // truth as to when the last backup has been successfully sent to followers.
         existingInstance.get().setLastBackup(i.getLastBackup());
-        existingInstance.get().setIsLeader(i.getIsLeader());
+        existingInstance.get().setState(i.isLeader() ? State.LEADER : State.STAND_BY);
         existingInstance.get().update();
         i = existingInstance.get();
       } else {
-        i.setIsLocal(false);
+        i.setLocal(false);
         i.setConfig(config.get());
         i.save();
       }

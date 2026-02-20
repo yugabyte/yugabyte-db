@@ -116,8 +116,7 @@ class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceI
   Status UpdateTableMutationsAfterAnalyze(
       const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps);
   Status FlushAnalyzeHistory(
-      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps,
-      const std::chrono::system_clock::time_point& now);
+      const std::vector<TableId>& tables, const AutoAnalyzeInfoMap& table_id_to_info_maps);
   Result<AutoAnalyzeInfoMap> UpdateAnalyzeHistory(
       const std::vector<TableId>& analyzed_tables, AutoAnalyzeInfoMap&& table_id_to_info_maps,
       const std::chrono::system_clock::time_point& now, const AutoAnalyzeParams& params);

@@ -755,6 +755,7 @@ bool		session_auth_is_superuser;
 
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
+int			yb_log_min_backtraces = FATAL;
 int			client_min_messages = NOTICE;
 int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
@@ -7348,6 +7349,16 @@ static struct config_enum ConfigureNamesEnum[] =
 	},
 
 	{
+		{"yb_log_min_backtraces", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Sets the minimum message level for including a backtrace in the log."),
+			gettext_noop("Errors at or above this level will have a call stack attached. Each level includes all the levels that follow it.")
+		},
+		&yb_log_min_backtraces,
+		FATAL, server_message_level_options,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"log_statement", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Sets the type of statements logged."),
 			NULL
@@ -7663,8 +7674,9 @@ static struct config_enum ConfigureNamesEnum[] =
 						 " show \"ERROR:  Query error: Restart read required at: ...\". The database"
 						 " attempts to retry on such errors internally but that is not always possible."
 						 " (b) relaxed: With this option, the read-after-commit-visibility guarantee is"
-						 " relaxed. Read only statements/transactions do not see read restart errors but"
-						 " may miss recent updates with staleness bounded by clock skew."
+						 " relaxed. Do not see read restart errors but may miss recent updates with"
+						 " staleness bounded by clock skew. This mode does not apply to"
+						 " serializable isolation level and fast path writes."
 						 " (c) deferred: Defers read point. Higher latency but read-after-commit-visibility"
 						 " guarantee is maintained."
 			),

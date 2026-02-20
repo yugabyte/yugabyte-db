@@ -240,6 +240,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    boolean taskSucceeded = false;
     try {
       // Lock the target universe.
       lockAndFreezeUniverseForUpdate(
@@ -299,6 +300,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
+        taskSucceeded = true;
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
         xClusterConfig.refresh();
@@ -341,7 +343,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       if (xClusterConfig.isUsedForDr()) {
         DrConfig drConfig = xClusterConfig.getDrConfig();
         drConfig.refresh();
-        kubernetesStatus.updateDrConfigStatus(drConfig, getName(), getUserTaskUUID());
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
       }
     }
 

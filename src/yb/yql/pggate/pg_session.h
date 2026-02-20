@@ -214,8 +214,18 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
     return pg_txn_manager_->GetCurrentReadPoint();
   }
 
+  TxnReadPoint GetCurrentReadPointState() const {
+    return pg_txn_manager_->GetCurrentReadPointState();
+  }
+
   Status RestoreReadPoint(YbcReadPointHandle read_point) {
     return pg_txn_manager_->RestoreReadPoint(read_point);
+  }
+
+  // Restores the read point to saved_read_point.read_time, but only if the current
+  // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
+  Status RestoreReadPoint(const TxnReadPoint& saved_read_point) {
+    return pg_txn_manager_->RestoreReadPoint(saved_read_point);
   }
 
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);

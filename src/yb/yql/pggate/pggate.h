@@ -363,6 +363,8 @@ class PgApiImpl {
 
   Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
 
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
+
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
@@ -554,9 +556,8 @@ class PgApiImpl {
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -570,9 +571,8 @@ class PgApiImpl {
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecUpdate(PgStatement *handle);
 
@@ -580,9 +580,8 @@ class PgApiImpl {
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -674,6 +673,7 @@ class PgApiImpl {
   Status SetTransactionIsolationLevel(int isolation);
   Status SetTransactionReadOnly(bool read_only);
   Status SetTransactionDeferrable(bool deferrable);
+  void SetClampUncertaintyWindow(bool clamp);
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
@@ -824,6 +824,8 @@ class PgApiImpl {
                                   PgStatement **handle);
   Result<tserver::PgCreateReplicationSlotResponsePB> ExecCreateReplicationSlot(
       PgStatement *handle);
+
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 

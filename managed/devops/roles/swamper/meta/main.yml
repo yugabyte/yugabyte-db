@@ -17,7 +17,7 @@ dependencies:
     become_method: sudo
     prometheus_go_version: 1.7
     prometheus_use_service: true
-    prometheus_node_exporter_version: 1.9.1
+    prometheus_node_exporter_version: 1.10.2
     prometheus_node_exporter_opts: "--web.listen-address=:{{ node_exporter_port }} \
                                     --collector.textfile.directory={{ home_dir | default('/home/yugabyte') }}/metrics"
     prometheus_node_exporter_use_systemd: true

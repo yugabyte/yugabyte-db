@@ -309,24 +309,12 @@ void MonoDelta::ToTimeSpec(struct timespec *ts) const {
 /// MonoTime
 ///
 
-const MonoTime MonoTime::kMin = MonoTime::Min();
-const MonoTime MonoTime::kMax = MonoTime::Max();
-const MonoTime MonoTime::kUninitialized = MonoTime();
-
 MonoTime MonoTime::Now() {
   return MonoTime(std::chrono::steady_clock::now());
 }
 
 MonoTime MonoTime::NowPlus(MonoDelta delta) {
   return delta ? Now() + delta : MonoTime();
-}
-
-MonoTime MonoTime::Max() {
-  return MonoTime(std::chrono::steady_clock::time_point::max());
-}
-
-MonoTime MonoTime::Min() {
-  return MonoTime(std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(1)));
 }
 
 bool MonoTime::IsMax() const {

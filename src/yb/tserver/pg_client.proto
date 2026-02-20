@@ -62,6 +62,8 @@ service PgClientService {
   }
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListSlotEntries(PgListSlotEntriesRequestPB)
+      returns (PgListSlotEntriesResponsePB);
   rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
       returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -118,6 +120,8 @@ service PgClientService {
   rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
+
+  rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -649,6 +653,25 @@ message PgListLiveTabletServersResponsePB {
   string universe_uuid = 3;
 }
 
+message PgListSlotEntriesRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
+}
+
+message PgSlotEntryInfoPB {
+  string stream_id = 1;
+  uint64 confirmed_flush_lsn = 2;
+  uint64 restart_lsn = 3;
+  uint32 xmin = 4;
+  uint64 record_id_commit_time_ht = 5;
+  uint64 last_pub_refresh_time = 6;
+  uint64 active_pid = 7;
+}
+
+message PgListSlotEntriesResponsePB {
+  AppStatusPB status = 1;
+  repeated PgSlotEntryInfoPB slot_entries = 2;
+}
+
 message PgListReplicationSlotsRequestPB {
   reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
@@ -671,6 +694,7 @@ message PgReplicationSlotInfoPB {
   uint64 active_pid = 13;
   bool expired = 14;
   bool allow_tables_without_primary_key = 15;
+  bool detect_publication_changes_implicitly = 16;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -1244,6 +1268,22 @@ message PgDatabaseCloneInfoPB {
   string state = 5;
   fixed64 as_of_time = 6;
   string failure_reason = 7;
+}
+
+message PgQueryAutoAnalyzeRequestPB{
+  AshMetadataPB ash_metadata = 1;
+  uint32 database_oid = 2;
+}
+
+message PgQueryAutoAnalyzeResponsePB {
+  AppStatusPB status = 1;
+  repeated PgAutoAnalyzeDataPB rows = 2;
+}
+
+message PgAutoAnalyzeDataPB {
+  uint32 table_oid = 1;
+  uint64 mutations = 2;
+  bytes last_analyze_info = 3;
 }
 
 //--------------------------------------------------------------------------------------------------

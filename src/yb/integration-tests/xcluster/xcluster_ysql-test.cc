@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -159,6 +160,14 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
   }
 };
+
+TEST_F(XClusterYsqlTest, RejectSequencesDataTableInManualSetup) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 1, 1));
+
+  auto setup_status = SetupUniverseReplication({kPgSequencesDataTableId});
+  ASSERT_NOK(setup_status);
+  ASSERT_STR_CONTAINS(setup_status.ToString(), "sequences_data");
+}
 
 TEST_F(XClusterYsqlTest, GenerateSeries) {
   ASSERT_OK(SetUpWithParams({4}, {4}, 3, 1));

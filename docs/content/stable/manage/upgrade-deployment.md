@@ -26,6 +26,8 @@ YugabyteDB is a distributed database that can be installed on multiple nodes. Up
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
+For more information on upgrading YugabyteDB, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+
 ## Important information
 
 {{< warning >}}
@@ -51,30 +53,38 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
 - You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 
+### Backups and point-in-time-recovery
+
 - Backups
 
   - Backups taken on a newer version cannot be restored to universes running a previous version.
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- [Point-in-time-restore](../backup-restore/point-in-time-recovery/) (PITR)
+- [Point-in-time-recovery](../backup-restore/point-in-time-recovery/) (PITR)
 
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
-  - After the upgrade, PITR cannot be done to a time before the upgrade.
+  Before starting the upgrade, you should delete all the snapshot schedules for the universe. Recreate them after either [finalizing](#a-finalize-phase) or [rolling back](#b-rollback-phase) the upgrade.
 
-- YSQL
+  You cannot use PITR during the upgrade, or during the [monitoring phase](#monitor-phase) (before either finalizing or rolling back). In addition, you can't go back in time between versions.
 
-  - For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+  After finalizing or rolling back an upgrade, PITR-based actions become available again. However, keep in mind the following:
 
-  - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
+  - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
-    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+  If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
 
-    - Auto Analyze (ysql_enable_auto_analyze=true)
-    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
-    - Parallel query (yb_enable_parallel_append=true)
+### YSQL
 
-For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+- For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+
+- For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+
+  If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+
+  - Auto Analyze (ysql_enable_auto_analyze=true)
+  - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+  - Parallel query (yb_enable_parallel_append=true)
 
 ## Upgrade YugabyteDB cluster
 
@@ -303,13 +313,41 @@ Use the following procedure to roll back all YB-Masters:
 
 ## Upgrades with xCluster
 
-When you have unidirectional xCluster replication, it is recommended to upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
+### Unidirectional xCluster
+
+When you have unidirectional xCluster replication, upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
+
+{{< note title="Target cluster version" >}}
+xCluster replication requires the target cluster version to be the same or later than the source cluster version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
+{{< /note >}}
+
+To upgrade clusters in transactional xCluster, the sequence is as follows:
+
+1. Upgrade the target.
+1. Finalize the upgrade on the target.
+1. Validate that reads work on the target.
+1. Upgrade the source.
+1. Perform validation tests ([Monitor phase](#monitor-phase)).
+
+    Perform any application-level tests as needed (including, if needed, application-level failovers).
+
+1. Finalize the upgrade on the source.
+
+### Bidirectional xCluster
 
 If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
 
-{{< note title="Note" >}}
-xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
-{{< /note >}}
+The sequence is as follows:
+
+1. Upgrade B.
+1. Upgrade A.
+1. Perform validation tests ([Monitor phase](#monitor-phase) for both clusters).
+
+    Perform any application-level tests as needed (including, if needed, application-level failovers).
+
+    Note that any features that rely on [PITR](#backups-and-point-in-time-recovery) are not possible during the monitoring phase.
+
+1. Finalize the upgrade on A, and finalize the upgrade on B. Do these as near simultaneously as possible.
 
 ## Advanced - enable volatile AutoFlags during monitoring
 

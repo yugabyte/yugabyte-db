@@ -11,7 +11,9 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -29,12 +31,15 @@ import lombok.extern.slf4j.Slf4j;
 @CanRollback
 public class SwitchoverDrConfig extends EditDrConfig {
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
   protected SwitchoverDrConfig(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService, operatorStatusUpdaterFactory);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -66,6 +71,7 @@ public class SwitchoverDrConfig extends EditDrConfig {
         Universe.getOrBadRequest(switchoverXClusterConfig.getTargetUniverseUUID());
     Universe targetUniverse =
         Universe.getOrBadRequest(switchoverXClusterConfig.getSourceUniverseUUID());
+    boolean taskSucceeded = false;
     try {
       // Lock the source universe.
       lockAndFreezeUniverseForUpdate(
@@ -183,9 +189,16 @@ public class SwitchoverDrConfig extends EditDrConfig {
         // Unlock the target universe.
         unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
+      taskSucceeded = true;
     } finally {
       // Unlock the source universe.
       unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
+      if (switchoverXClusterConfig.isUsedForDr()) {
+        DrConfig drConfig = switchoverXClusterConfig.getDrConfig();
+        drConfig.refresh();
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
+      }
     }
 
     log.info("Completed {}", getName());

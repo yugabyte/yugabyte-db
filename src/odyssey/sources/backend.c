@@ -134,7 +134,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			 "HINT: %s", error.hint);
 		hint_len = strlen(error.hint);
 
-		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
+		if (strcmp(error.hint, "Database may have been dropped and recreated") == 0)
 		{
 			/* Reset the route and close the client */
 			yb_mark_routes_inactive(server->global->router,

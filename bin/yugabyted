@@ -3605,14 +3605,18 @@ class ControlScript(object):
             os._exit(os.EX_OK)
         self.set_signals(SIG_DFL)
 
-        for p in self.processes.values():
-            p.delete_pidfile()
-        self.script.delete_pidfile()
-
         try:
+            for p in self.processes.values():
+                p.kill()
+
+            for p in self.processes.values():
+                p.wait_until_stop()
+
+            self.script.delete_pidfile()
+
             # Kill process group instead of self.processes to ensure
-            # any spawned child processes are killed. Use SIGKILL because YugaWare
-            # requires KILL signal to terminate and nodes currently do not gracefully terminate.
+            # any spawned child processes are killed.
+            # This will terminate any processes that didn't respond to SIGTERM.
             os.killpg(pgid, SIGKILL)
             Output.log(
                 "{} may not have terminated properly... "

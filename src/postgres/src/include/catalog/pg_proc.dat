@@ -12319,5 +12319,16 @@
   proname => 'yb_pg_stat_plans_write_file',
   proretset => 'f', provolatile => 'v', proparallel => 's',
   prorettype => 'int4', proargtypes => '',
-  prosrc => 'yb_pg_stat_plans_write_file'}
+  prosrc => 'yb_pg_stat_plans_write_file'},
+
+{ oid => '8113',
+  descr => 'query YB auto analyze service table',
+  proname => 'yb_stat_auto_analyze', proretset => 't',
+  provolatile => 'v',
+  proparallel => 'u', prorettype => 'record',
+  proargtypes => '',
+  proallargtypes => '{oid,text,text,int8,jsonb}',
+  proargmodes => '{o,o,o,o,o}',
+  proargnames => '{relid,schemaname,relname,mutations,last_analyze_info}',
+  prosrc => 'yb_stat_auto_analyze' },
 ]

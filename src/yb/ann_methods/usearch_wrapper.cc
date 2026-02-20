@@ -22,6 +22,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 

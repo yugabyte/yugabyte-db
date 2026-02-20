@@ -272,10 +272,12 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       total_memory_usage += m->ApproximateMemoryUsage();
       const auto* range = m->Frontiers();
       if (range) {
-        UserFrontier::Update(
-            &range->Smallest(), UpdateUserValueType::kSmallest, &meta->smallest.user_frontier);
-        UserFrontier::Update(
-            &range->Largest(), UpdateUserValueType::kLargest, &meta->largest.user_frontier);
+        yb::storage::UserFrontier::Update(
+            &range->Smallest(), yb::storage::UpdateUserValueType::kSmallest,
+            &meta->smallest.user_frontier);
+        yb::storage::UserFrontier::Update(
+            &range->Largest(), yb::storage::UpdateUserValueType::kLargest,
+            &meta->largest.user_frontier);
       }
     }
 

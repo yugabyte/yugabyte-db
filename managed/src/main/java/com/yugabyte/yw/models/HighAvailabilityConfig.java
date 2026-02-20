@@ -114,22 +114,22 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
+    return this.instances.stream().filter(i -> !i.isLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.instances.stream().anyMatch(i -> i.isLeader() && i.isLocal());
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLocal() {
-    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLocal).findFirst();
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLeader() {
-    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLeader).findFirst();
   }
 
   public boolean getAcceptAnyCertificate() {
@@ -198,6 +198,7 @@ public class HighAvailabilityConfig extends Model {
       SecretKey secretKey = keyGen.generateKey();
       return Base64.getEncoder().encodeToString(secretKey.getEncoded());
     } catch (NoSuchAlgorithmException e) {
+      log.error("Error generating cluster key", e);
       throw new PlatformServiceException(BAD_REQUEST, "Error generating cluster key");
     }
   }
@@ -205,7 +206,7 @@ public class HighAvailabilityConfig extends Model {
   public static boolean isFollower() {
     // Return follower to true as active is not known during switch over.
     return isSwitchOverInProgress
-        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
+        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.isLeader()).orElse(false);
   }
 
   public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {

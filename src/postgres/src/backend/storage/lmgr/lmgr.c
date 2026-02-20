@@ -141,6 +141,14 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*
@@ -176,6 +184,14 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 		MarkLockClear(locallock);
 	}
 
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
+
 	return true;
 }
 
@@ -205,6 +221,14 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*

@@ -46,6 +46,9 @@ using namespace std::literals;
 DECLARE_string(time_source);
 DECLARE_int32(replication_factor);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(ysql_lease_refresher_interval_ms);
 
 namespace yb::pgwrapper {
@@ -88,6 +91,11 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
+    // Support DDL concurrency with object locks.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+        "yb_fallback_to_legacy_catalog_read_time=false";
     PgMiniTestBase::SetUp();
     SpawnSupervisors();
   }
@@ -392,6 +400,37 @@ TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeStaleRead) {
   }, "SELECT k FROM kv");
 }
 
+// REFERSH MATERIALIZED VIEW honors the strict read after commit visibility guarantee.
+// This is despite using a clamped uncertainty window for table reads.
+TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeMatView) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  // Create the base table on the data node.
+  ASSERT_OK(hostConn.Execute(
+    "CREATE TABLE kv (k INT, v INT, PRIMARY KEY(k HASH)) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(hostConn.Execute("CREATE MATERIALIZED VIEW kv_mv AS SELECT k, v FROM kv"));
+  ASSERT_OK(proxyConn.Execute("REFRESH MATERIALIZED VIEW kv_mv"));
+  auto count = ASSERT_RESULT(proxyConn.FetchRow<int64_t>("SELECT COUNT(1) FROM kv_mv"));
+  ASSERT_EQ(count, 0);
+
+  // Jump the data node's clock into the future.
+  auto skew = 100ms;
+  auto changers = JumpClockDataNodes(skew);
+
+  // Insert a row via the host connection (fast-path single-shard txn).
+  // The commit timestamp is picked on the data node whose clock is ahead.
+  ASSERT_OK(hostConn.Execute("INSERT INTO kv(k, v) VALUES (1, 1)"));
+
+  // Issue REFRESH MATERIALIZED VIEW from the proxy.
+  // The DDL's internal read timestamp is picked above the max hybrid time
+  // observed across nodes, so it can use a clamped uncertainty window.
+  // Therefore the read does not hit a restart despite clock skew.
+  ASSERT_OK(proxyConn.Execute("REFRESH MATERIALIZED VIEW kv_mv"));
+  count = ASSERT_RESULT(proxyConn.FetchRow<int64_t>("SELECT COUNT(1) FROM kv_mv"));
+  ASSERT_EQ(count, 1);
+}
+
 // Same test as SessionOnDifferentNodeStaleRead
 // except we verify that the staleness is bounded
 // by waiting out the clock skew.
@@ -402,12 +441,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, SessionOnDifferentNodeBoundedStaleness) 
   }, "SELECT k FROM kv");
 }
 
-// Duplicate insert check.
-//
-// Inserts should not miss other recent inserts to
-// avoid missing duplicate key violations. This is guaranteed because
-// we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForInsert) {
+// Inserts should not ignore duplicate key violations when using relaxed mode.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeDuplicateKeyInsert) {
   RunTest(Config{
     .is_dml = true,
     .has_dup_key = true,
@@ -415,7 +450,9 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForInsert) {
 }
 
 // Ensure that relaxed mode doesn't apply to fast-path writes.
-TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathUpdate) {
+// However, relaxed mode is applied to distributed txn writes.
+// So, read-after-write visibility is not guaranteed for distributed txn writes.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathUpdate) {
   RunTest(Config{
     .is_dml = true,
   }, "UPDATE kv SET v = 2 WHERE k = 1");
@@ -426,24 +463,8 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathUpdate) {
   ASSERT_EQ(row, 2);
 }
 
-// Updates should not miss recent DMLs either. This is guaranteed
-// because we don't apply "relaxed" to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForDistributedUpdateTxn) {
-  RunTest(Config{
-    .is_dml = true,
-  }, "UPDATE kv SET k = 2 WHERE k = 1");
-
-  // Ensure that the update happened.
-  auto conn = ASSERT_RESULT(ConnectToIdx(host_idx_));
-  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT k FROM kv"));
-  ASSERT_EQ(row, 2);
-}
-
-// Same for DELETEs. They should not miss recent DMLs.
-// Otherwise, DELETE FROM table would not delete all the rows.
-// This is guaranteed because we don't apply "relaxed" to non-read
-// transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathDelete) {
+// Relaxed mode is not applied to fast path deletes.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeFastPathDelete) {
   RunTest(Config{
     .is_dml = true,
   }, "DELETE FROM kv WHERE k = 1");
@@ -454,11 +475,9 @@ TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForFastPathDelete) {
   ASSERT_EQ(rows.size(), 0);
 }
 
-// We also consider the case where the query looks like
-// a SELECT but there is an insert hiding underneath.
-// We are guaranteed read-after-commit-visibility in this case
-// since "relaxed" is not applied to non-read transactions.
-TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeIgnoredForHiddenWrite) {
+// Hidden DMLs are still DMLs. So, relaxed mode is applied to them.
+// However, duplicate key violations are not ignored.
+TEST_F(PgReadAfterCommitVisibilityTest, RelaxedModeHiddenDmlDuplicateKey) {
   RunTest(
     Config{
       .is_dml = true,
@@ -488,6 +507,7 @@ TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeInsert) {
 TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeDistributedTxnUpdate) {
   RunTest(Config{
     .is_dml = true,
+    .visibility = Visibility::DEFERRED,
   }, "UPDATE kv SET k = 2 WHERE k = 1");
 
   // Ensure that the update happened.
@@ -499,6 +519,7 @@ TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeDistributedTxnUpdate) {
 TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeFastPathUpdate) {
   RunTest(Config{
     .is_dml = true,
+    .visibility = Visibility::DEFERRED,
   }, "UPDATE kv SET v = 2 WHERE k = 1");
 
   // Ensure that the update happened.
@@ -513,6 +534,7 @@ TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeHiddenDml) {
       .is_dml = true,
       .has_dup_key = true,
       .is_hidden_dml = true,
+      .visibility = Visibility::DEFERRED,
     },
     "WITH new_kv AS ("
     "INSERT INTO kv(k) VALUES (1) RETURNING k"

@@ -624,6 +624,7 @@ void PgTxnManager::ResetTxnAndSession() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   read_only_stmt_ = false;
   need_defer_read_point_ = false;
+  clamp_uncertainty_window_ = false;
 
   // GH #22353 - Ideally the reset of the ddl_state_ should happen without the if condition, but
   // due to the linked bug GH #22353, we are resetting the DDL state only if DDL, DML transaction
@@ -776,6 +777,19 @@ Status PgTxnManager::SetupPerformOptions(
     read_time_action.reset();
   }
 
+  // Do not clamp in the serializable case (or fast path write) since
+  // - SERIALIZABLE (and fast path) reads do not pick read time until they reach the storage layer.
+  // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
+  // Fast path writes are also referred to as NonTransactional writes.
+  // Also skip clamping in catalog sessions since catalog sessions are legacy mode.
+  if ((yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
+       || clamp_uncertainty_window_)
+      && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
+      && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())
+      && !options->use_catalog_session()) {
+    options->set_clamp_uncertainty_window(true);
+  }
+
   if (!IsDdlModeWithSeparateTransaction()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
@@ -783,18 +797,6 @@ Status PgTxnManager::SetupPerformOptions(
     options->set_read_time_manipulation(
         GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, read_time_action));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-    // Only clamp read-only txns/stmts.
-    // Do not clamp in the serializable case since
-    // - SERIALIZABLE reads do not pick read time until later.
-    // - SERIALIZABLE reads do not observe read restarts anyways.
-    if (!IsDdlMode() &&
-        yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
-        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION)
-      // We clamp uncertainty window when
-      // - either we are working with a read only txn
-      // - or we are working with a read only stmt
-      //   i.e. no txn block and a pure SELECT stmt.
-      options->set_clamp_uncertainty_window(read_only_ || (!in_txn_blk_ && read_only_stmt_));
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
@@ -864,8 +866,10 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
   return serial_no_.read_time();
 }
 
-YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const {
-  return serial_no_.max_read_time();
+YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
+
+TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
+  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time()};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -875,6 +879,18 @@ Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
               << " for txn serial number: " << serial_no_.txn();
   }
   return serial_no_.RestoreReadTime(read_point);
+}
+
+Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
+  // Only restore if the current txn matches the saved
+  if (serial_no_.txn() != saved_read_point.txn) {
+    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
+      LOG(INFO) << "Skipping RestoreReadPoint: saved txn " << saved_read_point.txn
+                << " but current is " << serial_no_.txn();
+    }
+    return Status::OK();
+  }
+  return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 
 Result<YbcReadPointHandle> PgTxnManager::RegisterSnapshotReadTime(

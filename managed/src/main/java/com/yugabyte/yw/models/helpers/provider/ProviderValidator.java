@@ -147,8 +147,11 @@ public class ProviderValidator extends BaseBeanValidator {
         providerFieldsValidator.validate(requestedProvider);
       }
     } catch (RuntimeException e) {
+      log.error("Failed to validate provider payload", e);
       if (!(e instanceof PlatformServiceException)) {
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failed to validate provider payload. Please check for malformed or incorrect fields");
       }
       throw e;
     }

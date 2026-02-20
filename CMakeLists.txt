@@ -915,6 +915,7 @@ set(YB_SUBDIR_NAMES
     rocksutil
     rpc
     server
+    storage
     tablet
     tools
     tserver

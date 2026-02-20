@@ -109,6 +109,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static Result<pgwrapper::PGResultPtr> ScanToStrings(
       const client::YBTableName& table_name, Cluster* cluster);
 
+  static Result<bool> IsIndexValid(pgwrapper::PGConn& conn, const std::string& index_name);
+
   static Result<int> GetRowCount(
       const client::YBTableName& table_name, Cluster* cluster, bool read_latest = false);
 

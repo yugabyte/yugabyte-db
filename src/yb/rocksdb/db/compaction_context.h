@@ -44,7 +44,7 @@ class CompactionContext {
   //
   // As a concrete use case, we use this to pass the history cutoff timestamp from the DocDB
   // compaction feed into the version edit metadata. See DocDBCompactionFeed.
-  virtual UserFrontierPtr GetLargestUserFrontier() const = 0;
+  virtual yb::storage::UserFrontierPtr GetLargestUserFrontier() const = 0;
 
   // Returns a list of the ranges which should be considered "live" on this tablet. Returns an empty
   // list if the whole key range of the tablet should be considered live. Returned ranges are
@@ -53,6 +53,10 @@ class CompactionContext {
 
   // Update file meta data after compaction. For instance could be used to patch frontiers.
   virtual Status UpdateMeta(FileMetaData* meta) = 0;
+
+  // Must be triggered after successful or unsuccessful compaction to cleanup internal
+  // resources. Must tolerate multiple calls. DB mutex must be unheld!
+  virtual void CompactionFinished() = 0;
 
   virtual ~CompactionContext() = default;
 };

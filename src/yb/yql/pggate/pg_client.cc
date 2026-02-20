@@ -780,6 +780,15 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid) {
+    tserver::PgQueryAutoAnalyzeRequestPB req;
+    tserver::PgQueryAutoAnalyzeResponsePB resp;
+    req.set_database_oid(db_oid);
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::QueryAutoAnalyze,
+        req, resp, PggateRPC::kQueryAutoAnalyze));
+    return resp;
+  }
+
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
@@ -1561,6 +1570,16 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries() {
+    tserver::PgListSlotEntriesRequestPB req;
+    tserver::PgListSlotEntriesResponsePB resp;
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::ListSlotEntries,
+        req, resp, PggateRPC::kListSlotEntries));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    return resp;
+  }
+
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots() {
     tserver::PgListReplicationSlotsRequestPB req;
     tserver::PgListReplicationSlotsResponsePB resp;
@@ -1995,6 +2014,11 @@ Result<tserver::PgListClonesResponsePB> PgClient::ListDatabaseClones() {
   return impl_->ListDatabaseClones();
 }
 
+Result<tserver::PgQueryAutoAnalyzeResponsePB> PgClient::QueryAutoAnalyze(PgOid db_oid) {
+    return impl_->QueryAutoAnalyze(db_oid);
+}
+
+
 Result<master::GetNamespaceInfoResponsePB> PgClient::GetDatabaseInfo(uint32_t oid) {
   return impl_->GetDatabaseInfo(oid);
 }
@@ -2206,6 +2230,10 @@ Status PgClient::CancelTransaction(const unsigned char* transaction_id) {
 Result<tserver::PgCreateReplicationSlotResponsePB> PgClient::CreateReplicationSlot(
     tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline) {
   return impl_->CreateReplicationSlot(req, deadline);
+}
+
+Result<tserver::PgListSlotEntriesResponsePB> PgClient::ListSlotEntries() {
+  return impl_->ListSlotEntries();
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgClient::ListReplicationSlots() {

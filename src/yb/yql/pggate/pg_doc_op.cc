@@ -85,8 +85,11 @@ class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
     return Status::OK();
   }
 
-  Status DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) override {
-    return STATUS(InternalError, "DoPopulateMergeStreams is not defined for PgDocReadOpCached");
+  Status DoPopulateMergeStreamRequests(
+      MergeSortKeysPtr merge_sort_keys, PgTable& bind,
+      InPermutationGenerator&& merge_streams) override {
+    return STATUS(InternalError,
+                  "DoPopulateMergeStreamRequests is not defined for PgDocReadOpCached");
   }
 
   Result<bool> DoCreateRequests() override {
@@ -430,20 +433,22 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
-  YbcReadPointHandle current_read_time_serial_no = YbcInvalidReadPointHandle;
   YbcReadPointHandle catalog_read_time_serial_no = YbcInvalidReadPointHandle;
+  TxnReadPoint read_point_before_catalog_op{};
   if (!YBCIsLegacyModeForCatalogOps() &&
       table_->schema().table_properties().is_ysql_catalog_table()) {
     // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
     // writes.
     force_non_bufferable = ForceNonBufferable::kTrue;
-    current_read_time_serial_no = pg_session_->GetCurrentReadPoint();
+    read_point_before_catalog_op = pg_session_->GetCurrentReadPointState();
     // Switch to catalog snapshot's read time serial no.
     catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
         table_->pg_table_id().object_oid, true /* create_if_not_exists */);
     if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
       LOG(INFO) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-                << " and saving current read time serial number: " << current_read_time_serial_no;
+                << " and saving read time serial no "
+                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
+                << read_point_before_catalog_op.txn;
     }
     RSTATUS_DCHECK(
         catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
@@ -462,14 +467,13 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table() &&
-      current_read_time_serial_no != catalog_read_time_serial_no) {
-    // Switch back to earlier read time serial no.
+      table_->schema().table_properties().is_ysql_catalog_table()) {
     if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
-      LOG(INFO) << "Restoring current read time serial number after catalog operation "
-                << current_read_time_serial_no;
+      LOG(INFO) << "Restoring read time serial no after catalog operation to "
+                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
+                << read_point_before_catalog_op.txn;
     }
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(current_read_time_serial_no));
+    RETURN_NOT_OK(pg_session_->RestoreReadPoint(read_point_before_catalog_op));
   }
   return Status::OK();
 }
@@ -609,8 +613,9 @@ Result<bool> PgDocOp::PopulateByYbctidOps(const YbctidGenerator& generator, Keep
   return false;
 }
 
-Result<bool> PgDocOp::PopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
-  RETURN_NOT_OK(DoPopulateMergeStreams(merge_sort_keys));
+Result<bool> PgDocOp::PopulateMergeStreamRequests(
+    MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams) {
+  RETURN_NOT_OK(DoPopulateMergeStreamRequests(merge_sort_keys, bind, std::move(merge_streams)));
   request_population_completed_ = true;
   if (HasActiveOps()) {
     RETURN_NOT_OK(CompleteRequests());
@@ -819,7 +824,7 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
       pgsql_ops_.empty() || !exec_params,
       IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
-  if (!VERIFY_RESULT(SetScanBounds(read_op_->read_request()))) {
+  if (!VERIFY_RESULT(SetScanBounds(table_, read_op_->read_request()))) {
     DCHECK(!HasActiveOps());
     end_of_data_ = true;
     return Status::OK();
@@ -833,8 +838,8 @@ Status PgDocReadOp::ExecuteInit(const YbcPgExecParameters* exec_params) {
   return Status::OK();
 }
 
-Result<bool> PgDocReadOp::SetScanBounds(LWPgsqlReadRequestPB& request) {
-  if (table_->schema().num_hash_key_columns() > 0) {
+Result<bool> PgDocReadOp::SetScanBounds(PgTable& table, LWPgsqlReadRequestPB& request) {
+  if (table->schema().num_hash_key_columns() > 0) {
     // TODO: figure out if we can clarify bounds of a hash table scan
     return true;
   }
@@ -852,14 +857,14 @@ Result<bool> PgDocReadOp::SetScanBounds(LWPgsqlReadRequestPB& request) {
   }
   std::vector<dockv::KeyEntryValue> lower_range_components, upper_range_components;
   RETURN_NOT_OK(client::GetRangePartitionBounds(
-      table_->schema(), request, &lower_range_components, &upper_range_components));
+      table->schema(), request, &lower_range_components, &upper_range_components));
   if (lower_range_components.empty() && upper_range_components.empty()) {
     return true;
   }
   auto lower_bound = dockv::DocKey(
-      table_->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
+      table->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
   auto upper_bound = dockv::DocKey(
-      table_->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
+      table->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
   VLOG_WITH_FUNC(4) << "Lower bound: " << Slice(lower_bound).ToDebugHexString()
                     << ", upper bound: " << Slice(upper_bound).ToDebugHexString();
   return ApplyBounds(request, lower_bound, true, upper_bound, false);
@@ -1024,60 +1029,29 @@ void PgDocReadOp::InitializeYbctidOperators() {
   ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
-Status PgDocReadOp::DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
+Status PgDocReadOp::DoPopulateMergeStreamRequests(
+    MergeSortKeysPtr merge_sort_keys, PgTable& bind, InPermutationGenerator&& merge_streams) {
   DCHECK(merge_sort_keys && !merge_sort_keys->empty());
-  InPermutationBuilder builder(table_);
-  auto sortkey_it = merge_sort_keys->cbegin();
-  size_t c_idx = 0;
-  // All partition_column_values are expected to have merge stream conditions
-  for (const auto& col_expr : read_op_->read_request().partition_column_values()) {
-    DCHECK_LT(c_idx, sortkey_it->att_idx) << "Can't merge sort by a hash column";
-    DCHECK_NE(col_expr.expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
-        << "Missing condition on a merge stream column at " << c_idx;
-    VLOG_WITH_FUNC(4) << "Merge stream condition found on a hash column at index " << c_idx;
-    builder.AddExpression(c_idx, &col_expr);
-    ++c_idx;
-  }
-  // range_column_values preceding any of the sort columns are expected to have
-  // merge stream conditions
-  auto col_expr_it = read_op_->read_request().range_column_values().cbegin();
-  for (; c_idx < table_->num_key_columns(); ++c_idx) {
-    if (c_idx == sortkey_it->att_idx) { // sort column
-      VLOG_WITH_FUNC(4) << "Sort column at index " << c_idx
-                        << ", target value at " << sortkey_it->value_idx;
-      // no expressions should be after the last sort column
-      if (++sortkey_it == merge_sort_keys->cend()) {
-        DCHECK(col_expr_it == read_op_->read_request().range_column_values().cend())
-            << "Found an expression after all sort columns at " << c_idx;
-        break;
-      }
-    } else { // merge stream column
-      DCHECK(col_expr_it != read_op_->read_request().range_column_values().cend())
-          << "Missing condition on a merge stream column at " << c_idx;
-      DCHECK_LT(c_idx, sortkey_it->att_idx) << "Merge sort key is out of order";
-      DCHECK_NE(col_expr_it->expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
-          << "Missing values on a merge stream column at " << c_idx;
-      VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
-      builder.AddExpression(c_idx, &*col_expr_it);
-      ++col_expr_it;
-    }
-  }
-  DCHECK(sortkey_it == merge_sort_keys->cend())
-      << "Sort key is not an index key: " << sortkey_it->att_idx;
-  auto merge_streams = builder.Build();
   ClonePgsqlOps(merge_streams.Size());
+  size_t active_op_count = 0;
   for (size_t idx = 0; idx < merge_streams.Size(); ++idx) {
     DCHECK(merge_streams.HasPermutation());
     auto& read_op = GetReadOp(idx);
-    read_op.read_request().mutable_range_column_values()->clear();
-    if (VERIFY_RESULT(BindExprsRegular(read_op.read_request(), merge_streams.NextPermutation()))) {
+    auto& read_req = read_op.read_request().has_index_request()
+        ? *read_op.read_request().mutable_index_request()
+        : read_op.read_request();
+    read_req.mutable_range_column_values()->clear();
+    if (VERIFY_RESULT(BindExprsRegular(bind, read_req, merge_streams.NextPermutation()))) {
       read_op.set_active(true);
       read_op.set_is_merge_stream(true);
+      ++active_op_count;
     }
   }
   DCHECK(!merge_streams.HasPermutation());
   MoveInactiveOpsOutside();
-  if (HasActiveOps()) {
+  // We need a specialized result stream to merge results from multiple active operations.
+  // If there is only one, default result stream is good; no active ops means no execution.
+  if (active_op_count > 1) {
     DCHECK(!result_stream_);
     // It is not known here what columns are read, but need to reserve space in Datum/isnull arrays
     // for them. So reserve space for all regular attributes.
@@ -1094,27 +1068,27 @@ Status PgDocReadOp::DoPopulateMergeStreams(MergeSortKeysPtr merge_sort_keys) {
 }
 
 Result<bool> PgDocReadOp::BindExprsRegular(
-    LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
-  if (table_->num_hash_key_columns() > 0) {
-    std::span hash_values(values.begin(), table_->num_hash_key_columns());
-    auto hash = VERIFY_RESULT(table_->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
+    PgTable& table, LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
+  if (table->num_hash_key_columns() > 0) {
+    std::span hash_values(values.begin(), table->num_hash_key_columns());
+    auto hash = VERIFY_RESULT(table->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
     const auto lower_bound =
-        HashCodeToDocKeyBound(table_->schema(), hash, true /* is_inclusive */, true /* is_lower */);
+        HashCodeToDocKeyBound(table->schema(), hash, true /* is_inclusive */, true /* is_lower */);
     const auto upper_bound = HashCodeToDocKeyBound(
-        table_->schema(), hash, true /* is_inclusive */, false /* is_lower */);
+        table->schema(), hash, true /* is_inclusive */, false /* is_lower */);
     if (!ApplyBounds(
             read_req, lower_bound, false /* lower_bound_is_inclusive */, upper_bound,
             false /* upper_bound_is_inclusive */)) {
       return false;
     }
     read_req.mutable_partition_column_values()->clear();
-    for (size_t index = 0; index < table_->num_hash_key_columns(); ++index) {
+    for (size_t index = 0; index < table->num_hash_key_columns(); ++index) {
       auto* partition_column_value = read_req.add_partition_column_values()->mutable_value();
       *partition_column_value = *values[index];
     }
   }
 
-  for (size_t index = table_->num_hash_key_columns(); index < table_->num_key_columns(); ++index) {
+  for (size_t index = table->num_hash_key_columns(); index < table->num_key_columns(); ++index) {
     auto* elem = values[index];
     if (elem) {
       if (!read_req.has_condition_expr()) {
@@ -1123,12 +1097,12 @@ Result<bool> PgDocReadOp::BindExprsRegular(
       auto* op = read_req.mutable_condition_expr()->mutable_condition()->add_operands();
       auto* pgcond = op->mutable_condition();
       pgcond->set_op(QL_OP_EQUAL);
-      pgcond->add_operands()->set_column_id(table_.ColumnForIndex(index).id());
+      pgcond->add_operands()->set_column_id(table.ColumnForIndex(index).id());
       *pgcond->add_operands()->mutable_value() = *elem;
     }
   }
-  if (table_->num_hash_key_columns() == 0) {
-    return SetScanBounds(read_req);
+  if (table->num_hash_key_columns() == 0) {
+    return SetScanBounds(table, read_req);
   }
   return true;
 }
@@ -1238,7 +1212,8 @@ Result<bool> PgDocReadOp::PopulateNextHashPermutationOps() {
   } else {
     for (auto it = pgsql_ops_.begin();
          it != pgsql_ops_.end() && hash_permutations_->HasPermutation(); ++it) {
-      if (VERIFY_RESULT(BindExprsRegular(AsReadReq(*it), hash_permutations_->NextPermutation()))) {
+      if (VERIFY_RESULT(BindExprsRegular(
+          table_, AsReadReq(*it), hash_permutations_->NextPermutation()))) {
         (**it).set_active(true);
       }
     }

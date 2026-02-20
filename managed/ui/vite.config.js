@@ -93,7 +93,7 @@ const createEsbuildTransformPlugin = (name, filter, transform) => ({
   }
 });
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     momentPreciseRangePlugin(),
     reduxFormPlugin(),
@@ -156,8 +156,9 @@ export default defineConfig({
       REACT_APP_API_URL: 'http://localhost:9000'
     },
     global: 'globalThis',
-    this: 'window',
-    globalThis: 'window'
+    // these browser-specific defines must be excluded during vitest (mode === 'test')
+    // because they reference `window` which doesn't exist in Node.js before jsdom sets up
+    ...(mode !== 'test' ? { this: 'window', globalThis: 'window' } : {})
   },
   optimizeDeps: {
     include: ['moment-precise-range-plugin', 'redux-form'],
@@ -189,5 +190,22 @@ export default defineConfig({
   preview: {
     port: 3000,
     host: '0.0.0.0'
+  },
+  test: {
+    include: ['src/**/*.test.{ts,tsx,js,jsx}'],
+    globals: true,
+    css: false,
+    environment: 'jsdom',
+    environmentOptions: {
+      jsdom: {
+        url: 'http://localhost'
+      }
+    },
+    setupFiles: ['./vitest.setup.ts'],
+    server: {
+      deps: {
+        inline: ['@yugabyte-ui-library/core', '@yugabytedb/perf-advisor-ui']
+      }
+    }
   }
-});
+}));
