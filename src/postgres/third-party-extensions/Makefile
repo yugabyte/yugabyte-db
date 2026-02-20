@@ -1,4 +1,5 @@
 DIRS = \
+	age \
 	documentdb \
 	hypopg \
 	orafce \

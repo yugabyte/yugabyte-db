@@ -24,6 +24,11 @@
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
+#include "utils/age_global_graph.h"
+
 static void begin_cypher_set(CustomScanState *node, EState *estate,
                                 int eflags);
 static TupleTableSlot *exec_cypher_set(CustomScanState *node);
@@ -31,6 +36,9 @@ static void end_cypher_set(CustomScanState *node);
 static void rescan_cypher_set(CustomScanState *node);
 
 static void process_update_list(CustomScanState *node);
+static HeapTuple yb_update_entity_tuple(ResultRelInfo *resultRelInfo,
+                                        TupleTableSlot *elemTupleSlot,
+                                        EState *estate, HeapTuple old_tuple);
 static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
                                      TupleTableSlot *elemTupleSlot,
                                      EState *estate, HeapTuple old_tuple);
@@ -103,6 +111,10 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
     CommandId cid = GetCurrentCommandId(true);
     ResultRelInfo **saved_resultRels = estate->es_result_relations;
 
+    if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+        return yb_update_entity_tuple(resultRelInfo, elemTupleSlot,
+                                      estate, old_tuple);
+
     estate->es_result_relations = &resultRelInfo;
 
     lockmode = ExecUpdateLockMode(estate, resultRelInfo);
@@ -122,7 +134,7 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
         tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
         if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
         {
-            ExecConstraints(resultRelInfo, elemTupleSlot, estate);
+            ExecConstraints(resultRelInfo, elemTupleSlot, estate, NULL /* YB: mtstate */);
         }
 
         result = table_tuple_update(resultRelInfo->ri_RelationDesc,
@@ -178,6 +190,83 @@ static HeapTuple update_entity_tuple(ResultRelInfo *resultRelInfo,
 
     ReleaseBuffer(buffer);
 
+    estate->es_result_relations = saved_resultRels;
+
+    return tuple;
+}
+
+/*
+ * YugabyteDB-specific update path.
+ *
+ * YB relations don't use PostgreSQL's heap storage, so heap TIDs
+ * (t_self / ctid) are not valid. We cannot call heap_lock_tuple or
+ * table_tuple_update which require valid heap TIDs. Instead, YB
+ * handles locking internally in DocDB, and we perform the update
+ * as a delete + insert using the tuple's ybctid.
+ */
+static HeapTuple yb_update_entity_tuple(ResultRelInfo *resultRelInfo,
+                                        TupleTableSlot *elemTupleSlot,
+                                        EState *estate, HeapTuple old_tuple)
+{
+    HeapTuple tuple = NULL;
+    Relation rel = resultRelInfo->ri_RelationDesc;
+    ResultRelInfo **saved_resultRels = estate->es_result_relations;
+    TupleTableSlot *oldSlot;
+
+    estate->es_result_relations = &resultRelInfo;
+
+    ExecOpenIndices(resultRelInfo, false);
+    ExecStoreVirtualTuple(elemTupleSlot);
+    tuple = ExecFetchSlotHeapTuple(elemTupleSlot, true, NULL);
+
+    tuple->t_tableOid = RelationGetRelid(rel);
+    if (rel->rd_att->constr != NULL)
+    {
+        ExecConstraints(resultRelInfo, elemTupleSlot, estate, NULL);
+    }
+
+    oldSlot = ExecInitExtraTupleSlot(
+        estate, RelationGetDescr(rel), &TTSOpsHeapTuple);
+    ExecStoreHeapTuple(old_tuple, oldSlot, false);
+    TABLETUPLE_YBCTID(oldSlot) = HEAPTUPLE_YBCTID(old_tuple);
+
+    /*
+     * Use YBCExecuteUpdateReplace (delete + insert) rather than
+     * YBCExecuteUpdate.  Although AGE's primary key (id) is immutable
+     * and only the properties column is modified, YBCExecuteUpdate is
+     * tightly coupled to the ModifyTable plan node — it accesses
+     * mt_plan->ybPushdownTlist, ybReturningColumns, and ybColumnRefs.
+     * AGE uses custom scan nodes with no ModifyTable plan, so
+     * YBCExecuteUpdate cannot be called without fabricating a dummy
+     * plan node.
+     */
+    YBCExecuteUpdateReplace(rel, oldSlot, elemTupleSlot, estate);
+
+    (void) GetCurrentCommandId(true);
+
+    if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+    {
+        Datum old_ybctid = YBCGetYBTupleIdFromSlot(oldSlot);
+        /*
+         * Mark all columns as modified so that YbExecUpdateIndexTuples
+         * performs DELETE + INSERT for every secondary index.  This is
+         * necessary because YBCExecuteUpdateReplace() rewrites the base
+         * table row, and all index entries must be kept in sync.
+         */
+        Bitmapset *updatedCols = NULL;
+        for (int attnum = 1; attnum <= rel->rd_att->natts; attnum++)
+        {
+            updatedCols = bms_add_member(updatedCols,
+                                         YBAttnumToBmsIndex(rel, attnum));
+        }
+        YbExecUpdateIndexTuples(resultRelInfo, elemTupleSlot, old_ybctid,
+                                old_tuple, NULL /* tupleid */, estate,
+                                updatedCols, false /* is_pk_updated */,
+                                true /* is_inplace_update_enabled */);
+        bms_free(updatedCols);
+    }
+
+    ExecCloseIndices(resultRelInfo);
     estate->es_result_relations = saved_resultRels;
 
     return tuple;
@@ -627,7 +716,10 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
         process_all_tuples(node);
 
         /* increment the command counter to reflect the updates */
-        CommandCounterIncrement();
+        YbCommandCounterIncrement();
+
+        /* invalidate the global graph cache so subsequent queries see updates */
+        yb_invalidate_GRAPH_global_contexts();
 
         return NULL;
     }
@@ -635,7 +727,10 @@ static TupleTableSlot *exec_cypher_set(CustomScanState *node)
     process_update_list(node);
 
     /* increment the command counter to reflect the updates */
-    CommandCounterIncrement();
+    YbCommandCounterIncrement();
+
+    /* invalidate the global graph cache so subsequent queries see updates */
+    yb_invalidate_GRAPH_global_contexts();
 
     estate->es_result_relations = saved_resultRels;
 

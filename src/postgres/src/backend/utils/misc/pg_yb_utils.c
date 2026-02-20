@@ -2001,6 +2001,8 @@ YBPgTypeOidToStr(Oid type_id)
 			return "CSTRINGARRAY";
 		case BSONOID:
 			return "BSON";
+		case GRAPHIDOID:
+			return "GRAPHID";
 		default:
 			return "user_defined_type";
 	}

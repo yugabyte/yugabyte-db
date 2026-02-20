@@ -24,6 +24,9 @@
 
 #include "utils/graphid.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 static int graphid_btree_fast_cmp(Datum x, Datum y, SortSupport ssup);
 
 /* global storage of  OID for graphid and _graphid */
@@ -33,6 +36,9 @@ static Oid g_GRAPHIDARRAYOID = InvalidOid;
 /* helper function to quickly set, if necessary, and retrieve GRAPHIDOID */
 Oid get_GRAPHIDOID(void)
 {
+    if (IsYugaByteEnabled())
+        return GRAPHIDOID;
+
     if (g_GRAPHIDOID == InvalidOid)
     {
         g_GRAPHIDOID = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,

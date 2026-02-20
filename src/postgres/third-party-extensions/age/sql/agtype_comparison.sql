@@ -1444,6 +1444,19 @@ CREATE OPERATOR CLASS agtype_ops_btree
   OPERATOR 5 >=,
   FUNCTION 1 ag_catalog.agtype_btree_cmp(agtype, agtype);
 
+-- LSM operator class for YugabyteDB
+-- YugabyteDB uses LSM (Log-Structured Merge) trees instead of B-trees
+CREATE OPERATOR CLASS agtype_ops_lsm
+  DEFAULT
+  FOR TYPE agtype
+  USING lsm AS
+  OPERATOR 1 <,
+  OPERATOR 2 <=,
+  OPERATOR 3 =,
+  OPERATOR 4 >,
+  OPERATOR 5 >=,
+  FUNCTION 1 ag_catalog.agtype_btree_cmp(agtype, agtype);
+
 CREATE FUNCTION ag_catalog.agtype_hash_cmp(agtype)
     RETURNS INTEGER
     LANGUAGE c

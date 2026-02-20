@@ -54,6 +54,9 @@
 #include "utils/graphid.h"
 #include "utils/name_validation.h"
 
+/* YB includes */
+#include "commands/graph_commands.h"
+
 /*
  * Relation name doesn't have to be label name but the same name is used so
  * that users can find the backed relation for a label only by its name.
@@ -340,6 +343,9 @@ void create_label(char *graph_name, char *label_name, char label_type,
     rel_name = gen_label_relation_name(label_name);
     seq_name = ChooseRelationName(rel_name, "id", "seq", nsp_id, false);
     seq_range_var = makeRangeVar(schema_name, seq_name, -1);
+
+    YB_BEGIN_TRANSACTIONAL_DDL();
+
     create_sequence_for_label(seq_range_var);
 
     /* create a table for the new label */
@@ -356,6 +362,8 @@ void create_label(char *graph_name, char *label_name, char label_type,
 
     /* associate the sequence with the "id" column */
     alter_sequence_owned_by_for_label(seq_range_var, rel_name);
+
+    YB_END_TRANSACTIONAL_DDL();
 
     /* get a new "id" for the new label */
     label_id = get_new_label_id(graph_oid, nsp_id);
@@ -838,10 +846,14 @@ Datum drop_label(PG_FUNCTION_ARGS)
     /* build qualified name */
     qname = list_make2(makeString(schema_name), makeString(rel_name));
 
+    YB_BEGIN_TRANSACTIONAL_DDL();
+
     remove_relation(qname);
     /* CommandCounterIncrement() is called in performDeletion() */
 
     /* delete_label() will be called in object_access() */
+
+    YB_END_TRANSACTIONAL_DDL();
 
     ereport(NOTICE, (errmsg("label \"%s\".\"%s\" has been dropped",
                             graph_name_str, label_name_str)));
