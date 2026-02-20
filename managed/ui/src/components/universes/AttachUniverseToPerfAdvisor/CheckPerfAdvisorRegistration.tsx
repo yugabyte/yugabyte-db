@@ -15,7 +15,7 @@ interface CheckPerfAdvisorRegistrationProps {
   appName: AppName;
   timezone: string;
   apiUrl: string;
-  tpUuid: string;
+  paUuid: string;
 }
 
 export const CheckPerfAdvisorRegistration = ({
@@ -23,13 +23,13 @@ export const CheckPerfAdvisorRegistration = ({
   appName,
   timezone,
   apiUrl,
-  tpUuid
+  paUuid
 }: CheckPerfAdvisorRegistrationProps) => {
   const { t } = useTranslation();
   const [registrationStatus, setRegistrationStatus] = useState<boolean>(false);
   const getUniversePaRegistrationStatus = useQuery(
     PERF_ADVISOR_QUERY_KEY.fetchUniverseRegistrationDetails,
-    () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(tpUuid, universeUuid),
+    () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeUuid),
     {
       onSuccess: (data) => {
         setRegistrationStatus(data.success);
@@ -37,7 +37,7 @@ export const CheckPerfAdvisorRegistration = ({
       onError: (error: any) => {
         error.request.status === 404 && setRegistrationStatus(false);
       },
-      enabled: isNonEmptyString(tpUuid) && isNonEmptyString(universeUuid)
+      enabled: isNonEmptyString(paUuid) && isNonEmptyString(universeUuid)
     }
   );
 

@@ -14,6 +14,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.util.*;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
@@ -23,12 +24,13 @@ import org.hibernate.validator.constraints.URL;
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Entity
-@ApiModel(description = "Troubleshooting Platform Model")
-public class TroubleshootingPlatform extends Model {
+@Table(name = "pa_collector")
+@ApiModel(description = "Performance Advisor Collector Model")
+public class PACollector extends Model {
 
   @NotNull
   @Id
-  @ApiModelProperty(value = "Troubleshooting Platform UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(value = "PA Collector UUID", accessMode = READ_ONLY)
   private UUID uuid;
 
   @NotNull
@@ -36,9 +38,9 @@ public class TroubleshootingPlatform extends Model {
   private UUID customerUUID;
 
   @NotNull
-  @ApiModelProperty(value = "Troubleshooting Platform URL", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "PA Collector URL", accessMode = READ_WRITE)
   @URL
-  private String tpUrl;
+  private String paUrl;
 
   @NotNull
   @ApiModelProperty(value = "YBA URL", accessMode = READ_WRITE)
@@ -51,19 +53,29 @@ public class TroubleshootingPlatform extends Model {
   private String metricsUrl;
 
   @NotNull
+  @ApiModelProperty(value = "Metrics API Username", accessMode = READ_WRITE)
+  @Encrypted
+  private String metricsUsername;
+
+  @NotNull
+  @ApiModelProperty(value = "Metrics API Password", accessMode = READ_WRITE)
+  @Encrypted
+  private String metricsPassword;
+
+  @NotNull
   @ApiModelProperty(value = "YBA API Token", accessMode = READ_WRITE)
   @Encrypted
   private String apiToken;
 
-  @ApiModelProperty(value = "TP API Token", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "PA Collector API Token", accessMode = READ_WRITE)
   @Encrypted
-  private String tpApiToken;
+  private String paApiToken;
 
   @NotNull
   @ApiModelProperty(value = "Metrics Scrape Period Seconds", accessMode = READ_WRITE)
   private Long metricsScrapePeriodSecs;
 
-  public TroubleshootingPlatform generateUUID() {
+  public PACollector generateUUID() {
     this.uuid = UUID.randomUUID();
     return this;
   }
@@ -73,10 +85,10 @@ public class TroubleshootingPlatform extends Model {
     return uuid == null;
   }
 
-  private static final Finder<UUID, TroubleshootingPlatform> find =
-      new Finder<UUID, TroubleshootingPlatform>(TroubleshootingPlatform.class) {};
+  private static final Finder<UUID, PACollector> find =
+      new Finder<UUID, PACollector>(PACollector.class) {};
 
-  public static ExpressionList<TroubleshootingPlatform> createQuery() {
+  public static ExpressionList<PACollector> createQuery() {
     return find.query().where();
   }
 }

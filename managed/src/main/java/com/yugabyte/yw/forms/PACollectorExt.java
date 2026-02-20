@@ -1,7 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
-import com.yugabyte.yw.models.TroubleshootingPlatform;
+import com.yugabyte.yw.models.PACollector;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
@@ -9,9 +9,9 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-@ApiModel("Troubleshooting Platform Details Model")
-public class TroubleshootingPlatformExt {
-  @JsonUnwrapped TroubleshootingPlatform troubleshootingPlatform;
+@ApiModel("PA Collector Details Model")
+public class PACollectorExt {
+  @JsonUnwrapped PACollector paCollector;
 
   @ApiModelProperty("In Use Status")
   InUseStatus inUseStatus;

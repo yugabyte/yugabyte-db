@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pekko.stream.Materializer;
 import play.Environment;
@@ -34,7 +35,7 @@ import play.libs.ws.ahc.AhcWSClientConfigFactory;
 @Slf4j
 public class CustomWsClientFactory {
 
-  private final Materializer materializer;
+  @Getter private final Materializer materializer;
   private final Environment environment;
   private final RuntimeConfigFactory runtimeConfigFactory;
 

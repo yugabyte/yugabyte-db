@@ -32,11 +32,11 @@ export const UnregisterPerfAdvisorDialog = ({
   const helperClasses = useStyles();
 
   const [forceUnregister, setForceUnregister] = useState<boolean>(false);
-  const tpUuid = data.tpUuid;
+  const paUuid = data.paUuid;
 
   // DELETE API call to unregister the Troubleshooting Platform service
   const unregisterTPService = useMutation(
-    () => PerfAdvisorAPI.unRegisterPerfAdvisor(tpUuid, forceUnregister),
+    () => PerfAdvisorAPI.unRegisterPerfAdvisor(paUuid, forceUnregister),
     {
       onSuccess: (response: any) => {
         toast.success(t('clusterDetail.troubleshoot.deleteDialog.unregistrationSuccess'));
@@ -103,7 +103,7 @@ export const UnregisterPerfAdvisorDialog = ({
       <Box mt={2}>
         <Typography variant="body2">
           {t('clusterDetail.troubleshoot.deleteDialog.unregisterMessage', {
-            url: data.tpUrl
+            url: data.paUrl
           })}
         </Typography>
       </Box>

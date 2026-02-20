@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-package com.yugabyte.yw.common.troubleshooting;
+package com.yugabyte.yw.common.pa;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -9,8 +9,8 @@ import static org.junit.Assert.assertThrows;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.TroubleshootingPlatform;
-import com.yugabyte.yw.models.filters.TroubleshootingPlatformFilter;
+import com.yugabyte.yw.models.PACollector;
+import com.yugabyte.yw.models.filters.PACollectorFilter;
 import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
@@ -24,17 +24,16 @@ import org.junit.runner.RunWith;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
+public class PerfAdvisorServiceTest extends FakeDBApplication {
 
   private UUID defaultCustomerUuid;
 
-  private TroubleshootingPlatformService troubleshootingPlatformService;
+  private PerfAdvisorService perfAdvisorService;
 
   @Before
   public void setUp() {
     defaultCustomerUuid = ModelFactory.testCustomer().getUuid();
-    troubleshootingPlatformService =
-        app.injector().instanceOf(TroubleshootingPlatformService.class);
+    perfAdvisorService = app.injector().instanceOf(PerfAdvisorService.class);
   }
 
   @Test
@@ -42,15 +41,14 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer_metadata/" + defaultCustomerUuid.toString());
-      TroubleshootingPlatform platform =
+      PACollector platform =
           createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
-      TroubleshootingPlatform updated = troubleshootingPlatformService.save(platform, false);
+      PACollector updated = perfAdvisorService.save(platform, false);
 
       assertThat(updated, equalTo(platform));
 
-      TroubleshootingPlatform fromDb =
-          troubleshootingPlatformService.get(platform.getCustomerUUID(), platform.getUuid());
+      PACollector fromDb = perfAdvisorService.get(platform.getCustomerUUID(), platform.getUuid());
       assertThat(fromDb, equalTo(platform));
     }
   }
@@ -63,7 +61,7 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
         assertThrows(
             PlatformServiceException.class,
             () -> {
-              troubleshootingPlatformService.getOrBadRequest(defaultCustomerUuid, uuid);
+              perfAdvisorService.getOrBadRequest(defaultCustomerUuid, uuid);
             });
     assertThat(exception.getMessage(), equalTo("Troubleshooting Platform not found"));
   }
@@ -73,26 +71,26 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer_metadata/" + defaultCustomerUuid.toString());
-      TroubleshootingPlatform platform =
+      PACollector platform =
           createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
-      troubleshootingPlatformService.save(platform, false);
+      perfAdvisorService.save(platform, false);
 
-      TroubleshootingPlatform platform2 =
+      PACollector platform2 =
           createTestPlatform(baseUrl.scheme() + "://127.0.0.1:" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform2)));
-      troubleshootingPlatformService.save(platform2, false);
+      perfAdvisorService.save(platform2, false);
 
       UUID newCustomerUUID = ModelFactory.testCustomer().getUuid();
-      TroubleshootingPlatform otherCustomerPlatform =
+      PACollector otherCustomerPlatform =
           createTestPlatform(
               newCustomerUUID, baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(otherCustomerPlatform)));
-      troubleshootingPlatformService.save(otherCustomerPlatform, false);
+      perfAdvisorService.save(otherCustomerPlatform, false);
 
-      TroubleshootingPlatformFilter filter =
-          TroubleshootingPlatformFilter.builder().customerUuid(defaultCustomerUuid).build();
-      List<TroubleshootingPlatform> platforms = troubleshootingPlatformService.list(filter);
+      PACollectorFilter filter =
+          PACollectorFilter.builder().customerUuid(defaultCustomerUuid).build();
+      List<PACollector> platforms = perfAdvisorService.list(filter);
       assertThat(platforms, containsInAnyOrder(platform, platform2));
     }
   }
@@ -102,18 +100,18 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer_metadata/" + defaultCustomerUuid.toString());
-      TroubleshootingPlatform platform =
+      PACollector platform =
           createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
-      troubleshootingPlatformService.save(platform, false);
+      perfAdvisorService.save(platform, false);
 
-      TroubleshootingPlatform duplicate =
+      PACollector duplicate =
           createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       PlatformServiceException exception =
           assertThrows(
               PlatformServiceException.class,
               () -> {
-                troubleshootingPlatformService.save(duplicate, false);
+                perfAdvisorService.save(duplicate, false);
               });
       assertThat(
           exception.getMessage(),
@@ -126,28 +124,27 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer_metadata/" + defaultCustomerUuid.toString());
-      TroubleshootingPlatform platform =
+      PACollector platform =
           createTestPlatform(baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(new MockResponse().setBody(convertToCustomerMetadata(platform)));
-      troubleshootingPlatformService.save(platform, false);
+      perfAdvisorService.save(platform, false);
 
       server.enqueue(new MockResponse());
-      troubleshootingPlatformService.delete(platform.getCustomerUUID(), platform.getUuid(), true);
+      perfAdvisorService.delete(platform.getCustomerUUID(), platform.getUuid(), true);
 
-      TroubleshootingPlatform fromDb =
-          troubleshootingPlatformService.get(platform.getCustomerUUID(), platform.getUuid());
+      PACollector fromDb = perfAdvisorService.get(platform.getCustomerUUID(), platform.getUuid());
       assertThat(fromDb, nullValue());
     }
   }
 
-  private TroubleshootingPlatform createTestPlatform(String name) {
+  private PACollector createTestPlatform(String name) {
     return createTestPlatform(defaultCustomerUuid, name);
   }
 
-  public static TroubleshootingPlatform createTestPlatform(UUID customerUUID, String tpUrl) {
-    TroubleshootingPlatform platform = new TroubleshootingPlatform();
+  public static PACollector createTestPlatform(UUID customerUUID, String tpUrl) {
+    PACollector platform = new PACollector();
     platform.setCustomerUUID(customerUUID);
-    platform.setTpUrl(tpUrl);
+    platform.setPaUrl(tpUrl);
     platform.setYbaUrl("http://localhost:9000");
     platform.setMetricsUrl("http://localhost:9090");
     platform.setApiToken("token");
@@ -155,10 +152,10 @@ public class TroubleshootingPlatformServiceTest extends FakeDBApplication {
     return platform;
   }
 
-  public static String convertToCustomerMetadata(TroubleshootingPlatform platform) {
+  public static String convertToCustomerMetadata(PACollector platform) {
     return Json.stringify(
         Json.toJson(
-            new TroubleshootingPlatformClient.CustomerMetadata()
+            new PerfAdvisorClient.CustomerMetadata()
                 .setId(platform.getCustomerUUID())
                 .setApiToken(platform.getApiToken())
                 .setPlatformUrl(platform.getYbaUrl())

@@ -54,7 +54,7 @@ export const DataCenterConfiguration = (props: any) => {
   );
   const isPerfAdvisorEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING && config.value === 'true'
+      config.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR && config.value === 'true'
   );
 
   return (

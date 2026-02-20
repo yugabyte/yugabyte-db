@@ -38,6 +38,8 @@ services:
       pa.prometheus.url=http://{{ index (splitInput (yamlPath "host")) 0 }}:
       {{- yamlPath "prometheus.port" }}
       {{ end }}
+      pa.prometheus.username={{ yamlPath "prometheus.authUsername" }}
+      pa.prometheus.password={{ yamlPath "prometheus.authPassword" }}
 
       # Perf Advisor Web Port
       server.port={{ yamlPath "perfAdvisor.port" }}

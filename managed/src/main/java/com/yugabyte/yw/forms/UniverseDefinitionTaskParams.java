@@ -342,6 +342,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paCollectorUuid = null;
+
   @Data
   public static class PerInstanceTypeReservation {
     private String instanceType;

@@ -74,9 +74,11 @@ export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => 
           {paData?.length > 0 ? (
             <PerfAdvisorUniverseConfig
               metricsUrl={paData[0].metricsUrl}
+              metricsUsername={paData[0].metricsUsername}
+              metricsPassword={paData[0].metricsPassword}
               ybaUrl={paData[0].ybaUrl}
-              tpUrl={paData[0].tpUrl}
-              tpUuid={paData[0].uuid}
+              paUrl={paData[0].paUrl}
+              paUuid={paData[0].uuid}
               apiToken={paData[0].apiToken}
               tpApiToken={paData[0].tpApiToken}
               metricsScrapePeriodSecs={paData[0].metricsScrapePeriodSecs}
@@ -97,7 +99,7 @@ export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => 
           <ConfigureUniverseMetadata
             appName={AppName.YBA}
             customerUuid={currentCustomerInfo?.uuid}
-            apiUrl={isNonEmptyString(paData?.[0]?.tpUrl) ? `${paData[0].tpUrl}/api` : ''}
+            apiUrl={isNonEmptyString(paData?.[0]?.paUrl) ? `${paData[0].paUrl}/api` : ''}
           />
         </Tab>
       </YBTabsPanel>

@@ -55,7 +55,7 @@ public class SupportBundleHandler {
    * @param bundleData
    * @param universe
    */
-  public void bundleDataVaidation(SupportBundleFormData bundleData, Universe universe) {
+  public void bundleDataValidation(SupportBundleFormData bundleData, Universe universe) {
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
@@ -204,8 +204,7 @@ public class SupportBundleHandler {
           nodeComponentSizeMap.put(component.toString(), componentSize);
           resp.put(nodeName, nodeComponentSizeMap);
         } catch (InterruptedException | ExecutionException e) {
-          log.error("Error while getting file sizes for component: ", component.toString());
-          e.printStackTrace();
+          log.error("Error while getting file sizes for component: {}", component.toString(), e);
         }
       }
     } finally {
@@ -235,8 +234,7 @@ public class SupportBundleHandler {
           reachableNodes.add(p.getFirst());
         }
       } catch (InterruptedException | ExecutionException e) {
-        log.error("Error while collecting reachable nodes for universe: {}", universe.getName());
-        e.printStackTrace();
+        log.error("Error while collecting reachable nodes for universe: {}", universe.getName(), e);
       }
     }
     log.info(

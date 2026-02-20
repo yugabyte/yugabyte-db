@@ -1968,11 +1968,11 @@
             "UpgradeGFlags",
             "CreateTelemetryConfig",
             "DeleteTelemetryConfig",
-            "CreateTroubleshootingConfig",
-            "EditTroubleshootingConfig",
-            "DeleteTroubleshootingConfig",
-            "TroubleshootingPlatformRegister",
-            "TroubleshootingPlatformUnregister",
+            "CreatePACollectorConfig",
+            "EditPACollectorConfig",
+            "DeletePACollectorConfig",
+            "PACollectorRegister",
+            "PACollectorUnregister",
             "UpgradeKubernetesOverrides",
             "UpgradeCerts",
             "UpgradeTLS",
@@ -2152,7 +2152,7 @@
             "ScheduledScript",
             "SupportBundle",
             "TelemetryProvider",
-            "TroubleshootingPlatform",
+            "PACollector",
             "GFlags",
             "Hook",
             "HookScope",
@@ -4651,6 +4651,7 @@
               "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
+              "PerfAdvisor",
               "ApplicationLogs"
             ],
             "type" : "string"
@@ -4666,6 +4667,26 @@
           "description" : "Max number of most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "paDumpEndDate" : {
+          "description" : "End date to filter Perf Advisor data",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "paDumpStartDate" : {
+          "description" : "Start date to filter Perf Advisor data",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "paMetricsFormat" : {
+          "description" : "Specifies PA Dump metrics format.",
+          "enum" : [
+            "PROMQL_JSON",
+            "PROM_CHUNK"
+          ],
+          "type" : "string"
         },
         "promDumpEndDate" : {
           "description" : "End date to filter prometheus metrics till",
@@ -14062,6 +14083,118 @@
       },
       "type" : "object"
     },
+    "PA Collector Details Model" : {
+      "properties" : {
+        "apiToken" : {
+          "description" : "YBA API Token",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "inUseStatus" : {
+          "description" : "In Use Status",
+          "enum" : [
+            "IN_USE",
+            "NOT_IN_USE",
+            "ERROR"
+          ],
+          "type" : "string"
+        },
+        "metricsScrapePeriodSecs" : {
+          "description" : "Metrics Scrape Period Seconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "metricsUrl" : {
+          "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "paApiToken" : {
+          "description" : "PA Collector API Token",
+          "type" : "string"
+        },
+        "paUrl" : {
+          "description" : "PA Collector URL",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "PA Collector UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybaUrl" : {
+          "description" : "YBA URL",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "apiToken",
+        "customerUUID",
+        "metricsScrapePeriodSecs",
+        "metricsUrl",
+        "paUrl",
+        "uuid",
+        "ybaUrl"
+      ],
+      "type" : "object"
+    },
+    "PACollector" : {
+      "description" : "Performance Advisor Collector Model",
+      "properties" : {
+        "apiToken" : {
+          "description" : "YBA API Token",
+          "type" : "string"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "metricsScrapePeriodSecs" : {
+          "description" : "Metrics Scrape Period Seconds",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "metricsUrl" : {
+          "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "paApiToken" : {
+          "description" : "PA Collector API Token",
+          "type" : "string"
+        },
+        "paUrl" : {
+          "description" : "PA Collector URL",
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "PA Collector UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybaUrl" : {
+          "description" : "YBA URL",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "apiToken",
+        "customerUUID",
+        "metricsScrapePeriodSecs",
+        "metricsUrl",
+        "paUrl",
+        "uuid",
+        "ybaUrl"
+      ],
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -21702,6 +21835,7 @@
               "K8sInfo",
               "YbaMetadata",
               "PrometheusMetrics",
+              "PerfAdvisor",
               "ApplicationLogs"
             ],
             "type" : "string"
@@ -21727,6 +21861,26 @@
           "description" : "Max number of the most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "paDumpEndDate" : {
+          "description" : "End date to filter Perf Advisor data",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "paDumpStartDate" : {
+          "description" : "Start date to filter Perf Advisor data",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "paMetricsFormat" : {
+          "description" : "Specifies metrics format.",
+          "enum" : [
+            "PROMQL_JSON",
+            "PROM_CHUNK"
+          ],
+          "type" : "string"
         },
         "promDumpEndDate" : {
           "description" : "End date to filter prometheus metrics till",
@@ -24488,118 +24642,6 @@
           "type" : "string"
         }
       },
-      "type" : "object"
-    },
-    "Troubleshooting Platform Details Model" : {
-      "properties" : {
-        "apiToken" : {
-          "description" : "YBA API Token",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "inUseStatus" : {
-          "description" : "In Use Status",
-          "enum" : [
-            "IN_USE",
-            "NOT_IN_USE",
-            "ERROR"
-          ],
-          "type" : "string"
-        },
-        "metricsScrapePeriodSecs" : {
-          "description" : "Metrics Scrape Period Seconds",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "metricsUrl" : {
-          "description" : "Metrics URL",
-          "type" : "string"
-        },
-        "tpApiToken" : {
-          "description" : "TP API Token",
-          "type" : "string"
-        },
-        "tpUrl" : {
-          "description" : "Troubleshooting Platform URL",
-          "type" : "string"
-        },
-        "uuid" : {
-          "description" : "Troubleshooting Platform UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "ybaUrl" : {
-          "description" : "YBA URL",
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "apiToken",
-        "customerUUID",
-        "metricsScrapePeriodSecs",
-        "metricsUrl",
-        "tpUrl",
-        "uuid",
-        "ybaUrl"
-      ],
-      "type" : "object"
-    },
-    "TroubleshootingPlatform" : {
-      "description" : "Troubleshooting Platform Model",
-      "properties" : {
-        "apiToken" : {
-          "description" : "YBA API Token",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "metricsScrapePeriodSecs" : {
-          "description" : "Metrics Scrape Period Seconds",
-          "format" : "int64",
-          "type" : "integer"
-        },
-        "metricsUrl" : {
-          "description" : "Metrics URL",
-          "type" : "string"
-        },
-        "tpApiToken" : {
-          "description" : "TP API Token",
-          "type" : "string"
-        },
-        "tpUrl" : {
-          "description" : "Troubleshooting Platform URL",
-          "type" : "string"
-        },
-        "uuid" : {
-          "description" : "Troubleshooting Platform UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
-        "ybaUrl" : {
-          "description" : "YBA URL",
-          "type" : "string"
-        }
-      },
-      "required" : [
-        "apiToken",
-        "customerUUID",
-        "metricsScrapePeriodSecs",
-        "metricsUrl",
-        "tpUrl",
-        "uuid",
-        "ybaUrl"
-      ],
       "type" : "object"
     },
     "Universe" : {
@@ -39438,6 +39480,7 @@
                   "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
+                  "PerfAdvisor",
                   "ApplicationLogs"
                 ],
                 "type" : "string"
@@ -39467,6 +39510,7 @@
                   "K8sInfo",
                   "YbaMetadata",
                   "PrometheusMetrics",
+                  "PerfAdvisor",
                   "ApplicationLogs"
                 ],
                 "type" : "string"

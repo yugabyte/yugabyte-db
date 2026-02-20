@@ -23,7 +23,7 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import { YBTabsWithLinksPanel } from '../../panels';
 import { ListTablesContainer, ReplicationContainer } from '../../tables';
 import { QueriesViewer } from '../../queries';
-import { isEmptyObject } from '../../../utils/ObjectUtils';
+import { isEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
 import {
   getIsKubernetesUniverse,
   isPausableUniverse,
@@ -255,9 +255,8 @@ class UniverseDetail extends Component {
           refetchedUniverseDetails: false
         });
       }
-      if (perfAdvisorDetails?.data?.[0]?.uuid) {
+      if (isNonEmptyArray(perfAdvisorDetails?.data)) {
         this.props.getUniversePaRegistrationStatus(
-          perfAdvisorDetails?.data?.[0].uuid,
           currentUniverse.data.universeUUID
         );
       }
@@ -495,7 +494,7 @@ class UniverseDetail extends Component {
     */
     const isPerfAdvisorServiceEnabled =
       runtimeConfigs?.data?.configEntries?.find(
-        (c) => c.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING
+        (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
       )?.value === 'true';
 
     // Performance Tab should be shown only if Perf Advisor is already enabled for the universe and that needs to be controlled by a separate runtime config as well
@@ -1847,9 +1846,8 @@ class UniverseDetail extends Component {
           open={showModal && visibleModal === 'enablePerfAdvisorModal'}
           onClose={() => {
             closeModal();
-            if (perfAdvisorDetails?.data?.[0]?.uuid) {
+            if (isNonEmptyArray(perfAdvisorDetails?.data)) {
               this.props.getUniversePaRegistrationStatus(
-                perfAdvisorDetails?.data?.[0].uuid,
                 currentUniverse.data.universeUUID
               );
             }

@@ -33,14 +33,16 @@ export const EditPerfAdvisorConfigDialog = ({
   const helperClasses = useStyles();
 
   const [forceUpdate, setForceUpdate] = useState<boolean>(false);
-  const { tpUuid, customerUUID } = data;
+  const { paUuid, customerUUID } = data;
 
   // useForm hook definition
   const formMethods = useForm<any>({
     defaultValues: {
-      tpUrl: data.tpUrl,
+      paUrl: data.paUrl,
       ybaUrl: data.ybaUrl,
       metricsUrl: data.metricsUrl,
+      metricsUsername: data.metricsUsername,
+      metricsPassword: data.metricsPassword,
       apiToken: data.apiToken,
       tpApiToken: data.tpApiToken,
       metricsScrapePeriodSecs: data.metricsScrapePeriodSecs
@@ -51,7 +53,7 @@ export const EditPerfAdvisorConfigDialog = ({
   const { control, handleSubmit } = formMethods;
 
   const updatePAServiceMetadata = useMutation(
-    (payload: any) => PerfAdvisorAPI.updatePerfAdvisorMetadata(payload, tpUuid, forceUpdate),
+    (payload: any) => PerfAdvisorAPI.updatePerfAdvisorMetadata(payload, paUuid, forceUpdate),
     {
       onSuccess: () => {
         toast.success(t('clusterDetail.troubleshoot.editDialog.updateMetadataSuccess'));
@@ -66,7 +68,7 @@ export const EditPerfAdvisorConfigDialog = ({
 
   const handleFormSubmit = handleSubmit((formValues: any) => {
     const payload = { ...formValues };
-    payload.uuid = tpUuid;
+    payload.uuid = paUuid;
     payload.customerUUID = customerUUID;
     updatePAServiceMetadata.mutateAsync(payload);
   });
@@ -132,7 +134,7 @@ export const EditPerfAdvisorConfigDialog = ({
             <Box flex={1}>
               <YBInputField
                 control={control}
-                name="tpUrl"
+                name="paUrl"
                 style={{ width: '300px' }}
                 type="text"
                 rules={{
@@ -172,6 +174,34 @@ export const EditPerfAdvisorConfigDialog = ({
                 rules={{
                   required: t('clusterDetail.troubleshoot.urlRequired')
                 }}
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsUsernameLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsUsername"
+                style={{ width: '300px' }}
+                type="text"
+              />
+            </Box>
+          </Box>
+
+          <Box display="flex" flexDirection={'row'} mt={2}>
+            <YBLabel width="250px" dataTestId="RegisterTSService-Label">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsPasswordLabel')}
+            </YBLabel>
+            <Box flex={1}>
+              <YBInputField
+                control={control}
+                name="metricsPassword"
+                style={{ width: '300px' }}
+                type="text"
               />
             </Box>
           </Box>

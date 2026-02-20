@@ -161,6 +161,7 @@ export default defineConfig(({ mode }) => ({
     ...(mode !== 'test' ? { this: 'window', globalThis: 'window' } : {})
   },
   optimizeDeps: {
+    exclude: ['node_modules/.cache'],
     include: ['moment-precise-range-plugin', 'redux-form'],
     esbuildOptions: {
       plugins: [

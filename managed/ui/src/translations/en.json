@@ -337,7 +337,7 @@
         "disableTitle": "Disable Performance Monitoring",
         "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
         "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
-        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
+        "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
         "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
         "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
       },
@@ -780,6 +780,8 @@
         "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "ybPlatformMetricsUsernameLabel": "Yugabyte Platform Metrics Username",
+        "ybPlatformMetricsPasswordLabel": "Yugabyte Platform Metrics Password",
         "apiTokenLabel": "YBA API Token",
         "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",

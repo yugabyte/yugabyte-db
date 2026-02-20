@@ -20,11 +20,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.troubleshooting.TroubleshootingPlatformService;
-import com.yugabyte.yw.common.troubleshooting.TroubleshootingPlatformServiceTest;
-import com.yugabyte.yw.forms.TroubleshootingPlatformExt;
+import com.yugabyte.yw.common.pa.PerfAdvisorService;
+import com.yugabyte.yw.common.pa.PerfAdvisorServiceTest;
+import com.yugabyte.yw.forms.PACollectorExt;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.TroubleshootingPlatform;
+import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.Users;
 import java.io.IOException;
 import java.util.Arrays;
@@ -38,15 +38,15 @@ import org.mockito.InjectMocks;
 import play.libs.Json;
 import play.mvc.Result;
 
-public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
+public class PACollectorControllerTest extends FakeDBApplication {
 
   private Customer customer;
   private String authToken;
   private Users user;
-  private TroubleshootingPlatformService troubleshootingPlatformService;
-  private TroubleshootingPlatformController troubleshootingPlatformController;
+  private PerfAdvisorService perfAdvisorService;
+  private PACollectorController troubleshootingPlatformController;
 
-  @InjectMocks private TroubleshootingPlatformController controller;
+  @InjectMocks private PACollectorController controller;
 
   @Before
   public void setup() {
@@ -54,10 +54,8 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
 
-    troubleshootingPlatformService =
-        app.injector().instanceOf(TroubleshootingPlatformService.class);
-    troubleshootingPlatformController =
-        app.injector().instanceOf(TroubleshootingPlatformController.class);
+    perfAdvisorService = app.injector().instanceOf(PerfAdvisorService.class);
+    troubleshootingPlatformController = app.injector().instanceOf(PACollectorController.class);
   }
 
   @Test
@@ -65,43 +63,39 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
-      TroubleshootingPlatform platform1 =
-          TroubleshootingPlatformServiceTest.createTestPlatform(
+      PACollector platform1 =
+          PerfAdvisorServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
-      TroubleshootingPlatform platform2 =
-          TroubleshootingPlatformServiceTest.createTestPlatform(
+      PACollector platform2 =
+          PerfAdvisorServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://127.0.0.1:" + baseUrl.port());
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform1)));
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform1)));
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform2)));
-      troubleshootingPlatformService.save(platform1, false);
-      troubleshootingPlatformService.save(platform2, false);
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform2)));
+      perfAdvisorService.save(platform1, false);
+      perfAdvisorService.save(platform2, false);
 
       server.enqueue(new MockResponse().setBody("[]"));
       server.enqueue(new MockResponse().setBody("[{},{}]"));
       Result result =
           doRequestWithAuthToken(
-              "GET",
-              "/api/customers/" + customer.getUuid() + "/troubleshooting_platform",
-              authToken);
+              "GET", "/api/customers/" + customer.getUuid() + "/pa_collector", authToken);
       assertThat(result.status(), equalTo(OK));
       JsonNode platformsJson = Json.parse(contentAsString(result));
-      List<TroubleshootingPlatformExt> platforms =
-          Arrays.asList(Json.fromJson(platformsJson, TroubleshootingPlatformExt[].class));
+      List<PACollectorExt> platforms =
+          Arrays.asList(Json.fromJson(platformsJson, PACollectorExt[].class));
       assertThat(platforms, hasSize(2));
       platform1.setApiToken("to*en");
       platform2.setApiToken("to*en");
-      List<TroubleshootingPlatformExt> expected =
+      List<PACollectorExt> expected =
           ImmutableList.of(
-              new TroubleshootingPlatformExt()
-                  .setTroubleshootingPlatform(platform1)
-                  .setInUseStatus(TroubleshootingPlatformExt.InUseStatus.NOT_IN_USE),
-              new TroubleshootingPlatformExt()
-                  .setTroubleshootingPlatform(platform2)
-                  .setInUseStatus(TroubleshootingPlatformExt.InUseStatus.IN_USE));
+              new PACollectorExt()
+                  .setPaCollector(platform1)
+                  .setInUseStatus(PACollectorExt.InUseStatus.NOT_IN_USE),
+              new PACollectorExt()
+                  .setPaCollector(platform2)
+                  .setInUseStatus(PACollectorExt.InUseStatus.IN_USE));
       assertThat(platforms, containsInAnyOrder(expected.toArray()));
     }
   }
@@ -111,23 +105,21 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
-      TroubleshootingPlatform platform =
-          TroubleshootingPlatformServiceTest.createTestPlatform(
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform)));
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
       Result result =
           doRequestWithAuthTokenAndBody(
               "POST",
-              "/api/customers/" + customer.getUuid() + "/troubleshooting_platform",
+              "/api/customers/" + customer.getUuid() + "/pa_collector",
               authToken,
               Json.toJson(platform));
       assertThat(result.status(), equalTo(OK));
       JsonNode platformJson = Json.parse(contentAsString(result));
-      TroubleshootingPlatform queriedPlatform =
-          Json.fromJson(platformJson, TroubleshootingPlatform.class);
-      assertThat(queriedPlatform.getTpUrl(), equalTo(platform.getTpUrl()));
+      PACollector queriedPlatform = Json.fromJson(platformJson, PACollector.class);
+      assertThat(queriedPlatform.getPaUrl(), equalTo(platform.getPaUrl()));
       assertThat(queriedPlatform.getYbaUrl(), equalTo(platform.getYbaUrl()));
       assertThat(queriedPlatform.getMetricsUrl(), equalTo(platform.getMetricsUrl()));
     }
@@ -138,33 +130,27 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
-      TroubleshootingPlatform platform =
-          TroubleshootingPlatformServiceTest.createTestPlatform(
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform)));
-      troubleshootingPlatformService.save(platform, false);
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
       platform.setYbaUrl("http://some.host");
       platform.setMetricsUrl("http://metrics.host");
 
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform)));
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
       Result result =
           doRequestWithAuthTokenAndBody(
               "PUT",
-              "/api/customers/"
-                  + customer.getUuid()
-                  + "/troubleshooting_platform/"
-                  + platform.getUuid(),
+              "/api/customers/" + customer.getUuid() + "/pa_collector/" + platform.getUuid(),
               authToken,
               Json.toJson(platform));
       assertThat(result.status(), equalTo(OK));
       JsonNode platformJson = Json.parse(contentAsString(result));
-      TroubleshootingPlatform queriedPlatform =
-          Json.fromJson(platformJson, TroubleshootingPlatform.class);
-      assertThat(queriedPlatform.getTpUrl(), equalTo(platform.getTpUrl()));
+      PACollector queriedPlatform = Json.fromJson(platformJson, PACollector.class);
+      assertThat(queriedPlatform.getPaUrl(), equalTo(platform.getPaUrl()));
       assertThat(queriedPlatform.getYbaUrl(), equalTo(platform.getYbaUrl()));
       assertThat(queriedPlatform.getMetricsUrl(), equalTo(platform.getMetricsUrl()));
     }
@@ -175,22 +161,18 @@ public class TroubleshootingPlatformControllerTest extends FakeDBApplication {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
-      TroubleshootingPlatform platform =
-          TroubleshootingPlatformServiceTest.createTestPlatform(
+      PACollector platform =
+          PerfAdvisorServiceTest.createTestPlatform(
               customer.getUuid(), baseUrl.scheme() + "://" + baseUrl.host() + ":" + baseUrl.port());
       server.enqueue(
-          new MockResponse()
-              .setBody(TroubleshootingPlatformServiceTest.convertToCustomerMetadata(platform)));
-      troubleshootingPlatformService.save(platform, false);
+          new MockResponse().setBody(PerfAdvisorServiceTest.convertToCustomerMetadata(platform)));
+      perfAdvisorService.save(platform, false);
 
       server.enqueue(new MockResponse());
       Result result =
           doRequestWithAuthToken(
               "DELETE",
-              "/api/customers/"
-                  + customer.getUuid()
-                  + "/troubleshooting_platform/"
-                  + platform.getUuid(),
+              "/api/customers/" + customer.getUuid() + "/pa_collector/" + platform.getUuid(),
               authToken);
       assertThat(result.status(), equalTo(OK));
     }

@@ -204,8 +204,8 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    getUniversePaRegistrationStatus: (paUuid, universeUuid) => {
-      return dispatch(getUniversePaRegistrationStatus(paUuid, universeUuid)).then((response) => {
+    getUniversePaRegistrationStatus: (universeUuid) => {
+      return dispatch(getUniversePaRegistrationStatus(universeUuid)).then((response) => {
         return dispatch(getUniversePaRegistrationStatusResponse(response.payload));
       });
     },

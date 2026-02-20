@@ -143,7 +143,10 @@ public class SupportBundle extends Model {
               bundleData.maxCoreFileSize,
               bundleData.promDumpStartDate,
               bundleData.promDumpEndDate,
-              bundleData.prometheusMetricsTypes);
+              bundleData.prometheusMetricsTypes,
+              bundleData.paDumpStartDate,
+              bundleData.paDumpEndDate,
+              bundleData.paMetricsFormat);
     }
     supportBundle.status = SupportBundleStatusType.Running;
     supportBundle.save();

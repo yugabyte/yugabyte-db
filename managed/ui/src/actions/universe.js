@@ -58,7 +58,6 @@ export const GET_MASTER_INFO_RESPONSE = 'GET_MASTER_INFO_RESPONSE';
 export const GET_UNIVERSE_PA_REGISTRATION_STATUS = 'GET_UNIVERSE_PA_REGISTRATION_STATUS';
 export const GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE =
   'GET_UNIVERSE_PA_REGISTRATION_STATUS_RESPONSE';
-// const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
 
 // Get the Master Nodes Info for a Universe
 export const GET_MASTER_LEADER = 'GET_MASTER_LEADER';
@@ -611,9 +610,9 @@ export function getMasterInfosResponse(response) {
   };
 }
 
-export function getUniversePaRegistrationStatus(paUuid, universeUUID) {
+export function getUniversePaRegistrationStatus(universeUUID) {
   const request = axios.get(
-    `${getCustomerEndpoint()}/troubleshooting_platform/${paUuid}/universes/${universeUUID}`
+    `${getCustomerEndpoint()}/universes/${universeUUID}/pa_collector`
   );
   return {
     type: GET_UNIVERSE_PA_REGISTRATION_STATUS,

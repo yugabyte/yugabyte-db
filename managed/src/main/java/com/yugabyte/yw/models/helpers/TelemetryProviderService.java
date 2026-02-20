@@ -317,7 +317,8 @@ public class TelemetryProviderService {
   }
 
   public ApiHelper getApiHelper() {
-    return new ApiHelper(this.wsClientRefresher.getClient(WS_CLIENT_KEY));
+    return new ApiHelper(
+        this.wsClientRefresher.getClient(WS_CLIENT_KEY), wsClientRefresher.getMaterializer());
   }
 
   public void validateTelemetryProvider(TelemetryProvider provider) {

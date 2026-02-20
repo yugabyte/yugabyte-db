@@ -289,7 +289,7 @@ export function fetchAdminNotificationsResponse(response) {
 
 export function fetchPerfAdvisorList() {
   const cUUID = localStorage.getItem('customerId');
-  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/troubleshooting_platform`);
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/pa_collector`);
   return {
     type: FETCH_PERF_ADVISOR_DETAILS,
     payload: request

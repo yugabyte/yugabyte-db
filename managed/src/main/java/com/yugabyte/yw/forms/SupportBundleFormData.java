@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -73,4 +74,21 @@ public class SupportBundleFormData {
       value =
           "Specifies if Postgres audit logs should be filtered out when collecting universe logs.")
   public boolean filterPgAuditLogs = false;
+
+  @ApiModelProperty(
+      value = "Start date to filter Perf Advisor data",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date paDumpStartDate;
+
+  @ApiModelProperty(
+      value = "End date to filter Perf Advisor data",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date paDumpEndDate;
+
+  @ApiModelProperty(value = "Specifies metrics format.")
+  public PrometheusMetricsFormat paMetricsFormat = PrometheusMetricsFormat.PROM_CHUNK;
 }

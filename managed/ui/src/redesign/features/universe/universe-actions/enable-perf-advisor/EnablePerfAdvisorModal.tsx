@@ -46,7 +46,7 @@ export const EnablePerfAdvisorModal = ({
 
   // DELETE API call to disable Perf Advisdor for the universe
   const disablePerfAdvisorToUniverse = useMutation(
-    () => PerfAdvisorAPI.deleteUniverseRegistration(paUuid, universeData.universeUUID),
+    () => PerfAdvisorAPI.deleteUniverseRegistration(universeData.universeUUID),
     {
       onSuccess: () => {
         toast.success(t('universeActions.paUniverseStatus.disablePaUniverseSuccess'));

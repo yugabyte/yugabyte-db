@@ -22,32 +22,36 @@ class ApiService {
 
   // Fetches list of all Troubleshooting Platform services
   fetchPerfAdvisorList = () => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Fetches info about specific Troubleshooting Platform service
-  fetchPerfAdvisorUuid = (tpUuid: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  fetchPerfAdvisorUuid = (paUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Register current YBA (customer) to a Troubleshooting Platform service
   registerYBAToPerfAdvisor = (
-    tpUrl: string,
+    paUrl: string,
     ybaUrl: string,
     metricsUrl: string,
+    metricsUsername: string,
+    metricsPassword: string,
     apiToken: string,
     tpApiToken: string,
     metricsScrapePeriodSecs: number
   ) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector`;
     return axios
       .post(requestURL, {
         customerUUID: this.getCustomerId(),
-        tpUrl,
+        paUrl,
         ybaUrl,
         metricsUrl,
+        metricsUsername,
+        metricsPassword,
         apiToken,
         tpApiToken,
         metricsScrapePeriodSecs
@@ -56,8 +60,8 @@ class ApiService {
   };
 
   // Edit/Update metadata about Perf Advisor service
-  updatePerfAdvisorMetadata = (data: any, tpUuid: string, forceUpdate: boolean) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  updatePerfAdvisorMetadata = (data: any, paUuid: string, forceUpdate: boolean) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     const params = {
       force: forceUpdate
     };
@@ -69,8 +73,8 @@ class ApiService {
   };
 
   // Delete(Unregister) Troubleshooting Platform service
-  unRegisterPerfAdvisor = (tpUuid: string, forceUnregister: boolean) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  unRegisterPerfAdvisor = (paUuid: string, forceUnregister: boolean) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     const params = {
       force: forceUnregister
     };
@@ -82,20 +86,20 @@ class ApiService {
   };
 
   // Fetch registration details of universe to Troubleshooting Platform service
-  fetchUniverseRegistrationDetails = (tpUuid: string, universeUuid: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+  fetchUniverseRegistrationDetails = (universeUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Enable Perf Advisor for current universe
-  attachUniverseToPerfAdvisor = (tpUuid: string, universeUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+  attachUniverseToPerfAdvisor = (paUuid: string, universeUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector/${paUuid}`;
     return axios.put(requestUrl).then((resp) => resp.data);
   };
 
   // Delete universe registration
-  deleteUniverseRegistration = (tpUuid: string, universeUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+  deleteUniverseRegistration = (universeUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.delete(requestUrl).then((resp) => resp.data);
   };
 }
