@@ -38,7 +38,7 @@ Currently, you can export data to the following tools.
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Logging](#google-cloud-logging) | Database audit logs | |
 | [New Relic](#new-relic) | | Yes |
-| [Amazon S3](#amazon-s3) | Database query logs<br>Database audit logs | |
+| [Amazon S3](#amazon-s3) | Database query logs | |
 
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
 
@@ -254,7 +254,7 @@ The [Amazon S3](https://aws.amazon.com/s3/) integration requires the following:
 
 - [AWS account](https://aws.amazon.com/console/)
 - [S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/GetStartedWithS3.html#creating-bucket)
-- Access Key ID and Secret Access Key of an IAM user with permissions for the S3 bucket. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+- Access Key ID and Secret Access Key of an IAM user with permissions for the S3 bucket, including the `s3:PutObject` permmission. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 To create an export configuration, do the following:
 
