@@ -16,6 +16,7 @@ type: docs
 Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../../reference/docs-mcp-server/).
 {{< /tip >}}
 
+
 Use the following instructions to set up universes for running the examples in Explore.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
