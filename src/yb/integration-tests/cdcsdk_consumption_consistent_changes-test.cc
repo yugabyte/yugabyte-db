@@ -5204,5 +5204,67 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
     },
     MonoDelta::FromSeconds(10), "Expected 0 records (both transactions rolled back)"));
 }
+
+// This test verifies that GetConsistentChanges RPC call doesn't timeout even when there are
+// many tablets. The VWAL's GetConsistentChangesInternal will only make internal GetChanges() calls
+// to a max of FLAGS_cdcsdk_tablets_to_poll_batch_size tablets.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestGetConsistentChangesWithManyTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_vwal_getchanges_rpc_delay_ms) = 1000;
+
+  constexpr int kNumTables = 5;
+  constexpr int kTabletsPerTable = 5;
+
+  ASSERT_OK(SetUpWithParams(
+      3 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  std::vector<client::YBTableName> tables;
+  std::vector<TableId> table_ids;
+  tables.reserve(kNumTables);
+  table_ids.reserve(kNumTables);
+
+  for (int i = 0; i < kNumTables; ++i) {
+    std::string table_name = Format("test_table_$0", i);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 (id int primary key, value_1 int) SPLIT INTO $1 TABLETS", table_name,
+        kTabletsPerTable));
+
+    auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, table_name));
+    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+    ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+    ASSERT_EQ(tablets.size(), kTabletsPerTable);
+
+    tables.push_back(table);
+    table_ids.push_back(table.table_id());
+  }
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(stream_id, table_ids, kVWALSessionId1));
+
+  // The batch size of tablets to poll in a single GetConsistentChanges call is
+  // FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size. So, we need to make ceil((kNumTables *
+  // kTabletsPerTable) / FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size) GetConsistentChanges calls to
+  // consume all tablets.
+  int num_get_changes_calls =
+      ((kNumTables * kTabletsPerTable) + FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size - 1) /
+      FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size;
+  for (int i = 0; i < num_get_changes_calls; i++) {
+    GetConsistentChangesRequestPB change_req;
+    change_req.set_stream_id(stream_id.ToString());
+    change_req.set_session_id(kVWALSessionId1);
+    GetConsistentChangesResponsePB change_resp;
+    RpcController get_changes_rpc;
+    get_changes_rpc.set_timeout(
+        MonoDelta::FromMilliseconds(
+            2 * FLAGS_TEST_cdcsdk_vwal_getchanges_rpc_delay_ms *
+            FLAGS_cdcsdk_vwal_tablets_to_poll_batch_size));
+    auto status = cdc_proxy_->GetConsistentChanges(change_req, &change_resp, &get_changes_rpc);
+    ASSERT_TRUE(status.ok() && !change_resp.has_error());
+  }
+}
+
 }  // namespace cdc
 }  // namespace yb
