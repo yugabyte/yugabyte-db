@@ -175,6 +175,8 @@ Review detailed architecture in our [Docs](https://docs.yugabyte.com/stable/arch
 
 As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/stable/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com/c/design-discussions/7).
 
+For AI agents, refer to [AGENTS.md](AGENTS.md) for guidance on working with this codebase.
+
 # License
 
 Source code in this repository is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](licenses) directory.
