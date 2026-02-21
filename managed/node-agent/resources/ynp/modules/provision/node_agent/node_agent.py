@@ -72,6 +72,7 @@ class InstallNodeAgent(BaseYnpModule):
             "code": "onprem",
             "details": {
                 "skipProvisioning": True,
+                "nodeExporterPort": context.get("node_exporter_port", 9300),
                 "cloudInfo": {
                     "onprem": {
                         "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),

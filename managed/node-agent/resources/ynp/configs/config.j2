@@ -22,24 +22,24 @@ version = 1.0.0
 loglevel = {{ ynp_config['logging'].level }}
 logdir = {{ ynp_config['logging'].directory }}
 logfile = {{ ynp_config['logging'].file }}
-is_airgap = {{ ynp_config['ynp'].is_airgap }}
+is_airgap = {{ ynp_config['ynp'].is_airgap | default(false) }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
 yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
 yb_user = yugabyte
-is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
+is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent | default(false) }}
 tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
 # empty is null in ini, hence that syntax
-{% if not ynp_config['ynp'].no_proxy_list %}
+{% if ynp_config['ynp'].no_proxy_list is not defined or not ynp_config['ynp'].no_proxy_list %}
 no_proxy =
 {% else %}
-no_proxy = "{{ ynp_config['ynp'].no_proxy_list| join(', ') }}"
+no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
 {% endif %}
-node_exporter_port = {{ ynp_config['ynp'].node_exporter_port|default(9300) }}
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
-configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
+configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(false) }}
 
 [Preprovision]
 
@@ -48,7 +48,7 @@ configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound }}
 [InstallPackages]
 
 [ConfigureChrony]
-chrony_servers = "{{ ynp_config['ynp'].chrony_servers | join(', ') }}"
+chrony_servers = {{ ynp_config['ynp'].chrony_servers | join(', ') }}
 
 [ConfigureClockbound]
 
@@ -84,7 +84,7 @@ locks = unlimited
 
 [ConfigureSystemd]
 use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
-service_files = "yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
 
 {%- if 'extra' in ynp_config and ynp_config.extra.custom_ssh_port %}
 [ConfigureSshD]
@@ -114,7 +114,7 @@ node_agent_port = {{ ynp_config['ynp'].node_agent_port|default(9070) }}
 
 {%- if 'earlyoom' in ynp_config['ynp'] %}
 [InstallConfigureEarlyoom]
-earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default('False') }}
+earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
 earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
 
