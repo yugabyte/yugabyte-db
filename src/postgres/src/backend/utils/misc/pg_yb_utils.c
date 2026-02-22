@@ -4507,6 +4507,9 @@ YbInvalidateTableCacheForAlteredTables()
 			YbDatabaseAndRelfileNodeOid *object_id =
 				(YbDatabaseAndRelfileNodeOid *) lfirst(lc);
 
+			YBC_LOG_INFO("Invalidating table cache entry for table %u:%u",
+						 object_id->database_oid, object_id->relfilenode_id);
+
 			/*
 			 * This is safe to do even for tables which don't exist or have
 			 * already been invalidated because this is just a deletion/marking
