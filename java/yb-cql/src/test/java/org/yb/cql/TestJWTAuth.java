@@ -248,7 +248,8 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
     String audiencesCsv = String.join(",", allowedAudiences);
 
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("TEST_ycql_use_jwt_auth", "true");
+    flagMap.put("ycql_use_jwt_auth", "true");
+    flagMap.put("allowed_preview_flags_csv", "ycql_use_jwt_auth");
     flagMap.put("ycql_jwt_users_to_skip_csv", "cassandra");
 
     // Construct the combined options string
