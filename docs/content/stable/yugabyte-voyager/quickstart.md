@@ -2,8 +2,8 @@
 title: YugabyteDB Voyager Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Get started with YugabyteDB Voyager migration in minutes
-description: Complete a basic database migration using YugabyteDB Voyager in the quickest possible way.
+headcontent: Get started with migrating PostgreSQL to YugabyteDB Aeon with YugabyteDB Voyager
+description: Learn how to perform a fast, offline migration from PostgreSQL to YugabyteDB Aeon using Voyager. This guide covers setup, assessment, and data transfer.
 menu:
   stable_yugabyte-voyager:
     identifier: quickstart-voyager
@@ -47,7 +47,7 @@ Install YugabyteDB Voyager v2025.11.2 or later on your machine using the [Instal
 ### Prepare source PostgreSQL database
 
 {{<note title="For MySQL or Oracle">}}
-To prepare a MySQL or an Oracle source database, refer to [Prepare the source database](../migrate/migrate-steps/#prepare-the-source-database) section in Offline migration.
+This quick start describes the steps to migrate a PostgreSQL database. However, If you want to prepare a MySQL or an Oracle source database, refer to [Prepare the source database](../migrate/migrate-steps/#prepare-the-source-database) section in Offline migration.
 {{</note>}}
 
 Create a database user and provide the user with READ access to all the resources which need to be migrated. Run the following commands in a psql session:
@@ -121,9 +121,9 @@ Create a database user and provide the user with READ access to all the resource
     control-plane-type: ybaeon
     domain: https://cloud.yugabyte.com
     apiKey: <API_KEY>
-    accountId: // This will be autofilled in YugabyteDB Aeon
-    projectId: // This will be autofilled in YugabyteDB Aeon
-    clusterId: // This will be autofilled in YugabyteDB Aeon
+    accountId: <your-YugabyteDB-Aeon-accountID>
+    projectId: <your-YugabyteDB-Aeon-projectID>
+    clusterId: <your-YugabyteDB-Aeon-clusterID>
     
     # Source database (PostgreSQL)
     source:
