@@ -1582,5 +1582,42 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
   ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
 }
 
+TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
+  // Regression test for GitHub issue #29335.
+  // Create a partitioned table with many partitions, an index, and CHECK constraints
+  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
+  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // the clone so if any objects are dropped and recreated, they will get a new OID instead of
+  // colliding with the hidden objects.
+  auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "
+        "PARTITION BY RANGE (key)"));
+    for (int i = 0; i < 10; i++) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE TABLE t_partition_$0 PARTITION OF t FOR VALUES FROM ($1) TO ($2)",
+          i, i * 100, (i + 1) * 100));
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX t_idx ON t (value)"));
+    return Status::OK();
+  };
+
+  ASSERT_OK(create_partitioned_table(*source_conn_));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  // Create a snapshot schedule on the cloned DB so DROP will HIDE tables.
+  ASSERT_OK(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1,
+      kInterval, kRetention, kTimeout));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("DROP TABLE t CASCADE"));
+
+  // Recreate the table.
+  ASSERT_OK(create_partitioned_table(target_conn));
+}
+
 }  // namespace master
 }  // namespace yb

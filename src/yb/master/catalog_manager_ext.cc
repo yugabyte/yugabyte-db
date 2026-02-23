@@ -885,6 +885,24 @@ Status CatalogManager::DoImportSnapshotMeta(
       }
     }
   }
+  // For YSQL restores (both backup/restore and clone), we would have run ysql_dump before
+  // ImportSnapshot. It is important to invalidate the TServer's OID cache after ImportSnapshot so
+  // that the TServer is aware of all objects that were created. Otherwise, the following order of
+  // events is possible:
+  // 1. The dump script creates a table with OID 16384 because that is what the dump script says
+  //    to use (using binary_upgrade_set_next_heap_relfilenode). This does not go through the
+  //    TServer's oid allocator.
+  // 2. The dump script creates an object that needs a new OID (e.g., a CHECK constraint). To get a
+  //    new OID, the TServer calls ReservePgsqlOids, which returns 16384-17000 as available OIDs.
+  // 3. The constraint is created with OID 16385 because that is the first free OID in the range.
+  // 4. A snapshot schedule is created for the restored database.
+  // 5. The table is dropped (actually hidden, because of the snapshot schedule).
+  // 6. The table is recreated with OID 16384, which PG thinks is a free OID because the table is
+  //    not in pg_class anymore. This fails on master because the original table with this OID still
+  //    exists.
+  // Invalidating the OID cache forces the TServer to refresh its OID cache on the next heartbeat
+  // it receives from the master.
+  RETURN_NOT_OK(InvalidateTserverOidCaches());
 
   if (PREDICT_FALSE(FLAGS_TEST_import_snapshot_failed)) {
     const string msg = "ImportSnapshotMeta interrupted due to test flag";
