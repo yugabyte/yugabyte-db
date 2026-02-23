@@ -23,9 +23,8 @@ export const Footer = () => {
     refetchInterval: 60_000
   });
 
-  const data = useQuery(V2_QUERY_KEY.getFIPSInfo, apiV2.getFIPSInfo);
-
-  const isFIPSEnabled = get(data, 'fips_enabled', false);
+  const {data :fipsInfo} = useQuery(V2_QUERY_KEY.getFIPSInfo, apiV2.getFIPSInfo);
+  const isFIPSEnabled = get(fipsInfo, 'fips_enabled', false);
 
   const currentInstance = haConfig?.instances?.find((item) => item.is_local);
   const ybaVersion = ybaVersionResponse?.data?.version;
