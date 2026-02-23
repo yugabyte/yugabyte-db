@@ -132,23 +132,6 @@ static inline od_hashmap_elt_t *od_bucket_search(od_hashmap_bucket_t *b,
 	return NULL;
 }
 
-static inline od_hashmap_list_item_t *yb_od_bucket_search_by_keyhash(od_hashmap_bucket_t *b,
-						      od_hash_t keyhash)
-{
-	od_list_t *i;
-	od_list_foreach(&(b->nodes->link), i)
-	{
-		od_hashmap_list_item_t *item;
-		item = od_container_of(i, od_hashmap_list_item_t, link);
-		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
-		if (hash == keyhash) {
-			// find
-			return item;
-		}
-	}
-	return NULL;
-}
-
 static inline int od_hashmap_elt_copy(od_hashmap_elt_t *dst,
 				      od_hashmap_elt_t *src)
 {
@@ -202,19 +185,91 @@ int od_hashmap_insert(od_hashmap_t *hm, od_hash_t keyhash,
 	return ret;
 }
 
-bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash)
+/*
+ * This function finds all keys that match the given keyhash and removes them from the hashmap.
+ * It is done to handle possible hashmap collisions (i.e different keys with the same hash) during
+ * pipelining. Therefore remove all the matching entries from the hashmap and report them to
+ * the caller to log them.
+ */
+
+bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
+					char ***matched_keys, int *matched_count)
 {
+	*matched_keys = NULL;
+	*matched_count = 0;
+
+	od_hashmap_list_item_t *matched_item = NULL;
+
 	size_t bucket_index = keyhash % hm->size;
 	pthread_mutex_lock(&hm->buckets[bucket_index]->mu);
 
-	od_hashmap_list_item_t *item = yb_od_bucket_search_by_keyhash(hm->buckets[bucket_index], keyhash);
-	if (item != NULL) {
-		od_hashmap_list_item_free(item);
+	/*
+	 * First pass: count matching entries so we can allocate the array
+	 * in a single shot.
+	 */
+	int count = 0;
+	od_list_t *i;
+	od_list_foreach(&(hm->buckets[bucket_index]->nodes->link), i)
+	{
+		od_hashmap_list_item_t *item;
+		item = od_container_of(i, od_hashmap_list_item_t, link);
+		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
+		if (hash == keyhash)
+		{
+			matched_item = item;
+			count++;
+		}
+	}
+
+	if (count == 0) {
+		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+		return false;
+	}
+
+	if (count == 1) {
+		od_hashmap_list_item_free(matched_item);
 		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
 		return true;
 	}
+
+	char **keys = malloc(count * sizeof(char *));
+	if (keys == NULL) {
+		pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+		return false;
+	}
+
+	/*
+	 * Second pass: copy key strings into the array and remove the
+	 * matching items from the bucket.
+	 */
+	int idx = 0;
+	od_list_t *n;
+	od_list_foreach_safe(&(hm->buckets[bucket_index]->nodes->link), i, n)
+	{
+		od_hashmap_list_item_t *item;
+		item = od_container_of(i, od_hashmap_list_item_t, link);
+		od_hash_t hash = od_murmur_hash(item->key.data, item->key.len);
+		if (hash == keyhash) {
+			keys[idx] = malloc(item->key.len + 1);
+			if (keys[idx] == NULL) {
+				for (int j = 0; j < idx; j++)
+					free(keys[j]);
+				free(keys);
+				pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+				return false;
+			}
+			memcpy(keys[idx], item->key.data, item->key.len);
+			keys[idx][item->key.len] = '\0';
+			idx++;
+			od_hashmap_list_item_free(item);
+		}
+	}
+
 	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
-	return false;
+
+	*matched_keys = keys;
+	*matched_count = count;
+	return true;
 }
 
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
