@@ -94,8 +94,7 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     // Support DDL concurrency with object locks.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
-        "yb_fallback_to_legacy_catalog_read_time=false";
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_enable_concurrent_ddl=true";
     PgMiniTestBase::SetUp();
     SpawnSupervisors();
   }

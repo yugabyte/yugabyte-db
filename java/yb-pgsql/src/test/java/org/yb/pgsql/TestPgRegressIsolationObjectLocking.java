@@ -33,7 +33,7 @@ public class TestPgRegressIsolationObjectLocking extends BasePgRegressTest {
       "ysql_yb_ddl_transaction_block_enabled,enable_object_locking_for_table_locks");
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.put("ysql_beta_features", "true");
-    flagMap.put("ysql_pg_conf_csv", "yb_fallback_to_legacy_catalog_read_time=false");
+    flagMap.put("ysql_pg_conf_csv", "yb_enable_concurrent_ddl=true");
     return flagMap;
   }
 

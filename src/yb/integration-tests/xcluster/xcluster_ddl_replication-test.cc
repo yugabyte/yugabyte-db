@@ -175,16 +175,16 @@ class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTes
   void SetUp() override {
     auto original_value = FLAGS_ysql_pg_conf_csv;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "$0$1yb_fallback_to_legacy_catalog_read_time=$2", original_value,
+        "$0$1yb_enable_concurrent_ddl=$2", original_value,
         original_value.empty() ? "" : ",", GetParam());
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());

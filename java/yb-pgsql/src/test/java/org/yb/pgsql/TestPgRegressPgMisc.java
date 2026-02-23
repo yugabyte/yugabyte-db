@@ -49,7 +49,7 @@ public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_enable_auto_analyze", "false");
     appendToYsqlPgConf(
-        flagMap, "yb_fallback_to_legacy_catalog_read_time=" + !concurrentDDLEnabled);
+        flagMap, "yb_enable_concurrent_ddl=" + concurrentDDLEnabled);
     return flagMap;
   }
 

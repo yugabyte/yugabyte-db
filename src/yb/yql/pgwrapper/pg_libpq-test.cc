@@ -3350,7 +3350,7 @@ class PgLibPqConcurrentDdlDml : public PgLibPqTest {
     options->extra_tserver_flags.push_back(Format("--enable_object_locking_for_table_locks=true"));
     options->extra_tserver_flags.push_back(Format("--ysql_yb_ddl_transaction_block_enabled=true"));
     options->extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false"));
+        Format("--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true"));
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };
