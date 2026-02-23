@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -96,6 +97,8 @@ public class PlatformReplicationManager {
 
   private final RuntimeConfGetter confGetter;
 
+  private final OperatorResourceRestorer operatorResourceRestorer;
+
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
           .name("yba_ha_last_backup_seconds")
@@ -116,13 +119,15 @@ public class PlatformReplicationManager {
       FileDataService fileDataService,
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      OperatorResourceRestorer operatorResourceRestorer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.configHelper = configHelper;
     this.confGetter = confGetter;
+    this.operatorResourceRestorer = operatorResourceRestorer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -882,6 +887,16 @@ public class PlatformReplicationManager {
   public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
     boolean succeeded =
         restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+    // Apply stored operator resources to Kubernetes whose persisted resourceVersion
+    // is strictly greater than the live Kubernetes version, or that are absent.
+    if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      try {
+        operatorResourceRestorer.restoreOperatorResources();
+      } catch (Exception e) {
+        log.error("Failed to restore operator resources to Kubernetes", e);
+        succeeded = false;
+      }
+    }
     if (succeeded) {
       config.refresh();
       // Fix the local instance after restore.

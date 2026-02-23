@@ -192,7 +192,7 @@ public class OperatorUtils {
     this.universeImporter = universeImporter;
   }
 
-  private synchronized Config getK8sClientConfig() {
+  public synchronized Config getK8sClientConfig() {
     if (_k8sClientConfig == null) {
       ConfigBuilder confBuilder = new ConfigBuilder();
       if (namespace == null || namespace.trim().isEmpty()) {

@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
@@ -83,6 +84,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock PrometheusConfigHelper mockPrometheusConfigHelper;
 
+  @Mock OperatorResourceRestorer mockOperatorResourceRestorer;
+
   private static final String STORAGE_PATH = "yb.storage.path";
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
   private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
@@ -104,7 +107,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                 mockFileDataService,
                 mockPrometheusConfigHelper,
                 mockConfigHelper,
-                runtimeConfGetter));
+                runtimeConfGetter,
+                mockOperatorResourceRestorer));
   }
 
   private void setupConfig(
@@ -242,7 +246,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             mockFileDataService,
             mockPrometheusConfigHelper,
             mockConfigHelper,
-            runtimeConfGetter);
+            runtimeConfGetter,
+            mockOperatorResourceRestorer);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -289,6 +294,16 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       doCallRealMethod().when(mockReplicationUtil).cleanupBackups(anyList(), anyInt());
       doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
       doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
+      PlatformReplicationManager backupManager =
+          spy(
+              new PlatformReplicationManager(
+                  mockPlatformScheduler,
+                  mockReplicationUtil,
+                  mockFileDataService,
+                  mockPrometheusConfigHelper,
+                  mockConfigHelper,
+                  runtimeConfGetter,
+                  mockOperatorResourceRestorer));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

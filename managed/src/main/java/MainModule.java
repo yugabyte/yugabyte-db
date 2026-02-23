@@ -81,6 +81,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
@@ -306,6 +307,7 @@ public class MainModule extends AbstractModule {
     bind(SoftwareUpgradeHelper.class).asEagerSingleton();
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
+    bind(OperatorResourceRestorer.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
