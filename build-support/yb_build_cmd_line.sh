@@ -361,6 +361,7 @@ set_default_yb_build_args() {
   java_lint=false
   collect_java_tests=false
   should_use_packaged_targets=false
+  bolt_enabled=false
 
   test_ybc=true
   if is_linux; then
@@ -898,11 +899,18 @@ parse_yb_build_cmd_line() {
           export YB_LINKING_TYPE=dynamic
         else
           export YB_LINKING_TYPE=$2-lto
+          export bolt_enabled=true
         fi
         shift
       ;;
       --no-lto)
         export YB_LINKING_TYPE=dynamic
+      ;;
+      --bolt)
+        export bolt_enabled=true
+      ;;
+      --no-bolt)
+        export bolt_enabled=false
       ;;
       --export-compile-commands|--ccmds)
         export YB_EXPORT_COMPILE_COMMANDS=1
