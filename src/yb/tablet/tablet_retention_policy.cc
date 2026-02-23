@@ -132,10 +132,14 @@ Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
     return STATUS(
         SnapshotTooOld,
         Format(
-            "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2",
+            "Snapshot too old. Read point: $0, earliest read time allowed: $1, delta (usec): $2. "
+            "Tablet: $3, Table: $4 ($5)",
             timestamp,
             earliest_read_time_allowed,
-            earliest_read_time_allowed.PhysicalDiff(timestamp).ToPrettyString()),
+            earliest_read_time_allowed.PhysicalDiff(timestamp).ToPrettyString(),
+            metadata_.raft_group_id(),
+            metadata_.table_name(),
+            metadata_.table_id()),
         TransactionError(TransactionErrorCode::kSnapshotTooOld));
   }
   active_readers_.insert(timestamp);
