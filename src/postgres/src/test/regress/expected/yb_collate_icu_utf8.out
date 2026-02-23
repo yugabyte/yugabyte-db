@@ -1356,6 +1356,7 @@ Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
 ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- no rewrite
+NOTICE:  index rewrite may lead to inconsistencies
 \d tab2
                     Table "collate_tests.tab2"
  Column |         Type          |  Collation  | Nullable | Default

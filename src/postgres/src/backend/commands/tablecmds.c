@@ -215,6 +215,10 @@ typedef struct AlteredTableInfo
 	List	   *changedIndexDefs;	/* string definitions of same */
 	bool		yb_skip_copy_split_options;
 	/* true if we need to skip copying split options during table rewrite */
+	bool		yb_index_rewrite_warning_logged; /* used to track whether we have
+												  * already logged an inconsistency
+												  * warning for index rewrites, so
+												  * that we don't log it again */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -5546,6 +5550,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	tab->oldDesc = CreateTupleDescCopyConstr(RelationGetDescr(rel));
 	tab->newrelpersistence = RELPERSISTENCE_PERMANENT;
 	tab->chgPersistence = false;
+	tab->yb_index_rewrite_warning_logged = false;
 
 	*wqueue = lappend(*wqueue, tab);
 
@@ -7726,6 +7731,21 @@ ATExecAddIndex(List **yb_wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 
 		RelationPreserveStorage(irel->rd_node, true);
 		index_close(irel, NoLock);
+	}
+	else if (is_rebuild && !tab->rewrite
+			 && IsYBRelation(*mutable_rel)
+			 && !tab->yb_index_rewrite_warning_logged
+			 && !YBSuppressUnsafeAlterNotice())
+	{
+		tab->yb_index_rewrite_warning_logged = true;
+		ereport(NOTICE,
+				(errmsg("index rewrite may lead to inconsistencies"),
+				 errdetail("Concurrent DMLs may not be reflected in the new"
+						   " index."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19860. Set 'ysql_suppress_unsafe_alter_notice'"
+						 " yb-tserver gflag to true to suppress this"
+						 " notice.")));
 	}
 
 	return address;

@@ -861,7 +861,13 @@ alter table test_alter_column_type_with_index alter column a type varchar(100);
 insert into test_alter_column_type_with_index values (1, 'abcde'), (2, 'fghij');
 create index on test_alter_column_type_with_index(a);
 alter table test_alter_column_type_with_index alter column a type varchar(100);
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type_with_index alter column a type varchar(200);
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 insert into test_alter_column_type_with_index values (3, 'klmno'), (4, 'pqrst');
 select * from test_alter_column_type_with_index order by a;
  i |   a
