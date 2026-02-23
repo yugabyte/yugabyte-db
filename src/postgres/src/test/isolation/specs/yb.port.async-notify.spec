@@ -32,7 +32,7 @@ step notifys1	{
 	COMMIT;
 }
 step bignotify	{ SELECT count(pg_notify('c1', s::text)) FROM generate_series(1, 1000) s; }
-step ybempty {}
+step yb_empty {}
 teardown		{ UNLISTEN *; }
 
 # The listener session is used for cross-backend notify checks.
@@ -43,7 +43,7 @@ step lcheck		{ SELECT 1 AS x; }
 step lbegin		{ BEGIN; }
 step lbegins	{ BEGIN ISOLATION LEVEL SERIALIZABLE; }
 step lcommit	{ COMMIT; }
-step lusage		{ SELECT pg_notification_queue_usage() > 0 AS nonzero; }
+step yb_lusage		{ SELECT pg_notification_queue_usage() > 0 AS nonzero; }
 teardown		{ UNLISTEN *; }
 
 # In some tests we need a second listener, just to block the queue.
@@ -82,10 +82,14 @@ permutation l2listen l2begin notify1 lbegins llisten lcommit l2commit l2stop
 # commit the listener's transaction, so that it never reports these events.
 # Hence, this should be the last test in this script.
 
-# YB: In YB, any operation taking longer than
+# YB:
+# In YB, any operation taking longer than
 # YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED is deemed as waiting on the
 # other session. The step 'bignotify' intermittently breaches this limit. To
 # make the output deterministic, add (*) to bignotify to always report it as
 # waiting.
+#
+# Also, in YB, listener and notifier can be in different nodes. Check queue
+# usage on the listening node after bignotify completes.
 
-permutation llisten lbegin lusage bignotify(*) ybempty lusage
+permutation llisten lbegin yb_lusage bignotify(*) yb_empty yb_lusage
