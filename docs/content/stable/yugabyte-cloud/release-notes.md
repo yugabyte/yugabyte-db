@@ -176,7 +176,7 @@ rightNav:
 ##### New features
 
 - Support for [Change Data Capture](../cloud-clusters/aeon-cdc/) (CDC) for streaming changes to external processes, applications, or other databases. If you have a new cluster running v2024.1.1 or later, CDC is available automatically. If you have a cluster that was upgraded to v2024.1.1 or later and want to use CDC, contact {{% support-cloud %}}.
-- Support for exporting [pgaudit logs](../cloud-monitor/logging-export/) to third-party tools (Datadog and Google Cloud Storage) for compliance with government, financial, or ISO certification audits.
+- Support for exporting [pgaudit logs](../cloud-monitor/logging-export/) to third-party tools (Datadog and Google Cloud Logging) for compliance with government, financial, or ISO certification audits.
 - General availability for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS and GCP to [Prometheus](https://prometheus.io/docs/introduction/overview/).
 
 ##### Database

@@ -224,7 +224,7 @@ The [Google Cloud Logging](https://docs.cloud.google.com/logging/docs) integrati
 
 To create an export configuration for Google Cloud Logging, do the following:
 
-1. On the **Integrations** page, click **Configure** for the **Google Cloud Storage** integration or, if a configuration is already available, **Add Configuration**.
+1. On the **Integrations** page, click **Configure** for the **Google Cloud Logging** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Upload the JSON key file.
 1. Click **Test Configuration** to make sure your connection is working.
