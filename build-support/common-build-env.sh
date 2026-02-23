@@ -212,7 +212,6 @@ readonly -a VALID_BUILD_TYPES=(
   tsan_slow
   pvs
   prof_gen
-  prof_use
 )
 make_regex_from_list VALID_BUILD_TYPES "${VALID_BUILD_TYPES[@]}"
 
@@ -712,7 +711,7 @@ set_cmake_build_type_and_compiler_type() {
     tsan_slow)
       cmake_build_type=debug
     ;;
-    prof_gen|prof_use)
+    prof_gen)
       cmake_build_type=release
     ;;
     *)
@@ -732,7 +731,7 @@ set_cmake_build_type_and_compiler_type() {
           "Sanitizers are only supported with Clang."
   fi
 
-  if [[ $build_type =~ ^(prof_gen|prof_use)$ && $YB_COMPILER_TYPE == gcc* ]]; then
+  if [[ $build_type == prof_gen && $YB_COMPILER_TYPE == gcc* ]]; then
     fatal "Build type $build_type not supported with compiler type $YB_COMPILER_TYPE." \
           "PGO works only with Clang for now."
   fi
