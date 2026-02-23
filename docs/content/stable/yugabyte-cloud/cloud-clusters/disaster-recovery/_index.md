@@ -4,6 +4,9 @@ headerTitle: Disaster Recovery
 linkTitle: Disaster recovery
 description: Enable Disaster recovery for clusters
 headContent: Fail over to a replica cluster in case of unplanned outages
+cascade:
+  tags:
+    feature: early-access
 menu:
   stable_yugabyte-cloud:
     parent: cloud-clusters
@@ -14,6 +17,10 @@ showRightNav: true
 ---
 
 Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
+
+{{<tip title="Early Access">}}
+This feature is Early Access; to try it, contact {{% support-cloud %}}.
+{{</tip>}}
 
 A DR configuration consists of the following:
 

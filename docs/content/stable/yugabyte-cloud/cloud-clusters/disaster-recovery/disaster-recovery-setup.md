@@ -41,7 +41,6 @@ After DR is configured, the Target is only available for reads.
 
 - Monitor CPU and keep its use below 65%.
 - Monitor disk space and keep its use under 65%.
-- Perform DDL changes on the Target immediately after performing them on Source to avoid the overhead of a full copy.
 
 ## Set up disaster recovery
 
