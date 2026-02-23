@@ -2,7 +2,7 @@
 title: YugabyteDB Voyager Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Get started with migrating PostgreSQL to YugabyteDB Aeon with YugabyteDB Voyager
+headcontent: Migrate PostgreSQL to YugabyteDB Aeon with YugabyteDB Voyager
 description: Learn how to perform a fast, offline migration from PostgreSQL to YugabyteDB Aeon using Voyager. This guide covers setup, assessment, and data transfer.
 menu:
   stable_yugabyte-voyager:
@@ -112,18 +112,23 @@ Create a database user and provide the user with READ access to all the resource
     cp /opt/yb-voyager/config-templates/offline-migration.yaml export-dir/migration-config.yaml
     ```
 
-1. Edit the [configuration file](../reference/configuration-file/) `migration-config.yaml` to include only the export-dir, source, and target arguments:
+1. Edit the [configuration file](../reference/configuration-file/) `migration-config.yaml` to define your migration environment using the following example.
+
+    {{<note title="SSL modes">}}
+By default, setting `ssl-mode: prefer` or `require` allows for an encrypted connection without requiring a Root CA file. For production migrations, it is recommended to use `ssl-mode: verify-full` and provide the `ssl-root-cert: /path/to/target-root.crt`. For details, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
+{{</note>}}
 
     ```yaml
     # Global settings
     export-dir: <absolute-path-to-export-dir>
     send-diagnostics: true
     control-plane-type: ybaeon
-    domain: https://cloud.yugabyte.com
-    apiKey: <API_KEY>
-    accountId: <your-YugabyteDB-Aeon-accountID>
-    projectId: <your-YugabyteDB-Aeon-projectID>
-    clusterId: <your-YugabyteDB-Aeon-clusterID>
+    ybaeon-control-plane:
+      domain: https://cloud.yugabyte.com
+      accountId: <your-YugabyteDB-Aeon-accountID>
+      projectId: <your-YugabyteDB-Aeon-projectID>
+      clusterId: <your-YugabyteDB-Aeon-clusterID>
+      apiKey: <API_KEY>
     
     # Source database (PostgreSQL)
     source:
@@ -143,6 +148,7 @@ Create a database user and provide the user with READ access to all the resource
       db-name: target_db
       db-user: ybvoyager
       db-password: 'your_yugabytedb_password'
+      ssl-mode: prefer
 
     assess-migration:
       iops-capture-interval: 0
