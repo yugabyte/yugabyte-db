@@ -2,7 +2,7 @@
 title: YugabyteDB Voyager Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Migrate PostgreSQL to YugabyteDB Aeon with YugabyteDB Voyager
+headcontent: Migrate a PostgreSQL database to YugabyteDB Aeon
 description: Learn how to perform a fast, offline migration from PostgreSQL to YugabyteDB Aeon using Voyager. This guide covers setup, assessment, and data transfer.
 menu:
   stable_yugabyte-voyager:
@@ -13,7 +13,11 @@ type: docs
 showRightNav: true
 ---
 
-This quick start guide describes the steps to perform an offline migration of a PostgreSQL database to YugabyteDB using YugabyteDB Voyager with your target database in YugabyteDB Aeon.
+This guide describes how to perform an offline migration of a PostgreSQL database to a target database in YugabyteDB Aeon using YugabyteDB Voyager.
+
+{{<note title="MySQL or Oracle">}}
+This quick start describes the steps for an offline migration of a PostgreSQL database. If you want to migrate a MySQL or an Oracle source database, refer to [Prepare the source database](../migrate/migrate-steps/#prepare-the-source-database) section in Offline migration.
+{{</note>}}
 
 ## Prerequisites
 
@@ -27,28 +31,28 @@ Before you start, ensure that you have the following:
 
 ## Create a YugabyteDB Aeon cluster
 
-1. [Sign up](https://cloud.yugabyte.com) for YugabyteDB Aeon.
+1. [Sign up](https://cloud.yugabyte.com) and then sign in to YugabyteDB Aeon.
 
-1. Create a cluster:
-   - Log in to your YugabyteDB Aeon account.
-   - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
-   - Select **Sandbox** for testing or **Dedicated** for production.
-   - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster, then click **Next**.
-   - Click **Add Current IP Address** to allow connections from your machine, and click **Next**.
-   - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
-   - Click **Create Cluster**.
+1. Create a cluster.
+
+    You can [create a free Sandbox cluster](../../yugabyte-cloud/cloud-quickstart/#create-your-sandbox-cluster) for testing, or to go beyond the capabilities of the Sandbox cluster, [start a free trial](../../yugabyte-cloud/managed-freetrial.) to create Dedicated clusters.
+
+    - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+    - Select **Sandbox** for testing or **Dedicated** for production.
+    - Follow the instructions in the wizard.
+      - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster.
+      - Choose the database version you want to use for your cluster.
+      - Be sure to **Add Current IP Address** to allow connections from your machine.
+      - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
+    - Click **Create Cluster**.
 
 ## Install YugabyteDB Voyager
 
-Install YugabyteDB Voyager v2025.11.2 or later on your machine using the [Install yb-voyager](../install-yb-voyager/#install-yb-voyager) steps.
+Install YugabyteDB Voyager v2025.11.2 or later on your machine using the steps in [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
 
 ## Prepare source and target databases
 
 ### Prepare source PostgreSQL database
-
-{{<note title="For MySQL or Oracle">}}
-This quick start describes the steps to migrate a PostgreSQL database. However, If you want to prepare a MySQL or an Oracle source database, refer to [Prepare the source database](../migrate/migrate-steps/#prepare-the-source-database) section in Offline migration.
-{{</note>}}
 
 Create a database user and provide the user with READ access to all the resources which need to be migrated. Run the following commands in a psql session:
 
@@ -93,34 +97,57 @@ Create a database user and provide the user with READ access to all the resource
     "
     ```
 
-### Prepare target YugabyteDB Aeon database
+### Get target database details
 
-1. Connect to your YugabyteDB Aeon cluster via [Cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/#connect-via-cloud-shell).
+To be able to connect to your Aeon cluster from YugabyteDB Voyager, you will need the following cluster details:
 
-1. In the `ysqlsh` prompt, create a target database (optional - you can use the default `yugabyte` database):
+- Account, Project, and Cluster IDs
+- Database version
+- Host address of your cluster
+- API key
+- Cluster root certificate for SSL
 
-    ```sql
-    -- Connect to your YugabyteDB Aeon cluster
-    psql -h <your-cluster-host> -p 5433 -U admin -d yugabyte
+Do the following:
 
-    -- Create target database
-    CREATE DATABASE target_db;
-    ```
+1. Sign in to your YugabyteDB Aeon account.
 
-1. Create a user with [`yb_superuser`](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role using the following commands:
+1. Click the Profile icon in the top right corner of the YugabyteDB Aeon window to obtain the Account and Project IDs.
+
+1. [Create an API key](../../yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key) to enable authentication. The API key must have Admin-level access.
+
+1. Navigate to your cluster **Settings**.
+
+    - Under **General**, obtain the cluster ID and Database Version.
+    - Under **Connection Parameters**, obtain the Host address of your cluster.
+
+1. [Download the cluster certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate) (this is optionally used for SSL connectivity).
+
+### Prepare the target database
+
+Do the following:
+
+1. In YugabyteDB Aeon, navigate to your cluster.
+
+1. Click **Connect** and connect to your cluster using [cloud shell](../../yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-a-yugabytedb-aeon-cluster) when you created your cluster.
+
+    The ysqlsh or prompt appears and is ready to use.
+
+1. Create a user with [`yb_superuser`](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role as follows:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
      GRANT yb_superuser TO ybvoyager;
      ```
 
-1. [Create an API key](../../yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key) to enable authentication.
+1. Create a target database (this is optional, you can use the default `yugabyte` database):
 
-1. [Download SSL certificates](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate) to have Voyager connect to the target YugabyteDB database over SSL.
+    ```sql
+    CREATE DATABASE target_db;
+    ```
 
-## Create an export directory and configuration file for Voyager
+## Create an export directory and prepare the configuration file
 
-1. Create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager as follows:
+1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager as follows:
 
     ```bash
     mkdir -p $HOME/<migration-name>/export-dir
@@ -134,8 +161,10 @@ Create a database user and provide the user with READ access to all the resource
 
 1. Edit the [configuration file](../reference/configuration-file/) `migration-config.yaml` to define your migration environment using the following example.
 
+    Fill in the [cluster details](#get-target-database-details) you obtained previously.
+
     {{<note title="SSL modes">}}
-By default, setting `ssl-mode: prefer` or `require` allows for an encrypted connection without requiring a Root CA file. For production migrations, it is recommended to use `ssl-mode: verify-full` and provide the `ssl-root-cert: /path/to/target-root.crt`. For details, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
+Using `ssl-mode: prefer` or `require` allows for an encrypted connection without requiring the cluster certificate file. For production migrations, it is recommended to use `ssl-mode: verify-full` and provide the `ssl-root-cert: /path/to/target-root.crt`. For details, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 {{</note>}}
 
     ```yaml
@@ -145,17 +174,17 @@ By default, setting `ssl-mode: prefer` or `require` allows for an encrypted conn
     control-plane-type: ybaeon
     ybaeon-control-plane:
       domain: https://cloud.yugabyte.com
-      accountId: <your-YugabyteDB-Aeon-accountID>
-      projectId: <your-YugabyteDB-Aeon-projectID>
-      clusterId: <your-YugabyteDB-Aeon-clusterID>
+      accountId: <YugabyteDB-Aeon-accountID>
+      projectId: <YugabyteDB-Aeon-projectID>
+      clusterId: <YugabyteDB-Aeon-clusterID>
       apiKey: <API_KEY>
     
     # Source database (PostgreSQL)
     source:
       db-type: postgresql
-      db-host: <your-postgresql-host>
+      db-host: <postgresql-host-address>
       db-port: 5432
-      db-name: <your-source-database>
+      db-name: <source-database-name>
       db-schema: public
       db-user: ybvoyager
       db-password: 'your_postgresql_password'
@@ -163,11 +192,11 @@ By default, setting `ssl-mode: prefer` or `require` allows for an encrypted conn
     # Target database (YugabyteDB Aeon)
     target:
       name:
-      db-host: <your-cluster-host>
+      db-host: <cluster-host-address>
       db-port: 5433
       db-name: target_db
       db-user: ybvoyager
-      db-password: 'your_yugabytedb_password'
+      db-password: 'ybvoyager-user-password'
       ssl-mode: prefer
 
     assess-migration:
