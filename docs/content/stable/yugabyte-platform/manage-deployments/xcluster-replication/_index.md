@@ -43,7 +43,9 @@ xCluster Replication supports the following replication configurations:
 - Non-transactional YCQL/YSQL
 - Non-transactional bidirectional
 
-For YSQL databases, transactional is recommended. This mode guarantees atomicity and consistency of transactions. The target universe is made read-only in this mode. If the target universe needs to support write operations, YSQL replication can be configured to use the non-transactional mode. However, this comes at the expense of SQL ACID guarantees. For more information on the inconsistencies that can arise with non-transactional YSQL, refer to [Inconsistencies affecting transactions](../../../architecture/docdb-replication/async-replication/#inconsistencies-affecting-transactions).
+For YSQL databases, transactional is recommended. This mode guarantees atomicity and consistency of transactions. The target universe is made read-only in this mode. To configure transactional YSQL, use [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/), which provides simplified management, along with failover and switchover.
+
+If the target universe needs to support write operations, you can configure YSQL replication to use non-transactional mode. However, this comes at the expense of SQL ACID guarantees. For more information on the inconsistencies that can arise with non-transactional YSQL, refer to [Inconsistencies affecting transactions](../../../architecture/docdb-replication/async-replication/#inconsistencies-affecting-transactions).
 
 For YCQL databases, only non-transactional replication is supported.
 
@@ -83,7 +85,7 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. In addition, xCluster does not support truncate operations. Refer to [Manage tables and indexes](./xcluster-replication-ddl/).
+- Making DDL (SQL-level changes such as creating or dropping tables or indexes) changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. In addition, xCluster does not support truncate operations. Refer to [Manage tables and indexes](./xcluster-replication-ddl/).
 
 - xCluster Replication setup (and other operations that require making a [full copy](xcluster-replication-setup/#full-copy-during-xcluster-setup) from source to target) forcefully drop the tables on the target if they exist before performing the restore.
 
