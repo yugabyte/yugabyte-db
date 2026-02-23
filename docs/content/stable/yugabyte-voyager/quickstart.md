@@ -73,6 +73,26 @@ Create a database user and provide the user with READ access to all the resource
 
    The `ybvoyager` user can now be used for migration.
 
+1. Create a sample table with some data as follows:
+
+    ```sql
+    psql -h <host> -p 5432 -d <database> -U <username> -c "
+    CREATE TABLE employees (
+        id SERIAL PRIMARY KEY,
+        first_name TEXT,
+        last_name TEXT,
+        department TEXT,
+        salary NUMERIC
+    );
+   
+    INSERT INTO employees (first_name, last_name, department, salary) VALUES 
+    ('Josh', 'Dev', 'Engineering', 95000),
+    ('John', 'Smith', 'Sales', 75000),
+    ('Elena', 'Rigby', 'Marketing', 82000),
+    ('Dinesh', 'Chugtai', 'Engineering', 92000);
+    "
+    ```
+
 ### Prepare target YugabyteDB Aeon database
 
 1. Connect to your YugabyteDB Aeon cluster via [Cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/#connect-via-cloud-shell).
