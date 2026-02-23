@@ -260,7 +260,7 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
     if (!matchingClaimKey.isEmpty()) {
       jwtOptions.append(" jwt_matching_claim_key=").append(matchingClaimKey);
     }
-    flagMap.put("ycql_jwt_options", jwtOptions.toString());
+    flagMap.put("ycql_jwt_conf", jwtOptions.toString());
     if (!identConfCsv.isEmpty()) {
       flagMap.put("ycql_ident_conf_csv", identConfCsv);
     }

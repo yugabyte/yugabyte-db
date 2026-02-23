@@ -86,7 +86,7 @@ DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
     " check instead of JWT (if ycql_use_jwt_auth=true). This is a comma separated list.");
 TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
 
-DEFINE_NON_RUNTIME_string(ycql_jwt_options, "",
+DEFINE_NON_RUNTIME_string(ycql_jwt_conf, "",
     "The space-separated list of options to configure JWT authentication. "
     "The format is a list of 'key=value' pairs separated by space. "
     "Valid keys are:\n"
@@ -664,7 +664,7 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
 }
 
 Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
-  auto jwt_options = StringSplit(FLAGS_ycql_jwt_options, ' ');
+  auto jwt_options = StringSplit(FLAGS_ycql_jwt_conf, ' ');
 
   for (const auto& option : jwt_options) {
     auto option_kv = StringSplit(option, '=');
