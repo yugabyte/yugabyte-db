@@ -63,9 +63,16 @@ import play.libs.Json;
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
-  // todo: https://yugabyte.atlassian.net/browse/PLAT-10505
+  // Matches Azure VM sizes with no local temporary disk (diskless).
+  // Naming convention: the presence of 'd' in the suffix (e.g. ads, ds) indicates local disk --
+  // excluded here.
+  // Suffix is intentionally optional -- e.g. Standard_D4_v5 is diskless with no suffix.
+  // DO NOT add v2 or v3 -- Standard_D2s_v3 and Standard_E48_v3 have local disks (confirmed by
+  // Azure docs and tests).
+  // DO NOT add suffix 'd'-variants (ads, ds) -- these indicate local disk presence.
+  // Ref: https://aka.ms/AAah4sj and https://azure.microsoft.com/en-us/blog/azure-vms-no-temp-disk
   private static final Pattern AZU_NO_LOCAL_DISK =
-      Pattern.compile("Standard_(D|E)[0-9]*as\\_v5|Standard_D[0-9]*s\\_v5|Standard_D[0-9]*s\\_v4");
+      Pattern.compile("\\bStandard_(D|E|F|M|B)[0-9]+(as|s|ls|ps|pls|als|es|bs|bds)?_v(4|5|6)\\b");
 
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
@@ -351,16 +358,17 @@ public class InstanceType extends Model {
         .findList();
   }
 
-  public static boolean isAzureWithLocalDisk(String instanceTypeCode) {
+  /** Returns true if the Azure VM size has no local temporary disk (diskless). */
+  public static boolean isAzureDiskless(String instanceTypeCode) {
     return AZU_NO_LOCAL_DISK.matcher(instanceTypeCode).matches();
   }
 
   @JsonIgnore
-  public boolean isAzureWithLocalDisk() {
+  public boolean isAzureDiskless() {
     if (isCloudInstanceType()) {
-      return isAzureWithLocalDisk(getInstanceTypeCode());
+      return isAzureDiskless(getInstanceTypeCode());
     }
-    return isAzureWithLocalDisk(getInstanceTypeDetails().cloudInstanceTypeCodes.get(0));
+    return isAzureDiskless(getInstanceTypeDetails().cloudInstanceTypeCodes.get(0));
   }
 
   @JsonIgnore
@@ -436,9 +444,9 @@ public class InstanceType extends Model {
             BAD_REQUEST, "Minimum of one cloud instance type must be specified");
       }
       // For Azure, instances with and without local disks cannot be mixed up.
-      boolean isLocalDisk = isAzureWithLocalDisk(uniqueSubInstanceTypeCodes.iterator().next());
+      boolean isDiskless = isAzureDiskless(uniqueSubInstanceTypeCodes.iterator().next());
       if (instanceTypeDetails.cloudInstanceTypeCodes.stream()
-          .anyMatch(c -> isAzureWithLocalDisk(c) != isLocalDisk)) {
+          .anyMatch(c -> isAzureDiskless(c) != isDiskless)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Instance types with/without local disks cannot be mixed");
       }

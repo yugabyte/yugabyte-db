@@ -9,6 +9,7 @@ import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -399,6 +400,29 @@ public class InstanceTypeTest extends FakeDBApplication {
             + "volumeType=EBS, mountPath=/mnt/d0), InstanceType.VolumeDetails(volumeSizeGB=200, "
             + "volumeType=EBS, mountPath=/mnt/d1)])",
         exception.getMessage());
+  }
+
+  @Test
+  public void testIsAzureDiskless_WithLocalDisk_ReturnsFalse() {
+    // Sizes with local temporary disk (resource disk) - not diskless.
+    assertFalse(InstanceType.isAzureDiskless("Standard_DS3_v2"));
+    assertFalse(InstanceType.isAzureDiskless("Standard_D2s_v3"));
+    assertFalse(InstanceType.isAzureDiskless("Standard_E48_v3"));
+    // Suffix containing 'd' (e.g. ds, ads) indicates local disk per Azure naming convention.
+    assertFalse(InstanceType.isAzureDiskless("Standard_D4ds_v5"));
+  }
+
+  @Test
+  public void testIsAzureDiskless_NoLocalDisk_ReturnsTrue() {
+    // Sizes with no local temporary disk (diskless).
+    assertTrue(InstanceType.isAzureDiskless("Standard_D8ls_v5"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_D8s_v5"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_D4as_v5"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_D4_v5"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_E4s_v5"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_D4s_v4"));
+    assertTrue(InstanceType.isAzureDiskless("Standard_E16bds_v5")); // Ebdsv5 diskless
+    assertTrue(InstanceType.isAzureDiskless("Standard_F4s_v5")); // F-series diskless
   }
 
   @Test
