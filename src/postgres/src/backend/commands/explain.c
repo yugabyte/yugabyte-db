@@ -867,7 +867,7 @@ static void
 YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 {
 	ListCell   *l;
-	const char *lock_mode;
+	const char *lock_mode = NULL;
 
 	if (!es->pstmt->rowMarks)
 		return;
@@ -887,11 +887,14 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 		}
 	}
 
-	if (es->format == EXPLAIN_FORMAT_TEXT)
-		appendStringInfo(es->str, " (Locked %s)", lock_mode);
-	else
+	if (lock_mode != NULL)
 	{
-		ExplainPropertyText("Lock Type", lock_mode, es);
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+			appendStringInfo(es->str, " (Locked %s)", lock_mode);
+		else
+		{
+			ExplainPropertyText("Lock Type", lock_mode, es);
+		}
 	}
 }
 
