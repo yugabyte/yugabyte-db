@@ -172,8 +172,6 @@ Note that a universe configured for xCluster DR cannot be used for xCluster Repl
 
 ## Limitations
 
-- Currently, automatic replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. For more details on how to propagate DDL changes from the DR primary to the DR replica, see [Schema change modes](#schema-change-modes). This is tracked by [GitHub issue #11537](https://github.com/yugabyte/yugabyte-db/issues/11537).
-
 - If a database operation requires a full copy, any application sessions on the database on the DR target will be interrupted while the database is dropped and recreated. Your application should either retry connections or redirect reads to the DR primary.
 
 - Setting up DR between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
