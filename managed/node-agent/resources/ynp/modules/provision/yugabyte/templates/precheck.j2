@@ -2,9 +2,31 @@
 if id {{ yb_user }} &>/dev/null; then
     echo "User {{ yb_user }} exists"
     add_result "Yugabyte User Existence Check" "PASS" "User {{ yb_user }} exists"
+    # FATAL: Check if existing user's home directory matches the configured yb_home_dir
+    existing_home=$(getent passwd {{ yb_user }} | cut -d: -f6)
+    configured_home="{{ yb_home_dir }}"
+    # Resolve both paths to absolute canonical paths for comparison
+    existing_home_abs=$(realpath -m "$existing_home" 2>/dev/null || echo "$existing_home")
+    configured_home_abs=$(realpath -m "$configured_home" 2>/dev/null || echo "$configured_home")
+
+    if [ "$existing_home_abs" != "$configured_home_abs" ]; then
+        fatal_msg="User {{ yb_user }} home directory"
+        fatal_msg+=" '$existing_home_abs' does not match"
+        fatal_msg+=" configured '$configured_home_abs'."
+        fatal_msg+=" This mismatch can cause system corruption."
+        add_fatal_result \
+            "Yugabyte User Home Directory Mismatch" \
+            "$fatal_msg"
+    fi
 else
     echo "User {{ yb_user }} does not exist"
     add_result "Yugabyte User Existence Check" "FAIL" "User {{ yb_user }} does not exist"
+    # Validate that a home directory is configured for user creation
+    if [ -z "{{ yb_home_dir }}" ]; then
+        add_fatal_result \
+            "Yugabyte Home Directory Config" \
+            "No home directory configured for user {{ yb_user }}"
+    fi
 fi
 
 # Get the actual home directory of the yugabyte user

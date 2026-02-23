@@ -4,6 +4,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"node-agent/util"
 	"node-agent/ynp/config"
@@ -60,7 +61,26 @@ const (
 	DPKG PackageManager = "dpkg"
 
 	YNPVersionFile = "ynp_version"
+
+	// ExitCodeFatal represents a fatal error that should abort immediately.
+	ExitCodeFatal = 2
+	// ExitCodeNonFatal represents a non-fatal error.
+	ExitCodeNonFatal = 1
 )
+
+// ScriptExitError wraps a script failure with its exit code.
+type ScriptExitError struct {
+	ExitCode int
+	Err      error
+}
+
+func (e *ScriptExitError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ScriptExitError) Unwrap() error {
+	return e.Err
+}
 
 type ProvisionCommand struct {
 	ctx            context.Context
@@ -223,19 +243,33 @@ func (pc *ProvisionCommand) Execute() error {
 		return err
 	}
 	errMsg := []string{}
-	err = pc.runScript("provision", runScript)
-	if err != nil {
-		errMsg = append(errMsg, fmt.Sprintf("Provisioning failed: %v", err))
+	var exitCode int
+	if runErr := pc.runScript("provision", runScript); runErr != nil {
+		errMsg = append(errMsg, fmt.Sprintf("Provisioning failed: %v", runErr))
+		var scriptErr *ScriptExitError
+		if errors.As(runErr, &scriptErr) {
+			exitCode = scriptErr.ExitCode
+		} else {
+			exitCode = ExitCodeNonFatal
+		}
 	}
-	err = pc.runScript("precheck", precheckScript)
-	if err != nil {
-		errMsg = append(errMsg, fmt.Sprintf("Precheck failed: %v", err))
+	if precheckErr := pc.runScript("precheck", precheckScript); precheckErr != nil {
+		errMsg = append(errMsg, fmt.Sprintf("Precheck failed: %v", precheckErr))
+		var scriptErr *ScriptExitError
+		if errors.As(precheckErr, &scriptErr) {
+			if exitCode == 0 || scriptErr.ExitCode == ExitCodeFatal {
+				exitCode = scriptErr.ExitCode
+			}
+		}
 	}
 	if err := pc.saveYnpVersion(); err != nil {
 		return err
 	}
 	if len(errMsg) > 0 {
-		return fmt.Errorf("%s", strings.Join(errMsg, "; "))
+		return &ScriptExitError{
+			ExitCode: exitCode,
+			Err:      fmt.Errorf("%s", strings.Join(errMsg, "; ")),
+		}
 	}
 	return nil
 }
@@ -309,12 +343,23 @@ func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 	cmd := exec.Command("/bin/bash", "-lc", scriptPath)
 	out, err := cmd.CombinedOutput()
 	util.FileLogger().Infof(pc.ctx, "%s(%s) Output: %s", name, scriptPath, string(out))
+	exitCode := 1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "%s(%s) Error: %v", name, scriptPath, err)
 	}
-	exitCode := cmd.ProcessState.ExitCode()
 	if exitCode != 0 {
-		return fmt.Errorf("Script %s(%s) failed with exit code %d", name, scriptPath, exitCode)
+		return &ScriptExitError{
+			ExitCode: exitCode,
+			Err: fmt.Errorf(
+				"Script %s(%s) failed with exit code %d",
+				name,
+				scriptPath,
+				exitCode,
+			),
+		}
 	}
 	return nil
 }
@@ -398,16 +443,31 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 	return runScript, precheckScript, nil
 }
 
+func (pc *ProvisionCommand) addFatalHelpersForRun(f *os.File) {
+	fmt.Fprint(f, `
+add_fatal_result() {
+    local check="$1"
+    local message="$2"
+    echo "FATAL ERROR: $check - $message"
+    exit 2
+}
+`)
+}
+
 func (pc *ProvisionCommand) addExitCodeCheck(f *os.File, moduleName string) {
 	fmt.Fprintf(f, `
-		exit_code=$?
-        if [ $exit_code -ne 0 ]; then
-            parent_exit_code=$exit_code
-            err="Module %s failed with code $exit_code"
-            errors+=("$err")
-            echo "$err"
-        fi
-       `, moduleName)
+exit_code=$?
+if [ $exit_code -ne 0 ]; then
+    parent_exit_code=$exit_code
+    err="Module %s failed with code $exit_code"
+    errors+=("$err")
+    echo "$err"
+    if [ $exit_code -eq 2 ]; then
+        echo "FATAL error in module %s. Aborting immediately."
+        exit 2
+    fi
+fi
+`, moduleName, moduleName)
 }
 
 func (pc *ProvisionCommand) printExitErrors(f *os.File) {
@@ -423,55 +483,63 @@ func (pc *ProvisionCommand) printExitErrors(f *os.File) {
 
 func (pc *ProvisionCommand) addResultHelper(f *os.File) {
 	fmt.Fprintf(f, `
-            # Initialize the JSON results array
-            json_results='{
+# Initialize the JSON results array
+json_results='{
 "results":[
 '
-            add_result() {
-                local check="$1"
-                local result="$2"
-                local message="$3"
-                if [ "${#json_results}" -gt 20 ]; then
-                    json_results+=',
+add_result() {
+    local check="$1"
+    local result="$2"
+    local message="$3"
+    if [ "${#json_results}" -gt 20 ]; then
+        json_results+=',
 '
-                fi
-                json_results+='    {
+    fi
+    json_results+='    {
 '
-                json_results+='      "check": "'$check'",
+    json_results+='      "check": "'$check'",
 '
-                json_results+='      "result": "'$result'",
+    json_results+='      "result": "'$result'",
 '
-                json_results+='      "message": "'$message'"
+    json_results+='      "message": "'$message'"
 '
-                json_results+='    }'
-            }
-	`)
+    json_results+='    }'
+}
+add_fatal_result() {
+    local check="$1"
+    local message="$2"
+    echo "FATAL ERROR: $check - $message"
+    add_result "$check" "FATAL" "$message"
+    json_results+='
+]}'
+    echo "$json_results"
+    exit 2
+}
+`)
 }
 
 func (pc *ProvisionCommand) printResultHelper(f *os.File) {
 	fmt.Fprintf(f, `
-            print_results() {
-                any_fail=0
-                if [[ $json_results == *'"result": "FAIL"'* ]]; then
-                    any_fail=1
-                fi
-                json_results+='
+print_results() {
+    any_fail=0
+    if [[ $json_results == *'"result": "FAIL"'* ]]; then
+        any_fail=1
+    fi
+    json_results+='
 ]}'
 
-                # Output the JSON
-                echo "$json_results"
+    # Output the JSON
+    echo "$json_results"
 
-                # Exit with status code 1 if any check has failed
-                if [ $any_fail -eq 1 ]; then
-                    echo "Pre-flight checks failed, Please fix them before continuing."
-                    exit 1
-                else
-                    echo "Pre-flight checks successful"
-                fi
-            }
+    if [ $any_fail -eq 1 ]; then
+        echo "Pre-flight checks failed, Please fix them before continuing."
+        exit 1
+    fi
+    echo "Pre-flight checks successful"
+}
 
-            print_results
-			`)
+print_results
+`)
 }
 
 func (pc *ProvisionCommand) populateSudoCheck(f *os.File) {
@@ -507,6 +575,8 @@ func (pc *ProvisionCommand) buildScript(
 		// Initialize parent exit code and errors array.
 		fmt.Fprintf(f, "parent_exit_code=0\n")
 		fmt.Fprintf(f, "errors=()\n")
+		// Add fatal error helpers for run phase.
+		pc.addFatalHelpersForRun(f)
 	} else {
 		// Result helper function works only in the same shell.
 		pc.addResultHelper(f)

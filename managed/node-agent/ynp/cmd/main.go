@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"node-agent/util"
@@ -229,7 +230,13 @@ func handleCommand(
 	}
 	err = executor.Exec(ctx)
 	if err != nil {
-		util.ConsoleLogger().Fatalf(ctx, "Failed to execute provision command: %v", err)
+		exitCode := 1
+		var scriptErr *command.ScriptExitError
+		if errors.As(err, &scriptErr) {
+			exitCode = scriptErr.ExitCode
+		}
+		util.ConsoleLogger().Errorf(ctx, "Failed to execute provision command: %v", err)
+		os.Exit(exitCode)
 	}
 }
 

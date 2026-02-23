@@ -76,6 +76,8 @@ class ProvisionCommand(Command):
                 # Initialize parent exit code and errors array.
                 temp_file.write("parent_exit_code=0\n")
                 temp_file.write("errors=()\n")
+                # Add fatal error helpers for run phase (modules may call add_fatal_result)
+                self.add_fatal_helpers_for_run(temp_file)
             else:
                 # add_result_helper works only in the same shell.
                 self.add_results_helper(temp_file)
@@ -112,6 +114,19 @@ class ProvisionCommand(Command):
         logger.info("Return Code: %s", result.returncode)
         return result
 
+    def add_fatal_helpers_for_run(self, file):
+        """Add add_fatal_result for run phase (no JSON)."""
+        file.write(
+            """
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                exit 2
+            }
+            """
+        )
+
     def add_exit_code_check(self, file, key):
         file.write(
             f"""
@@ -121,6 +136,10 @@ class ProvisionCommand(Command):
                 err="Module {key} failed with code $exit_code"
                 errors+=("$err")
                 echo "$err"
+                if [ $exit_code -eq 2 ]; then
+                    echo "FATAL error in module {key}. Aborting immediately."
+                    exit 2
+                fi
             fi
             """
         )
@@ -156,6 +175,16 @@ class ProvisionCommand(Command):
                 json_results+='      "message": "'$message'"\n'
                 json_results+='    }'
             }
+
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                add_result "$check" "FATAL" "$message"
+                json_results+='\n]}'
+                echo "$json_results"
+                exit 2
+            }
             """
         )
 
@@ -171,13 +200,11 @@ class ProvisionCommand(Command):
                 # Output the JSON
                 echo "$json_results"
 
-                # Exit with status code 1 if any check has failed
                 if [ $any_fail -eq 1 ]; then
                     echo "Pre-flight checks failed, Please fix them before continuing."
                     exit 1
-                else
-                    echo "Pre-flight checks successful"
                 fi
+                echo "Pre-flight checks successful"
             }
 
             print_results
@@ -344,7 +371,10 @@ class ProvisionCommand(Command):
         precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
         if precheck_result.returncode != 0 or provision_result.returncode != 0:
-            sys.exit(1)
+            exit_code = (provision_result.returncode
+                         if provision_result.returncode != 0
+                         else precheck_result.returncode)
+            sys.exit(exit_code)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
