@@ -9,7 +9,7 @@ type: docs
 menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
-    weight: 2
+    weight: 10
     params:
       hideLink: true
 ---
