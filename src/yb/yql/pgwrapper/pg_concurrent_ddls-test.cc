@@ -36,7 +36,7 @@ class PgConcurrentDDLsTest : public LibPqTestBase {
     opts->extra_tserver_flags.emplace_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
     opts->extra_tserver_flags.emplace_back(
-        yb::Format("--ysql_pg_conf_csv=$0", "yb_fallback_to_legacy_catalog_read_time=false"));
+        yb::Format("--ysql_pg_conf_csv=$0", "yb_enable_concurrent_ddl=true"));
   }
 
   int GetNumTabletServers() const override {

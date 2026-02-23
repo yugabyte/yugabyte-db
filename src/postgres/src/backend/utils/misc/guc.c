@@ -3817,19 +3817,14 @@ static struct config_bool ConfigureNamesBool[] =
 	 * (2) Disallow setting this GUC in the middle of a transaction.
 	 */
 	{
-		{"yb_fallback_to_legacy_catalog_read_time", PGC_USERSET, CUSTOM_OPTIONS,
+		{"yb_enable_concurrent_ddl", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
-				"support.] If object locking is enabled, concurrent DDLs are allowed. This is done by "
-				"using the new mode for catalog reads and writes using PG's catalog snapshot. Set this "
-				"flag to true for falling back to the legacy mode which involves using pggate's catalog "
-				"read time for catalog reads when running a DML transaction (and) the transaction snapshot "
-				"for catalog reads and writes when running a DDL transaction. Concurrent DDLs will not be "
-				"supported if this flag is set. If object locking is disabled, only the legacy mode is "
-				"used."),
+				"support.] Use this flag to toggle support for concurrent DDLs. If object locking is disabled (i.e., "
+				"the gflag enable_object_locking_for_table_locks is set to false), concurrent DDLs are not supported."),
 			NULL
 		},
-		&yb_fallback_to_legacy_catalog_read_time,
-		true,
+		&yb_enable_concurrent_ddl,
+		false,
 		NULL, NULL, NULL
 	},
 

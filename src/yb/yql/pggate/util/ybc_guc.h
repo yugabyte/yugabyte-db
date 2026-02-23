@@ -193,7 +193,7 @@ extern bool yb_enable_ddl_savepoint_infra;
 /*
  * Refer YBCIsLegacyModeForCatalogOps() for details.
  */
-extern bool yb_fallback_to_legacy_catalog_read_time;
+extern bool yb_enable_concurrent_ddl;
 
 /*
  * xcluster consistency level
