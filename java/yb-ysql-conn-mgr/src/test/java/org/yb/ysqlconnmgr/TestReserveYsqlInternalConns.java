@@ -24,6 +24,7 @@ import com.google.gson.JsonObject;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.client.TestUtils;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
@@ -57,6 +58,25 @@ public class TestReserveYsqlInternalConns extends BaseYsqlConnMgr {
             Integer.toString(STATS_UPDATE_INTERVAL));
         builder.addCommonTServerFlag("ysql_pg_conf_csv",
             "superuser_reserved_connections=" + RESERVED_CONNS_FOR_NON_REPLICATION_SUPERUSER);
+    }
+
+    // Before starting the test, avoid making connection to conn mgr end point
+    // even when test is ran with --enable-ysql-conn-mgr flag.
+    // Otherwise it creates extra backend to default user / db which limits number
+    // of connection to other user/db & can cause test to fail.
+    @Override
+    public void verifyClusterAcceptsPGConnections() throws Exception {
+        LOG.info("Waiting for the cluster to accept pg connections");
+        TestUtils.waitFor(() -> {
+            try {
+            connectionBuilderForVerification(getConnectionBuilder())
+            .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+            .connect().close();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }, 10000);
     }
 
     private void createUser(String userName) throws Exception {
