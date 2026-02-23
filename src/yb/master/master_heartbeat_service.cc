@@ -122,8 +122,7 @@ DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(skip_tserver_version_checks);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 namespace {
 
@@ -175,9 +174,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
   Result<bool> ProcessTabletReport(
       const TSDescriptorPtr& ts_desc,
       const NodeInstancePB& ts_instance,
-      const TabletReportPB* full_report,
+      const TabletReportPB* report_ptr,
       const LeaderEpoch& epoch,
-      TabletReportUpdatesPB* full_report_update,
+      TabletReportUpdatesPB* report_update,
       rpc::RpcContext* rpc);
 
   Status ProcessTabletReportBatch(
@@ -624,49 +623,51 @@ void MasterHeartbeatServiceImpl::DeleteOrphanedTabletReplica(
 Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     const TSDescriptorPtr& ts_desc,
     const NodeInstancePB& ts_instance,
-    const TabletReportPB* full_report_ptr,
+    const TabletReportPB* report_ptr,
     const LeaderEpoch& epoch,
-    TabletReportUpdatesPB* full_report_update,
+    TabletReportUpdatesPB* report_update,
     rpc::RpcContext* rpc) {
-  if (!full_report_ptr) {
+  if (!report_ptr) {
     return ts_desc->has_tablet_report();
   }
-  const auto& full_report = *full_report_ptr;
+  const auto& report = *report_ptr;
 
   if (!ts_desc->has_tablet_report()) {
-    if (full_report.is_incremental()) {
+    if (report.is_incremental()) {
       LOG(WARNING) << "Invalid tablet report from " << ts_desc->permanent_uuid()
                  << ": Received an incremental tablet report when a full one was needed";
       return false;
-    } else if (full_report.full_report_seq_no() &&
-               full_report.full_report_seq_no() != full_report.sequence_number() &&
-               full_report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
-      LOG(WARNING)
-          << ts_desc->permanent_uuid()
-          << " sent full report continuation with unexpected sequence number: "
-          << full_report.full_report_seq_no() << " vs " << ts_desc->receiving_full_report_seq_no();
+    } else if (report.has_full_report_seq_no() &&
+               report.full_report_seq_no() != report.sequence_number() &&
+               report.full_report_seq_no() != ts_desc->receiving_full_report_seq_no()) {
+      LOG(WARNING) << Format(
+          "$0 sent a tablet report with sequence number $1, which continues full report starting "
+          "at sequence number $2. However we expected a tablet report continuing the full report "
+          "starting at sequence number $3",
+          ts_desc->permanent_uuid(), report.sequence_number(),
+          report.full_report_seq_no(), ts_desc->receiving_full_report_seq_no());
       return false;
     }
   }
 
-  int num_tablets = full_report.updated_tablets_size();
+  int num_tablets = report.updated_tablets_size();
   TRACE_EVENT2("master", "ProcessTabletReport",
               "requestor", rpc->requestor_string(),
               "num_tablets", num_tablets);
 
   VLOG(2) << "Received tablet report from " << rpc::RequestorString(rpc) << "("
-          << ts_desc->permanent_uuid() << "): " << full_report.DebugString();
+          << ts_desc->permanent_uuid() << "): " << report.DebugString();
 
   // TODO: on a full tablet report, we may want to iterate over the tablets we think
   // the server should have, compare vs the ones being reported, and somehow mark
   // any that have been "lost" (eg somehow the tablet metadata got corrupted or something).
   auto [reported_tablets, orphaned_tablets] =
-      GetReportedAndOrphanedTablets(full_report.updated_tablets());
+      GetReportedAndOrphanedTablets(report.updated_tablets());
 
   // Process any delete requests from orphaned tablets, identified above.
   for (const auto& tablet_id : orphaned_tablets) {
     // Every tablet in the report that is processed gets a heartbeat response entry.
-    full_report_update->add_tablets()->set_tablet_id(tablet_id);
+    report_update->add_tablets()->set_tablet_id(tablet_id);
     DeleteOrphanedTabletReplica(tablet_id, epoch, ts_desc);
   }
 
@@ -687,8 +688,7 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     // Keeps track of all RPCs that should be sent when we're done with a single batch.
     std::vector<RetryingTSRpcTaskWithTablePtr> rpcs;
     auto status = ProcessTabletReportBatch(
-        ts_desc, ts_instance, full_report, batch_begin, tablet_iter, epoch, full_report_update,
-        &rpcs);
+        ts_desc, ts_instance, report, batch_begin, tablet_iter, epoch, report_update, &rpcs);
     if (!status.ok()) {
       for (auto& rpc : rpcs) {
         rpc->AbortAndReturnPrevState(status);
@@ -718,19 +718,19 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
       // Return from here at configured safe heartbeat deadline to give the response packet time.
       if (safe_deadline < CoarseMonoClock::Now()) {
         LOG(INFO) << "Reached Heartbeat deadline. Returning early after processing "
-                  << full_report_update->tablets_size() << " tablets";
-        full_report_update->set_processing_truncated(true);
+                  << report_update->tablets_size() << " tablets";
+        report_update->set_processing_truncated(true);
         break;
       }
     }
   } // Loop to process the next batch until fully iterated.
 
-  if (!full_report.is_incremental()) {
+  if (!report.is_incremental()) {
     // A full report may take multiple heartbeats.
     // The TS communicates how much is left to process for the full report beyond this specific HB.
     bool completed_full_report =
-        full_report.remaining_tablet_count() == 0 && !full_report_update->processing_truncated();
-    if (full_report.updated_tablets_size() == 0) {
+        report.remaining_tablet_count() == 0 && !report_update->processing_truncated();
+    if (report.updated_tablets_size() == 0) {
       LOG(INFO) << ts_desc->permanent_uuid() << " sent full tablet report with 0 tablets.";
     } else if (!ts_desc->has_tablet_report()) {
       LOG(INFO) << ts_desc->permanent_uuid()
@@ -744,13 +744,13 @@ Result<bool> MasterHeartbeatServiceImpl::ProcessTabletReport(
     } else if (!ts_desc->receiving_full_report_seq_no()) {
       LOG_WITH_FUNC(INFO)
           << ts_desc->permanent_uuid() << " set full report seq no: "
-          << full_report.full_report_seq_no();
-      ts_desc->set_receiving_full_report_seq_no(full_report.full_report_seq_no());
+          << report.full_report_seq_no();
+      ts_desc->set_receiving_full_report_seq_no(report.full_report_seq_no());
     }
   }
 
   // 14. Queue background processing if we had updates.
-  if (full_report.updated_tablets_size() > 0) {
+  if (report.updated_tablets_size() > 0) {
     catalog_manager_->WakeBgTaskIfPendingUpdates();
   }
 
@@ -1635,5 +1635,4 @@ std::unique_ptr<rpc::ServiceIf> MakeMasterHeartbeatService(Master* master) {
   return std::make_unique<MasterHeartbeatServiceImpl>(master);
 }
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master
