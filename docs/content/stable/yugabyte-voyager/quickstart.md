@@ -9,6 +9,8 @@ menu:
     identifier: quickstart-voyager
     parent: yugabytedb-voyager
     weight: 100
+    params:
+      classes: separator
 type: docs
 showRightNav: true
 ---
@@ -84,7 +86,7 @@ Run the following commands in a psql session:
     "
     ```
 
-### Create a YugabyteDB Aeon cluster
+### Create YugabyteDB Aeon cluster
 
 1. [Sign up](https://cloud.yugabyte.com) and then sign in to YugabyteDB Aeon.
 
@@ -101,7 +103,7 @@ Run the following commands in a psql session:
       - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
     - Click **Create Cluster**.
 
-### Get target database details
+### Get Aeon cluster details
 
 To be able to connect to your Aeon cluster from YugabyteDB Voyager, you will need the following cluster details:
 
@@ -157,7 +159,7 @@ Do the following:
 
 ### Edit the configuration file
 
-The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-target-database-details) you collected earlier.
+The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-aeon-cluster-details) you collected earlier.
 
 1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager as follows:
 
@@ -248,7 +250,7 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
       backup-schema-files: false
     ```
 
-## Run migration assessment
+## Migration assessment
 
 Execute the [migration assessment](../migrate/assess-migration/) to get recommendations:
 
@@ -263,7 +265,7 @@ The `assess-migration` command generates a detailed assessment report with:
 - Cluster sizing suggestions
 - Performance optimization tips
 
-### Review and address assessment recommendations
+### Review recommendations
 
 1. Review the assessment report:
 
