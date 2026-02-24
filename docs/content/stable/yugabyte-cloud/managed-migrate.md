@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Use the Migration Hub to manage database migrations, including database preparation, migration assessment, schema changes, and data migration. Migration Hub uses [YugabyteDB Voyager](/stable/yugabyte-voyager/) to manage migrations from Oracle, PostrgeSQL, and MySQL databases to YugabyteDB Aeon.
+Use the Migration Hub to manage database migrations, including database preparation, migration assessment, schema changes, and data migration. Migration Hub uses [YugabyteDB Voyager](/stable/yugabyte-voyager/) to manage migrations from Oracle, PostgreSQL, and MySQL databases to YugabyteDB Aeon.
 
 To run a migration in Migration Hub:
 
@@ -33,6 +33,7 @@ There are five stages to a migration. Migration Hub updates the status of your m
 Migration Hub uses YugabyteDB Voyager to perform migrations. The setup process requires the following:
 
 - Download and install YugabyteDB Voyager (v2025.11.2 or later).
+- Prepare the source and the target databases required for migration.
 - Edit the configuration file with the parameters needed to connect the source database (the database you are migrating from) to the target database (your YugabyteDB Aeon cluster).
 
 For full instructions, see the YugabyteDB Voyager [Quick Start](/stable/yugabyte-voyager/quickstart/).

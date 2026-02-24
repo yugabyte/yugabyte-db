@@ -254,9 +254,9 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
 
 ## Migration
 
-There are five stages to a migration. Migration Hub updates the status of your migration as you complete each stage.
+There are five stages to a migration. Migration Hub in YugabyteDB Aeon updates the status of your migration as you complete each stage.
 
-- Return to your migration in the [Migration Hub](/stable/yugabyte-cloud/managed-migrate/#assess) in YugabyteDB Aeon, and follow the instructions provided on the **Assess**, **Migrate Scheme**, **Migrate Data**, and **Verify** pages.
+- Return to your migration in the [Migration Hub](/stable/yugabyte-cloud/managed-migrate/#assess) in YugabyteDB Aeon, and follow the instructions provided on the **Assess**, **Migrate Schema**, **Migrate Data**, and **Verify** pages.
 
 <!--
 {{<note title="Migration Hub">}}
