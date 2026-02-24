@@ -16,7 +16,7 @@ import CircleCheckedIcon from '@app/redesign/assets/circle-checked.svg';
 import CircleUnselectedIcon from '@app/redesign/assets/circle-unselected.svg';
 import TreeIcon from '@app/redesign/assets/tree-icon.svg';
 interface UpgradeMethodStepProps {
-  primaryBatchSize: number;
+  maxNodesPerBatchMaximum: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -54,7 +54,7 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer',
 
     '&$selectedSection': {
-      backgroundColor: '#FBFCFD'
+      backgroundColor: theme.palette.ybacolors.grey005
     }
   },
   selectedSection: {},
@@ -79,7 +79,7 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer',
 
     '&$selectedSection': {
-      backgroundColor: '#FBFCFD'
+      backgroundColor: theme.palette.ybacolors.grey005
     }
   },
 
@@ -199,7 +199,7 @@ const useStyles = makeStyles((theme) => ({
     maxWidth: '100%',
     padding: theme.spacing(1.5, 2),
 
-    backgroundColor: '#FBFCFD',
+    backgroundColor: theme.palette.ybacolors.grey005,
     border: `1px solid ${theme.palette.grey[200]}`,
     borderRadius: theme.shape.borderRadius
   },
@@ -264,9 +264,10 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.upgradeMethodStep';
+const UPGRADE_MODAL_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal';
 const TEST_ID_PREFIX = 'UpgradeMethodStep';
 
-export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) => {
+export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStepProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
   const { control, watch, setValue, formState } = useFormContext<DBUpgradeFormFields>();
@@ -285,8 +286,8 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
 
   const handleMaxNodesPerBatchBlur = (event: FocusEvent<HTMLInputElement>) => {
     const fieldValue = Number(event.target.value);
-    if (fieldValue > primaryBatchSize) {
-      setValue('maxNodesPerBatch', primaryBatchSize);
+    if (fieldValue > maxNodesPerBatchMaximum) {
+      setValue('maxNodesPerBatch', maxNodesPerBatchMaximum);
     } else if (fieldValue < 1) {
       setValue('maxNodesPerBatch', 1);
     }
@@ -363,14 +364,16 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
                             <div className={classes.upgradePaceFormFieldContainer}>
                               <div className={classes.upgradePaceFormField}>
                                 <Typography className={classes.settingLabel}>
-                                  {t('upgradePace.maxNodesPerBatch')}
+                                  {t('fields.maxNodesPerBatch', {
+                                    keyPrefix: UPGRADE_MODAL_KEY_PREFIX
+                                  })}
                                 </Typography>
                                 <YBInputField
                                   control={control}
                                   name="maxNodesPerBatch"
                                   type="number"
                                   className={classes.numericInputField}
-                                  disabled={isFormDisabled || primaryBatchSize <= 1}
+                                  disabled={isFormDisabled || maxNodesPerBatchMaximum <= 1}
                                   onBlur={handleMaxNodesPerBatchBlur}
                                   rules={{
                                     required: {
@@ -379,18 +382,24 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
                                     },
                                     min: {
                                       value: 1,
-                                      message: t('validationError.maxNodesPerBatchMinimum')
+                                      message: t('fields.validationError.maxNodesPerBatchMinimum', {
+                                        keyPrefix: UPGRADE_MODAL_KEY_PREFIX
+                                      })
                                     },
                                     max: {
-                                      value: primaryBatchSize,
-                                      message: t('validationError.maxNodesPerBatchMaximum', {
-                                        max: primaryBatchSize
-                                      })
+                                      value: maxNodesPerBatchMaximum,
+                                      message: t(
+                                        'fields.validationError.maxNodesPerBatchMaximum',
+                                        {
+                                          keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
+                                          max: maxNodesPerBatchMaximum
+                                        }
+                                      )
                                     }
                                   }}
                                   inputProps={{
                                     min: 1,
-                                    max: primaryBatchSize,
+                                    max: maxNodesPerBatchMaximum,
                                     'data-testid': `${TEST_ID_PREFIX}-MaxBatchInput`
                                   }}
                                 />
@@ -404,7 +413,9 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
                             <div className={classes.upgradePaceFormFieldContainer}>
                               <div className={classes.upgradePaceFormField}>
                                 <Typography className={classes.settingLabel}>
-                                  {t('upgradePace.waitBetweenBatches')}
+                                  {t('fields.waitBetweenBatches', {
+                                    keyPrefix: UPGRADE_MODAL_KEY_PREFIX
+                                  })}
                                 </Typography>
                                 <YBInputField
                                   control={control}
@@ -420,7 +431,10 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
                                     },
                                     min: {
                                       value: 0,
-                                      message: t('validationError.waitBetweenBatchesMinimum')
+                                      message: t(
+                                        'fields.validationError.waitBetweenBatchesMinimum',
+                                        { keyPrefix: UPGRADE_MODAL_KEY_PREFIX }
+                                      )
                                     }
                                   }}
                                   inputProps={{
@@ -429,7 +443,9 @@ export const UpgradeMethodStep = ({ primaryBatchSize }: UpgradeMethodStepProps) 
                                   }}
                                 />
                                 <Typography className={classes.settingLabel}>
-                                  {t('upgradePace.seconds')}
+                                  {t('fields.seconds', {
+                                    keyPrefix: UPGRADE_MODAL_KEY_PREFIX
+                                  })}
                                 </Typography>
                               </div>
                               {formState.errors.waitBetweenBatchesSeconds && (

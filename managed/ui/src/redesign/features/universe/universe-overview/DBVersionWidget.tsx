@@ -165,7 +165,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       {openUpgradeModal &&
         (isCanaryUpgradeEnabled ? (
           <DbUpgradeModal
-            universeData={currentUniverse}
+            universeUuid={currentUniverse?.universeUUID ?? ''}
             modalProps={{
               open: openUpgradeModal,
               onClose: () => setUpgradeModal(false)

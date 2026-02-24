@@ -52,6 +52,7 @@
       "actions": "Actions",
       "enabled": "Enabled",
       "disabled": "Disabled",
+      "recommended": "Recommended",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -267,6 +268,16 @@
       "dbUpgrade": {
         "upgradeModal": {
           "modalTitle": "Upgrade Database",
+          "fields": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "waitBetweenBatches": "Wait between batches:",
+            "seconds": "seconds",
+            "validationError": {
+              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
+              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}.",
+              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
+            }
+          },
           "dbVersionStep": {
             "stepTitle": "Database Version",
             "stepDescription": "What database version do you want to upgrade to?",
@@ -303,18 +314,27 @@
             "upgradePace": {
               "title": "Upgrade Pace",
               "rolling": "Rolling upgrade",
-              "concurrent": "Concurrent upgrade of all nodes.",
-              "maxNodesPerBatch": "Max nodes per batch:",
-              "waitBetweenBatches": "Wait between batches:",
-              "seconds": "seconds"
-            },
-            "validationError": {
-              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number.",
-              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
-              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}."
+              "concurrent": "Concurrent upgrade of all nodes."
             },
             "recommendationLabel": "Recommendation",
             "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
+          },
+          "upgradePlanStep": {
+            "stepTitle": "Upgrade Plan",
+            "stepDescription": "The upgrade runs in a controlled sequence. Add pauses to monitor and evaluate the Universe before proceeding.",
+            "upgradeStage": {
+              "upgradeMasterServers": "Upgrade Master Servers",
+              "upgradePrimaryClusterTServers": "Upgrade Primary Cluster T-Servers",
+              "upgradeReadReplicaTServers": "Upgrade Read Replica T-Servers"
+            },
+            "executionOrder": "Execution Order",
+            "addMonitoringPause": "Add monitoring pause",
+            "pauseToMonitorUpgrade": "Pause to monitor upgrade",
+            "pauseAfterFirstAzTooltip": "<bold>Pause after the first AZ</bold> to validate the upgrade on a single AZ and keep a faster rollback path if needed.",
+            "pauseRequiresManualResume": "Every pause requires you to manually resume the upgrade."
+          },
+          "upgradePaceStep": {
+            "stepTitle": "Upgrade Pace"
           },
           "submitLabel": {
             "next": "Next",

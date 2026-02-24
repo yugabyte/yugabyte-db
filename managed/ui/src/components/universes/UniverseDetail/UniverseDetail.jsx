@@ -1805,7 +1805,7 @@ class UniverseDetail extends Component {
           visibleModal === 'softwareUpgradesNewModal' &&
           (isCanaryUpgradeEnabled ? (
             <DbUpgradeModal
-              universeData={currentUniverse.data}
+              universeUuid={currentUniverse.data.universeUUID}
               modalProps={{
                 open: showModal && visibleModal === 'softwareUpgradesNewModal',
                 onClose: () => {
