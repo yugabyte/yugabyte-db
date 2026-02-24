@@ -39,7 +39,7 @@ Install YugabyteDB Voyager v2025.11.2 or later on your machine using the steps i
 
 ### Prepare source PostgreSQL database
 
-On your sourse database, create a database user and provide the user with READ access to all the resources which need to be migrated.
+On your source database, create a database user and provide the user with READ access to all the resources which need to be migrated.
 
 Run the following commands in a psql session:
 
@@ -88,6 +88,8 @@ Run the following commands in a psql session:
 
 ### Create YugabyteDB Aeon cluster
 
+If you haven't already, create a cluster in YugabyteDB Aeon:
+
 1. [Sign up](https://cloud.yugabyte.com) and then sign in to YugabyteDB Aeon.
 
 1. Create a cluster.
@@ -101,7 +103,7 @@ Run the following commands in a psql session:
       - Save your credentials in a secure location. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
     - Click **Create Cluster** to finish.
 
-YugabyteDB Aeon starts deploying the custer. When it finishes, proceed to the next section.
+YugabyteDB Aeon starts deploying the cluster. When it finishes, proceed to the next section.
 
 ### Get Aeon cluster details
 
@@ -161,7 +163,7 @@ Do the following:
 
 ### Edit the configuration file
 
-The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-aeon-cluster-details) you collected earlier. The file is included with your Voyager installation in the config-templates folder.
+The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-aeon-cluster-details) you collected earlier. The file is included with your Voyager installation in the `config-templates` folder.
 
 1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager. For example:
 
@@ -256,9 +258,19 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
 
 ## Migration
 
-There are five stages to a migration. Migration Hub in YugabyteDB Aeon updates the status of your migration as you complete each stage.
+After setup is complete, use the Migration Hub in YugabyteDB Aeon to perform the necessary steps for the actual migration:
 
-- Return to your migration in the [Migration Hub](/stable/yugabyte-cloud/managed-migrate/#assess) in YugabyteDB Aeon, and follow the instructions provided on the **Assess**, **Migrate Schema**, **Migrate Data**, and **Verify** pages.
+1. In YugabyteDB Aeon, navigate to your cluster and select **Migration Hub**.
+
+    If you haven't started a migration, click **Migrate Database** to create a new migration.
+
+    If you have started a migration, return to the migration by clicking `>` for the migration in the list.
+
+1. Follow the instructions provided on the **Assess**, **Migrate Schema**, **Migrate Data**, and **Verify** pages.
+
+Aeon updates the status of your migration as you complete each stage.
+
+Refer to [Migrate a database](/stable/yugabyte-cloud/managed-migrate/#assess).
 
 <!--
 {{<note title="Migration Hub">}}
