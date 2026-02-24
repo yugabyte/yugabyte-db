@@ -2565,7 +2565,7 @@ yb-admin \
 
 Checks whether the specified nodes can be taken down without losing quorum. Use this before planned maintenance (for example, rolling upgrades or reboots) to ensure that taking down the given tablet servers or masters will not cause loss of replication quorum.
 
-Available in YugabyteDB versions v2024.2.8.0 and later, v2025.1.4.0 and later, and v2025.2.
+Available in YugabyteDB versions {{<release "2024.2.8.0">}} and later, {{<release "2025.1.4.0">}} and later, and {{<release "2025.2">}}.
 
 **Syntax**
 

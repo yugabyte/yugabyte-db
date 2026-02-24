@@ -421,7 +421,7 @@ During upgrades, YBA will not proceed if any tablets or YB-Masters have fewer th
 1. Increase the timeout that YBA waits for under-replication to clear by increasing the value for the [global runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag `yb.checks.nodes_safe_to_take_down.timeout`.
 1. Allow for YB-TServers to lag more than the default compared to their peers to be considered healthy by changing the global runtime configuration flag `yb.checks.follower_lag.max_threshold`.
 1. If temporary unavailability during the rolling operation is acceptable, disable this check briefly by turning off the global runtime configuration flag `yb.checks.nodes_safe_to_take_down.enabled` for the universe.
-1. To run the same check manually (for example, to verify specific nodes before starting a rolling operation), use the yb-admin command [are_nodes_safe_to_take_down](../../admin/yb-admin/#are-nodes-safe-to-take-down).
+1. To run the same check manually (for example, to verify specific nodes before starting a rolling operation), use the yb-admin command [are_nodes_safe_to_take_down](../../../admin/yb-admin/#are-nodes-safe-to-take-down).
 
 </details>
 
