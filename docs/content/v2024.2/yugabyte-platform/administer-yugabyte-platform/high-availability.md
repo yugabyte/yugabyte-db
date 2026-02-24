@@ -158,6 +158,7 @@ After HA is operational, you should enable certificate validation to improve sec
     | Installation | Certificate Location |
     | :--- | :--- |
     | YBA Installer | `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` <br/>If you configured a [custom install root](../../install-yugabyte-platform/install-software/installer/#configuration-options), replace `/opt/yugabyte` with the path you configured. |
+    | Replicated | `/var/lib/replicated/secrets/ca.crt` |
     | Kubernetes | Locate the CA certificate by running the following command:<br/>`kubectl get secret -n <namespace> <helm-release-name>-yugaware-tls-pem -o jsonpath="{.data['ca\.pem']}" \| base64 -d`<br/>Replace `<namespace>` and `<helm_release_name>` with appropriate values. |
 
     **Custom CA certificates**
