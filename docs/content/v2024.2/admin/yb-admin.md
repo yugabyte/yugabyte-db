@@ -2413,6 +2413,40 @@ statuses {
 
 ### Decommissioning commands
 
+#### are_nodes_safe_to_take_down
+
+Checks whether the specified nodes can be taken down without losing quorum. Use this before planned maintenance (for example, rolling upgrades or reboots) to ensure that taking down the given tablet servers or Masters will not cause loss of replication quorum.
+
+Available in YugabyteDB versions v2024.2.8.0 and later, v2025.1.4.0 and later, and v2025.2.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    are_nodes_safe_to_take_down <server_uuids> [follower_lag_bound_ms]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *server_uuids*: Comma-separated list of YB-TServer or YB-Master server UUIDs to check. Obtain UUIDs from `list_all_tablet_servers` and `list_all_masters`.
+* *follower_lag_bound_ms*: Optional. Maximum allowed follower lag in milliseconds. Default is `1000`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    are_nodes_safe_to_take_down <ts_uuid>
+```
+
+To check multiple nodes with a custom follower lag bound (for example, 2000 ms):
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    are_nodes_safe_to_take_down <ts_uuid1>,<ts_uuid2> 2000
+```
+
 #### get_leader_blacklist_completion
 
 Gets the tablet load move completion percentage for blacklisted nodes.
