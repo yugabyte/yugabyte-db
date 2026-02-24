@@ -252,10 +252,15 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
       backup-schema-files: false
     ```
 
-## Migration assessment
+## Migration
 
+There are five stages to a migration. Migration Hub updates the status of your migration as you complete each stage.
+
+- Return to your migration in the [Migration Hub](/stable/yugabyte-cloud/managed-migrate/#assess) in YugabyteDB Aeon, and follow the instructions provided on the **Assess**, **Migrate Scheme**, **Migrate Data**, and **Verify** pages.
+
+<!--
 {{<note title="Migration Hub">}}
-These commands are also available in the Migration Hub for your cluster in YugabyteDB Aeon.
+If you are using [Migration Hub](/stable/yugabyte-cloud/managed-migrate/#assess) in YugabyteDB Aeon, you can return to the hub, where these commands are also available on the **Assess** page of your migration.
 {{</note>}}
 
 Execute the [migration assessment](../migrate/assess-migration/) to get recommendations:
@@ -392,6 +397,7 @@ yb-voyager end migration --config-file migration-config.yaml \
   --backup-log-files true \
   --save-migration-reports true
 ```
+-->
 
 ## What's next?
 

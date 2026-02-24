@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: yugabytedb-managed-releases
     parent: yugabytedb-managed
-    weight: 22
+    weight: 80
     params:
       classes: separator
       hideLink: true
