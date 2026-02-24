@@ -37,7 +37,7 @@ Ensure the universes have the following characteristics:
 
     Before starting xCluster, YugabyteDB Anywhere verifies network connectivity from every node in the target universe to every node in the source universe to rule out VPC misconfigurations or other network issues.
 
-    If your network policy blocks ping packets and you want to skip this precheck, you can disable it by setting **Enable network connectivity check for xCluster** Global Runtime Configuration option (config key `yb.xcluster.network_connectivity_check.enabled`) to `false`. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+    If your network policy blocks ping packets and you want to skip this precheck, you can disable it by setting **Enable network connectivity check for xCluster** Global Runtime Configuration option (config key `yb.xcluster.network_connectivity_check.enabled`) to `false`. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
 
 ## Best practices
 

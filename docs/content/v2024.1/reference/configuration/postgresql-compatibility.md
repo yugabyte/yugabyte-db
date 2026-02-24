@@ -35,7 +35,7 @@ The following features are currently included in EPCM.
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
 | [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3.0">}} | {{<release "2025.1.0.0">}} |
 | [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2.0.0">}} |
-| [Parallel query](#parallel-query)<sup>2</sup><br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3.0">}} | {{<release "2025.1.0.0">}} |
+| [Parallel query](#parallel-query)<sup>2</sup><br>- Parallel append<br>- Parallel query | <br>yb_enable_parallel_append<br>yb_parallel_range_rows | {{<release "2024.2.3.0">}} | {{<release "2025.1.0.0">}} |
 
 (1) Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.<br>
 (2) Parallel query is not included in EPCM, but is included here because it contributes to PostgreSQL parity.
