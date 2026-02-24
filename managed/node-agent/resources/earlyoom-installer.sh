@@ -66,7 +66,7 @@ EOF
   SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
   ARTIFACT="earlyoom-linux-amd64.tar.gz"
-  if [ "$build_arch" = "arm64" ]; then
+  if [ "$build_arch" = "aarch64" ]; then
       ARTIFACT="earlyoom-linux-arm64.tar.gz"
   fi
   mkdir -p "${TMP_DIR}/earlyoom"
