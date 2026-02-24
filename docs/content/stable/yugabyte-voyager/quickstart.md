@@ -27,9 +27,9 @@ Before you start, ensure that you have the following:
 
 - Java 17 installed
 - 2+ CPU cores and 4GB+ RAM
-- Network access to both source and target databases
-- Sudo access on the machine where you'll run Voyager
 - A PostgreSQL database to migrate (source)
+- Network access - your source database must be accessible to YugabyteDB Aeon
+- Sudo access on the machine where you'll run Voyager
 
 ## Setup
 
@@ -39,7 +39,7 @@ Install YugabyteDB Voyager v2025.11.2 or later on your machine using the steps i
 
 ### Prepare source PostgreSQL database
 
-Create a database user and provide the user with READ access to all the resources which need to be migrated.
+On your sourse database, create a database user and provide the user with READ access to all the resources which need to be migrated.
 
 Run the following commands in a psql session:
 
@@ -54,22 +54,23 @@ Run the following commands in a psql session:
     Use the [yb-voyager-pg-grant-migration-permissions.sql](../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
     ```sql
-    psql -h <host> \
-          -d <database> \
-          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+    psql -h <postgresql-host-address> \
+          -d <source-database-name> \
+          -U <your-username> \ # Privileged user with enough permissions to grant privileges
           -v voyager_user='ybvoyager' \
-          -v schema_list='<comma_separated_schema_list>' \
+          -v schema_list='<schema-list>' \
           -v is_live_migration=0 \
           -v is_live_migration_fall_back=0 \
-          -f <path_to_the_script>
+          -f <path-to-the-script>
     ```
+
+    For schema list, provide a comma-separated list of the schemas you want to migrate.
 
     The `ybvoyager` user can now be used for migration.
 
-1. Create a sample table with some data as follows:
+1. Optionally, create a sample table with some data as follows:
 
     ```sql
-    psql -h <host> -p 5432 -d <database> -U <username> -c "
     CREATE TABLE employees (
         id SERIAL PRIMARY KEY,
         first_name TEXT,
@@ -83,7 +84,6 @@ Run the following commands in a psql session:
     ('John', 'Smith', 'Sales', 75000),
     ('Elena', 'Rigby', 'Marketing', 82000),
     ('Dinesh', 'Chugtai', 'Engineering', 92000);
-    "
     ```
 
 ### Create YugabyteDB Aeon cluster
@@ -97,11 +97,11 @@ Run the following commands in a psql session:
     - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
     - Select **Sandbox** for testing or **Dedicated** for production.
     - Follow the instructions in the wizard.
-      - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster.
-      - Choose the database version you want to use for your cluster.
       - Be sure to **Add Current IP Address** to allow connections from your machine.
-      - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
-    - Click **Create Cluster**.
+      - Save your credentials in a secure location. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
+    - Click **Create Cluster** to finish.
+
+YugabyteDB Aeon starts deploying the custer. When it finishes, proceed to the next section.
 
 ### Get Aeon cluster details
 
@@ -114,20 +114,22 @@ To be able to connect to your Aeon cluster from YugabyteDB Voyager, you will nee
 
 In YugabyteDB Aeon, do the following:
 
-1. Navigate to **Security>Access Control>Roles** to [create a role](/stable/yugabyte-cloud/managed-security/managed-roles/#create-a-role) with the following Cluster Management permissions:
+1. Navigate to **Security>Access Control>Roles** to [create a role](/stable/yugabyte-cloud/managed-security/managed-roles/#create-a-role) with the following **Cluster Management** permissions:
 
     - Create Voyager migrations data
     - View Voyager migrations data
     - Update Voyager migrations data
 
-1. Navigate to **Security>Access Control>API Keys** to [create an API key](/stable/yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key); be sure to assign the role you created to the API key.
+1. Navigate to **Security>Access Control>API Keys** to [create an API key](/stable/yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key).
+
+    Be sure to assign the **Role** you created to the API key.
 
 1. Click the Profile icon in the top right corner of the YugabyteDB Aeon window to obtain the following:
 
     - _Account ID_
     - _Project ID_
 
-1. Navigate to your cluster **Settings**.
+1. Navigate to your cluster and choose **Settings**.
 
     - Under **General**, obtain the _Cluster ID_ and _Database Version_.
     - Under **Connection Parameters**, obtain the _Host address_ of your cluster.
@@ -142,7 +144,7 @@ Do the following:
 
 1. Click **Connect** and connect to your cluster using [cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-a-yugabytedb-aeon-cluster) when you created your cluster.
 
-    The ysqlsh or prompt appears and is ready to use.
+    The ysqlsh prompt appears and is ready to use.
 
 1. Create a user with [`yb_superuser`](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role as follows:
 
@@ -159,15 +161,15 @@ Do the following:
 
 ### Edit the configuration file
 
-The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-aeon-cluster-details) you collected earlier.
+The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-aeon-cluster-details) you collected earlier. The file is included with your Voyager installation in the config-templates folder.
 
-1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager as follows:
+1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager. For example:
 
     ```bash
-    mkdir -p $HOME/<migration-name>/export-dir
+    mkdir -p $HOME/my-migration/export-dir
     ```
 
-1. Copy the offline configuration template file to the export directory:
+1. Copy the offline configuration template file to the export directory. For example:
 
     ```sh
     cp /opt/yb-voyager/config-templates/offline-migration.yaml export-dir/migration-config.yaml
@@ -215,7 +217,7 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
 
     assess-migration:
       iops-capture-interval: 0
-      target-db-version: <db-version>
+      target-db-version: <db-version> # For example, `2025.2.1.0`
       report-unsupported-query-constructs: true
       report-unsupported-plpgsql-objects: true
     
@@ -252,6 +254,10 @@ Using `ssl-mode: prefer` or `require` allows for an encrypted connection without
 
 ## Migration assessment
 
+{{<note title="Migration Hub">}}
+These commands are also available in the Migration Hub for your cluster in YugabyteDB Aeon.
+{{</note>}}
+
 Execute the [migration assessment](../migrate/assess-migration/) to get recommendations:
 
 ```bash
@@ -264,6 +270,8 @@ The `assess-migration` command generates a detailed assessment report with:
 - Data distribution recommendations
 - Cluster sizing suggestions
 - Performance optimization tips
+
+The report is saved in your export directory in HTML format, and you can view it in your browser. You can also view the report in the Migration Hub for your cluster in YugabyteDB Aeon.
 
 ### Review recommendations
 
