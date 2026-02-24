@@ -1,6 +1,11 @@
 title: PlacementAZ
 description: YBA Placement Availability Zone within Placement Region. Part of PlacementRegion.
 type: object
+required:
+  - uuid
+  - name
+  - replication_factor
+  - num_nodes_in_az
 properties:
   uuid:
     description: The AZ id
