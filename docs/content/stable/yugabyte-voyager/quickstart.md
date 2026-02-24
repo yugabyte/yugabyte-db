@@ -29,32 +29,17 @@ Before you start, ensure that you have the following:
 - Sudo access on the machine where you'll run Voyager
 - A PostgreSQL database to migrate (source)
 
-## Create a YugabyteDB Aeon cluster
+## Setup
 
-1. [Sign up](https://cloud.yugabyte.com) and then sign in to YugabyteDB Aeon.
-
-1. Create a cluster.
-
-    You can [create a free Sandbox cluster](../../yugabyte-cloud/cloud-quickstart/#create-your-sandbox-cluster) for testing, or to go beyond the capabilities of the Sandbox cluster, [start a free trial](../../yugabyte-cloud/managed-freetrial.) to create Dedicated clusters.
-
-    - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
-    - Select **Sandbox** for testing or **Dedicated** for production.
-    - Follow the instructions in the wizard.
-      - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster.
-      - Choose the database version you want to use for your cluster.
-      - Be sure to **Add Current IP Address** to allow connections from your machine.
-      - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
-    - Click **Create Cluster**.
-
-## Install YugabyteDB Voyager
+### Install YugabyteDB Voyager
 
 Install YugabyteDB Voyager v2025.11.2 or later on your machine using the steps in [Install yb-voyager](../install-yb-voyager/#install-yb-voyager).
 
-## Prepare source and target databases
-
 ### Prepare source PostgreSQL database
 
-Create a database user and provide the user with READ access to all the resources which need to be migrated. Run the following commands in a psql session:
+Create a database user and provide the user with READ access to all the resources which need to be migrated.
+
+Run the following commands in a psql session:
 
 1. Create a new user named `ybvoyager`.
 
@@ -62,20 +47,22 @@ Create a database user and provide the user with READ access to all the resource
    CREATE USER ybvoyager PASSWORD 'password';
    ```
 
-1. Grant permissions for migration. Use the [yb-voyager-pg-grant-migration-permissions.sql](../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
+1. Grant permissions for migration.
 
-   ```sql
-   psql -h <host> \
-        -d <database> \
-        -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
-        -v voyager_user='ybvoyager' \
-        -v schema_list='<comma_separated_schema_list>' \
-        -v is_live_migration=0 \
-        -v is_live_migration_fall_back=0 \
-        -f <path_to_the_script>
-   ```
+    Use the [yb-voyager-pg-grant-migration-permissions.sql](../reference/yb-voyager-pg-grant-migration-permissions/) script (in `/opt/yb-voyager/guardrails-scripts/` or, for brew, check in `$(brew --cellar)/yb-voyager@<voyagerversion>/<voyagerversion>`) to grant the required permissions as follows:
 
-   The `ybvoyager` user can now be used for migration.
+    ```sql
+    psql -h <host> \
+          -d <database> \
+          -U <username> \ # A superuser or a privileged user with enough permissions to grant privileges
+          -v voyager_user='ybvoyager' \
+          -v schema_list='<comma_separated_schema_list>' \
+          -v is_live_migration=0 \
+          -v is_live_migration_fall_back=0 \
+          -f <path_to_the_script>
+    ```
+
+    The `ybvoyager` user can now be used for migration.
 
 1. Create a sample table with some data as follows:
 
@@ -97,30 +84,53 @@ Create a database user and provide the user with READ access to all the resource
     "
     ```
 
+### Create a YugabyteDB Aeon cluster
+
+1. [Sign up](https://cloud.yugabyte.com) and then sign in to YugabyteDB Aeon.
+
+1. Create a cluster.
+
+    You can [create a free Sandbox cluster](/stable/yugabyte-cloud/cloud-quickstart/#create-your-sandbox-cluster) for testing, or to go beyond the capabilities of the Sandbox cluster, [start a free trial](/stable/yugabyte-cloud/managed-freetrial.) to create Dedicated clusters.
+
+    - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+    - Select **Sandbox** for testing or **Dedicated** for production.
+    - Follow the instructions in the wizard.
+      - Enter a cluster name, choose your cloud provider (AWS or GCP) and region in which to deploy the cluster.
+      - Choose the database version you want to use for your cluster.
+      - Be sure to **Add Current IP Address** to allow connections from your machine.
+      - Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
+    - Click **Create Cluster**.
+
 ### Get target database details
 
 To be able to connect to your Aeon cluster from YugabyteDB Voyager, you will need the following cluster details:
 
-- Account, Project, and Cluster IDs
-- Database version
-- Host address of your cluster
 - API key
+- Account, Project, and Cluster IDs
+- Host address and Database version of your cluster
 - Cluster root certificate for SSL
 
-Do the following:
+In YugabyteDB Aeon, do the following:
 
-1. Sign in to your YugabyteDB Aeon account.
+1. Navigate to **Security>Access Control>Roles** to [create a role](/stable/yugabyte-cloud/managed-security/managed-roles/#create-a-role) with the following Cluster Management permissions:
 
-1. Click the Profile icon in the top right corner of the YugabyteDB Aeon window to obtain the Account and Project IDs.
+    - Create Voyager migrations data
+    - View Voyager migrations data
+    - Update Voyager migrations data
 
-1. [Create an API key](../../yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key) to enable authentication. The API key must have Admin-level access.
+1. Navigate to **Security>Access Control>API Keys** to [create an API key](/stable/yugabyte-cloud/managed-automation/managed-apikeys/#create-an-api-key); be sure to assign the role you created to the API key.
+
+1. Click the Profile icon in the top right corner of the YugabyteDB Aeon window to obtain the following:
+
+    - _Account ID_
+    - _Project ID_
 
 1. Navigate to your cluster **Settings**.
 
-    - Under **General**, obtain the cluster ID and Database Version.
-    - Under **Connection Parameters**, obtain the Host address of your cluster.
+    - Under **General**, obtain the _Cluster ID_ and _Database Version_.
+    - Under **Connection Parameters**, obtain the _Host address_ of your cluster.
 
-1. [Download the cluster certificate](../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate) (this is optionally used for SSL connectivity).
+1. [Download the cluster certificate](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate) (this is optionally used for SSL connectivity).
 
 ### Prepare the target database
 
@@ -128,11 +138,11 @@ Do the following:
 
 1. In YugabyteDB Aeon, navigate to your cluster.
 
-1. Click **Connect** and connect to your cluster using [cloud shell](../../yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-a-yugabytedb-aeon-cluster) when you created your cluster.
+1. Click **Connect** and connect to your cluster using [cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-a-yugabytedb-aeon-cluster) when you created your cluster.
 
     The ysqlsh or prompt appears and is ready to use.
 
-1. Create a user with [`yb_superuser`](../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role as follows:
+1. Create a user with [`yb_superuser`](/stable/yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role as follows:
 
      ```sql
      CREATE USER ybvoyager PASSWORD 'password';
@@ -145,7 +155,9 @@ Do the following:
     CREATE DATABASE target_db;
     ```
 
-## Create an export directory and prepare the configuration file
+### Edit the configuration file
+
+The Voyager [configuration file](../reference/configuration-file/) sets various connection parameters so that Voyager can connect to your Aeon cluster, using the [cluster details](#get-target-database-details) you collected earlier.
 
 1. On your machine, create an [export directory](../migrate/migrate-steps/#create-an-export-directory) for yb-voyager as follows:
 
@@ -159,9 +171,9 @@ Do the following:
     cp /opt/yb-voyager/config-templates/offline-migration.yaml export-dir/migration-config.yaml
     ```
 
-1. Edit the [configuration file](../reference/configuration-file/) `migration-config.yaml` to define your migration environment using the following example.
+1. Edit the `migration-config.yaml` configuration file to define your migration environment using the following example.
 
-    Fill in the [cluster details](#get-target-database-details) you obtained previously.
+    Fill in the cluster details you obtained previously.
 
     {{<note title="SSL modes">}}
 Using `ssl-mode: prefer` or `require` allows for an encrypted connection without requiring the cluster certificate file. For production migrations, it is recommended to use `ssl-mode: verify-full` and provide the `ssl-root-cert: /path/to/target-root.crt`. For details, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
@@ -251,19 +263,21 @@ The `assess-migration` command generates a detailed assessment report with:
 - Cluster sizing suggestions
 - Performance optimization tips
 
-## Review and address assessment recommendations
+### Review and address assessment recommendations
 
-  1. Review the assessment report:
-     - The report is saved in your export directory
-     - Open the HTML report in your browser
+1. Review the assessment report:
+
+    - The report is saved in your export directory
+    - Open the HTML report in your browser
     - Review recommendations for your specific workload
 
-  1. Address recommendations in YugabyteDB Aeon:
-     - If the assessment suggests cluster resizing, adjust your cluster in Aeon
-     - Enable any recommended features in your cluster settings
-     - Note any schema changes recommended for optimal performance
+1. Address recommendations in YugabyteDB Aeon:
 
-## Migrate to a YugabyteDB Aeon cluster
+    - If the assessment suggests cluster resizing, [adjust your cluster](/stable/yugabyte-cloud/cloud-clusters/configure-clusters/) in Aeon
+    - Enable any recommended features in your cluster settings
+    - Note any schema changes recommended for optimal performance
+
+## Migrate
 
 Proceed with schema and data migration using the following steps:
 
@@ -331,7 +345,7 @@ yb-voyager export data --config-file migration-config.yaml
 
 ### Validate migration
 
-1. Connect to your target YugabyteDB Aeon cluster via [Cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/#connect-via-cloud-shell).
+1. Connect to your target YugabyteDB Aeon cluster via [Cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-cloud-shell/#connect-via-cloud-shell).
 
 1. In the `ysqlsh` prompt, connect to your target database:
 
@@ -377,6 +391,6 @@ yb-voyager end migration --config-file migration-config.yaml \
 
 ### Additional resources
 
-- [YugabyteDB Aeon documentation](../../yugabyte-cloud/): Learn more about managing your target cluster
+- [YugabyteDB Aeon documentation](/stable/yugabyte-cloud/): Learn more about managing your target cluster
 - [Voyager Troubleshooting](../voyager-troubleshoot/): Common issues and solutions
 - [Schema review workarounds](../known-issues/): Known issues and workarounds
