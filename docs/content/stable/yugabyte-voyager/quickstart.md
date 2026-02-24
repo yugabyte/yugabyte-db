@@ -183,6 +183,8 @@ The Voyager [configuration file](../reference/configuration-file/) sets various 
 Using `ssl-mode: prefer` or `require` allows for an encrypted connection without requiring the cluster certificate file. For production migrations, it is recommended to use `ssl-mode: verify-full` and provide the `ssl-root-cert: /path/to/target-root.crt`. For details, refer to [SSL Connectivity](../reference/yb-voyager-cli/#ssl-connectivity).
 {{</note>}}
 
+    Note that the following only shows the most relevant lines of the file. Where necessary, uncomment lines to enable settings. For full details on the file, refer to [configuration file](../reference/configuration-file/).
+
     ```yaml
     # Global settings
     export-dir: <absolute-path-to-export-dir>

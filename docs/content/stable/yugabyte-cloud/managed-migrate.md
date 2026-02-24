@@ -18,9 +18,9 @@ To run a migration in Migration Hub:
 1. [Create a cluster](../cloud-basics/).
 1. Navigate to your cluster and click **Migration Hub**.
 
-    If you have previously performed migrations, the Migration Hub lists them. You can view migration details by selecting the migration in the list.
-
     ![Migration Hub](/images/yb-cloud/managed-hub.png)
+
+    If you have previously performed migrations, the Migration Hub lists them. You can view details for in progress and completed migrations by clicking `>` for the migration in the list.
 
 1. Click **Migrate Database** to create a new migration.
 
