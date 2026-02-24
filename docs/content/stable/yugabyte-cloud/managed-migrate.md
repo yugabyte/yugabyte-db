@@ -111,7 +111,9 @@ In addition, you may want to verify application connectivity:
 - Test basic CRUD operations
 - Verify application functionality
 
+When you are satisfied, click **Finish** to complete the migration.
+
 ## Limitations
 
 - Migration assessment is only supported for Oracle and PostgreSQL migrations.
-- The status for the Migrate Data step can display 100% completed before the migration is done.
+- The status for the [Migrate Data](#migrate-data) step can display 100% completed before the migration is done.
