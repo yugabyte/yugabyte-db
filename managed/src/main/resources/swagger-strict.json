@@ -134,13 +134,13 @@
       "description" : "AZ upgrade step: order is list order; pauseAfterTserverUpgrade controls canary pause after this AZ",
       "properties" : {
         "azUUID" : {
-          "description" : "Availability zone UUID",
+          "description" : "WARNING: This is a preview API that could change. Availability zone UUID",
           "example" : "az-1-uuid",
           "format" : "uuid",
           "type" : "string"
         },
         "pauseAfterTserverUpgrade" : {
-          "description" : "If true, upgrade pauses after all tservers in this AZ are upgraded",
+          "description" : "WARNING: This is a preview API that could change. If true, upgrade pauses after all tservers in this AZ are upgraded",
           "example" : true,
           "type" : "boolean"
         }
@@ -4734,12 +4734,12 @@
       "description" : "Canary upgrade configuration",
       "properties" : {
         "pauseAfterMasters" : {
-          "description" : "Whether to pause after all masters are upgraded",
+          "description" : "WARNING: This is a preview API that could change. Whether to pause after all masters are upgraded",
           "example" : true,
           "type" : "boolean"
         },
         "primaryClusterAZSteps" : {
-          "description" : "Primary cluster: ordered list of AZ upgrade steps. List order = upgrade order. Each step can optionally pause after tserver upgrade. Null = use default AZ order with no pause points.",
+          "description" : "WARNING: This is a preview API that could change. Primary cluster: ordered list of AZ upgrade steps. List order = upgrade order. Each step can optionally pause after tserver upgrade. Null = use default AZ order with no pause points.",
           "example" : "[{\"azUUID\": \"az-1-uuid\", \"pauseAfterTserverUpgrade\": true}, {\"azUUID\": \"az-2-uuid\", \"pauseAfterTserverUpgrade\": false}]",
           "items" : {
             "$ref" : "#/definitions/AZUpgradeStep"
@@ -4747,7 +4747,7 @@
           "type" : "array"
         },
         "readReplicaClusterAZSteps" : {
-          "description" : "Read replica cluster: ordered list of AZ upgrade steps. Only applicable if universe has read replica clusters. Null = use default AZ order with no pause points.",
+          "description" : "WARNING: This is a preview API that could change. Read replica cluster: ordered list of AZ upgrade steps. Only applicable if universe has read replica clusters. Null = use default AZ order with no pause points.",
           "example" : "[{\"azUUID\": \"az-4-uuid\", \"pauseAfterTserverUpgrade\": true}, {\"azUUID\": \"az-5-uuid\", \"pauseAfterTserverUpgrade\": false}]",
           "items" : {
             "$ref" : "#/definitions/AZUpgradeStep"
@@ -14108,6 +14108,10 @@
           ],
           "type" : "string"
         },
+        "metricsPassword" : {
+          "description" : "Metrics API Password",
+          "type" : "string"
+        },
         "metricsScrapePeriodSecs" : {
           "description" : "Metrics Scrape Period Seconds",
           "format" : "int64",
@@ -14115,6 +14119,10 @@
         },
         "metricsUrl" : {
           "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "metricsUsername" : {
+          "description" : "Metrics API Username",
           "type" : "string"
         },
         "paApiToken" : {
@@ -14139,8 +14147,10 @@
       "required" : [
         "apiToken",
         "customerUUID",
+        "metricsPassword",
         "metricsScrapePeriodSecs",
         "metricsUrl",
+        "metricsUsername",
         "paUrl",
         "uuid",
         "ybaUrl"
@@ -14160,6 +14170,10 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "metricsPassword" : {
+          "description" : "Metrics API Password",
+          "type" : "string"
+        },
         "metricsScrapePeriodSecs" : {
           "description" : "Metrics Scrape Period Seconds",
           "format" : "int64",
@@ -14167,6 +14181,10 @@
         },
         "metricsUrl" : {
           "description" : "Metrics URL",
+          "type" : "string"
+        },
+        "metricsUsername" : {
+          "description" : "Metrics API Username",
           "type" : "string"
         },
         "paApiToken" : {
@@ -14191,8 +14209,10 @@
       "required" : [
         "apiToken",
         "customerUUID",
+        "metricsPassword",
         "metricsScrapePeriodSecs",
         "metricsUrl",
+        "metricsUsername",
         "paUrl",
         "uuid",
         "ybaUrl"
@@ -20865,7 +20885,7 @@
         },
         "canaryUpgradeConfig" : {
           "$ref" : "#/definitions/CanaryUpgradeConfig",
-          "description" : "Canary upgrade configuration (preview). If null, canary upgrade is disabled. Available from 2026.1.0.0-b0."
+          "description" : "WARNING: This is a preview API that could change. Canary upgrade configuration. If null, canary upgrade is disabled. Available from 2026.1.0.0-b0."
         },
         "capability" : {
           "enum" : [
@@ -47539,6 +47559,37 @@
         "summary" : "Generate cluster key",
         "tags" : [
           "HA"
+        ]
+      }
+    },
+    "/api/v1/settings/ha/internal/backups/{backupName}/validate" : {
+      "get" : {
+        "operationId" : "validateBackup",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "backupName",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
         ]
       }
     },

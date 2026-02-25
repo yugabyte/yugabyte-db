@@ -2018,4 +2018,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable running platform HA restore operations in a transaction",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
