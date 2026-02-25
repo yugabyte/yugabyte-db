@@ -29,6 +29,7 @@ rightNav:
 - Support for [exporting database query logs](../cloud-monitor/managed-integrations/) to [Amazon S3](https://aws.amazon.com/s3/).
 - Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to [New Relic](https://docs.newrelic.com/).
 - Support for [backing up and restoring](../cloud-clusters/backup-clusters/) PostgreSQL users (aka roles) and their permissions (aka grants).
+- Ability to rename databases in a backup when [performing a restore](../cloud-clusters/backup-clusters/#restore-a-backup).
 
 ##### Database
 
