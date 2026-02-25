@@ -4,7 +4,7 @@ This document provides a guide for agents working on YugabyteDB
 
 ### Deploying and running
 
-For agents that want to deploy, configure and run YugabyteDB refer to instructions at https://docs.yugabyte.com/stable/quick-start
+For agents that want to deploy, configure and run YugabyteDB refer to instructions at ./docs/content/stable/quick-start
 
 ### Repo Structure
 
