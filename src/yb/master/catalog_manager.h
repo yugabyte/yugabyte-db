@@ -2067,7 +2067,8 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status AbortTableCreation(TableInfo* table,
                             const TabletInfos& tablets,
                             const Status& s,
-                            CreateTableResponsePB* resp);
+                            CreateTableResponsePB* resp,
+                            TableInfo::WriteLock* indexed_table_write_lock);
 
   Status CreateTransactionStatusTablesForTablespaces(
       const TablespaceIdToReplicationInfoMap& tablespace_info,
