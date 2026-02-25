@@ -48,7 +48,6 @@ Status VerifyMetadata(const AshMetadata& metadata, const YbcPgAshConfig& config)
   RETURN_NOT_OK(VerifyField(metadata.user_id, config.metadata->user_id, "User ID"));
   RETURN_NOT_OK(VerifyField(metadata.client_host_port, GetHostPort(config), "Client host port"));
   RETURN_NOT_OK(VerifyField(metadata.addr_family, config.metadata->addr_family, "Address family"));
-  RETURN_NOT_OK(VerifyField(metadata.plan_id, config.metadata->plan_id, "Plan ID"));
 
   return Status::OK();
 }
@@ -68,7 +67,6 @@ PgWaitStateInfo::PgWaitStateInfo(std::reference_wrapper<const YbcPgAshConfig> co
         .user_id = config.get().metadata->user_id,
         .client_host_port = GetHostPort(config),
         .addr_family = config.get().metadata->addr_family,
-        .plan_id = config.get().metadata->plan_id,
       }) {
 }
 
@@ -78,7 +76,6 @@ AshMetadata PgWaitStateInfo::metadata() {
       Slice(config_.metadata->root_request_id, sizeof(config_.metadata->root_request_id)));
   cached_metadata_.database_id = config_.metadata->database_id;
   cached_metadata_.user_id = config_.metadata->user_id;
-  cached_metadata_.plan_id = config_.metadata->plan_id;
 #ifndef NDEBUG
   const auto s = VerifyMetadata(cached_metadata_, config_);
   LOG_IF(DFATAL, !s.ok()) << "ASH metadata verification failed: " << s;

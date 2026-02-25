@@ -332,7 +332,6 @@ struct AshMetadata {
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
   uint8_t addr_family = AF_UNSPEC;
-  uint64_t plan_id = 0;
 
   void set_client_host_port(const HostPort& host_port);
   void clear_rpc_request_id();
@@ -366,9 +365,6 @@ struct AshMetadata {
     }
     if (other.addr_family != AF_UNSPEC) {
       addr_family = other.addr_family;
-    }
-    if (other.plan_id != 0) {
-      plan_id = other.plan_id;
     }
   }
 
@@ -435,11 +431,6 @@ struct AshMetadata {
     } else {
       pb->clear_addr_family();
     }
-    if (plan_id != 0) {
-      pb->set_plan_id(plan_id);
-    } else {
-      pb->clear_plan_id();
-    }
   }
 
   template <class PB>
@@ -469,8 +460,7 @@ struct AshMetadata {
         pb.user_id(),                          // user_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
-        static_cast<uint8_t>(pb.addr_family()), // addr_family
-        pb.has_plan_id() ? pb.plan_id() : 0   // plan_id
+        static_cast<uint8_t>(pb.addr_family()) // addr_family
     };
   }
 };

@@ -34,7 +34,6 @@
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
-#include "optimizer/planner.h"
 #include "parser/scansup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -58,14 +57,13 @@
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
-/* The number of columns in different versions of the view. */
+/* The number of columns in different versions of the view */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
 #define ACTIVE_SESSION_HISTORY_COLS_V5 16
 #define ACTIVE_SESSION_HISTORY_COLS_V6 17
-#define ACTIVE_SESSION_HISTORY_COLS_V7 18
 
 #define ACTIVE_SESSION_HISTORY_IN_PARAMS_V1 0
 #define ACTIVE_SESSION_HISTORY_IN_PARAMS_V2 2
@@ -104,7 +102,6 @@ typedef struct YbAshNestedQueryIdStack
 	/* number of query ids not pushed due to the stack size being full */
 	int			num_query_ids_not_pushed;
 	uint64		query_ids[MAX_NESTED_QUERY_LEVEL];
-	uint64		plan_ids[MAX_NESTED_QUERY_LEVEL];
 } YbAshNestedQueryIdStack;
 
 static YbAsh *yb_ash = NULL;
@@ -115,15 +112,15 @@ static uint64 query_id_to_be_popped_before_push = 0;
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
-static void YbAshSetQueryId(uint64 query_id, uint64 plan_id);
+static void YbAshSetQueryId(uint64 query_id);
 static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
-static bool YbAshNestedQueryIdStackPush(uint64 query_id, uint64 plan_id);
-static uint64 YbAshNestedQueryIdStackPop(uint64 query_id, uint64 *prev_plan_id);
+static bool YbAshNestedQueryIdStackPush(uint64 query_id);
+static uint64 YbAshNestedQueryIdStackPop(uint64 query_id);
 
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
@@ -188,7 +185,6 @@ YbAshInit(void)
 	/* Keep the default query id in the stack */
 	query_id_stack.top_index = 0;
 	query_id_stack.query_ids[0] = YbAshGetConstQueryId();
-	query_id_stack.plan_ids[0] = 0;
 	query_id_stack.num_query_ids_not_pushed = 0;
 
 	EnableQueryId();
@@ -232,19 +228,17 @@ yb_ash_cb_max_entries(void)
 }
 
 /*
- * Push a (query_id, plan_id) pair to the stack. In case the stack is full,
- * we increment a counter to maintain the number of entries which were
- * supposed to be pushed but couldn't be. So that later, when we are supposed
- * to pop from the stack, we know how many no-op pop operations to perform.
+ * Push a query id to the stack. In case the stack is full, we increment
+ * a counter to maintain the number of query ids which were supposed to be
+ * pushed but couldn't be pushed. So that later, when we are supposed to pop
+ * from the stack, we know how many no-op pop operations we have to perform.
  */
 static bool
-YbAshNestedQueryIdStackPush(uint64 query_id, uint64 plan_id)
+YbAshNestedQueryIdStackPush(uint64 query_id)
 {
 	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL - 1)
 	{
-		++query_id_stack.top_index;
-		query_id_stack.query_ids[query_id_stack.top_index] = query_id;
-		query_id_stack.plan_ids[query_id_stack.top_index] = plan_id;
+		query_id_stack.query_ids[++query_id_stack.top_index] = query_id;
 		return true;
 	}
 
@@ -255,14 +249,11 @@ YbAshNestedQueryIdStackPush(uint64 query_id, uint64 plan_id)
 }
 
 /*
- * Pop the top entry from the stack and return the previous query_id.
- * Also sets *prev_plan_id to the previous entry's plan_id.
+ * Pop and return the top query id from the stack
  */
 static uint64
-YbAshNestedQueryIdStackPop(uint64 query_id, uint64 *prev_plan_id)
+YbAshNestedQueryIdStackPop(uint64 query_id)
 {
-	*prev_plan_id = 0;
-
 	if (query_id_stack.num_query_ids_not_pushed > 0)
 	{
 		--query_id_stack.num_query_ids_not_pushed;
@@ -279,11 +270,7 @@ YbAshNestedQueryIdStackPop(uint64 query_id, uint64 *prev_plan_id)
 	 */
 	if (query_id_stack.top_index > 0 &&
 		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
-	{
-		--query_id_stack.top_index;
-		*prev_plan_id = query_id_stack.plan_ids[query_id_stack.top_index];
-		return query_id_stack.query_ids[query_id_stack.top_index];
-	}
+		return query_id_stack.query_ids[--query_id_stack.top_index];
 
 	return 0;
 }
@@ -330,7 +317,6 @@ static void
 yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	uint64		query_id;
-	uint64		plan_id = 0;
 
 	if (yb_enable_ash)
 	{
@@ -341,9 +327,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 											queryDesc->plannedstmt->stmt_len,
 											queryDesc->plannedstmt->stmt_location,
 											false /* is_sensitive_stmt */ ));
-		if (queryDesc->plannedstmt->commandType != CMD_UTILITY)
-			plan_id = ybGetPlanId(queryDesc->plannedstmt);
-		YbAshSetQueryId(query_id, plan_id);
+		YbAshSetQueryId(query_id);
 	}
 
 	PG_TRY();
@@ -469,7 +453,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 												pstmt->stmt_len,
 												pstmt->stmt_location,
 												true /* is_sensitive_stmt */ ));
-			YbAshSetQueryId(query_id, 0 /* plan_id */);
+			YbAshSetQueryId(query_id);
 		}
 		++nested_level;
 	}
@@ -520,23 +504,20 @@ YbAshGetConstQueryId()
 }
 
 static void
-YbAshSetQueryId(uint64 query_id, uint64 plan_id)
+YbAshSetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
 		if (pop_query_id_before_push)
 		{
-			uint64		unused_plan_id;
-
-			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push, &unused_plan_id);
+			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
 			pop_query_id_before_push = false;
 			query_id_to_be_popped_before_push = 0;
 		}
-		if (YbAshNestedQueryIdStackPush(query_id, plan_id))
+		if (YbAshNestedQueryIdStackPush(query_id))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 			MyProc->yb_ash_metadata.query_id = query_id;
-			MyProc->yb_ash_metadata.plan_id = plan_id;
 			LWLockRelease(&MyProc->yb_ash_metadata_lock);
 		}
 	}
@@ -547,29 +528,20 @@ YbAshResetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		uint64		prev_plan_id;
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id, &prev_plan_id);
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id);
 
 		if (prev_query_id != 0)
 		{
 			if (prev_query_id == YbAshGetConstQueryId())
 			{
-				/*
-				 * Re-push the current entry. The popped entry's plan_id is
-				 * still in the array at top_index + 1 since Pop doesn't
-				 * clear popped slots.
-				 */
-				uint64		popped_plan_id = query_id_stack.plan_ids[query_id_stack.top_index + 1];
-
 				query_id_to_be_popped_before_push = query_id;
 				pop_query_id_before_push = true;
-				YbAshNestedQueryIdStackPush(query_id, popped_plan_id);
+				YbAshNestedQueryIdStackPush(query_id);
 			}
 			else
 			{
 				LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 				MyProc->yb_ash_metadata.query_id = prev_query_id;
-				MyProc->yb_ash_metadata.plan_id = prev_plan_id;
 				LWLockRelease(&MyProc->yb_ash_metadata_lock);
 			}
 		}
@@ -603,9 +575,7 @@ YbAshUnsetMetadata(void)
 	 */
 	if (pop_query_id_before_push)
 	{
-		uint64		prev_plan_id;
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(
-			query_id_to_be_popped_before_push, &prev_plan_id);
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
 
 		pop_query_id_before_push = false;
 		query_id_to_be_popped_before_push = 0;
@@ -614,7 +584,6 @@ YbAshUnsetMetadata(void)
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			MyProc->yb_ash_metadata.plan_id = prev_plan_id;
 			LWLockRelease(&MyProc->yb_ash_metadata_lock);
 		}
 	}
@@ -1131,7 +1100,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V7)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* Stuff done only on the first call of the function */
@@ -1238,9 +1207,6 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V6)
 			values[j++] = ObjectIdGetDatum(metadata->user_id);
-
-		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V7)
-			values[j++] = UInt64GetDatum(metadata->plan_id);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 

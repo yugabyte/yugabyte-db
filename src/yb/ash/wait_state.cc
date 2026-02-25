@@ -284,7 +284,7 @@ void AshMetadata::clear_rpc_request_id() {
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
       top_level_node_id, root_request_id, query_id, database_id,
-      user_id, rpc_request_id, client_host_port, addr_family, pid, plan_id);
+      user_id, rpc_request_id, client_host_port, addr_family, pid);
 }
 
 std::string AshAuxInfo::ToString() const {

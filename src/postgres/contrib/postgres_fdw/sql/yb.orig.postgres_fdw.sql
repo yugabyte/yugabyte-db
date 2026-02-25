@@ -231,8 +231,7 @@ CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
     ysql_dbid OID,
     wait_event_code BIGINT,
     pss_mem_bytes BIGINT,
-    ysql_userid OID,
-    plan_id BIGINT
+    ysql_userid OID
 )
 SERVER gv_server
 OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history');
