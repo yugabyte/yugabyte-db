@@ -395,6 +395,12 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 	for _, instance := range instances {
 		if instance.Details.IP == input.IP {
 			if instance.Details.Region != input.Region || instance.Details.Zone != input.Zone {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists in different region/zone: %s/%s",
+						input.IP,
+						instance.Details.Region,
+						instance.Details.Zone,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists in different region/zone: %s/%s",
 					input.IP,
@@ -403,6 +409,11 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 				)
 			}
 			if instance.Details.InstanceType != input.InstanceType {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance type: %s",
+						input.IP,
+						instance.Details.InstanceType,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists with different instance type: %s",
 					input.IP,
@@ -410,6 +421,11 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 				)
 			}
 			if instance.InstanceName != input.InstanceName {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance name: %s",
+						input.IP,
+						instance.InstanceName,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists with different instance name: %s",
 					input.IP,
