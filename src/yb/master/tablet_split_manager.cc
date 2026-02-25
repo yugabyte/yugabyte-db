@@ -113,8 +113,7 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_RUNTIME_bool(
-    split_respects_tablet_replica_limits, false,
+DEFINE_RUNTIME_bool(split_respects_tablet_replica_limits, false,
     "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
     "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
     "the limit machinery determines the universe cannot support any more tablet replicas.");
@@ -124,15 +123,18 @@ METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
                            "Automatic Split Manager Time", yb::MetricUnit::kMilliseconds,
                            "Time for one run of the automatic tablet split manager.");
 
-METRIC_DEFINE_counter(
-    cluster, split_tablet_too_many_tablets,
+METRIC_DEFINE_counter(cluster, split_tablet_too_many_tablets,
     "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
     yb::MetricUnit::kRequests,
     "The number of SplitTablet operations failed because the cluster cannot host any more "
     "tablets.");
 
-namespace yb {
-namespace master {
+METRIC_DEFINE_gauge_uint64(cluster, tablet_split_candidates,
+    "How many tablets are eligible for splitting",
+    yb::MetricUnit::kUnits,
+    "The number of tablets that are eligible for splitting in the current run.");
+
+namespace yb::master {
 
 using strings::Substitute;
 using namespace std::literals;
@@ -170,6 +172,8 @@ TabletSplitManager::TabletSplitManager(
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(master_metrics, 0)),
+    metric_tablet_split_candidates_(
+        METRIC_tablet_split_candidates.Instantiate(cluster_metrics, 0)),
     metric_split_tablet_too_many_tablets_(
         METRIC_split_tablet_too_many_tablets.Instantiate(cluster_metrics)) {}
 
@@ -686,6 +690,10 @@ class OutstandingSplitState {
     return splits_to_schedule_;
   }
 
+  size_t GetCandidateCount() const {
+    return new_split_candidates_.size();
+  }
+
   void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
     largest_candidate_size_ = std::max(largest_candidate_size_, leader_sst_size);
     new_split_candidates_.emplace_back(SplitCandidate{tablet, leader_sst_size});
@@ -828,9 +836,6 @@ void TabletSplitManager::DoSplitting(
         YB_LOG_EVERY_N_SECS(INFO, 30) << Format(
             "Found split with ongoing task. Task type: $0. Split parent id: $1.",
             task->type_name(), tablet_id) << THROTTLE_MSG;
-        if (!state.CanSplitMoreGlobal()) {
-          return;
-        }
       }
     }
   }
@@ -850,9 +855,6 @@ void TabletSplitManager::DoSplitting(
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
-      if (!state.CanSplitMoreGlobal()) {
-        break;
-      }
       if (state.HasSplitWithTask(tablet->id())) {
         VLOG(4) << Format("Should not split tablet $0 since it already has a split task",
                           tablet->id());
@@ -908,7 +910,6 @@ void TabletSplitManager::DoSplitting(
         RETURN_NOT_OK(
             CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()));
         RETURN_NOT_OK(AllReplicasHaveFinishedCompaction(*replicas));
-        RETURN_NOT_OK(state.CanSplitMoreOnReplicas(*replicas));
         return drive_info_opt.get().sst_files_size;
       };
       Result<uint64_t> result = ValidateAutomaticSplitCandidateTablet();
@@ -919,11 +920,9 @@ void TabletSplitManager::DoSplitting(
       }
       state.AddCandidate(tablet, result.get());
     }
-    if (!state.CanSplitMoreGlobal()) {
-      break;
-    }
   }
 
+  metric_tablet_split_candidates_->set_value(state.GetCandidateCount());
   // Sort candidates if required and add as many desired candidates to the list of splits to
   // schedule as possible (while respecting the limits on ongoing splits).
   state.ProcessCandidates();
@@ -1043,5 +1042,4 @@ Status TabletSplitManager::ProcessSplitTabletResult(
   return Status::OK();
 }
 
-}  // namespace master
-}  // namespace yb
+}  // namespace yb::master
