@@ -2424,19 +2424,19 @@ Available in YugabyteDB versions {{<release "2024.2.8.0">}} and later, {{<releas
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
-    are_nodes_safe_to_take_down <server_uuids> [follower_lag_bound_ms]
+    are_nodes_safe_to_take_down <server-uuids> [follower_lag_bound_ms]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
-* *server_uuids*: Comma-separated list of YB-TServer or YB-Master server UUIDs to check. Obtain UUIDs from `list_all_tablet_servers` and `list_all_masters`.
-* *follower_lag_bound_ms*: Optional. Maximum allowed follower lag in milliseconds. Default is `1000`.
+* *server-uuids*: Comma-separated list of YB-TServer or YB-Master server UUIDs to check. Obtain UUIDs using `list_all_tablet_servers` and `list_all_masters`.
+* `follower_lag_bound_ms`: Optional. Maximum allowed follower lag in milliseconds. Default is `1000`.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    are_nodes_safe_to_take_down <ts_uuid>
+    are_nodes_safe_to_take_down 000033eb000030008000000000004002
 ```
 
 To check multiple nodes with a custom follower lag bound (for example, 2000 ms):
@@ -2444,7 +2444,7 @@ To check multiple nodes with a custom follower lag bound (for example, 2000 ms):
 ```sh
 ./bin/yb-admin \
     --master_addresses ip1:7100,ip2:7100,ip3:7100 \
-    are_nodes_safe_to_take_down <ts_uuid1>,<ts_uuid2> 2000
+    are_nodes_safe_to_take_down 1b9486461cdd48f59eb46b33992cd73a, c0505f1d31774a3d88fae26ce14cde10 2000
 ```
 
 #### get_leader_blacklist_completion
