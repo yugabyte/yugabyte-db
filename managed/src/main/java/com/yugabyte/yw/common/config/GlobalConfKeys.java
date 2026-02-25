@@ -1993,4 +1993,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Log level for Node Agent server per request (0 for debug, -1 for default)",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

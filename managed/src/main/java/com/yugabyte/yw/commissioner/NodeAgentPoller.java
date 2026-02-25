@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkState;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.common.NodeAgentClient;
@@ -267,6 +268,37 @@ public class NodeAgentPoller {
       }
     }
 
+    private ServerInfo waitForServerRestart(NodeAgent nodeAgent) {
+      Stopwatch watch = Stopwatch.createStarted();
+      while (true) {
+        PingResponse pingResponse =
+            nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
+        ServerInfo serverInfo = pingResponse.getServerInfo();
+        if (serverInfo.getRestartNeeded()) {
+          long elapsedMillis = watch.elapsed().toMillis();
+          Duration waitTime =
+              confGetter.getGlobalConf(GlobalConfKeys.nodeAgentUpgradeRestartWaitTime);
+          if (elapsedMillis > waitTime.toMillis()) {
+            log.warn(
+                "Node agent {} has not restarted after waiting for {}ms", nodeAgent, elapsedMillis);
+            return serverInfo;
+          }
+          try {
+            Thread.sleep(300);
+          } catch (InterruptedException e) {
+            log.warn(
+                "Interrupted while waiting for node agent {} to restart - {}",
+                nodeAgent,
+                e.getMessage());
+            Thread.currentThread().interrupt();
+          }
+        } else {
+          log.info("Restarted node agent {}", nodeAgent);
+          return serverInfo;
+        }
+      }
+    }
+
     private void poll(NodeAgent nodeAgent) {
       if (!isTargetFileWritten) {
         // This method checks if the file already exists to ignore writing again.
@@ -414,11 +446,9 @@ public class NodeAgentPoller {
         log.info("Finalizing upgrade for node agent {}", nodeAgent);
         // Inform the node agent to restart and load the new cert and key on restart.
         String nodeAgentHome = nodeAgentClient.finalizeUpgrade(nodeAgent);
-        PingResponse pingResponse =
-            nodeAgentClient.waitForServerReady(nodeAgent, Duration.ofMinutes(2));
-        ServerInfo serverInfo = pingResponse.getServerInfo();
+        ServerInfo serverInfo = waitForServerRestart(nodeAgent);
         if (serverInfo.getRestartNeeded()) {
-          log.info("Server restart is needed for node agent {}", nodeAgent);
+          log.info("Server restart is still needed for node agent {}", nodeAgent);
         } else {
           // If the node has restarted and loaded the new cert and key,
           // delete the local merged certs.
