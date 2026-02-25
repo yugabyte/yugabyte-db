@@ -1868,8 +1868,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
         // Check that first log was garbage collected, so remote bootstrap will be required.
         consensus::ReplicateMsgs replicates;
         int64_t starting_op;
-        return !tablet_peer->log()
-                    ->GetLogReader()
+        return !VERIFY_RESULT(tablet_peer->log()->GetLogReader())
                     ->ReadReplicatesInRange(
                         1, 2, 0, log::ObeyMemoryLimit::kFalse, &replicates, &starting_op)
                     .ok();

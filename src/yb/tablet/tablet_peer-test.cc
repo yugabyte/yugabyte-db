@@ -389,11 +389,12 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
   ASSERT_OK(ExecuteInsertsAndRollLogs(3));
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size());
 
   ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
@@ -412,11 +413,11 @@ TEST_F(TabletPeerTest, TestLogAnchorsAndGC) {
   // The last is anchored due to the commit in the last segment being the last
   // OpId in the log.
   int32_t earliest_needed = 0;
-  auto total_segments = log->GetLogReader()->num_segments();
+  auto total_segments = log_reader->num_segments();
   min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced) << "earliest needed: " << min_log_index;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 }
 
@@ -430,11 +431,12 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   int32_t num_gced;
 
   log::SegmentSequence segments;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
   ASSERT_OK(ExecuteInsertsAndRollLogs(2));
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(3, segments.size());
 
   // Flush RocksDB so the next mutation goes into a DMS.
@@ -442,13 +444,13 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
 
   int32_t earliest_needed = 1;
-  auto total_segments = log->GetLogReader()->num_segments();
+  auto total_segments = log_reader->num_segments();
   int64_t min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   // We will only GC 1, and have 1 left because the earliest needed OpId falls
   // back to the latest OpId written to the Log if no anchors are set.
   ASSERT_EQ(earliest_needed, num_gced);
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
   auto id = log->GetLatestEntryOpId();
@@ -467,13 +469,13 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   ASSERT_NO_FATALS(AssertLogAnchorEarlierThanLogLatest());
 
   total_segments += 1;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments, segments.size());
 
   // Execute another couple inserts, but Flush it so it doesn't anchor.
   ASSERT_OK(ExecuteInsertsAndRollLogs(2));
   total_segments += 2;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments, segments.size());
 
   // Ensure the delta and last insert remain in the logs, anchored by the delta.
@@ -485,11 +487,11 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   LOG(INFO) << details;
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 
   earliest_needed = 0;
-  total_segments = log->GetLogReader()->num_segments();
+  total_segments = log_reader->num_segments();
   // We should only hang onto one segment due to no anchors.
   // The last log OpId is the commit in the last segment, so it only anchors
   // that segment, not the previous, because it's not the first OpId in the
@@ -497,7 +499,7 @@ TEST_F(TabletPeerTest, TestDMSAnchorPreventsLogGC) {
   min_log_index = ASSERT_RESULT(tablet_peer_->GetEarliestNeededLogIndex());
   ASSERT_OK(log->GC(min_log_index, &num_gced));
   ASSERT_EQ(earliest_needed, num_gced);
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(total_segments - earliest_needed, segments.size());
 }
 
@@ -510,11 +512,12 @@ TEST_F(TabletPeerTest, TestActiveOperationPreventsLogGC) {
   Log* log = tablet_peer_->log_.get();
 
   log::SegmentSequence segments;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
   ASSERT_OK(ExecuteInsertsAndRollLogs(4));
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(5, segments.size());
 }
 
@@ -589,11 +592,12 @@ TEST_F(TabletPeerTest, TestMinStartTimeRunningTxnsOnLogSegmentRollover) {
   Log* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(1, segments.size());
   ASSERT_OK(ExecuteInsertsAndRollLogs(3));
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
   ASSERT_EQ(4, segments.size());
   VerifyNonDecreasingTxnStartTimeInClosedSegments(segments);
 
@@ -673,7 +677,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
   auto* log = tablet_peer_->log();
 
   log::SegmentSequence segments;
-  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+  auto* log_reader = ASSERT_RESULT(log->GetLogReader());
+  ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
 
   for (auto& segment : segments) {
     auto entries = segment->ReadEntries();

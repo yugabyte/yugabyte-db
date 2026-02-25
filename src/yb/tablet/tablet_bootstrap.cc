@@ -1286,7 +1286,7 @@ class TabletBootstrap {
   //
   // This functionality was originally introduced in
   // https://github.com/yugabyte/yugabyte-db/commit/41ef3f75e3c68686595c7613f53b649823b84fed
-  SegmentSequence::const_iterator SkipFlushedEntries(SegmentSequence* segments_ptr) {
+  Result<SegmentSequence::const_iterator> SkipFlushedEntries(SegmentSequence* segments_ptr) {
     static const char* kBootstrapOptimizerLogPrefix =
         "Bootstrap optimizer (skip_flushed_entries): ";
 
@@ -1435,7 +1435,7 @@ class TabletBootstrap {
           const auto first_op_index_to_replay =
               std::min(op_id_replay_lowest.index, last_op_id_in_retryable_requests.index);
           // Get the offset of the first mandatory op in the segment.
-          const auto index_entry = log_->GetLogReader()->GetIndexEntry(
+          const auto index_entry = VERIFY_RESULT(log_->GetLogReader())->GetIndexEntry(
               first_op_index_to_replay, first_segment.get());
           if (index_entry.ok()) {
             DCHECK_EQ(index_entry->segment_sequence_number,
@@ -1556,7 +1556,8 @@ class TabletBootstrap {
       }
     }
     // Find the earliest log segment we need to read, so the rest can be ignored.
-    auto iter = should_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
+    auto iter = should_skip_flushed_entries ? VERIFY_RESULT(SkipFlushedEntries(&segments))
+                                            : segments.begin();
 
     OpId last_committed_op_id;
     OpId last_read_entry_op_id;

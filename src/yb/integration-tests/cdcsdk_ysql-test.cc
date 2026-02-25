@@ -13077,5 +13077,50 @@ TEST_F(CDCSDKYsqlTest, TestHitDeadlineOnWalReadMidTransaction) {
   ASSERT_EQ(record_count, 203);
 }
 
+TEST_F(CDCSDKYsqlTest, TestGetChangesHandlesLogCloseDuringRead) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(WriteRowsHelper(1 /* start */, 11 /* end */, &test_cluster_, true /* commit */));
+
+  auto tablet_peer = ASSERT_RESULT(
+      test_cluster()->GetTabletManager(0)->GetServingTablet(tablets[0].tablet_id()));
+
+  // Force a WAL segment rollover to create a closed segment.
+  ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
+
+  // 1. CDC thread reaches GetMaxReplicateIndexFromSegmentFooter::Entered, signals main thread.
+  // 2. CDC thread blocks at ::BeforeRead waiting for "TestLogClose::Done".
+  // 3. Main thread proceeds past "TestLogClose::Start", closes the log.
+  // 4. Main thread passes "TestLogClose::Done", unblocking the CDC thread.
+  // 5. CDC thread resumes with a closed log -> GetLogReader returns error.
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"LogCache::GetMaxReplicateIndexFromSegmentFooter::Entered", "TestLogClose::Start"},
+       {"TestLogClose::Done", "LogCache::GetMaxReplicateIndexFromSegmentFooter::BeforeRead"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  bool cdc_error_received = false;
+  std::thread cdc_thread([&]() {
+    auto result = GetChangesFromCDC(stream_id, tablets);
+    cdc_error_received = !result.ok();
+  });
+
+  TEST_SYNC_POINT("TestLogClose::Start");
+  ASSERT_OK(tablet_peer->log()->Close());
+  TEST_SYNC_POINT("TestLogClose::Done");
+
+  cdc_thread.join();
+
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  ASSERT_TRUE(cdc_error_received);
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -730,8 +730,8 @@ std::pair<int64_t, int64_t> PeerMessageQueue::GetCommittedAndMajorityReplicatedI
   return {queue_state_.committed_op_id.index, queue_state_.majority_replicated_op_id.index};
 }
 
-int64_t PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
-  return start_index == 0 ? max<int64_t>(log_cache_.earliest_op_index(), 0)
+Result<int64_t> PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
+  return start_index == 0 ? max<int64_t>(VERIFY_RESULT(log_cache_.earliest_op_index()), 0)
                           : start_index;
 }
 
@@ -739,7 +739,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
     int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
     CoarseTimePoint deadline, bool fetch_single_entry) {
   // If an empty OpID is only sent on the first read request, start at the earliest known entry.
-  int64_t after_op_index = GetStartOpIdIndex(last_op_id_index);
+  int64_t after_op_index = VERIFY_RESULT(GetStartOpIdIndex(last_op_id_index));
 
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_,
@@ -944,7 +944,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
           .have_more_messages = HaveMoreMessages(pending_messages)};
     }
 
-    start_op_id_index = GetStartOpIdIndex(from_op_id.index);
+    start_op_id_index = VERIFY_RESULT(GetStartOpIdIndex(from_op_id.index));
 
     VLOG_WITH_FUNC(1) << "Will read Ops from a WAL segment for tablet: " << tablet_id_
                       << " start_op_id_index = " << start_op_id_index
@@ -1023,7 +1023,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
   return read_ops;
 }
 
-const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstrap(
+Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerForBootstrap(
     const TrackedPeer* remote_tracked_peer) {
   const CloudInfoPB& src_cloud_info = remote_tracked_peer->cloud_info.value();
   // initializing rbs_source as the leader itself.
@@ -1045,7 +1045,7 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
     OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
         remote_last_received_opid.term != queue_state_.current_term ||
-        remote_last_received_opid.index < log_cache_.earliest_op_index() ||
+        remote_last_received_opid.index < VERIFY_RESULT(log_cache_.earliest_op_index()) ||
         !it->second->is_last_exchange_successful) {
       continue;
     }
@@ -1092,7 +1092,8 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
         peer->failed_bootstrap_attempts_from_non_leader >=
             FLAGS_max_remote_bootstrap_attempts_from_non_leader;
 
-    rbs_source = rbs_from_leader_only ? local_peer_ : FindClosestPeerForBootstrap(peer);
+    rbs_source = rbs_from_leader_only ? local_peer_
+                                      : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
     current_term = queue_state_.current_term;
 
     // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's

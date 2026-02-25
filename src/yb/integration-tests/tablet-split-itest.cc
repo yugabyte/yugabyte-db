@@ -987,7 +987,8 @@ TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     log::SegmentSequence segments;
-    ASSERT_OK(peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));
+    auto* log_reader = ASSERT_RESULT(peer->log()->GetLogReader());
+    ASSERT_OK(log_reader->GetSegmentsSnapshot(&segments));
     for (const auto& segment : segments) {
       if (segment->HasFooter()) {
         ASSERT_TRUE(segment->footer().has_close_timestamp_micros())
