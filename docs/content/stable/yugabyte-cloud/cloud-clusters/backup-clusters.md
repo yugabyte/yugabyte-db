@@ -124,6 +124,9 @@ To restore a backup of a cluster:
 1. Click **Next**.
 1. Select the target cluster.
 1. To rename databases, select the **Rename database/s before restoring** option and click **Next**.
+
+    Note that if the target cluster already has databases with the same name, you must rename databases.
+
 1. If you are renaming databases, enter a new name for the databases you want to rename in the **Assign new name** column.
 1. Click **Restore Now**.
 
