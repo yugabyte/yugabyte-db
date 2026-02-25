@@ -30,3 +30,5 @@ export * from './fault-tolerance/FaultToleranceTypeField';
 export * from './replication-factor/ReplicationFactorField';
 export * from './availability-zone/AvailabilityZoneField';
 export * from './resilience-type/ResilienceType';
+export * from './ipv6-field/IPV6Field';
+export * from './network-acess/NetworkAcessField';

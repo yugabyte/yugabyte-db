@@ -22,7 +22,8 @@ import {
   isSelfSignedCert,
   getInitialFormValues,
   useEITStyles,
-  K8sEncryptionOption
+  K8sEncryptionOption,
+  isCertManagerCert
 } from './EncryptionInTransitUtils';
 import { api, QUERY_KEY } from '../../../../utils/api';
 import { Certificate } from '../../universe-form/utils/dto';
@@ -128,8 +129,15 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({
   const disableServerCertRotation =
     !encryptionEnabled ||
     !(enableNodeToNodeEncrypt || enableClientToNodeEncrypt) ||
-    (rootCAInfo && !isSelfSignedCert(rootCAInfo)) ||
-    (!rootAndClientRootCASame && clientRootCAInfo && !isSelfSignedCert(clientRootCAInfo));
+    (rootCAInfo &&
+      (isItKubernetesUniverse && isCertManagerCert(rootCAInfo)
+        ? false
+        : !isSelfSignedCert(rootCAInfo))) ||
+    (!rootAndClientRootCASame &&
+      clientRootCAInfo &&
+      (isItKubernetesUniverse && isCertManagerCert(clientRootCAInfo)
+        ? false
+        : !isSelfSignedCert(clientRootCAInfo)));
 
   const [currentTab, setTab] = React.useState('');
 

@@ -2904,6 +2904,9 @@
       "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
+      "splunkTokenTooltip": "Indicate this is the Splunk HEC token and where to generate it",
+      "splunkURLTooltip": "Clarify required format (include protocol and port, e.g., https://<host>:8088)",
+      "splunkURLPlaceholder": "https://<host>:8088/services/collector/event",
       "endpointURL": "Endpoint URL",
       "source": "Source (Optional)",
       "sourceType": "Source Type (Optional)",
@@ -3703,7 +3706,15 @@
         },
         "accessKeyLabel": "Access Key",
         "accessKeyRequired": "Access Key is required",
-        "arnField": "Instance Profile ARN"
+        "arnField": "Instance Profile ARN",
+        "ipv6Field": {
+          "label": "Enable IPV6",
+          "subText": "Use IPV6 networking for connections between the DB servers."
+        },
+        "networkAccessField": {
+          "label": "Enable Public Network Access",
+          "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",

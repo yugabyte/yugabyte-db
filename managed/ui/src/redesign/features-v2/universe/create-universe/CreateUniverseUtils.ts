@@ -13,7 +13,8 @@ import {
   ClusterNodeSpec,
   CommunicationPortsSpec,
   PlacementRegion,
-  UniverseCreateReqBody
+  UniverseCreateReqBody,
+  ClusterNetworkingSpecAllOfEnableExposingService
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   CloudType,
@@ -249,7 +250,10 @@ export const mapCreateUniversePayload = (
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: false
+        enable_ipv6: otherAdvancedSettings?.enableIPV6,
+        ...(otherAdvancedSettings?.enableExposingService && {
+          enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
+        })
       },
       clusters: [
         {

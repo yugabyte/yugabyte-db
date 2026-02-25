@@ -259,7 +259,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('splunkToken')}</YBLabel>
+          <YBLabel>
+            {t('splunkToken')} &nbsp;
+            <YBTooltip title={t('splunkTokenTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
           <YBInputField
             control={control}
             name="config.token"
@@ -271,11 +276,16 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('endpointURL')}</YBLabel>
+          <YBLabel>
+            {t('endpointURL')} &nbsp;
+            <YBTooltip title={t('splunkURLTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
           <YBInputField
             control={control}
             name="config.endpoint"
-            placeholder="https://"
+            placeholder={t('splunkURLPlaceholder')}
             fullWidth
             disabled={isViewMode}
             inputProps={{
