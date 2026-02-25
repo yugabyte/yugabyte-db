@@ -57,10 +57,17 @@ export YB_BUILD_JAVA=${YB_BUILD_JAVA:-1}
 export YB_BUILD_CPP=${YB_BUILD_CPP:-1}
 export YB_PG_PARQUET_DEBUG_CLEAN=1
 
-readonly COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
+export COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD=(
   --no-rebuild-thirdparty
   --skip-java
 )
+
+if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
+  COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
+fi
+if [[ "${YB_PGO_BOLT:-0}" == "1" ]]; then
+  COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD+=( "--bolt" )
+fi
 
 # -------------------------------------------------------------------------------------------------
 # Functions
@@ -95,13 +102,6 @@ build_cpp_code() {
 
   # Static check of bash scripts need only be done during one phase of the build.
   yb_build_args+=( "--shellcheck" )
-
-  if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
-    yb_build_args+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
-  fi
-  if [[ "${YB_PGO_BOLT:-0}" == "1" ]]; then
-    yb_build_args+=( "--bolt" )
-  fi
 
   log "Building cpp code with options: ${yb_build_args[*]}"
 
@@ -263,7 +263,8 @@ cd "$BUILD_ROOT"
 declare -i -r MAX_CMAKE_RETRIES=3
 declare -i cmake_attempt_index=1
 while true; do
-  if "${YB_SRC_ROOT}/yb_build.sh" "${BUILD_TYPE}" --cmake-only --no-remote; then
+  if "${YB_SRC_ROOT}/yb_build.sh" "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}" "${BUILD_TYPE}" \
+      --cmake-only --no-remote; then
     log "CMake succeeded after attempt $cmake_attempt_index"
     break
   fi
@@ -338,15 +339,9 @@ export YB_SKIP_FINAL_LTO_LINK=0
 if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
   yb_build_cmd_line_for_lto=(
     "${YB_SRC_ROOT}/yb_build.sh"
-    "${BUILD_TYPE}" --skip-java --force-run-cmake
+    "${COMMON_YB_BUILD_ARGS_FOR_CPP_BUILD[@]}"
+    "${BUILD_TYPE}" --force-run-cmake
   )
-
-  if [[ -n "${YB_PGO_DATA_FILE:-}" && -f "$YB_PGO_DATA_FILE" ]]; then
-    yb_build_cmd_line_for_lto+=( "--pgo-data-path=$YB_PGO_DATA_FILE" )
-  fi
-  if [[ "${YB_PGO_BOLT:-0}" == "1" ]]; then
-    yb_build_cmd_line_for_lto+=( "--bolt" )
-  fi
 
   if [[ $( grep -E 'MemTotal: .* kB' /proc/meminfo ) =~ ^.*\ ([0-9]+)\ .*$ ]]; then
     total_mem_kb=${BASH_REMATCH[1]}
