@@ -51,6 +51,8 @@ The `assess-migration` command generates a detailed assessment report with:
 
 ![Migration Assessment](/images/yb-cloud/migrate-hub-assess.png)
 
+The assessment can take a few minutes to complete. You may need to click **Refresh** to view updated progress.
+
 Address the recommendations in the report:
 
 - If the assessment suggests cluster resizing, [adjust your cluster](../cloud-clusters/configure-clusters/).
