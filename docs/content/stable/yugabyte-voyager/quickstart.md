@@ -100,7 +100,7 @@ If you haven't already, create a cluster in YugabyteDB Aeon:
 
     You can [create a free Sandbox cluster](/stable/yugabyte-cloud/cloud-quickstart/#create-your-sandbox-cluster) for testing, or to go beyond the capabilities of the Sandbox cluster, [start a free trial](/stable/yugabyte-cloud/managed-freetrial.) to create Dedicated clusters.
 
-    - Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+    - Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
     - Select **Sandbox** for testing or **Dedicated** for production.
     - Follow the instructions in the wizard.
       - Be sure to **Add Current IP Address** to allow connections from your machine.
@@ -271,6 +271,8 @@ After setup is complete, use the Migration Hub in YugabyteDB Aeon to perform the
     If you have started a migration, return to the migration by clicking `>` for the migration in the list.
 
 1. Follow the instructions provided on the **Assess**, **Migrate Schema**, **Migrate Data**, and **Verify** pages.
+
+    In the Voyager commands that you run, replace `<migration-config.yaml>` with the full path for the configuration file that you prepared.
 
 Aeon updates the status of your migration as you complete each stage.
 

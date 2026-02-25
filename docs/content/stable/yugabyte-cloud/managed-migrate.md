@@ -38,6 +38,8 @@ Migration Hub uses YugabyteDB Voyager to perform migrations. The setup process r
 
 For full instructions, see the YugabyteDB Voyager [Quick Start](/stable/yugabyte-voyager/quickstart/).
 
+When running Voyager commands, replace `<migration-config.yaml>` with the full path to the configuration file that you prepared in the Set Up stage.
+
 ### Assess
 
 After your source and target databases are configured, run a migration assessment using the command provided on the **Assess** page.
