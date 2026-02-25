@@ -58,8 +58,7 @@
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
-/* The number of columns in different versions of the view.
- * V7 adds plan_id (correlates with pg_stat_plans). */
+/* The number of columns in different versions of the view. */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
@@ -470,7 +469,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 												pstmt->stmt_len,
 												pstmt->stmt_location,
 												true /* is_sensitive_stmt */ ));
-			YbAshSetQueryId(query_id, /* plan_id */ 0);
+			YbAshSetQueryId(query_id, 0 /* plan_id */);
 		}
 		++nested_level;
 	}
@@ -605,8 +604,8 @@ YbAshUnsetMetadata(void)
 	if (pop_query_id_before_push)
 	{
 		uint64		prev_plan_id;
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push,
-																		   &prev_plan_id);
+		uint64		prev_query_id = YbAshNestedQueryIdStackPop(
+			query_id_to_be_popped_before_push, &prev_plan_id);
 
 		pop_query_id_before_push = false;
 		query_id_to_be_popped_before_push = 0;
