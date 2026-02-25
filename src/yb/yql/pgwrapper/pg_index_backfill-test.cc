@@ -28,6 +28,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_error.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/async_util.h"
@@ -2167,6 +2168,116 @@ TEST_P(PgIndexBackfillColocated, ColocatedRetainDeleteMarkersRecovery) {
 }
 TEST_P(PgIndexBackfillColocated, ColocatedRetainDeleteMarkersRecoveryViaSeveralRequests) {
   TestRetainDeleteMarkersRecovery(kColoDbName, true /* use_multiple_requests */);
+}
+
+// Verify that BackfillIndex RPC returns an error (not a crash) when indexed_table_id references
+// a colocated table that does not exist in the tablet metadata.
+// Without the fix, this causes CHECK failure in RaftGroupMetadata::index_map().
+TEST_P(PgIndexBackfillColocated, ColocatedBackfillIndexMissingTableNoCrash) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+
+  auto table_id = ASSERT_RESULT(
+      GetTableIdByTableName(client.get(), kColoDbName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_GE(tablets.size(), 1);
+  const auto& tablet_id = tablets[0].tablet_id();
+  auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  auto ts = cluster_->tablet_server(leader_idx);
+  tserver::TabletServerAdminServiceProxy admin_proxy(
+      &cluster_->proxy_cache(), ts->bound_rpc_addr());
+
+  // Send a BackfillIndex RPC with a nonexistent indexed_table_id.
+  // Without the fix, this crashes the tserver via CHECK_RESULT in index_map().
+  const std::string kBogusTableId = "deadbeefdeadbeefdeadbeefdeadbeef";
+  tserver::BackfillIndexRequestPB req;
+  tserver::BackfillIndexResponsePB resp;
+  req.set_tablet_id(tablet_id);
+  req.set_dest_uuid(ts->uuid());
+  req.set_indexed_table_id(kBogusTableId);
+  req.set_schema_version(0);
+  req.set_read_at_hybrid_time(0);
+  auto* idx = req.add_indexes();
+  idx->set_table_id("deadbeefdeadbeefdeadbeefdeadbeee");
+  idx->set_indexed_table_id(kBogusTableId);
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  auto status = admin_proxy.BackfillIndex(req, &resp, &rpc);
+  // The RPC itself should succeed (no transport error), but the response should carry an error
+  // indicating the table was not found.
+  ASSERT_OK(status);
+  ASSERT_TRUE(resp.has_error()) << "Expected error in BackfillIndex response";
+  ASSERT_EQ(resp.error().code(), tserver::TabletServerErrorPB::TABLET_NOT_FOUND)
+      << "Expected TABLET_NOT_FOUND error, got: " << resp.error().DebugString();
+  LOG(INFO) << "BackfillIndex correctly returned error for missing table: "
+            << resp.error().DebugString();
+}
+
+// Simulate the race between colocated table drop and index backfill.
+// Blocks the tserver's BackfillIndex RPC right before index_map() lookup, then drops the indexed
+// table so that the REMOVE_TABLE ChangeMetadata removes it from the colocated tablet's metadata.
+// When unblocked, the tserver calls index_map() on the now-missing table.
+// Without the fix (VERIFY_RESULT in index_map), this crashes the tserver via CHECK_RESULT.
+class PgIndexBackfillColocatedBlockBeforeIndexMap : public PgIndexBackfillColocated {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillColocated::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--TEST_block_backfill_before_index_map=true");
+    // The PG backend's CREATE INDEX wait loop uses backfill_index_client_rpc_timeout_ms as its
+    // deadline (defaults to 24h in release). After we drop the table, the wait loop retries
+    // GetTableSchema indefinitely until that deadline. Set a short timeout so the CREATE INDEX
+    // thread fails promptly after the table is dropped.
+    options->extra_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=30000");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillColocatedBlockBeforeIndexMap, ::testing::Bool());
+
+TEST_P(PgIndexBackfillColocatedBlockBeforeIndexMap, ColocatedDropTableDuringBackfillNoCrash) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
+
+  std::vector<ExternalDaemon*> tablet_servers;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    tablet_servers.push_back(cluster_->tablet_server(i));
+  }
+  LogWaiter log_waiter(tablet_servers, "Blocking BackfillIndex before index_map lookup");
+
+  // conn_ should be used by at most one thread for thread safety.
+  // Thread 1: CREATE INDEX -- the tserver will block before index_map.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create index thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kColoDbName));
+    auto status = create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
+    LOG(INFO) << "CREATE INDEX finished with status: " << status;
+  });
+
+  // Wait for the BackfillIndex RPC to arrive at a tserver and block at the flag.
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(60) * kTimeMultiplier));
+
+  // Drop the table via SQL. During the backfill wait phase the PG backend for CREATE INDEX has
+  // committed its catalog transaction and released locks, so DROP TABLE can acquire the
+  // necessary AccessExclusiveLock. The master processes the deletion and sends REMOVE_TABLE
+  // ChangeMetadata to the colocated tablet, removing the indexed table from metadata.
+  LOG(INFO) << "Dropping table while tserver is blocked before index_map lookup...";
+  ASSERT_OK(conn_->ExecuteFormat("DROP TABLE $0", kTableName));
+  LOG(INFO) << "Table dropped";
+
+  // Unblock tserver -- it will now call index_map() on the removed table.
+  LOG(INFO) << "Unblocking tserver...";
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_block_backfill_before_index_map", "false"));
+
+  thread_holder_.JoinAll();
+
+  // The critical assertion: no tserver crashed due to the missing table.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    ASSERT_TRUE(cluster_->tablet_server(i)->IsProcessAlive())
+        << "Tserver " << i << " crashed";
+  }
 }
 
 // Verify in-progress CREATE INDEX command's entry in pg_stat_progress_create_index.

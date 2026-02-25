@@ -372,7 +372,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   [[deprecated]]
   SchemaPtr schema(const TableId& table_id = "") const;
 
-  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
+  Result<std::shared_ptr<qlexpr::IndexMap>> index_map(const TableId& table_id = "") const;
 
   SchemaVersion primary_table_schema_version() const;
 

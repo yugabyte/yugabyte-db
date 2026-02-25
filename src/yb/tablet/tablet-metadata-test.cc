@@ -188,5 +188,23 @@ TEST_F(TestRaftGroupMetadata, NamespaceIdPreservedAcrossSchemaChanges) {
   ASSERT_EQ(meta->primary_table_info()->namespace_id, kNamespaceId);
 }
 
+// Verify that index_map() returns NotFound for a nonexistent colocated table rather than crashing.
+// Before the fix, index_map() used CHECK_RESULT(GetTableInfo(table_id)) which would FATAL on a
+// missing table. This test would crash (not just fail) without the fix.
+TEST_F(TestRaftGroupMetadata, IndexMapReturnsNotFoundForMissingTable) {
+  auto* meta = harness_->tablet()->metadata();
+
+  // Primary table (empty table_id) should always succeed.
+  auto primary_result = meta->index_map();
+  ASSERT_OK(primary_result);
+  ASSERT_NE(*primary_result, nullptr);
+
+  // A nonexistent table_id should return NotFound, not crash.
+  const TableId kNonexistentTableId = "deadbeefdeadbeefdeadbeefdeadbeef";
+  auto missing_result = meta->index_map(kNonexistentTableId);
+  ASSERT_NOK(missing_result);
+  ASSERT_TRUE(missing_result.status().IsNotFound()) << missing_result.status();
+}
+
 } // namespace tablet
 } // namespace yb

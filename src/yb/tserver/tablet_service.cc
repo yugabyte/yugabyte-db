@@ -187,6 +187,10 @@ TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 DEFINE_test_flag(int32, index_backfill_fail_after_random_wait_upto_ms, 0,
     "If set to > 0 BackfillIndex calls will be failed after randomly waiting.");
 
+DEFINE_test_flag(bool, block_backfill_before_index_map, false,
+    "If true, BackfillIndex will block right before looking up the index_map. "
+    "Used to test the race between table drop and backfill to repro GH#29830.");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -877,7 +881,22 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const auto index_map = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  while (FLAGS_TEST_block_backfill_before_index_map) {
+    constexpr auto kSpinWait = 100ms;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Blocking BackfillIndex before index_map lookup";
+    SleepFor(kSpinWait);
+  }
+  auto index_map_result = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  if (!index_map_result.ok()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(
+            NotFound, "Indexed table $0 not found in tablet $1 metadata: $2",
+            req->indexed_table_id(), req->tablet_id(), index_map_result.status().ToString()),
+        TabletServerErrorPB::TABLET_NOT_FOUND, &context);
+    return;
+  }
+  const auto& index_map = *index_map_result;
   std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
