@@ -113,7 +113,7 @@ In addition, you may want to verify application connectivity:
 - Test basic CRUD operations
 - Verify application functionality
 
-When you are satisfied, click **Finish** to complete the migration.
+When you are satisfied, click **Finish** to exit the migration and return to the Migration Hub.
 
 ## Limitations
 
