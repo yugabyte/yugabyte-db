@@ -2,6 +2,7 @@ import { ChangeEvent } from 'react';
 import { useFormContext, Controller } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { makeStyles, Typography } from '@material-ui/core';
+import { useMutation } from 'react-query';
 
 import { YBAutoComplete, YBButton } from '@yugabyte-ui-library/core';
 
@@ -11,6 +12,7 @@ import type {
   DBUpgradeFormFields,
   ReleaseOption
 } from '@app/redesign/features/universe/universe-actions/software-upgrade/types';
+import { startSoftwareUpgrade } from '@app/v2/api/universe/universe';
 
 const TRANSLATION_KEY_PREFIX = 'universeActions.dbUpgrade.upgradeModal.dbVersionStep';
 
@@ -75,6 +77,7 @@ interface DbVersionStepProps {
   currentRelease: string;
   targetReleaseOptions: ReleaseOption[];
   currentUniverseUuid: string;
+  onPreCheckSuccess: () => void;
 }
 
 const TEST_ID_PREFIX = 'DbVersionStep';
@@ -82,11 +85,24 @@ const TEST_ID_PREFIX = 'DbVersionStep';
 export const DbVersionStep = ({
   currentRelease,
   targetReleaseOptions,
-  currentUniverseUuid
+  currentUniverseUuid,
+  onPreCheckSuccess
 }: DbVersionStepProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
 
+  const runDbUpgradePrecheck = useMutation(
+    (targetDbVersion: string) =>
+      startSoftwareUpgrade(currentUniverseUuid, {
+        version: targetDbVersion,
+        run_only_prechecks: true
+      }),
+    {
+      onSuccess: () => {
+        onPreCheckSuccess();
+      }
+    }
+  );
   const { control, watch, setValue, formState } = useFormContext<DBUpgradeFormFields>();
   const selectedVersion = watch('targetDbVersion');
   const isFormDisabled = formState.isSubmitting;
@@ -100,7 +116,7 @@ export const DbVersionStep = ({
   };
 
   const handleRunPreupgradeCheck = () => {
-    // TODO: Implement pre-upgrade check
+    runDbUpgradePrecheck.mutate(selectedVersion);
   };
 
   return (

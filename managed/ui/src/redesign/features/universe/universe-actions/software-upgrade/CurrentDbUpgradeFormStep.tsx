@@ -12,6 +12,7 @@ interface CurrentDbUpgradeFormStepProps {
   targetReleaseOptions: ReleaseOption[];
   maxNodesPerBatchMaximum: number;
   currentUniverseUuid: string;
+  onPreCheckSuccess: () => void;
 }
 
 export const CurrentDbUpgradeFormStep = ({
@@ -19,7 +20,8 @@ export const CurrentDbUpgradeFormStep = ({
   currentRelease,
   targetReleaseOptions,
   maxNodesPerBatchMaximum,
-  currentUniverseUuid
+  currentUniverseUuid,
+  onPreCheckSuccess
 }: CurrentDbUpgradeFormStepProps) => {
   switch (currentFormStep) {
     case DbUpgradeFormStep.DB_VERSION:
@@ -28,6 +30,7 @@ export const CurrentDbUpgradeFormStep = ({
           currentRelease={currentRelease}
           targetReleaseOptions={targetReleaseOptions}
           currentUniverseUuid={currentUniverseUuid}
+          onPreCheckSuccess={onPreCheckSuccess}
         />
       );
     case DbUpgradeFormStep.UPGRADE_METHOD:

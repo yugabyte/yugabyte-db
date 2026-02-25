@@ -276,6 +276,7 @@ export const DbUpgradeModal = ({
               currentRelease={currentDbVersion}
               targetReleaseOptions={targetReleaseOptions}
               maxNodesPerBatchMaximum={maxNodesPerBatchMaximum}
+              onPreCheckSuccess={modalProps.onClose}
             />
           )}
         </FormProvider>
