@@ -58,8 +58,10 @@
 #include "nodes/execnodes.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/ybplan.h"
+#include "parser/parser.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/inval.h"
@@ -421,7 +423,12 @@ YBCExecuteInsertInternal(Oid dboid,
 						 Datum *ybctid,
 						 YbcPgTransactionSetting transaction_setting)
 {
-	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting);
+	char	   *query_comment = NULL;
+
+	/* Extract SQL comment for CDC tracking */
+	query_comment = extract_first_sql_comment(debug_query_string);
+
+	YbcPgStatement insert_stmt = YbNewInsertForDb(dboid, rel, transaction_setting, query_comment);
 
 	YBCApplyInsertRow(insert_stmt, rel, slot, onConflictAction, ybctid, transaction_setting);
 	/* Execute the insert */
@@ -767,7 +774,8 @@ YBCExecuteInsertIndexForDb(Oid dboid,
 
 	YbcPgStatement insert_stmt =
 		YbNewInsertForDb(dboid, index,
-						 is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL);
+						 is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL,
+						 NULL /* query_comment */);
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
@@ -809,10 +817,15 @@ YBCExecuteDelete(Relation rel,
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	Datum		ybctid;
 
+	char	   *query_comment = NULL;
+
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
 
-	YbcPgStatement delete_stmt = YbNewDelete(rel, transaction_setting);
+	/* Extract SQL comment for CDC tracking */
+	query_comment = extract_first_sql_comment(debug_query_string);
+
+	YbcPgStatement delete_stmt = YbNewDelete(rel, transaction_setting, query_comment);
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -975,7 +988,8 @@ YBCExecuteDeleteIndex(Relation index,
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
-	YbcPgStatement delete_stmt = YbNewDelete(index, YB_TRANSACTIONAL);
+	YbcPgStatement delete_stmt = YbNewDelete(index, YB_TRANSACTIONAL,
+										 NULL /* query_comment */);
 
 	callback(delete_stmt, indexstate, index, values, isnull,
 			 IndexRelationGetNumberOfKeyAttributes(index),
@@ -1020,13 +1034,18 @@ YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 	Datum		ybctid;
 
 
+	char	   *query_comment = NULL;
+
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
 
 	/* Update the tuple with table oid */
 	slot->tts_tableOid = RelationGetRelid(rel);
 
-	YbcPgStatement update_stmt = YbNewUpdate(rel, transaction_setting);
+	/* Extract SQL comment for CDC tracking */
+	query_comment = extract_first_sql_comment(debug_query_string);
+
+	YbcPgStatement update_stmt = YbNewUpdate(rel, transaction_setting, query_comment);
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -1280,7 +1299,8 @@ YBCExecuteUpdateIndex(Relation index,
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
-	YbcPgStatement update_stmt = YbNewUpdate(index, YB_TRANSACTIONAL);
+	YbcPgStatement update_stmt = YbNewUpdate(index, YB_TRANSACTIONAL,
+										 NULL /* query_comment */);
 
 	callback(update_stmt, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
@@ -1302,7 +1322,8 @@ YBCExecuteUpdateLoginAttempts(Oid roleid,
 	TupleTableSlot *slot;
 
 	/* Create update statement. */
-	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_SINGLE_SHARD_TRANSACTION);
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_SINGLE_SHARD_TRANSACTION,
+											 NULL /* query_comment */);
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -1389,7 +1410,8 @@ YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
 				 errmsg("missing column ybctid in DELETE request to Yugabyte database")));
 
-	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL);
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_TRANSACTIONAL,
+										 NULL /* query_comment */);
 
 	/* Bind ybctid to identify the current row. */
 	YbcPgExpr	ybctid_expr = YBCNewConstant(delete_stmt, BYTEAOID, InvalidOid,
@@ -1423,7 +1445,8 @@ YBCUpdateSysCatalogTupleForDb(Oid dboid, Relation rel, HeapTuple oldtuple,
 {
 	TupleDesc	tupleDesc = RelationGetDescr(rel);
 	int			natts = RelationGetNumberOfAttributes(rel);
-	YbcPgStatement update_stmt = YbNewUpdateForDb(dboid, rel, YB_TRANSACTIONAL);
+	YbcPgStatement update_stmt = YbNewUpdateForDb(dboid, rel, YB_TRANSACTIONAL,
+											  NULL /* query_comment */);
 
 	AttrNumber	minattr = YBGetFirstLowInvalidAttributeNumber(rel);
 	Bitmapset  *pkey = YBGetTablePrimaryKeyBms(rel);

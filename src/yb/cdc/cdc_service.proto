@@ -560,6 +560,12 @@ message RowMessage {
 
   // Replication origin id associated with the transaction. Only set for COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
+
+  // SQL comment extracted from the leading block comment of the query (/* comment */).
+  // Set on INSERT/UPDATE/DELETE ops when cdc_propagate_query_comments is enabled.
+  // For multi-shard transactions, reflects the comment from the first DML statement
+  // in the transaction; per-statement granularity is not supported in that case.
+  optional string query_comment = 20;
 }
 
 message CDCSDKProtoRecordPB {

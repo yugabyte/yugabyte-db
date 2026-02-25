@@ -65,4 +65,7 @@ extern List *raw_parser(const char *str, RawParseMode mode);
 extern List *SystemFuncName(char *name);
 extern TypeName *SystemTypeName(char *name);
 
+/* Extract SQL comment for CDC tracking */
+extern char *extract_first_sql_comment(const char *query_string);
+
 #endif							/* PARSER_H */

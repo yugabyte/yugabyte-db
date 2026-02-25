@@ -122,6 +122,11 @@ Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateAssignPBs());
 
+  // Add query comment to write request for CDC
+  if (!query_comment_.empty()) {
+    write_req_->dup_query_comment(query_comment_);
+  }
+
   if (write_req_->has_ybctid_column_value()) {
     auto* exprpb = write_req_->mutable_ybctid_column_value();
     CHECK(exprpb->has_value() && exprpb->value().has_binary_value())

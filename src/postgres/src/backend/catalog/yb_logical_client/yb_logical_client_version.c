@@ -152,7 +152,8 @@ YbIncrementMasterDBLogicalClientVersionTableEntryImpl(Oid db_oid)
 
 	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 
-	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL);
+	YbcPgStatement update_stmt = YbNewUpdate(rel, YB_TRANSACTIONAL,
+										 NULL /* query_comment */);
 
 	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
@@ -253,7 +254,8 @@ YbCreateMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	 */
 	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 
-	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION);
+	YbcPgStatement insert_stmt = YbNewInsert(rel, YB_SINGLE_SHARD_TRANSACTION,
+										 NULL /* query_comment */);
 
 	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 
@@ -301,7 +303,8 @@ YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid)
 	 */
 	Relation rel = RelationIdGetRelation(YBLogicalClientVersionRelationId);
 
-	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION);
+	YbcPgStatement delete_stmt = YbNewDelete(rel, YB_SINGLE_SHARD_TRANSACTION,
+										 NULL /* query_comment */);
 
 	Datum		ybctid = YbGetMasterLogicalClientVersionTableEntryYbctid(rel, db_oid);
 

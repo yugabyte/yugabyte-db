@@ -39,6 +39,7 @@
 
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
+DECLARE_bool(cdc_propagate_query_comments);
 
 namespace yb {
 
@@ -13075,6 +13076,245 @@ TEST_F(CDCSDKYsqlTest, TestHitDeadlineOnWalReadMidTransaction) {
 
   // 1 DDL + 200 INSERTs + 1 BEGIN + 1 COMMIT = 203 records
   ASSERT_EQ(record_count, 203);
+}
+
+// Verify that SQL comments (/* ... */) are propagated to CDC events as query_comment
+// for single-shard (auto-commit) writes.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentSingleShard)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = true;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // Insert with SQL comment (single-shard, auto-commit)
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("/* pod_id=pod42 */ INSERT INTO test_table VALUES (1, 2)"));
+  // Insert without comment
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 3)"));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 2));
+
+  int inserts_with_comment = 0;
+  int inserts_without_comment = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().has_query_comment()) {
+        ASSERT_EQ(record.row_message().query_comment(), "pod_id=pod42");
+        inserts_with_comment++;
+      } else {
+        inserts_without_comment++;
+      }
+    }
+  }
+  ASSERT_EQ(inserts_with_comment, 1);
+  ASSERT_EQ(inserts_without_comment, 1);
+}
+
+// Verify that SQL comments are propagated to CDC events for transactional writes
+// (explicit BEGIN/COMMIT).
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentTransactional)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = true;
+  // Disable packed rows so that UPDATE operations are correctly classified as UPDATE
+  // in CDC records. With packed row V1 (the default), UPDATEs appear as INSERTs because
+  // V1 format lacks an update flag in the header.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // Transactional insert with SQL comment
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("/* shop_id=12345 */ INSERT INTO test_table VALUES (1, 2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Transactional update with different comment
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("/* request_id=abc */ UPDATE test_table SET value_1 = 99 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  GetChangesResponsePB change_resp;
+  // Expect 1 INSERT + 1 UPDATE (plus DDL, BEGIN, COMMIT records)
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 2));
+
+  std::string insert_comment;
+  std::string update_comment;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT &&
+        record.row_message().has_query_comment()) {
+      insert_comment = record.row_message().query_comment();
+    }
+    if (record.row_message().op() == RowMessage::UPDATE &&
+        record.row_message().has_query_comment()) {
+      update_comment = record.row_message().query_comment();
+    }
+  }
+  ASSERT_EQ(insert_comment, "shop_id=12345");
+  ASSERT_EQ(update_comment, "request_id=abc");
+}
+
+// Verify that query_comment is NOT propagated when cdc_propagate_query_comments is false.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentDisabledByFlag)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = false;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("/* pod_id=pod42 */ INSERT INTO test_table VALUES (1, 2)"));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      ASSERT_FALSE(record.row_message().has_query_comment());
+    }
+  }
+}
+
+// Verify edge cases: empty comment, comment embedded in string literal (should not match),
+// and mid-query comment (should not match since only leading comments are extracted).
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentEdgeCases)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = true;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Empty comment: /* */ — should not produce query_comment
+  ASSERT_OK(conn.Execute("/*  */ INSERT INTO test_table VALUES (1, 2)"));
+  // Mid-query comment: should not produce query_comment (comment is not leading)
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (2, 3) /* trailing_comment */"));
+  // Query hint only: /*+ SeqScan(t) */ — optimizer directive, should be rejected
+  ASSERT_OK(conn.Execute("/*+ SeqScan(test_table) */ INSERT INTO test_table VALUES (3, 4)"));
+  // Query hint followed by real comment — hint skipped, comment extracted
+  ASSERT_OK(conn.Execute(
+      "/*+ SeqScan(test_table) */ /* hint_then_comment=yes */ INSERT INTO test_table VALUES (4, 5)"));
+  // Valid leading comment
+  ASSERT_OK(conn.Execute("/* valid=yes */ INSERT INTO test_table VALUES (5, 6)"));
+
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 5));
+
+  std::map<int32_t, std::string> key_to_comment;
+  int without_comment = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::INSERT) {
+      if (record.row_message().has_query_comment()) {
+        // First column (key) value
+        int32_t key = record.row_message().new_tuple(0).datum_int32();
+        key_to_comment[key] = record.row_message().query_comment();
+      } else {
+        without_comment++;
+      }
+    }
+  }
+  ASSERT_EQ(key_to_comment.size(), 2);
+  ASSERT_EQ(key_to_comment[4], "hint_then_comment=yes");
+  ASSERT_EQ(key_to_comment[5], "valid=yes");
+  ASSERT_EQ(without_comment, 3);
+}
+
+// Verify that SQL comments are propagated for single-shard DELETE and UPDATE operations.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentDeleteAndUpdate)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = true;
+  // Disable packed rows so that UPDATE operations are correctly classified as UPDATE
+  // in CDC records. With packed row V1 (the default), UPDATEs appear as INSERTs because
+  // V1 format lacks an update flag in the header.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  // Insert a row first (no comment)
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
+  // Update with comment
+  ASSERT_OK(conn.Execute("/* update_ctx=u1 */ UPDATE test_table SET value_1 = 99 WHERE key = 1"));
+  // Delete with comment
+  ASSERT_OK(conn.Execute("/* delete_ctx=d1 */ DELETE FROM test_table WHERE key = 1"));
+
+  GetChangesResponsePB change_resp;
+  // 1 INSERT + 1 UPDATE + 1 DELETE
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 3));
+
+  std::string update_comment;
+  std::string delete_comment;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::UPDATE &&
+        record.row_message().has_query_comment()) {
+      update_comment = record.row_message().query_comment();
+    }
+    if (record.row_message().op() == RowMessage::DELETE &&
+        record.row_message().has_query_comment()) {
+      delete_comment = record.row_message().query_comment();
+    }
+  }
+  ASSERT_EQ(update_comment, "update_ctx=u1");
+  ASSERT_EQ(delete_comment, "delete_ctx=d1");
+}
+
+// Verify that SQL comments are propagated through the intent/APPLY path for
+// multi-shard transactional writes. With multiple tablets, writes go through
+// distributed transactions (intents → APPLY), exercising the txn_query_comments
+// stashing logic in GetWALRecords/GetConsistentWALRecords.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(QueryCommentMultiTabletTransaction)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_propagate_query_comments) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  const uint32_t num_tablets = 3;
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  for (uint32_t idx = 0; idx < num_tablets; idx++) {
+    auto resp = ASSERT_RESULT(
+        SetCDCCheckpoint(stream_id, tablets, OpId::Min(), kuint64max, true, idx));
+    ASSERT_FALSE(resp.has_error());
+  }
+
+  // Transactional inserts spanning multiple tablets (different key ranges)
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("/* txn_ctx=multi_shard */ INSERT INTO test_table VALUES (1, 10)"));
+  ASSERT_OK(conn.Execute("/* txn_ctx=multi_shard */ INSERT INTO test_table VALUES (2, 20)"));
+  ASSERT_OK(conn.Execute("/* txn_ctx=multi_shard */ INSERT INTO test_table VALUES (3, 30)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // Collect records across all tablets
+  int inserts_with_comment = 0;
+  int total_inserts = 0;
+  for (uint32_t idx = 0; idx < num_tablets; idx++) {
+    GetChangesResponsePB change_resp =
+        ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, idx));
+    for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage::INSERT) {
+        total_inserts++;
+        if (record.row_message().has_query_comment()) {
+          ASSERT_EQ(record.row_message().query_comment(), "txn_ctx=multi_shard");
+          inserts_with_comment++;
+        }
+      }
+    }
+  }
+  ASSERT_EQ(total_inserts, 3);
+  ASSERT_EQ(inserts_with_comment, total_inserts);
 }
 
 }  // namespace cdc

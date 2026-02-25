@@ -145,6 +145,7 @@ DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
 DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
+DECLARE_bool(cdc_propagate_query_comments);
 
 namespace {
 
@@ -246,6 +247,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_ysql_yb_enable_listen_notify = &FLAGS_TEST_ysql_yb_enable_listen_notify,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
+      .cdc_propagate_query_comments = &FLAGS_cdc_propagate_query_comments,
   };
   // clang-format on
   return &accessor;

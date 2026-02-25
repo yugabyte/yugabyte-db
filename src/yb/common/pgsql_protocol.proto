@@ -321,6 +321,9 @@ message PgsqlWriteRequestPB {
 
   // Table space oid of the table specified by table_id.
   optional uint32 tablespace_oid = 29;
+
+  // SQL comment from query for CDC tracking
+  optional string query_comment = 30;
 }
 
 //--------------------------------------------------------------------------------------------------

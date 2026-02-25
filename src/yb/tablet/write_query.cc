@@ -56,6 +56,8 @@
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
 
+DECLARE_bool(cdc_propagate_query_comments);
+
 using namespace std::placeholders;
 using namespace std::literals;
 
@@ -123,6 +125,16 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   // But in CDCServiceTest we have ql write batch with external time.
   if (client_request.has_external_hybrid_time()) {
     out_request->set_external_hybrid_time(client_request.external_hybrid_time());
+  }
+  // Copy query_comment from first PgsqlWriteRequestPB that has one.
+  // Gated behind the flag to avoid WAL bloat when feature is disabled.
+  if (FLAGS_cdc_propagate_query_comments) {
+    for (const auto& pgsql_req : client_request.pgsql_write_batch()) {
+      if (pgsql_req.has_query_comment()) {
+        out_request->dup_query_comment(pgsql_req.query_comment());
+        break;
+      }
+    }
   }
 }
 

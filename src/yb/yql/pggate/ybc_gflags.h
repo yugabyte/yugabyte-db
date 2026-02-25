@@ -77,6 +77,7 @@ typedef struct {
   const int64_t*  TEST_delay_after_table_analyze_ms;
   const bool*     TEST_ysql_yb_enable_listen_notify;
   const bool*     TEST_enable_obj_tuple_locks;
+  const bool*     cdc_propagate_query_comments;
 } YbcPgGFlagsAccessor;
 
 const YbcPgGFlagsAccessor* YBCGetGFlags();

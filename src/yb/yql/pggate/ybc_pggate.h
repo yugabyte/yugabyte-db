@@ -647,13 +647,15 @@ YbcStatus YBCPgNewInsertBlock(
     YbcPgOid table_oid,
     YbcPgTableLocalityInfo locality_info,
     YbcPgTransactionSetting transaction_setting,
-    YbcPgStatement *handle);
+    YbcPgStatement *handle,
+    const char *query_comment);
 
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         YbcPgStatement *handle);
+                         YbcPgStatement *handle,
+                         const char *query_comment);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
@@ -668,7 +670,8 @@ YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         YbcPgStatement *handle);
+                         YbcPgStatement *handle,
+                         const char *query_comment);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 
@@ -677,7 +680,8 @@ YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
                          YbcPgTransactionSetting transaction_setting,
-                         YbcPgStatement *handle);
+                         YbcPgStatement *handle,
+                         const char *query_comment);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
 
