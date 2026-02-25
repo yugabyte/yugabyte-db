@@ -43,6 +43,28 @@ On your source database, create a database user and provide the user with READ a
 
 Run the following commands in a psql session:
 
+1. Optionally, create a sample database and table with some data as follows:
+
+    ```sql
+    CREATE DATABASE voyager_test;
+
+    \c voyager_test;
+
+    CREATE TABLE employees (
+        id SERIAL PRIMARY KEY,
+        first_name TEXT,
+        last_name TEXT,
+        department TEXT,
+        salary NUMERIC
+    );
+   
+    INSERT INTO employees (first_name, last_name, department, salary) VALUES 
+    ('Josh', 'Dev', 'Engineering', 95000),
+    ('John', 'Smith', 'Sales', 75000),
+    ('Elena', 'Rigby', 'Marketing', 82000),
+    ('Dinesh', 'Chugtai', 'Engineering', 92000);
+    ```
+
 1. Create a new user named `ybvoyager`.
 
    ```sql
@@ -67,24 +89,6 @@ Run the following commands in a psql session:
     For schema list, provide a comma-separated list of the schemas you want to migrate.
 
     The `ybvoyager` user can now be used for migration.
-
-1. Optionally, create a sample table with some data as follows:
-
-    ```sql
-    CREATE TABLE employees (
-        id SERIAL PRIMARY KEY,
-        first_name TEXT,
-        last_name TEXT,
-        department TEXT,
-        salary NUMERIC
-    );
-   
-    INSERT INTO employees (first_name, last_name, department, salary) VALUES 
-    ('Josh', 'Dev', 'Engineering', 95000),
-    ('John', 'Smith', 'Sales', 75000),
-    ('Elena', 'Rigby', 'Marketing', 82000),
-    ('Dinesh', 'Chugtai', 'Engineering', 92000);
-    ```
 
 ### Create YugabyteDB Aeon cluster
 
