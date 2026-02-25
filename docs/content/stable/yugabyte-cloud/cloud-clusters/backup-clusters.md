@@ -117,11 +117,14 @@ To restore a backup of a cluster:
 1. On the **Backups** tab, select a backup in the list to display the **Backup Details** sheet.
 1. Click **Restore** to display the **Restore Backup** dialog.
 1. Choose the databases or keyspaces to restore.
-1. If the backup includes roles, choose the **Restore global roles** option to restore roles.
+1. If the backup includes roles, choose the **Restore roles and grants** option to restore roles.
 
     Note that if the target cluster [already has matching roles](#grants-and-permissions), those roles are not overwritten.
+
 1. Click **Next**.
 1. Select the target cluster.
+1. To rename databases, select the **Rename database/s before restoring** option and click **Next**.
+1. If you are renaming databases, enter a new name for the databases you want to rename in the **Assign new name** column.
 1. Click **Restore Now**.
 
 ### Grants and permissions
