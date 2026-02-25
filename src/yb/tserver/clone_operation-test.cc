@@ -107,6 +107,7 @@ class CloneOperationTest : public TabletServerTestBase {
     req.set_target_snapshot_id(kTargetSnapshotId.data(), kTargetSnapshotId.size());
     req.set_target_table_id(kTargetTableId);
     req.set_target_namespace_name("target_namespace_name");
+    req.set_target_namespace_id("target_namespace_id");
     req.set_clone_request_seq_no(clone_request_seq_no);
     *req.mutable_target_schema() = schema_pb;
     req.set_target_pg_table_id("target_pg_table_id");
@@ -167,7 +168,7 @@ TEST_F(CloneOperationTest, Hardlink) {
 
   auto target_tablet = ASSERT_RESULT(
       mini_server_->server()->tablet_manager()->GetTablet(kTargetTabletId));
-  ASSERT_TRUE(target_tablet->tablet_metadata()->namespace_id().empty());
+  ASSERT_EQ(target_tablet->tablet_metadata()->namespace_id(), "target_namespace_id");
 
   const string source_snapshot_dir = GetSnapshotDir(source_tablet, kSourceSnapshotId);
   const string target_snapshot_dir = GetSnapshotDir(target_tablet, kTargetSnapshotId);
