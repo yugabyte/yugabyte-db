@@ -220,8 +220,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if !(universeRootCA == requestBody.GetRootCA() &&
-			universeClientRootCA == requestBody.GetClientRootCA()) {
+		if !rootCAUnchanged || !clientRootCAUnchanged {
 			rotateSelfSignedClientCert = false
 		}
 		if rotateSelfSignedClientCert {
@@ -233,8 +232,7 @@ var certEncryptionInTransitCmd = &cobra.Command{
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if !(universeRootCA == requestBody.GetRootCA() &&
-			universeClientRootCA == requestBody.GetClientRootCA()) {
+		if !rootCAUnchanged || !clientRootCAUnchanged {
 			rotateSelfSignedServerCert = false
 		}
 		if rotateSelfSignedServerCert {
