@@ -358,6 +358,7 @@ void AshCopyTServerSample(
   AshGetTServerClientAddress(cb_metadata->addr_family, tserver_metadata.client_host_port().host(),
                              cb_metadata->client_addr);
   cb_metadata->client_port =  static_cast<uint16_t>(tserver_metadata.client_host_port().port());
+  cb_metadata->plan_id = tserver_metadata.has_plan_id() ? tserver_metadata.plan_id() : 0;
 }
 
 void AshCopyTServerSamples(

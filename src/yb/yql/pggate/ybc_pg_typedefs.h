@@ -749,6 +749,10 @@ typedef struct {
   // Postgres-specific memory usage in bytes. On Apple devices this falls back to
   // resident set size (RSS), since proportional set size (PSS) is not available.
   int64_t pss_mem_bytes;
+
+  // Plan identifier (plan hash) for the current execution plan. Same as pg_stat_plans.
+  // 0 when no plan (e.g. utility statement).
+  uint64_t plan_id;
 } YbcAshMetadata;
 
 typedef struct {

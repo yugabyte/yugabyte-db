@@ -752,6 +752,9 @@ message AshMetadataPB {
   optional uint32 database_id = 8;
   // YSQL user OID. This field will not be set for YCQL.
   optional uint32 user_id = 10;
+  // Plan identifier (plan hash) for the current execution plan. Same as in pg_stat_plans.
+  // 0 when no plan (e.g. utility statement) or for non-YSQL components.
+  optional uint64 plan_id = 11;
 }
 
 // Some optional/additional fields that is collected in addition to the wait
