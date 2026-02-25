@@ -25,7 +25,7 @@ rightNav:
 
 ##### New features
 
-- [Migration Hub](../managed-migration/) provides a simplified migration experience when using YugabyteDB Voyager to migrate your data to YugabyteDB Aeon. Manage database migrations for your cluster, including database preparation, migration assessment, schema changes, and data migration.
+<!-- [Migration Hub](../managed-migration/) provides a simplified migration experience when using YugabyteDB Voyager to migrate your data to YugabyteDB Aeon. Manage database migrations for your cluster, including database preparation, migration assessment, schema changes, and data migration.-->
 - Support for [exporting database query logs](../cloud-monitor/managed-integrations/) to [Amazon S3](https://aws.amazon.com/s3/).
 - Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to [New Relic](https://docs.newrelic.com/).
 - Support for [backing up and restoring](../cloud-clusters/backup-clusters/) PostgreSQL users (aka roles) and their permissions (aka grants).
