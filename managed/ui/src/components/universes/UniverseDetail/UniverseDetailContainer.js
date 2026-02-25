@@ -31,7 +31,9 @@ import {
   fetchProviderRunTimeConfigsResponse,
   getAlerts,
   getAlertsSuccess,
-  getAlertsFailure
+  getAlertsFailure,
+  fetchPerfAdvisorList,
+  fetchPerfAdvisorListResponse
 } from '../../../actions/customers';
 import { openDialog, closeDialog } from '../../../actions/modal';
 import {
@@ -162,6 +164,11 @@ const mapDispatchToProps = (dispatch) => {
     },
     showInstallNodeAgentModal: () => {
       dispatch(openDialog('installNodeAgentModal'));
+    },
+    fetchPerfAdvisorList: () => {
+      dispatch(fetchPerfAdvisorList()).then((response) => {
+        dispatch(fetchPerfAdvisorListResponse(response.payload));
+      });
     },
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {

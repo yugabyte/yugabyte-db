@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBCheckbox, YBModal } from '../../../components';
-import { PerfAdvisorAPI } from '../api';
+import { PerfAdvisorAPI, QUERY_KEY } from '../api';
 
-interface UnregisterPerfAdvisorDialogProps {
+interface UnregisterPerfAdvisorModalProps {
   open: boolean;
   onRefetchConfig: () => void;
   onClose: () => void;
@@ -22,14 +22,15 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const UnregisterPerfAdvisorDialog = ({
+export const UnregisterPerfAdvisorModal = ({
   open,
   onRefetchConfig,
   onClose,
   data
-}: UnregisterPerfAdvisorDialogProps) => {
+}: UnregisterPerfAdvisorModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
+  const queryClient = useQueryClient();
 
   const [forceUnregister, setForceUnregister] = useState<boolean>(false);
   const paUuid = data.paUuid;
@@ -40,6 +41,7 @@ export const UnregisterPerfAdvisorDialog = ({
     {
       onSuccess: (response: any) => {
         toast.success(t('clusterDetail.troubleshoot.deleteDialog.unregistrationSuccess'));
+        queryClient.invalidateQueries(QUERY_KEY.fetchPerfAdvisorList);
         onRefetchConfig();
         onClose();
       },
@@ -69,6 +71,7 @@ export const UnregisterPerfAdvisorDialog = ({
         className: helperClasses.root,
         dividers: true
       }}
+      isSubmitting={unregisterTPService.isLoading}
       submitButtonTooltip={
         data.inUseStatus ? (
           <Typography
@@ -91,7 +94,7 @@ export const UnregisterPerfAdvisorDialog = ({
           onChange={() => setForceUnregister(!forceUnregister)}
           label={t('clusterDetail.troubleshoot.deleteDialog.forceUnregisterCheckBoxLabel')}
           inputProps={{
-            'data-testid': 'UnregisterPerfAdvisorDialog-ForceUnregister'
+            'data-testid': 'UnregisterPerfAdvisorModal-ForceUnregister'
           }}
         />
       }

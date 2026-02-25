@@ -1,14 +1,16 @@
 import { Box } from '@material-ui/core';
-import { useMutation } from 'react-query';
+import { useMutation, useQueryClient } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'react-toastify';
 import { YBModal } from '../../../../components';
-import { PerfAdvisorAPI } from '../../../PerfAdvisor/api';
+import { PerfAdvisorAPI, QUERY_KEY } from '../../../PerfAdvisor/api';
 import { Universe } from '../../universe-form/utils/dto';
+import { isNonEmptyArray } from '@app/utils/ObjectUtils';
 
 interface EnablePerfAdvisorModalProps {
   universeData: Universe;
   perfAdvisorStatus: { data: { success: boolean } };
+  perfAdvisorDetails: any;
   open: boolean;
   paUuid: string;
   onClose: () => void;
@@ -16,14 +18,18 @@ interface EnablePerfAdvisorModalProps {
 export const EnablePerfAdvisorModal = ({
   universeData,
   perfAdvisorStatus,
+  perfAdvisorDetails,
   paUuid,
   open,
   onClose
 }: EnablePerfAdvisorModalProps) => {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const isUniverseRegisteredToPA =
+    perfAdvisorStatus?.data?.success && isNonEmptyArray(perfAdvisorDetails?.data);
 
   const onSubmit = async () => {
-    perfAdvisorStatus?.data?.success
+    isUniverseRegisteredToPA
       ? await disablePerfAdvisorToUniverse.mutateAsync()
       : await enablePerfAdvisorToUniverse.mutateAsync();
     onClose();
@@ -35,10 +41,11 @@ export const EnablePerfAdvisorModal = ({
     {
       onSuccess: () => {
         toast.success(t('universeActions.paUniverseStatus.enablePaUniverseSuccess'));
+        queryClient.invalidateQueries(QUERY_KEY.fetchUniverseRegistrationDetails);
       },
       onError: (e: any) => {
         toast.error(
-          e?.response?.data?.error ?? t('universeActions.paUniverseStatus.enablePaUniverseFailure')
+          `${e?.response?.data?.error}.Check if Yugabyte Anywhere is registered with Perf Advisor Service`
         );
       }
     }
@@ -50,6 +57,7 @@ export const EnablePerfAdvisorModal = ({
     {
       onSuccess: () => {
         toast.success(t('universeActions.paUniverseStatus.disablePaUniverseSuccess'));
+        queryClient.invalidateQueries(QUERY_KEY.fetchUniverseRegistrationDetails);
       },
       onError: () => {
         toast.error(t('universeActions.paUniverseStatus.disablePaUniverseFailure'));
@@ -61,10 +69,11 @@ export const EnablePerfAdvisorModal = ({
     <YBModal
       open={open}
       title={
-        perfAdvisorStatus?.data?.success
+        isUniverseRegisteredToPA
           ? t('universeActions.paUniverseStatus.disableTitle')
           : t('universeActions.paUniverseStatus.enableTitle')
       }
+      isSubmitting={enablePerfAdvisorToUniverse.isLoading || disablePerfAdvisorToUniverse.isLoading}
       submitLabel={t('common.applyChanges')}
       cancelLabel={t('common.cancel')}
       onClose={onClose}
@@ -87,7 +96,7 @@ export const EnablePerfAdvisorModal = ({
             i18nKey={'universeActions.paUniverseStatus.subText'}
             values={{
               universeName: universeData.name,
-              action: perfAdvisorStatus?.data?.success ? 'disable' : 'enable'
+              action: isUniverseRegisteredToPA ? 'disable' : 'enable'
             }}
           />
         </span>

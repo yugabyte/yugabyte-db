@@ -20,19 +20,19 @@ class ApiService {
     return customerId ?? '';
   }
 
-  // Fetches list of all Troubleshooting Platform services
+  // Fetches list of all Perf Advisor services
   fetchPerfAdvisorList = () => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Fetches info about specific Troubleshooting Platform service
+  // Fetches info about specific Perf Advisor service
   fetchPerfAdvisorUuid = (paUuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Register current YBA (customer) to a Troubleshooting Platform service
+  // Register current YBA (customer) to a Perf Advisor service
   registerYBAToPerfAdvisor = (
     paUrl: string,
     ybaUrl: string,
@@ -72,7 +72,7 @@ class ApiService {
       .then((resp) => resp.data);
   };
 
-  // Delete(Unregister) Troubleshooting Platform service
+  // Unregister YBA (customer) from Perf Advisor service
   unRegisterPerfAdvisor = (paUuid: string, forceUnregister: boolean) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     const params = {
@@ -85,7 +85,7 @@ class ApiService {
       .then((resp) => resp.data);
   };
 
-  // Fetch registration details of universe to Troubleshooting Platform service
+  // Fetch Perf Advisor service registration details for a universe
   fetchUniverseRegistrationDetails = (universeUuid: string) => {
     const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
@@ -97,7 +97,7 @@ class ApiService {
     return axios.put(requestUrl).then((resp) => resp.data);
   };
 
-  // Delete universe registration
+  // Disable Perf Advisor for current universe
   deleteUniverseRegistration = (universeUuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.delete(requestUrl).then((resp) => resp.data);

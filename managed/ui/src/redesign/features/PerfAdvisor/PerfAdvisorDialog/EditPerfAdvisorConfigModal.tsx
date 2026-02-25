@@ -7,7 +7,7 @@ import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBCheckbox, YBInputField, YBLabel, YBModal } from '../../../components';
 import { PerfAdvisorAPI } from '../api';
 
-interface EditPerfAdvisorConfigDialogProps {
+interface EditPerfAdvisorConfigModalProps {
   open: boolean;
   onRefetchConfig: () => void;
   onClose: () => void;
@@ -23,12 +23,12 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const EditPerfAdvisorConfigDialog = ({
+export const EditPerfAdvisorConfigModal = ({
   open,
   onRefetchConfig,
   onClose,
   data
-}: EditPerfAdvisorConfigDialogProps) => {
+}: EditPerfAdvisorConfigModalProps) => {
   const { t } = useTranslation();
   const helperClasses = useStyles();
 
@@ -111,7 +111,7 @@ export const EditPerfAdvisorConfigDialog = ({
           onChange={() => setForceUpdate(!forceUpdate)}
           label={t('clusterDetail.troubleshoot.editDialog.forceUpdateCheckBoxLabel')}
           inputProps={{
-            'data-testid': 'EditPerfAdvisorConfigDialog-ForceUpdate'
+            'data-testid': 'EditPerfAdvisorConfigModal-ForceUpdate'
           }}
         />
       }
@@ -125,7 +125,7 @@ export const EditPerfAdvisorConfigDialog = ({
           display="flex"
           width="100%"
           flexDirection={'column'}
-          data-testid="EditPerfAdvisorConfigDialog-Container"
+          data-testid="EditPerfAdvisorConfigModal-Container"
         >
           <Box display="flex" flexDirection={'row'} mt={2}>
             <YBLabel width="250px" dataTestId="RegisterTSService-Label">

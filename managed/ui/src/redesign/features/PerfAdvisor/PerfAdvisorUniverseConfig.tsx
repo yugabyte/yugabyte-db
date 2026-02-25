@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBButton, YBInput, YBLabel } from '../../components';
 import { YBPanelItem } from '../../../components/panels';
-import { UnregisterPerfAdvisorDialog } from './PerfAdvisorDialog/UnregisterPerfAdvisorDialog';
-import { EditPerfAdvisorConfigDialog } from './PerfAdvisorDialog/EditPerfAdvisorConfigDialog';
+import { UnregisterPerfAdvisorModal } from './PerfAdvisorDialog/UnregisterPerfAdvisorModal';
+import { EditPerfAdvisorConfigModal } from './PerfAdvisorDialog/EditPerfAdvisorConfigModal';
 
 const useStyles = makeStyles((theme) => ({
   infoBox: {
@@ -119,13 +119,23 @@ export const PerfAdvisorUniverseConfig = ({
             <YBLabel dataTestId="PerfAdvisorUniverseConfig-metricsUsernameLabel" width="300px">
               {t('clusterDetail.troubleshoot.ybPlatformMetricsUsernameLabel')}
             </YBLabel>
-            <YBInput type="text" disabled value={metricsUsername} className={helperClasses.textBox} />
+            <YBInput
+              type="text"
+              disabled
+              value={metricsUsername}
+              className={helperClasses.textBox}
+            />
           </Box>
           <Box className={helperClasses.infoBox}>
             <YBLabel dataTestId="PerfAdvisorUniverseConfig-metricsPasswordLabel" width="300px">
               {t('clusterDetail.troubleshoot.ybPlatformMetricsPasswordLabel')}
             </YBLabel>
-            <YBInput type="text" disabled value={metricsPassword} className={helperClasses.textBox} />
+            <YBInput
+              type="text"
+              disabled
+              value={metricsPassword}
+              className={helperClasses.textBox}
+            />
           </Box>
           <Box className={helperClasses.infoBox}>
             <YBLabel
@@ -155,7 +165,7 @@ export const PerfAdvisorUniverseConfig = ({
             </YBButton>
           </Box>
           {showEditPaConfigDialog && (
-            <EditPerfAdvisorConfigDialog
+            <EditPerfAdvisorConfigModal
               open={showEditPaConfigDialog}
               onRefetchConfig={onRefetchConfig}
               onClose={onEditPaConfigDialogClose}
@@ -163,7 +173,7 @@ export const PerfAdvisorUniverseConfig = ({
             />
           )}
           {showDeletePaConfigDialog && (
-            <UnregisterPerfAdvisorDialog
+            <UnregisterPerfAdvisorModal
               open={showDeletePaConfigDialog}
               onRefetchConfig={onRefetchConfig}
               onClose={onDeletePaConfigDialogClose}
