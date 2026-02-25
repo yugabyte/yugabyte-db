@@ -1978,4 +1978,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable golang YNP driver to use python instead",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.FEATURE_FLAG));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
