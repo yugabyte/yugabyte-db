@@ -562,7 +562,7 @@ func (pc *ProvisionCommand) buildScript(
 	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
 		dir = tmp
 	}
-	f, err := os.CreateTemp(dir, "*.sh")
+	f, err := os.CreateTemp(dir, "tmp*")
 	if err != nil {
 		return "", err
 	}
