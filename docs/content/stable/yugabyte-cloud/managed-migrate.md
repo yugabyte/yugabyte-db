@@ -117,5 +117,6 @@ When you are satisfied, click **Finish** to exit the migration and return to the
 
 ## Limitations
 
-- Migration assessment is only supported for Oracle and PostgreSQL migrations.
+- Currently, migration assessment is only supported for Oracle and PostgreSQL migrations.
 - The status for the [Migrate Data](#migrate-data) step can display 100% completed before the migration is done.
+- Currently, Migration Hub only supports [offline migration](/stable/yugabyte-voyager/migrate/migrate-steps/).
