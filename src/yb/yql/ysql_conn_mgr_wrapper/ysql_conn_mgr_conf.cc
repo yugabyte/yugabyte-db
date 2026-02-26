@@ -310,8 +310,9 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   }
   ysql_max_connections_ = maxConnections;
 
-  CHECK_OK(postgres_address_.ParseString(
-      FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
+  auto parsed = CHECK_RESULT(
+      pgwrapper::ParsePgBindAddresses(FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf::kDefaultPort));
+  postgres_address_ = HostPort(parsed.first_host, parsed.port);
 }
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
