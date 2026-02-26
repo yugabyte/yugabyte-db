@@ -14,25 +14,25 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
-import com.yugabyte.yw.forms.AuditLogConfigParams;
+import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBase {
+public class ModifyKubernetesQueryLoggingConfig extends KubernetesUpgradeTaskBase {
 
   @Inject
-  protected ModifyKubernetesAuditLoggingConfig(
+  protected ModifyKubernetesQueryLoggingConfig(
       BaseTaskDependencies baseTaskDependencies,
       OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, operatorStatusUpdaterFactory);
   }
 
   @Override
-  protected AuditLogConfigParams taskParams() {
-    return (AuditLogConfigParams) taskParams;
+  protected QueryLogConfigParams taskParams() {
+    return (QueryLogConfigParams) taskParams;
   }
 
   @Override
@@ -54,10 +54,10 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
     runUpgrade(
         () -> {
           Universe universe = getUniverse();
-          // Update auditLogConfig on taskParams() clusters, not the fresh universe object.
+          // Update queryLogConfig on taskParams() clusters, not the fresh universe object.
           // taskParams().clusters is what gets passed to KubernetesCommandExecutor for Helm values.
           Cluster cluster = taskParams().getPrimaryCluster();
-          cluster.userIntent.auditLogConfig = taskParams().auditLogConfig;
+          cluster.userIntent.queryLogConfig = taskParams().queryLogConfig;
 
           // Create Kubernetes Upgrade Task.
           createUpgradeTask(
@@ -67,7 +67,7 @@ public class ModifyKubernetesAuditLoggingConfig extends KubernetesUpgradeTaskBas
               /* upgradeTservers */ true,
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
-          updateAndPersistAuditLoggingConfigTask();
+          updateAndPersistQueryLoggingConfigTask();
         });
   }
 }

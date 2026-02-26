@@ -498,6 +498,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyQueryLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyKubernetesQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyKubernetesQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   ModifyMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.upgrade.ModifyMetricsExportConfig.class,
       CustomerTask.TaskType.ModifyMetricsExportConfig,
@@ -1365,6 +1370,7 @@ public enum TaskType {
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
           .put(ModifyQueryLoggingConfig, 57)
+          .put(ModifyKubernetesQueryLoggingConfig, 64)
           .put(ModifyMetricsExportConfig, 58)
           .put(ConfigureExportTelemetryConfig, 59)
           .put(KubernetesToggleImmutableYbc, 60)

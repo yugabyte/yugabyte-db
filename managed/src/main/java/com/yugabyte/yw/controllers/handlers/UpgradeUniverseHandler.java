@@ -815,12 +815,6 @@ public class UpgradeUniverseHandler {
         }
       }
 
-      if (userIntent.providerType.equals(CloudType.kubernetes)) {
-        String errorMessage = "Query log exporter is not supported for kubernetes provider.";
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
       // Verify if the exporter credentials are consistent on the universe.
       // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
       // nodes.
@@ -837,10 +831,34 @@ public class UpgradeUniverseHandler {
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
+
+      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      if (userIntent.providerType.equals(CloudType.kubernetes)
+          && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+        String errorMessage =
+            String.format(
+                "Query log exporter is not supported for universe '%s' running version '%s'. Please"
+                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+                    + " only enable query logs on the universe.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      return submitUpgradeTask(
+          TaskType.ModifyKubernetesQueryLoggingConfig,
+          CustomerTask.TaskType.ModifyQueryLoggingConfig,
+          requestParams,
+          customer,
+          universe);
+    }
     ExportTelemetryConfigParams exportParams =
         buildExportTelemetryConfigParamsFromUniverse(universe);
     // Override the query log config in the export params with the requested config.
