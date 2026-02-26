@@ -72,7 +72,7 @@ To enable or disable connection pooling on a universe:
 
 {{<tags/feature/ea idea="1804">}} EarlyOOM runs on database nodes and kills processes under extreme memory pressure to prevent VM hangs (it prefers keeping PostgreSQL).
 
-To enable EarlyOOM on universes, set the **Enable EarlyOOM** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_earlyoom`) to true.
+While in Early Access, the feature is not available by default. To enable EarlyOOM on universes, set the **Enables Earlyoom Installation on Nodes** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_earlyoom`) to true.
 
 Note that only a Super Admin user can modify Global configuration settings.
 Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
