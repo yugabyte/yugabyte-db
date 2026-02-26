@@ -120,7 +120,7 @@ From your Spark prompt, set up the connection URL and properties to read and wri
 
 ## Store and retrieve data
 
-To read and write data using the JDBC connector, create a [DataFrame](https://spark.apache.org/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) in one of the following ways:
+To read and write data using the JDBC connector, create a [DataFrame](https://archive.apache.org/dist/spark/docs/1.5.1/api/java/org/apache/spark/sql/DataFrame.html) in one of the following ways:
 
 ### Use DataFrame APIs
 

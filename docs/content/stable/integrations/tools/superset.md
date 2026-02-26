@@ -2,7 +2,7 @@
 title: Use Apache Superset with YugabyteDB YSQL
 headerTitle: Apache Superset
 linkTitle: Apache Superset
-description: Use Apache Superset to explore and visulize data in YugabyteDB.
+description: Use Apache Superset to explore and visualize data in YugabyteDB.
 menu:
   stable_integrations:
     identifier: superset
@@ -27,7 +27,7 @@ Load some data to explore and visualize. For a local installation, you can load 
 
 ### Install Superset
 
-You can install Superset from scratch using [Python (pip3)](https://superset.apache.org/docs/installation/installing-superset-from-scratch) (recommended) or [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose).
+You can install Superset from scratch using [PyPI](https://superset.apache.org/docs/installation/pypi) (recommended) or [Docker Compose](https://superset.apache.org/docs/installation/docker-compose).
 
 ### Install the driver
 
@@ -53,7 +53,7 @@ pip install psycopg2-yugabytedb
 
 ## Connect Superset to YugabyteDB
 
-[Launch Superset](https://superset.apache.org/docs/installation/installing-superset-from-scratch/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB v2.19 and later can also be used as a [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
+[Launch Superset](https://superset.apache.org/docs/installation/pypi/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB v2.19 and later can also be used as a [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
 
 To connect Apache Superset to YugabyteDB:
 
