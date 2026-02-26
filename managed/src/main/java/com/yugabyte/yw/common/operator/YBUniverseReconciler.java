@@ -1105,6 +1105,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
   private UserIntent createUserIntent(
       YBUniverse ybUniverse, UUID customerUUID, boolean isCreate, Provider provider) {
+    Optional<Universe> optUniverse = Optional.empty();
+    if (!isCreate) {
+      Customer cust = Customer.getOrBadRequest(customerUUID);
+      optUniverse = Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse));
+    }
     try {
       UserIntent userIntent = new UserIntent();
       // Needed for the UI fix because all k8s universes have this now..
@@ -1128,13 +1133,38 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.regionList =
           provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
 
-      userIntent.masterK8SNodeResourceSpec =
-          operatorUtils.toNodeResourceSpec(
-              ybUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+      // Its possible for the master or tserver resource spec to not be defined in the CRD when the
+      // customer has not yet updated the crd. In that case, we want to ensure the user intent will
+      // fallback to the actual resource spec from the created universe in PG.
+      // OTHERWISE: it is possible for an edit universe task to trigger which can change the
+      // resources used by the pods.
+      if (ybUniverse.getSpec().getMasterResourceSpec() != null || !optUniverse.isPresent()) {
+        userIntent.masterK8SNodeResourceSpec =
+            operatorUtils.toNodeResourceSpec(
+                ybUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+      } else {
+        userIntent.masterK8SNodeResourceSpec =
+            optUniverse
+                .get()
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .masterK8SNodeResourceSpec;
+      }
 
-      userIntent.tserverK8SNodeResourceSpec =
-          operatorUtils.toNodeResourceSpec(
-              ybUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+      if (ybUniverse.getSpec().getTserverResourceSpec() != null || !optUniverse.isPresent()) {
+        userIntent.tserverK8SNodeResourceSpec =
+            operatorUtils.toNodeResourceSpec(
+                ybUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+      } else {
+        userIntent.tserverK8SNodeResourceSpec =
+            optUniverse
+                .get()
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .tserverK8SNodeResourceSpec;
+      }
 
       userIntent.numNodes =
           ybUniverse.getSpec().getNumNodes() != null

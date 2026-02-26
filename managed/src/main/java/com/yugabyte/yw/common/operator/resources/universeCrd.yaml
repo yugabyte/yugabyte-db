@@ -394,6 +394,7 @@ spec:
                                 x-kubernetes-int-or-string: true
                   master:
                     type: object
+                    x-kubernetes-preserve-unknown-fields: true
                     properties:
                       affinity:
                         description: Pod scheduling affinity settings
@@ -814,9 +815,6 @@ spec:
                                   type: array
                                   items:
                                     type: string
-
-
-
                       extraEnv:
                         type: array
                         items:
@@ -895,6 +893,7 @@ spec:
                               type: string
                   tserver:
                     type: object
+                    x-kubernetes-preserve-unknown-fields: true
                     properties:
                       affinity:
                         description: Pod scheduling affinity settings
