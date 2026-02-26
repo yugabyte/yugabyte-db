@@ -861,6 +861,29 @@ TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
 }
 
+TEST_F(PgCloneTest, CloneWithPgStatistics) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE my_table (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(source_conn_->Execute(
+      "INSERT INTO my_table SELECT i, i % 3 FROM generate_series(1, 1000) AS i"));
+  ASSERT_OK(source_conn_->Execute("ANALYZE my_table"));
+
+  const auto stats_query =
+      "SELECT null_frac, avg_width, n_distinct "
+      "FROM pg_stats WHERE tablename = 'my_table' ORDER BY attname";
+  auto source_stats = ASSERT_RESULT(source_conn_->FetchAllAsString(stats_query));
+  LOG(INFO) << "Source stats: " << source_stats;
+  ASSERT_FALSE(source_stats.empty());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto target_stats = ASSERT_RESULT(target_conn.FetchAllAsString(stats_query));
+  LOG(INFO) << "Target stats: " << target_stats;
+
+  ASSERT_EQ(source_stats, target_stats);
+}
+
 class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
