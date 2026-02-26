@@ -1,9 +1,13 @@
+import React from 'react';
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
+import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 
 import { PauseSlot } from './components/PauseSlot';
-import type { DBUpgradeFormFields } from '../types';
+import type { AzUpgradeStep, DBUpgradeFormFields } from '../types';
+import { AzClusterKind, DropReason } from '../constants';
+import { applySlotSwap, getSlotId, parseSlotIndex } from '../utils/upgradeOrderUtils';
 
 import DragHandleIcon from '@app/redesign/assets/draggable.svg';
 
@@ -71,6 +75,18 @@ const useStyles = makeStyles((theme) => ({
 
     color: theme.palette.grey[600]
   },
+  azSlotsColumn: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  azSlot: {
+    boxSizing: 'border-box',
+    width: '100%',
+    
+    borderRadius: theme.shape.borderRadius,
+    border: `2px dashed ${theme.palette.grey[400]}`,
+    backgroundColor: 'transparent'
+  },
   azContainer: {
     display: 'flex',
     gap: theme.spacing(2),
@@ -88,6 +104,12 @@ const useStyles = makeStyles((theme) => ({
     lineHeight: '16px',
     fontWeight: 500,
     color: theme.palette.grey[900]
+  },
+  // Collapse react-beautiful-dnd droppable placeholder when this slot is not the drag source so it doesn't add gap.
+  placeholderWrapperCollapsed: {
+    minHeight: 0,
+    height: 0,
+    overflow: 'hidden'
   }
 }));
 
@@ -165,6 +187,44 @@ export const UpgradePlanStep = () => {
     });
   };
 
+  const createDragEndHandler = (cluster: AzClusterKind) => (dropResult: DropResult) => {
+    const { source, destination, reason: dropReason } = dropResult;
+    if (
+      dropReason !== DropReason.DROP ||
+      !destination ||
+      source.droppableId === destination.droppableId
+    ) {
+      return;
+    }
+
+    const sourceIndex = parseSlotIndex(source.droppableId);
+    const destIndex = parseSlotIndex(destination.droppableId);
+    if (sourceIndex === null || destIndex === null) {
+      return;
+    }
+
+    const currentCanaryUpgradeConfig = formMethods.getValues('canaryUpgradeConfig');
+    if (!currentCanaryUpgradeConfig) {
+      return;
+    }
+
+    const azOrderKey =
+      cluster === AzClusterKind.PRIMARY ? 'primaryClusterAzOrder' : 'readReplicaClusterAzOrder';
+    const azStepsKey =
+      cluster === AzClusterKind.PRIMARY ? 'primaryClusterAzSteps' : 'readReplicaClusterAzSteps';
+    const azOrder = currentCanaryUpgradeConfig[azOrderKey] ?? [];
+    const azSteps = (currentCanaryUpgradeConfig[azStepsKey] ?? {}) as Record<string, AzUpgradeStep>;
+    const { newAzOrder, newAzSteps } = applySlotSwap(azOrder, azSteps, sourceIndex, destIndex);
+    formMethods.setValue('canaryUpgradeConfig', {
+      ...currentCanaryUpgradeConfig,
+      [azOrderKey]: newAzOrder,
+      [azStepsKey]: newAzSteps
+    });
+  };
+
+  const handlePrimaryDragEnd = createDragEndHandler(AzClusterKind.PRIMARY);
+  const handleReadReplicaDragEnd = createDragEndHandler(AzClusterKind.READ_REPLICA);
+
   const hasReadReplica = readReplicaAzSteps.length > 0;
 
   return (
@@ -184,7 +244,6 @@ export const UpgradePlanStep = () => {
           </div>
         </div>
 
-        {/* Pause after masters (between stage 1 and 2) */}
         <PauseSlot
           isPaused={pauseAfterMasters}
           onToggle={() => setPauseAfterMasters(!pauseAfterMasters)}
@@ -193,39 +252,77 @@ export const UpgradePlanStep = () => {
         />
 
         {/* Stage 2: Upgrade Primary Cluster T-Servers */}
-        <div className={classes.upgradeStageContainer}>
-          <div className={classes.upgradeStageHeader}>
-            <div className={classes.iconContainer}>
-              <Typography variant="subtitle1">2</Typography>
-            </div>
-            <Typography variant="body1">
-              {t('upgradeStage.upgradePrimaryClusterTServers')}
-            </Typography>
-          </div>
-          <div className={classes.executionOrderContainer}>
-            <Typography variant="subtitle1" className={classes.executionOrderText}>
-              {t('executionOrder')}
-            </Typography>
-            {primaryAzSteps.map((azStep, index) => (
-              <div key={azStep.azUuid}>
-                <div className={classes.azContainer}>
-                  <DragHandleIcon />
-                  <Typography className={classes.bodyText}>{azStep.displayName}</Typography>
-                </div>
-                {index < primaryAzSteps.length - 1 && (
-                  <PauseSlot
-                    isPaused={azStep.pauseAfterTserverUpgrade}
-                    onToggle={() => togglePrimaryPause(azStep.azUuid)}
-                    isRecommended={index === 0}
-                    testIdSuffix={`primary-${index}`}
-                  />
-                )}
+        <DragDropContext onDragEnd={handlePrimaryDragEnd}>
+          <div className={classes.upgradeStageContainer}>
+            <div className={classes.upgradeStageHeader}>
+              <div className={classes.iconContainer}>
+                <Typography variant="subtitle1">2</Typography>
               </div>
-            ))}
+              <Typography variant="body1">
+                {t('upgradeStage.upgradePrimaryClusterTServers')}
+              </Typography>
+            </div>
+            <div className={classes.executionOrderContainer}>
+              <Typography variant="subtitle1" className={classes.executionOrderText}>
+                {t('executionOrder')}
+              </Typography>
+              <div className={classes.azSlotsColumn}>
+                {primaryAzSteps.map((azStep, index) => (
+                  <React.Fragment key={azStep.azUuid}>
+                    <Droppable droppableId={getSlotId(index)} type={AzClusterKind.PRIMARY}>
+                      {(droppableProvided, droppableSnapshot) => {
+                        const isSourceSlot = droppableSnapshot.draggingFromThisWith;
+                        return (
+                          <div
+                            ref={droppableProvided.innerRef}
+                            {...droppableProvided.droppableProps}
+                            className={classes.azSlot}
+                          >
+                            <Draggable draggableId={`primary-${azStep.azUuid}`} index={0}>
+                              {(draggableProvided, draggableSnapshot) => (
+                                <div
+                                  ref={draggableProvided.innerRef}
+                                  {...draggableProvided.draggableProps}
+                                  {...draggableProvided.dragHandleProps}
+                                  className={classes.azContainer}
+                                  style={{
+                                    ...draggableProvided.draggableProps.style,
+                                    ...(draggableSnapshot.isDragging ? {} : { transform: 'none' })
+                                  }}
+                                >
+                                  <DragHandleIcon />
+                                  <Typography className={classes.bodyText}>
+                                    {azStep.displayName}
+                                  </Typography>
+                                </div>
+                              )}
+                            </Draggable>
+                            <div
+                              className={
+                                !isSourceSlot ? classes.placeholderWrapperCollapsed : undefined
+                              }
+                            >
+                              {droppableProvided.placeholder}
+                            </div>
+                          </div>
+                        );
+                      }}
+                    </Droppable>
+                    {index < primaryAzSteps.length - 1 && (
+                      <PauseSlot
+                        isPaused={azStep.pauseAfterTserverUpgrade}
+                        onToggle={() => togglePrimaryPause(azStep.azUuid)}
+                        isRecommended={index === 0}
+                        testIdSuffix={`primary-${index}`}
+                      />
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        </DragDropContext>
 
-        {/* Pause before read replica (between stage 2 and 3) */}
         {hasReadReplica && (
           <PauseSlot
             isPaused={pauseBeforeReadReplica}
@@ -237,36 +334,75 @@ export const UpgradePlanStep = () => {
 
         {/* Stage 3: Upgrade Read Replica T-Servers */}
         {hasReadReplica && (
-          <div className={classes.upgradeStageContainer}>
-            <div className={classes.upgradeStageHeader}>
-              <div className={classes.iconContainer}>
-                <Typography variant="subtitle1">3</Typography>
-              </div>
-              <Typography variant="body1">
-                {t('upgradeStage.upgradeReadReplicaTServers')}
-              </Typography>
-            </div>
-            <div className={classes.executionOrderContainer}>
-              <Typography variant="subtitle1" className={classes.executionOrderText}>
-                {t('executionOrder')}
-              </Typography>
-              {readReplicaAzSteps.map((azStep, index) => (
-                <div key={azStep.azUuid}>
-                  <div className={classes.azContainer}>
-                    <DragHandleIcon />
-                    <Typography className={classes.bodyText}>{azStep.displayName}</Typography>
-                  </div>
-                  {index < readReplicaAzSteps.length - 1 && (
-                    <PauseSlot
-                      isPaused={azStep.pauseAfterTserverUpgrade}
-                      onToggle={() => toggleReadReplicaPause(azStep.azUuid)}
-                      testIdSuffix={`readReplica-${index}`}
-                    />
-                  )}
+          <DragDropContext onDragEnd={handleReadReplicaDragEnd}>
+            <div className={classes.upgradeStageContainer}>
+              <div className={classes.upgradeStageHeader}>
+                <div className={classes.iconContainer}>
+                  <Typography variant="subtitle1">3</Typography>
                 </div>
-              ))}
+                <Typography variant="body1">
+                  {t('upgradeStage.upgradeReadReplicaTServers')}
+                </Typography>
+              </div>
+              <div className={classes.executionOrderContainer}>
+                <Typography variant="subtitle1" className={classes.executionOrderText}>
+                  {t('executionOrder')}
+                </Typography>
+                <div className={classes.azSlotsColumn}>
+                  {readReplicaAzSteps.map((azStep, index) => (
+                    <React.Fragment key={azStep.azUuid}>
+                      <Droppable droppableId={getSlotId(index)} type={AzClusterKind.READ_REPLICA}>
+                        {(droppableProvided, droppableSnapshot) => {
+                          const isSourceSlot = droppableSnapshot.draggingFromThisWith;
+                          return (
+                            <div
+                              ref={droppableProvided.innerRef}
+                              {...droppableProvided.droppableProps}
+                              className={classes.azSlot}
+                            >
+                              <Draggable draggableId={`read-replica-${azStep.azUuid}`} index={0}>
+                                {(draggableProvided, draggableSnapshot) => (
+                                  <div
+                                    ref={draggableProvided.innerRef}
+                                    {...draggableProvided.draggableProps}
+                                    {...draggableProvided.dragHandleProps}
+                                    className={classes.azContainer}
+                                    style={{
+                                      ...draggableProvided.draggableProps.style,
+                                      ...(draggableSnapshot.isDragging ? {} : { transform: 'none' })
+                                    }}
+                                  >
+                                    <DragHandleIcon />
+                                    <Typography className={classes.bodyText}>
+                                      {azStep.displayName}
+                                    </Typography>
+                                  </div>
+                                )}
+                              </Draggable>
+                              <div
+                                className={
+                                  !isSourceSlot ? classes.placeholderWrapperCollapsed : undefined
+                                }
+                              >
+                                {droppableProvided.placeholder}
+                              </div>
+                            </div>
+                          );
+                        }}
+                      </Droppable>
+                      {index < readReplicaAzSteps.length - 1 && (
+                        <PauseSlot
+                          isPaused={azStep.pauseAfterTserverUpgrade}
+                          onToggle={() => toggleReadReplicaPause(azStep.azUuid)}
+                          testIdSuffix={`readReplica-${index}`}
+                        />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          </DragDropContext>
         )}
       </div>
     </div>
