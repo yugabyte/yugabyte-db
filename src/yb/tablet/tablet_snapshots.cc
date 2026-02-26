@@ -70,6 +70,10 @@ DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
 DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
     "The probability to delay creating snapshot by 1 second");
 
+DEFINE_test_flag(bool, pause_create_checkpoint, false,
+    "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
+    "until the flag is reset.");
+
 namespace yb::tablet {
 
 namespace {
@@ -683,13 +687,19 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 }
 
 Status TabletSnapshots::CreateCheckpoint(
-    const std::string& dir, const CreateCheckpointIn create_checkpoint_in) {
+    const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+    TabletSnapshots::UseTryLock use_try_lock) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status status;
   {
-    std::lock_guard lock(create_checkpoint_lock());
+    std::unique_lock lock(create_checkpoint_lock(), std::defer_lock);
+    if (!use_try_lock) {
+      lock.lock();
+    } else if (!lock.try_lock()) {
+        return STATUS(InternalError, "Unable to acquire checkpoint lock");
+    }
 
     if (!has_regular_db()) {
       LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
@@ -700,6 +710,8 @@ Status TabletSnapshots::CreateCheckpoint(
     auto parent_dir = DirName(dir);
     RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
                           Format("Unable to create checkpoints directory $0", parent_dir));
+
+    TEST_PAUSE_IF_FLAG(TEST_pause_create_checkpoint);
 
     // Order does not matter because we flush both DBs and does not have parallel writes.
     status = DoCreateCheckpoint(dir, create_checkpoint_in);

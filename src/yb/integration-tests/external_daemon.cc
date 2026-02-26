@@ -592,6 +592,11 @@ Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(const JsonValue& m
   return metric_value.GetUint32();
 }
 
+template <>
+Result<int32_t> ExternalDaemon::ExtractMetricValue<int32_t>(const JsonValue& metric_value) {
+  return metric_value.GetInt32();
+}
+
 string ExternalDaemon::LogPrefix() {
   return Format("{ daemon_id: $0 bound_rpc: $1 } ", daemon_id_, bound_rpc_);
 }
