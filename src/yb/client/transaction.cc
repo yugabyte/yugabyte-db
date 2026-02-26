@@ -613,8 +613,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       UniqueLock lock(mutex_);
       auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
+        auto should_abort = state_.load(std::memory_order_acquire) == TransactionState::kRunning;
         lock.unlock();
         callback(status);
+        // Since the backend cannot recover from this commit failure, abort explicitly so the
+        // status tablet is notified immediately; otherwise the transaction could remain alive until
+        // all strong references drop and the status tablet expires it due to missed heartbeats.
+        if (should_abort) {
+          Abort(TransactionRpcDeadline());
+        }
         return;
       }
       state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
