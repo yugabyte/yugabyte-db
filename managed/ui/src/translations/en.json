@@ -278,6 +278,12 @@
               "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
             }
           },
+          "stepper": {
+            "dbVersion": "DATABASE VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE"
+          },
           "dbVersionStep": {
             "stepTitle": "Database Version",
             "stepDescription": "What database version do you want to upgrade to?",
