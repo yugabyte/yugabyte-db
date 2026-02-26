@@ -205,10 +205,13 @@ void SetProxyAddresses() {
     }
   }
 
-  yb::HostPort postgres_address;
-  CHECK_OK(postgres_address.ParseString(FLAGS_pgsql_proxy_bind_address, freeport));
+  // The port-conflict handling above may have overridden the port in pgsql_proxy_bind_address.
+  // Parse and validate that all addresses use the same port (PostgreSQL only supports one).
+  const auto parsed = CHECK_RESULT(
+      pgwrapper::ParsePgBindAddresses(FLAGS_pgsql_proxy_bind_address, freeport));
   LOG(INFO) << "ysql connection manager is enabled";
   LOG(INFO) << "Using pgsql_proxy_bind_address = " << FLAGS_pgsql_proxy_bind_address;
+  LOG(INFO) << "Using ysql backend port = " << parsed.port;
   LOG(INFO) << "Using ysql_connection_manager port = " << FLAGS_ysql_conn_mgr_port;
 }
 
