@@ -1645,6 +1645,19 @@ class TransactionParticipant::Impl
 
     std::lock_guard lock(mutex_);
 
+    // For the existing transaction we should continue to use its mode.
+    auto it = transactions_.find(id);
+    if (it != transactions_.end()) {
+      VLOG_WITH_PREFIX(4) << "Found the metadata for the transaction " << id
+                          << " metadata:" << (**it).metadata();
+      if (IsFastMode((**it).metadata())) {
+        const auto idx =
+            isolation == IsolationLevel::SERIALIZABLE_ISOLATION ? kSIModeIdx : kRRRCModeIdx;
+        return FastModeTransactionScope(shared_from_this(), idx);
+      }
+      return FastModeTransactionScope();
+    }
+
     // Check the fast-mode counters to make a decision.
     switch (isolation) {
       case IsolationLevel::SNAPSHOT_ISOLATION: FALLTHROUGH_INTENDED;

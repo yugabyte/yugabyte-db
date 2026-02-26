@@ -206,4 +206,40 @@ TEST_F(EnableDisableTest, TestSerializableEnableDisable) {
   ASSERT_OK(conn.CommitTransaction());
 }
 
+// Test the case where the skip prefix lock is toggled after the first op.
+TEST_F(EnableDisableTest, TestEnableDisableFirstOpSlowMode) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test (h text, r text, v text, PRIMARY KEY((h), r))"));
+
+  // Insert row1 {1, 3, 'a', 'b'} and row2 {2, 4, 'a', 'b'}
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES ('1', '3', 'a')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES ('2', '4', 'a')"));
+
+  // Start a snapshot txn with higher priority and update row2
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("SET yb_transaction_priority_lower_bound=0.5"));
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test WHERE h = '2' AND r = '4' FOR UPDATE"));
+
+  // Enable skip_prefix_locks and update row1
+  // With skip_prefix_locks enabled, this should succeed even though conn1 has intents on h=1
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0), "skip_prefix_locks", "true"));
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test WHERE h = '1' AND r = '3' FOR UPDATE"));
+
+  // Disable skip_prefix_locks, start another txn with SERIALIZABLE, this should fail with conflict.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0), "skip_prefix_locks", "false"));
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn2.Execute("SET yb_transaction_priority_upper_bound=0.4"));
+
+  ASSERT_NOK_STR_CONTAINS(
+      conn2.Fetch("SELECT * FROM test WHERE h = '1' FOR UPDATE"),
+      "could not serialize access due to concurrent update");
+
+  // Clean up
+  ASSERT_OK(conn2.RollbackTransaction());
+  ASSERT_OK(conn1.CommitTransaction());
+}
+
 } // namespace yb
