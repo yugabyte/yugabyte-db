@@ -4953,15 +4953,31 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       @Nullable PreInMemoryApplyTask preInMemoryApplyTask) {
     Map<String, String> currentYbcFlagsMap =
         new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
-    ControllerFlagsSetRequest controllerFlagsSetRequest =
-        ybcManager.prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
 
     List<SubTaskGroup> inMemoryGflagsUpgrades = new ArrayList<>();
-    for (Cluster c : universe.getUniverseDetails().clusters) {
-      List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
-      inMemoryGflagsUpgrades.add(
-          createSetYbcThrottleParamsInMemory(universe, nodes, controllerFlagsSetRequest));
-    }
+    Util.splitTserversByProviders(universe)
+        .forEach(
+            (providerUUID, nodes) -> {
+              ControllerFlagsSetRequest controllerFlagsSetRequest =
+                  ybcManager.prepareFlagsSetRequest(
+                      universe,
+                      Provider.getOrBadRequest(providerUUID),
+                      nodes,
+                      throttleParams,
+                      currentYbcFlagsMap);
+              for (Cluster c : universe.getUniverseDetails().clusters) {
+                List<NodeDetails> clusterNodes =
+                    nodes.stream()
+                        .filter(n -> n.isInPlacement(c.uuid))
+                        .collect(Collectors.toList());
+                if (!clusterNodes.isEmpty()) {
+                  inMemoryGflagsUpgrades.add(
+                      createSetYbcThrottleParamsInMemory(
+                          universe, clusterNodes, controllerFlagsSetRequest));
+                }
+              }
+            });
+
     // For universe using in-built YBC, run helm upgrade with new ybc gflags
     if (preInMemoryApplyTask != null) {
       preInMemoryApplyTask.runPreApply(universe, currentYbcFlagsMap);

@@ -56,6 +56,7 @@ import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -393,7 +394,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return allowedTaskTypes;
   }
 
-  public static String getProducerCertsDir(UUID providerUuid) {
+  private static String getProducerCertsDir(UUID providerUuid) {
     Provider provider = Provider.getOrBadRequest(providerUuid);
     // For Kubernetes universe, we must use the PV instead of home directory.
     return Paths.get(
@@ -404,8 +405,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .toString();
   }
 
-  public static String getProducerCertsDir(String providerUuid) {
-    return getProducerCertsDir(UUID.fromString(providerUuid));
+  public static String getProducerCertsDir(UniverseDefinitionTaskParams.UserIntent userIntent) {
+    Set<String> dirs = new HashSet<>();
+    for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
+      dirs.add(getProducerCertsDir(providerUUID));
+    }
+    if (dirs.isEmpty()) {
+      throw new IllegalArgumentException("No providers found to determine xCluster cert dir");
+    }
+    // For now we will limit multicloud universes to have the same yb_home across all providers.
+    if (dirs.size() > 1) {
+      throw new IllegalArgumentException("Cannot use providers with different cert dirs: " + dirs);
+    }
+    return dirs.iterator().next();
   }
 
   protected SubTaskGroup createXClusterConfigSetupTask(

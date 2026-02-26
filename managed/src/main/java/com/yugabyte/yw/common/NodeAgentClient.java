@@ -782,30 +782,37 @@ public class NodeAgentClient {
   // This checks if node agent is enabled for the universe with additional provider check.
   public Optional<Boolean> isNodeAgentEnabled(
       Universe universe, Predicate<Provider> additionalProviderPredicate) {
-    Map<String, Boolean> providerEnabledMap = new HashMap<>();
+
+    Map<UUID, Boolean> providerEnabledMap = new HashMap<>();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      if (cluster.userIntent == null
-          || cluster.userIntent.providerType == CloudType.kubernetes
-          || cluster.userIntent.provider == null) {
+
+      boolean isK8s =
+          cluster.userIntent != null
+              && cluster.userIntent.getAllCloudTypes().contains(CloudType.kubernetes);
+
+      if (cluster.userIntent == null || cluster.userIntent.getAllCloudTypes().isEmpty() || isK8s) {
         // Unsupported cluster is found.
         return Optional.empty();
       }
-      boolean enabled =
-          providerEnabledMap.computeIfAbsent(
-              cluster.userIntent.provider,
-              k -> {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-                boolean isEnabled =
-                    additionalProviderPredicate == null
-                        || additionalProviderPredicate.test(provider);
-                if (!isEnabled) {
-                  log.debug(
-                      "Node agent is not enabled for provider {} in additional check",
-                      provider.getUuid());
-                }
-                return isEnabled;
-              });
+      boolean enabled = true;
+      for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+        enabled =
+            enabled
+                && providerEnabledMap.computeIfAbsent(
+                    providerUUID,
+                    k -> {
+                      Provider provider = Provider.getOrBadRequest(providerUUID);
+                      boolean isEnabled =
+                          additionalProviderPredicate == null
+                              || additionalProviderPredicate.test(provider);
+                      if (!isEnabled) {
+                        log.debug(
+                            "Node agent is not enabled for provider {} in additional check",
+                            provider.getUuid());
+                      }
+                      return isEnabled;
+                    });
+      }
       if (!enabled) {
         return Optional.of(false);
       }

@@ -992,11 +992,13 @@ public class PlacementInfoUtil {
                     zonesList.add(placementAZ);
                   });
         } else {
+          // This code path should be accessible for single provider only.
+          UUID providerUUID = userIntent.maybeGetSingleProviderUUID().get();
           throw new IllegalStateException(
               "Couldn't find "
                   + deltaNodes
                   + " node(s) of type "
-                  + userIntent.getBaseInstanceType()); // TODO
+                  + userIntent.getBaseInstanceType(providerUUID));
         }
       }
       changed = false;
@@ -3037,7 +3039,9 @@ public class PlacementInfoUtil {
     appendAZsForRegions(allAzsInRegions, defaultRegions, azByRegionMap);
 
     if (allAzsInRegions.isEmpty()) {
-      String instanceType = userIntent.getBaseInstanceType();
+      // This code path should be accessible for a single provider only
+      String instanceType =
+          userIntent.getBaseInstanceType(userIntent.maybeGetSingleProviderUUID().get());
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(

@@ -1689,6 +1689,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getProviderSpecProperty(providerUUID, spec -> spec.instanceTags, u -> u.instanceTags);
     }
 
+    public K8SNodeResourceSpec getTserverK8SNodeResourceSpec(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getK8SNodeResourceSpec() : null;
+          },
+          u -> u.tserverK8SNodeResourceSpec);
+    }
+
     public void setProviderAccessKey(UUID providerUUID, String newAccessKeyCode) {
       setProviderSpecProperty(
           providerUUID,
@@ -1842,9 +1853,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return serverType;
     }
 
-    @JsonIgnore
-    public String getBaseInstanceType() {
-      return getInstanceType(null);
+    public String getBaseInstanceType(@NotNull UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID,
+          spec -> {
+            HierarchicalNodesSpec.NodeSpec tserverSpec =
+                spec.getNodesSpecs().getNodesSpec().getTserverSpecification();
+            return tserverSpec != null ? tserverSpec.getInstanceType() : null;
+          },
+          userIntent -> userIntent.instanceType);
     }
 
     public String getInstanceType(@Nullable UUID azUUID) {

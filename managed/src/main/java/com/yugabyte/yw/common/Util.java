@@ -1094,6 +1094,14 @@ public class Util {
         .collect(Collectors.toSet());
   }
 
+  public static Collection<Provider> getAllProviders(UniverseDefinitionTaskParams taskParams) {
+    return taskParams.clusters.stream()
+        .flatMap(c -> c.userIntent.getAllProviderUUIDs().stream())
+        .distinct()
+        .map(Provider::getOrBadRequest)
+        .collect(Collectors.toSet());
+  }
+
   /**
    * Filling old fields from provider specifications if not present (for compatibility with old UI)
    *
@@ -1380,8 +1388,7 @@ public class Util {
    * @param cluster
    * @return
    */
-  public static Function<NodeDetails, Provider> getProviderGetter(
-      UniverseDefinitionTaskParams.Cluster cluster) {
+  public static Function<NodeDetails, Provider> getProviderGetter(Cluster cluster) {
     // Caching by AZ.
     Map<UUID, Provider> providerMap = new HashMap<>();
     return (n) -> providerMap.computeIfAbsent(n.azUuid, uuid -> getProviderForNode(n, cluster));
@@ -1604,6 +1611,18 @@ public class Util {
 
   public static Provider getProviderByAz(UUID azUuid) {
     return AvailabilityZone.getOrBadRequest(azUuid).getProvider();
+  }
+
+  public static Map<UUID, List<NodeDetails>> splitTserversByProviders(Universe universe) {
+    Map<UUID, List<NodeDetails>> byProvider = new HashMap<>();
+    for (NodeDetails nodeDetails : universe.getTServers()) {
+      Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+      UUID providerUUID = cluster.getProviderUUIDForNode(nodeDetails);
+      List<NodeDetails> lst = byProvider.getOrDefault(providerUUID, new ArrayList<>());
+      lst.add(nodeDetails);
+      byProvider.put(providerUUID, lst);
+    }
+    return byProvider;
   }
 
   /**

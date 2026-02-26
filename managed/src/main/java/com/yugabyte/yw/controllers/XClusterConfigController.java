@@ -1784,7 +1784,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.getProducerCertsDir(
-                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
+                    targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent)));
       }
     } catch (IllegalArgumentException e) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());

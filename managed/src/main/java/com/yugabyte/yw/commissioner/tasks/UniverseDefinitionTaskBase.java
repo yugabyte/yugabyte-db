@@ -4113,10 +4113,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               boolean configureCgroup = true;
               // If any cluster cannot configure cgroup, set it to false.
               for (Cluster c : u.getUniverseDetails().clusters) {
-                Provider provider =
-                    Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-                boolean configure = Util.configureCgroup(c.userIntent, provider, true, confGetter);
-                configureCgroup = configure && configureCgroup;
+                for (UUID providerUUID : c.userIntent.getAllProviderUUIDs()) {
+                  Provider provider = Provider.getOrBadRequest(providerUUID);
+                  boolean configure =
+                      Util.configureCgroup(c.userIntent, provider, true, confGetter);
+                  configureCgroup = configure && configureCgroup;
+                }
               }
               u.getUniverseDetails()
                   .getPrimaryCluster()
@@ -4410,19 +4412,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   protected SubTaskGroup createCheckDuplicateInstances(
       Universe universe, Collection<NodeDetails> nodes) {
-    // Cache cloud types for clusters to avoid multiple provider lookups.
-    final Map<UUID, CloudType> cloudTypes = new HashMap<>();
     return doInPrecheckSubTaskGroup(
         "CheckDuplicateInstances",
         subTaskGroup -> {
           for (NodeDetails node : nodes) {
             Cluster cluster = universe.getCluster(node.placementUuid);
-            CloudType cloudType =
-                cloudTypes.computeIfAbsent(
-                    node.placementUuid,
-                    k ->
-                        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider))
-                            .getCloudCode());
+            CloudType cloudType = cluster.getProviderCloudType(node);
             if (!cloudType.isPublicCloud()) {
               log.debug(
                   "Skipping duplicate instance check for non-CSP node {} in cluster {}",

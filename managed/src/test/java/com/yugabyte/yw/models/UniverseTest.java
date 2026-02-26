@@ -917,12 +917,13 @@ public class UniverseTest extends FakeDBApplication {
     overrides.setAzOverrides(constructOverrides(az1, "instType1", az2, "instType2"));
     UserIntent userIntent = new UserIntent();
     userIntent.instanceType = "instType";
+    userIntent.provider = UUID.randomUUID().toString();
     userIntent.masterInstanceType = "masterInstType";
     // No overrides
     assertEquals("instType", userIntent.getInstanceType(az1));
     assertEquals("instType", userIntent.getInstanceType(az2));
     assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
-    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType", userIntent.getBaseInstanceType(UUID.fromString(userIntent.provider)));
     assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, null));
     assertEquals("instType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, null));
     userIntent.dedicatedNodes = true;
@@ -934,7 +935,7 @@ public class UniverseTest extends FakeDBApplication {
     assertEquals("instType1", userIntent.getInstanceType(az1));
     assertEquals("instType2", userIntent.getInstanceType(az2));
     assertEquals("instType", userIntent.getInstanceType(UUID.randomUUID()));
-    assertEquals("instType", userIntent.getBaseInstanceType());
+    assertEquals("instType", userIntent.getBaseInstanceType(UUID.fromString(userIntent.provider)));
     assertEquals("instType1", userIntent.getInstanceType(UniverseTaskBase.ServerType.TSERVER, az1));
     assertEquals(
         "masterInstType", userIntent.getInstanceType(UniverseTaskBase.ServerType.MASTER, az1));

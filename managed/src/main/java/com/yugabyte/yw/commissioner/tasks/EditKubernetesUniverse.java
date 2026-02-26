@@ -1134,11 +1134,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     }
     UUID clusterUUID =
         isReadOnlyCluster ? taskParams().getReadOnlyClusters().get(0).uuid : primaryCluster.uuid;
-    String providerStr =
+    Provider provider =
         isReadOnlyCluster
-            ? taskParams().getReadOnlyClusters().get(0).userIntent.provider
-            : primaryCluster.userIntent.provider;
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerStr));
+            ? Util.getSingleProvider(taskParams().getReadOnlyClusters().get(0))
+            : Util.getSingleProvider(primaryCluster);
     boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
     String nodePrefix = taskParams().nodePrefix;
 

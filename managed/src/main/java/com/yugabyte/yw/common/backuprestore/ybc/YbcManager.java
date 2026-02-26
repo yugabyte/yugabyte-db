@@ -229,16 +229,16 @@ public class YbcManager {
       Map<String, String> currentYbcFlagsMap =
           new HashMap<>(universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
-      ControllerFlagsSetRequest controllerFlagsSetRequest =
-          prepareFlagsSetRequest(universe, throttleParams, currentYbcFlagsMap);
-      // Stream through clusters to set throttle param values.
-      universe.getUniverseDetails().clusters.stream()
-          .forEach(
-              c -> {
-                List<NodeDetails> nodes = universe.getTserversInCluster(c.uuid);
-                // On node by node basis set the throttle params.
-                setThrottleParamsOnYbcServers(universe, nodes, controllerFlagsSetRequest);
-              });
+      Map<UUID, List<NodeDetails>> byProvider = Util.splitTserversByProviders(universe);
+      byProvider.forEach(
+          (providerUUID, nodes) -> {
+            setThrottleParamsOnServers(
+                universe,
+                Provider.getOrBadRequest(providerUUID),
+                nodes,
+                throttleParams,
+                currentYbcFlagsMap);
+          });
 
       // Update universe details with modified values.
       UniverseUpdater updater =
@@ -261,6 +261,26 @@ public class YbcManager {
     }
   }
 
+  private void setThrottleParamsOnServers(
+      Universe universe,
+      Provider provider,
+      List<NodeDetails> nodes,
+      YbcThrottleParameters throttleParams,
+      Map<String, String> currentYbcFlagsMap) {
+    ControllerFlagsSetRequest controllerFlagsSetRequest =
+        prepareFlagsSetRequest(universe, provider, nodes, throttleParams, currentYbcFlagsMap);
+
+    // Stream through clusters to set throttle param values.
+    universe.getUniverseDetails().clusters.stream()
+        .forEach(
+            c -> {
+              List<NodeDetails> clusterNodes =
+                  nodes.stream().filter(n -> n.isInPlacement(c.uuid)).collect(Collectors.toList());
+              // On node by node basis set the throttle params.
+              setThrottleParamsOnYbcServers(universe, clusterNodes, controllerFlagsSetRequest);
+            });
+  }
+
   /**
    * Prepare ControllerFlagsSetRequest and modify the currentYbcFlagsMap with modified gflags.
    *
@@ -271,6 +291,8 @@ public class YbcManager {
    */
   public ControllerFlagsSetRequest prepareFlagsSetRequest(
       Universe universe,
+      Provider provider,
+      List<NodeDetails> nodes,
       YbcThrottleParameters throttleParams,
       Map<String, String> currentYbcFlagsMap) {
     ControllerFlagsSetRequest.Builder controllerFlagsSetterBuilder =
@@ -282,7 +304,6 @@ public class YbcManager {
     List<String> toRemove = new ArrayList<>();
     Map<String, String> toAddModify = new HashMap<>();
     Map<String, Long> paramsToSet = throttleParams.getThrottleFlagsMap();
-    List<NodeDetails> tsNodes = universe.getTServersInPrimaryCluster();
     if (throttleParams.resetDefaults) {
       toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
     }
@@ -290,7 +311,8 @@ public class YbcManager {
     // values.
     populateControllerThrottleParamsMap(
         universe,
-        tsNodes,
+        provider,
+        nodes,
         toAddModify,
         nonRestartSettableControllerFlagsBuilder,
         paramsToSet,
@@ -306,6 +328,7 @@ public class YbcManager {
 
   public void populateControllerThrottleParamsMap(
       Universe universe,
+      Provider provider,
       List<NodeDetails> tsNodes,
       Map<String, String> toAddModify,
       NonRestartSettableControllerFlags.Builder nonRestartSettableControllerFlagsBuilder,
@@ -314,7 +337,6 @@ public class YbcManager {
     Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
     String certFile = universe.getCertificateNodetoNode();
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    UUID providerUUID = UUID.fromString(primaryCluster.userIntent.provider);
     List<String> tsIPs =
         tsNodes.stream().map(nD -> nD.cloudInfo.private_ip).collect(Collectors.toList());
 
@@ -335,12 +357,14 @@ public class YbcManager {
       cInstanceTypeCores =
           (int)
               Math.ceil(
-                  InstanceType.getOrBadRequest(providerUUID, tsNodes.get(0).cloudInfo.instance_type)
+                  InstanceType.getOrBadRequest(
+                          provider.getUuid(), tsNodes.get(0).cloudInfo.instance_type)
                       .getNumCores());
     } else {
-      if (primaryCluster.userIntent.tserverK8SNodeResourceSpec != null) {
-        cInstanceTypeCores =
-            (int) Math.ceil(primaryCluster.userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      UserIntent.K8SNodeResourceSpec tserverK8SNodeResourceSpec =
+          primaryCluster.userIntent.getTserverK8SNodeResourceSpec(provider.getUuid());
+      if (tserverK8SNodeResourceSpec != null) {
+        cInstanceTypeCores = (int) Math.ceil(tserverK8SNodeResourceSpec.cpuCoreCount);
       } else {
         throw new RuntimeException("Could not determine number of cores based on resource spec");
       }
@@ -835,7 +859,6 @@ public class YbcManager {
    * Validate Cloud store config credentials on YBC server. Throws exception on failure.
    *
    * @param nodeIP The node ip on which YBC client is created
-   * @param universe The universe
    * @param csConfig The cloud store config to validate
    */
   public void validateCloudConfigWithClient(

@@ -359,7 +359,16 @@ public class UniverseCRUDHandler {
   private static boolean isSameInstanceTypes(
       UserIntent newIntent, UserIntent currentIntent, Collection<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
-      return Objects.equals(newIntent.getBaseInstanceType(), currentIntent.getBaseInstanceType());
+      Set<UUID> commonProviders = new HashSet<>(newIntent.getAllProviderUUIDs());
+      commonProviders.retainAll(currentIntent.getAllProviderUUIDs());
+      for (UUID providerUUID : commonProviders) {
+        if (!Objects.equals(
+            newIntent.getBaseInstanceType(providerUUID),
+            currentIntent.getBaseInstanceType(providerUUID))) {
+          return false;
+        }
+      }
+      return true;
     }
     for (NodeDetails nodeDetails : nodes) {
       if (!Objects.equals(
@@ -703,8 +712,7 @@ public class UniverseCRUDHandler {
 
   public void setUpXClusterSettings(UniverseDefinitionTaskParams taskParams) {
     taskParams.xClusterInfo.sourceRootCertDirPath =
-        XClusterConfigTaskBase.getProducerCertsDir(
-            taskParams.getPrimaryCluster().userIntent.provider);
+        XClusterConfigTaskBase.getProducerCertsDir(taskParams.getPrimaryCluster().userIntent);
   }
 
   public UUID importUniverse(Customer customer, ImportUniverseTaskParams taskParams) {
