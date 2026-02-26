@@ -147,6 +147,13 @@ void YBSession::SetDeadline(CoarseTimePoint deadline) {
   }
 }
 
+void YBSession::SetPoolTag(rpc::ThreadPoolTag tag) {
+  pool_tag_ = tag;
+  if (batcher_) {
+    batcher_->SetPoolTag(tag);
+  }
+}
+
 namespace {
 
 internal::BatcherPtr CreateBatcher(
@@ -327,6 +334,7 @@ internal::Batcher& YBSession::Batcher() {
 
       batcher_->SetDeadline(CoarseMonoClock::now() + timeout);
     }
+    batcher_->SetPoolTag(pool_tag_);
   }
   return *batcher_;
 }

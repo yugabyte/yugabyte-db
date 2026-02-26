@@ -356,6 +356,9 @@ DEFINE_RUNTIME_bool(
     ysql_enable_auto_analyze, false,
     "Enable Auto Analyze to automatically trigger ANALYZE for updating table statistics of tables "
     "which have changed more than a configurable threshold.");
+
+DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
+
 namespace yb {
 
 void InitCommonFlags() {

@@ -175,6 +175,10 @@ void Batcher::SetDeadline(CoarseTimePoint deadline) {
   deadline_ = deadline;
 }
 
+void Batcher::SetPoolTag(rpc::ThreadPoolTag pool_tag) {
+  pool_tag_ = pool_tag;
+}
+
 bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
@@ -699,15 +703,15 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     case OpGroup::kUnlock: {
       data.use_async_write = UseAsyncWrites(
           first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
-      return std::make_shared<WriteRpc>(data);
+      return std::make_shared<WriteRpc>(data, pool_tag_);
     }
     case OpGroup::kLeaderRead: {
       data.use_async_write = UseAsyncWrites(
           first_op->table()->table_type(), ops_info_.metadata.transaction.transaction_id);
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::STRONG, pool_tag_);
     }
     case OpGroup::kConsistentPrefixRead:
-      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX);
+      return std::make_shared<ReadRpc>(data, YBConsistencyLevel::CONSISTENT_PREFIX, pool_tag_);
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }

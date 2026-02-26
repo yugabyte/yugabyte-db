@@ -186,6 +186,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // may time out before even sending an op). TODO: implement that
   void SetDeadline(CoarseTimePoint deadline);
 
+  void SetPoolTag(rpc::ThreadPoolTag tag);
+
   // Add a new operation to the batch. Requires that the batch has not yet been flushed.
   // TODO: in other flush modes, this may not be the case -- need to
   // update this when they're implemented.
@@ -391,6 +393,8 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // The absolute deadline for all in-flight ops.
   CoarseTimePoint deadline_;
+
+  rpc::ThreadPoolTag pool_tag_ = 0;
 
   // Number of outstanding lookups across all in-flight ops.
   std::atomic<size_t> outstanding_lookups_{0};

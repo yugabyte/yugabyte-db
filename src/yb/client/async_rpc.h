@@ -184,7 +184,7 @@ class AsyncRpcBase : public AsyncRpc {
 class WriteRpc : public AsyncRpcBase<tserver::LWWriteRequestPB, tserver::LWWriteResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
-  explicit WriteRpc(const AsyncRpcData& data);
+  explicit WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag = 0);
 
   virtual ~WriteRpc();
 
@@ -199,7 +199,9 @@ class WriteRpc : public AsyncRpcBase<tserver::LWWriteRequestPB, tserver::LWWrite
 class ReadRpc : public AsyncRpcBase<tserver::LWReadRequestPB, tserver::LWReadResponsePB> {
  public:
   // Relies on ops requests to be not on arena.
-  explicit ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level);
+  ReadRpc(
+      const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level,
+      rpc::ThreadPoolTag pool_tag = 0);
 
   virtual ~ReadRpc();
 

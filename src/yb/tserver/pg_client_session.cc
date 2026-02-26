@@ -3865,6 +3865,11 @@ class PgClientSession::Impl {
       session->SetDeadline(deadline);
       session->ResetArena(arena);
     }
+#ifdef __linux__
+    if (FLAGS_enable_qos && database_oid_) {
+      session->SetPoolTag(database_oid_);
+    }
+#endif
     if (read_time) {
       // Set the read_time only for sequence YBSession. Other types of sessions set their read_time
       // differently.
@@ -4266,11 +4271,11 @@ class PgClientSession::Impl {
   }
 
   Status EnsureClientSessionCgroup(NamespaceIdView namespace_id) {
-#ifdef __linux__
     if (database_oid_ != kInvalidOid) {
       return Status::OK();
     }
     database_oid_ = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+#ifdef __linux__
     if (context_.cgroup_manager && FLAGS_enable_qos) {
       auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid_));
       RETURN_NOT_OK(cgroup.MoveCurrentThreadToGroup());
@@ -4307,9 +4312,7 @@ class PgClientSession::Impl {
   std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
   VectorIndexQueryPtr vector_index_query_data_;
 
-#ifdef __linux__
   PgOid database_oid_ = kInvalidOid;
-#endif
 };
 
 PgClientSession::PgClientSession(

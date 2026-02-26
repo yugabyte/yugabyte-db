@@ -625,7 +625,7 @@ Status AsyncRpc::CheckResponseCount(
   return result;
 }
 
-WriteRpc::WriteRpc(const AsyncRpcData& data)
+WriteRpc::WriteRpc(const AsyncRpcData& data, rpc::ThreadPoolTag pool_tag)
     : AsyncRpcBase(data, YBConsistencyLevel::STRONG) {
   TRACE_TO(trace_, "WriteRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
@@ -694,6 +694,8 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
   if (batcher_->in_flight_ops().metadata.object_locking_txn_meta) {
     SetFastPathObjectLockingTxnMetadata(batcher_->in_flight_ops().metadata, &req_);
   }
+
+  mutable_retrier()->mutable_controller()->set_pool_tag(pool_tag);
 }
 
 WriteRpc::~WriteRpc() {
@@ -804,7 +806,8 @@ void WriteRpc::NotifyBatcher(const Status& status) {
   batcher_->ProcessWriteResponse(*this, status);
 }
 
-ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level)
+ReadRpc::ReadRpc(
+    const AsyncRpcData& data, YBConsistencyLevel yb_consistency_level, rpc::ThreadPoolTag pool_tag)
     : AsyncRpcBase(data, yb_consistency_level) {
   TRACE_TO(trace_, "ReadRpc initiated");
   VTRACE_TO(1, trace_, "Tablet $0 table $1", data.tablet->tablet_id(), table()->name().ToString());
@@ -831,6 +834,7 @@ ReadRpc::ReadRpc(const AsyncRpcData& data, YBConsistencyLevel yb_consistency_lev
       break;
   }
 
+  mutable_retrier()->mutable_controller()->set_pool_tag(pool_tag);
   VLOG(3) << "Created batch for " << data.tablet->tablet_id() << ":\n"
           << req_.ShortDebugString();
 }
