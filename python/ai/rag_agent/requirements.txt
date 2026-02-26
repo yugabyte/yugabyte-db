@@ -1,0 +1,36 @@
+# Core FastAPI dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+langchain-core
+langchain-text-splitters
+langchain-openai
+langchain-community
+
+# Unstructured dependencies for pdf processing
+unstructured
+unstructured-client
+unstructured-inference
+unstructured_pytesseract
+pytesseract
+pi_heif
+pdf2image
+
+# Database connectivity (choose one based on your preference)
+asyncpg  # Async PostgreSQL driver (recommended for YugabyteDB)
+psycopg  # Full synchronous driver with extras support
+psycopg_pool # Connection pooling for psycopg 3
+
+# Optional: For more advanced features
+python-multipart==0.0.6  # For file uploads if needed
+python-jose[cryptography]==3.3.0  # For JWT tokens if authentication needed
+passlib[bcrypt]==1.7.4  # For password hashing if needed
+
+# Development dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2  # For testing API endpoints
+
+# Optional: For enhanced logging and monitoring
+structlog==23.2.0
+boto3==1.34.81  # AWS SDK for Python (latest as of 2024-06)
