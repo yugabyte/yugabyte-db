@@ -16,7 +16,7 @@ The YugabyteDB Kubernetes Operator streamlines the deployment and management of 
 
 The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, enabling a declarative management of your YugabyteDB Anywhere (YBA) universe.
 
-You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies—to ensure optimal performance and high availability. The CR supports seamless upgrades with no downtime, as well as automated, transparent scaling and cluster-balanced deployments.
+You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. The CR supports seamless upgrades with no downtime, as well as automated, transparent scaling and cluster-balanced deployments.
 
 ![YugabyteDB Kubernetes operator](/images/yb-platform/yb-kubernetes-operator.png)
 
@@ -28,7 +28,7 @@ The Operator is built around the **Universe CRD (YBUniverse)**, which defines an
 - Support Bundle CRD - collect logs when a universe fails
 - Backup and Restore CRDs - take full backups of a universe and restore for data protection
 - Storage Config CRD - configure backup destinations
-- Provider CRD (YBProvider) - define a Kubernetes provider for multi-cluster deployments and operator-managed universes
+- Provider CRD (YBProvider) - define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later)
 
 For details of each CRD, you can run a `kubectl explain` on the CR. For example, to view all available configuration options for the YBUniverse custom resource, run the following command:
 
@@ -618,7 +618,7 @@ spec:
 
 ## Operator import universe
 
-{{<tags/feature/ea idea="12874">}}The Operator import universe feature enables you to import an existing YugabyteDB Anywhere universe that is running on Kubernetes managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator.
+{{<tags/feature/ea idea="12874">}} Starting in YBA versions v2025.2.2 and later, the Operator import universe feature enables you to import an existing YugabyteDB Anywhere universe that is running on Kubernetes managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator.
 
 ### Before you begin
 
