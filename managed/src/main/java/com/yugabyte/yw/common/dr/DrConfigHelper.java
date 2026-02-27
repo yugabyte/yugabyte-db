@@ -430,6 +430,7 @@ public class DrConfigHelper {
       Universe targetUniverse,
       DrConfigReplaceReplicaForm replaceReplicaForm) {
 
+    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
 
