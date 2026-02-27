@@ -62,6 +62,17 @@ func setupCommand(cmd *cobra.Command) {
 		false,
 		"Render Execution Scripts without executing them for dry_run",
 	)
+	cmd.Flags().Bool(
+		"noroot",
+		false,
+		"Run only modules that do not require root privileges",
+	)
+	cmd.Flags().Bool(
+		"root",
+		false,
+		"Run only modules that require root privileges",
+	)
+	cmd.MarkFlagsMutuallyExclusive("root", "noroot")
 	cmd.Flags().MarkHidden("ynp_base_path")
 	cmd.MarkFlagRequired("ynp_base_path")
 }
@@ -103,6 +114,14 @@ func parseArguments(cmd *cobra.Command) config.Args {
 	if err != nil {
 		log.Fatalf("Error parsing dry_run flag: %v\n", err)
 	}
+	noRoot, err := cmd.Flags().GetBool("noroot")
+	if err != nil {
+		log.Fatalf("Error parsing noroot flag: %v\n", err)
+	}
+	root, err := cmd.Flags().GetBool("root")
+	if err != nil {
+		log.Fatalf("Error parsing root flag: %v\n", err)
+	}
 	var exVars map[string]map[string]any
 	if extraVars != "" {
 		exVars, err = loadJSONOrFile(extraVars)
@@ -128,6 +147,8 @@ func parseArguments(cmd *cobra.Command) config.Args {
 		ListModules:     listModules,
 		YnpConfig:       ynpConfig,
 		DryRun:          dryRun,
+		NoRoot:          noRoot,
+		Root:            root,
 	}
 }
 

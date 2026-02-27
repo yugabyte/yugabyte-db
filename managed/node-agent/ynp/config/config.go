@@ -33,6 +33,8 @@ type Args struct {
 	YnpConfig       map[string]map[string]any
 	DryRun          bool
 	ListModules     bool
+	NoRoot          bool
+	Root            bool
 }
 
 // Module represents a YNP module.
@@ -273,10 +275,12 @@ func GenerateConfigINI(
 	configTemplate := filepath.Join(args.YnpBasePath, "configs/config.j2")
 	configPath := filepath.Join(args.YnpBasePath, "configs/config.ini")
 	ynpValues := map[string]any{
-		"ynp_config": args.YnpConfig,
-		"ynp_dir":    args.YnpBasePath,
-		"start_time": time.Now().Unix(),
-		"ynp_driver": "golang",
+		"ynp_config":     args.YnpConfig,
+		"ynp_dir":        args.YnpBasePath,
+		"is_noroot_mode": args.NoRoot,
+		"is_root_mode":   args.Root,
+		"start_time":     time.Now().Unix(),
+		"ynp_driver":     "golang",
 	}
 	jsonConfig, _ := json.MarshalIndent(ynpValues, "", "  ")
 	util.FileLogger().Infof(ctx, "YNP config here: %s", string(jsonConfig))

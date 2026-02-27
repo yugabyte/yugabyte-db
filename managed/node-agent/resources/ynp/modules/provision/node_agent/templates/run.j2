@@ -117,7 +117,6 @@ if test -f "{{ tmp_directory }}/create_provider.json"; then
                 exit 1
             fi
         else
-            print_response_exit_on_error "$http_status" "$response_body"
             echo "Error: GET request failed with HTTP status $http_status"
             dump_response_contents
             exit 1
@@ -209,38 +208,40 @@ airgap_flag=""
 {% endif %}
 
 installer_dir="{{ yb_home_dir }}/.install"
-# Check if root systemd unit exists.
-if systemctl list-units | grep -F yb-node-agent.service; then
-    # Uninstall root unit as node-agent-installer.sh run as non-root cannot handle it.
-    echo "Uninstalling root systemd unit of node agent service"
-    $installer_dir/node-agent-installer.sh -c uninstall -u {{ url }} -t {{ api_key }} \
-    --node_ip {{ node_ip }}
+
+# Check if system-level node agent service exists.
+if systemctl list-units --all 2>/dev/null | grep -qF yb-node-agent.service; then
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        # Uninstall root unit as node-agent-installer.sh run as non-root cannot handle it.
+        echo "Uninstalling root systemd unit of node agent service"
+        $installer_dir/node-agent-installer.sh -c uninstall -u {{ url }} -t {{ api_key }} \
+        --node_ip {{ node_ip }}
+    else
+        echo "Error: System-level yb-node-agent.service exists. Run with root provisioning to fix it first."
+        exit 1
+    fi
 fi
 
 # Install node agent as a systemd service.
-su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
-    -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
-    --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
-    --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
-    --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
-
-if [ $? -eq 0 ]; then
-  echo "Node agent installation successful"
+if [ "$SUDO_ACCESS" = "true" ]; then
+    su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
+        -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
+        --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
+        --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
+        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag"
 else
-  echo "Error: Node agent installation failed"
-  exit 1
+    "$installer_dir/node-agent-installer.sh" -c install \
+        -u {{ url }} -p {{ node_agent_port }} -t {{ api_key }} --provider_id $provider_id \
+        --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
+        --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
+        --node_ip {{ node_external_fqdn }} --bind_ip {{ bind_ip }} --silent --skip_verify_cert $airgap_flag
 fi
 
-if ! loginctl enable-linger {{ yb_user }}; then
-    echo "Failed to enable linger for user {{ yb_user }}"
+if [ $? -eq 0 ]; then
+    echo "Node agent service installation successful"
+else
+    echo "Error: Node agent service installation failed"
     exit 1
-fi
-
-if [ $? -eq 0 ]; then
-  echo "Node agent service installation successful"
-else
-  echo "Error: Node agent service installation failed"
-  exit 1
 fi
 
 if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then

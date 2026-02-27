@@ -38,6 +38,7 @@ import (
 	"node-agent/ynp/module/provision/yugabyte"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -109,6 +110,9 @@ func NewProvisionCommand(
 
 // Init initializes the ProvisionCommand.
 func (pc *ProvisionCommand) Init() error {
+	if err := pc.runPrechecks(); err != nil {
+		return err
+	}
 	err := pc.discoverOSInfo()
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to discover OS info: %v", err)
@@ -123,6 +127,42 @@ func (pc *ProvisionCommand) Init() error {
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to load module: %v", err)
 		return err
+	}
+	return nil
+}
+
+// runPrechecks validates user privileges and version compatibility.
+func (pc *ProvisionCommand) runPrechecks() error {
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("Failed to get current user: %v", err)
+	}
+	expectedUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
+	if pc.args.NoRoot {
+		// Ensure user is the specific yb_user
+		if currentUser.Username != expectedUser {
+			return fmt.Errorf(
+				"Error: --noroot mode must be run as '%s' user, not '%s'\n\n"+
+					"Please login as %s and run: ./node-provision.sh --noroot",
+				expectedUser, currentUser.Username, expectedUser)
+		}
+		util.FileLogger().
+			Infof(pc.ctx, "Running --noroot as correct user: %s", currentUser.Username)
+
+		// Version compatibility check
+		if err := pc.compareYnpVersion(false /*strict*/); err != nil {
+			return err
+		}
+	} else {
+		// Requirement: If --root is passed OR if neither flag is passed, user MUST be root (UID 0)
+		if currentUser.Uid != "0" {
+			return fmt.Errorf(
+				"Error: Provisioning requires root privileges.\n"+
+					"Current user '%s' is not root. Please run with sudo or as the root user.\n"+
+					"If you intended to run without root, use the --noroot flag.",
+				currentUser.Username)
+		}
+		util.FileLogger().Infof(pc.ctx, "Running with root privileges.")
 	}
 	return nil
 }
@@ -219,7 +259,7 @@ func (pc *ProvisionCommand) RunPreflightChecks() error {
 	if err != nil {
 		return err
 	}
-	if err := pc.compareYnpVersion(); err != nil {
+	if err := pc.compareYnpVersion(true /*strict*/); err != nil {
 		return err
 	}
 	return pc.runScript("precheck", precheckScript)
@@ -388,6 +428,7 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		if key == config.DefaultINISection {
 			continue
 		}
+
 		module, ok := pc.modules[key]
 		if !ok {
 			util.FileLogger().Infof(pc.ctx, "Module not found: %s", key)
@@ -546,8 +587,6 @@ func (pc *ProvisionCommand) populateSudoCheck(f *os.File) {
 	fmt.Fprintf(f, "\n######## Check the SUDO Access #########\n")
 	fmt.Fprintf(f, "SUDO_ACCESS=\"false\"\n")
 	fmt.Fprintf(f, "if [ $(id -u) = 0 ]; then\n")
-	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
-	fmt.Fprintf(f, "elif sudo -n pwd >/dev/null 2>&1; then\n")
 	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
 	fmt.Fprintf(f, "fi\n")
 }
@@ -735,41 +774,55 @@ func parseVersion(version string) ([3]int, error) {
 	return result, nil
 }
 
-func (pc *ProvisionCommand) compareYnpVersion() error {
+// compareYnpVersion compares the current YNP major version with the stored version.
+// In strict mode (preflight checks), missing file or values are errors.
+// In non-strict mode (prechecks), they are silently ignored.
+func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ybHomeDir == "" || versionStr == "" {
-		err := fmt.Errorf("yb_home_dir or version missing in context")
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+		if strict {
+			err := fmt.Errorf("yb_home_dir or version missing in context")
+			util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	currentYnpVersion, err := parseVersion(versionStr)
+	currentVersion, err := parseVersion(versionStr)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
-		return err
+		if strict {
+			util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	ynpVersionFile := ybHomeDir + "/ynp_version"
+	ynpVersionFile := filepath.Join(ybHomeDir, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
-		return err
-	}
-	storedYnpVersion, err := parseVersion(strings.TrimSpace(string(data)))
-	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
-		return err
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
+			return err
+		}
+		return nil
 	}
 
-	if currentYnpVersion[0] != storedYnpVersion[0] {
-		err := fmt.Errorf(
-			"The major versions are different. Current: %v, Stored: %v. Please run reprovision again on the node",
-			currentYnpVersion,
-			storedYnpVersion,
-		)
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+	storedVersion, err := parseVersion(strings.TrimSpace(string(data)))
+	if err != nil {
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
+			return err
+		}
+		return nil
+	}
+
+	if currentVersion[0] != storedVersion[0] {
+		return fmt.Errorf(
+			"Major version mismatch detected. Current: %d, Stored: %d",
+			currentVersion[0], storedVersion[0])
 	}
 	return nil
 }

@@ -4,59 +4,103 @@ systemd_dir="/etc/systemd/system"
     yb_user_id=$(id -u {{ yb_user }})
     runtime_dir="/run/user/${yb_user_id}"
     xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
-    if ! grep -qxF "${xdg_runtime_env}" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
-        su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_home_dir}}/.bashrc"
+
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        if ! grep -qxF "${xdg_runtime_env}" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
+            su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_home_dir}}/.bashrc"
+        fi
+        su - {{ yb_user }} -c "${xdg_runtime_env}"
+        systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
+        su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
+    else
+        export XDG_RUNTIME_DIR=$runtime_dir
+        if ! grep -qxF "${xdg_runtime_env}" ~/.bashrc >/dev/null 2>&1; then
+            echo "${xdg_runtime_env}" >> ~/.bashrc
+        fi
+        systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
+        mkdir -p "${systemd_dir}"
     fi
-    su - {{ yb_user }} -c "${xdg_runtime_env}"
-    # Configure the systemd_dir as path for user level systemd
-    systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
-    # Ensure the systemd directory exists
-    su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
+
     # Determine the PLATFORM_ID
     platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
     if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
         # Stop user systemd service.
-        su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1"
+        if [ "$SUDO_ACCESS" = "true" ]; then
+            su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1"
+        else
+            systemctl --user exit >/dev/null 2>&1
+        fi
         status_cmd="XDG_RUNTIME_DIR=$runtime_dir systemctl --user status --no-pager >/dev/null 2>&1"
         count=0
         # Do in retries as there is a race between stopping and checking status.
-        while su - {{ yb_user }} -c "$status_cmd"; do
-            count=$((count + 1))
-            if [ $count -gt 10 ]; then
-                echo "User systemd service failed to stop after $count attempts."
-                exit 1
-            fi
-            echo "Waiting for user systemd service to stop..."
-            sleep 2
-        done
+        if [ "$SUDO_ACCESS" = "true" ]; then
+            while su - {{ yb_user }} -c "$status_cmd"; do
+                count=$((count + 1))
+                if [ $count -gt 10 ]; then
+                    echo "User systemd service failed to stop after $count attempts."
+                    exit 1
+                fi
+                echo "Waiting for user systemd service to stop..."
+                sleep 2
+            done
+        else
+            while eval "$status_cmd"; do
+                count=$((count + 1))
+                if [ $count -gt 10 ]; then
+                    echo "User systemd service failed to stop after $count attempts."
+                    exit 1
+                fi
+                echo "Waiting for user systemd service to stop..."
+                sleep 2
+            done
+        fi
         count=0
         # Do in retries as there is a race between stopping and enabling linger.
-        until su - {{ yb_user }} -c "$status_cmd"; do
-            # Enable linger for yb_user
-            if ! loginctl enable-linger {{ yb_user }}; then
-                echo "Failed to enable linger for user {{ yb_user }}"
-                exit 1
-            fi
-            systemctl start user@${yb_user_id}.service
-            count=$((count + 1))
-            if [ $count -gt 10 ]; then
-                echo "User systemd service failed to start after $count attempts."
-                exit 1
-            fi
-            echo "Waiting for user system service to become active..."
-            sleep 2
-        done
+        if [ "$SUDO_ACCESS" = "true" ]; then
+            until su - {{ yb_user }} -c "$status_cmd"; do
+                if ! loginctl enable-linger {{ yb_user }}; then
+                    echo "Failed to enable linger for user {{ yb_user }}"
+                    exit 1
+                fi
+                systemctl start user@${yb_user_id}.service
+                count=$((count + 1))
+                if [ $count -gt 10 ]; then
+                    echo "User systemd service failed to start after $count attempts."
+                    exit 1
+                fi
+                echo "Waiting for user system service to become active..."
+                sleep 2
+            done
+        else
+            until eval "$status_cmd"; do
+                if ! loginctl enable-linger {{ yb_user }}; then
+                    echo "Failed to enable linger for user {{ yb_user }}"
+                    exit 1
+                fi
+                count=$((count + 1))
+                if [ $count -gt 10 ]; then
+                    echo "User systemd service failed to start after $count attempts."
+                    exit 1
+                fi
+                echo "Waiting for user system service to become active..."
+                sleep 2
+            done
+        fi
     elif ! loginctl enable-linger {{ yb_user }}; then
         echo "Failed to enable linger for user {{ yb_user }}"
         exit 1
     fi
 {% endif %}
-
 # Configure the systemd unit files
 {% for service_file in service_files | split_string %}
-   tmp_file=$(mktemp)
-   echo '{% include service_file %}' > $tmp_file
-   chown {{ yb_user }}:{{ yb_user }} $tmp_file
-   su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
-   su - {{ yb_user }} -c "chmod 644 ${systemd_dir}/{{ service_file }}"
+    tmp_file=$(mktemp)
+    echo '{% include service_file %}' > "$tmp_file"
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        chown {{ yb_user }}:{{ yb_user }} "$tmp_file"
+        su - {{ yb_user }} -c "mv $tmp_file ${systemd_dir}/{{ service_file }}"
+        su - {{ yb_user }} -c "chmod 644 ${systemd_dir}/{{ service_file }}"
+    else
+        mv "$tmp_file" "${systemd_dir}/{{ service_file }}"
+        chmod 644 "${systemd_dir}/{{ service_file }}"
+    fi
 {% endfor %}
