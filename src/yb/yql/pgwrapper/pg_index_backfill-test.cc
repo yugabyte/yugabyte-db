@@ -1252,6 +1252,12 @@ class PgIndexBackfillBlockDoBackfill : public PgIndexBackfillTest {
         cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_id));
     return Status::OK();
   }
+
+  // Helper: delete and re-insert the same indexed value after backfill safe time.
+  // When use_single_txn is true, the DELETE and INSERT happen in a single transaction
+  // (same commit HT, different write_ids). Otherwise they are separate statements
+  // (different HTs).
+  void TestDeleteAndInsertSameValue(bool use_single_txn);
 };
 
 INSTANTIATE_TEST_CASE_P(, PgIndexBackfillBlockDoBackfill, ::testing::Bool());
@@ -2357,6 +2363,113 @@ TEST_P(PgIndexBackfillBlockDoBackfill, PgStatProgressCreateIndexDifferentDatabas
                       static_cast<int64_t>(0))));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   thread_holder_.Stop();
+}
+
+// Simulate the following:
+//   Session A                                    Session B
+//   ------------------------------------         -------------------------------------------
+//   CREATE TABLE (a, b, PRIMARY KEY (a))
+//   INSERT (1, 1)
+//   CREATE UNIQUE INDEX (b)
+//   - indislive
+//   - indisready
+//   - backfill stage
+//     - get safe time for read
+//                                                DELETE (1, 1) -- possibly as a txn batch
+//                                                INSERT (3, 1) -- possibly as a txn batch
+//     - do the actual backfill
+//       (sees (1, 1) from before safe time)
+//       (sees (3, 1) from after safe time)
+//       (both have b=1 -> duplicate key error)
+// This test verifies that backfill correctly detects duplicate values when:
+// 1. A row with value 'b=1' exists before the safe time
+// 2. That row is deleted after the safe time
+// 3. A new row with the same value 'b=1' is inserted after the safe time
+// The backfill will see both rows and should fail with a duplicate key error.
+void PgIndexBackfillBlockDoBackfill::TestDeleteAndInsertSameValue(bool use_single_txn) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    LOG(INFO) << "Creating unique index...";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName));
+  });
+  thread_holder_.AddThreadFunctor([this, use_single_txn] {
+    LOG(INFO) << "Begin write thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    LOG(INFO) << "Delete row (1, 1) and insert row (3, 1)"
+              << (use_single_txn ? " in a single transaction" : " as separate statements");
+    if (use_single_txn) {
+      ASSERT_OK(conn_->Execute("BEGIN"));
+    }
+    ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE a = 1", kTableName));
+    ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (3, 1)", kTableName));
+    if (use_single_txn) {
+      ASSERT_OK(conn_->Execute("COMMIT"));
+    }
+
+    // It should still be in the backfill stage.
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
+        kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
+
+    // Unblock CREATE INDEX waiting to do backfill.
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+  thread_holder_.JoinAll();
+
+  // Verify the table has only the new row.
+  auto result = conn_->FetchRow<int32_t>(Format(
+      "SELECT a FROM $0 WHERE b = 1", kTableName));
+  ASSERT_OK(result);
+  ASSERT_EQ(*result, 3);
+}
+
+// DELETE and INSERT as separate statements (different HTs).
+TEST_P(PgIndexBackfillBlockDoBackfill, DeleteAndInsertSameValueSeparateStmts) {
+  TestDeleteAndInsertSameValue(/* use_single_txn= */ false);
+}
+
+// Table starts with multiple rows having the same indexed value b=1:
+//   (1, 1), (2, 1), (3, 1)
+// After backfill safe time, we delete one of them (3, 1), but the remaining
+// rows (1, 1) and (2, 1) still have duplicate b=1. The CREATE UNIQUE INDEX
+// should fail because the backfill encounters the duplicate values.
+TEST_P(PgIndexBackfillBlockDoBackfill, DuplicatesExistBeforeBackfill) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (a int PRIMARY KEY, b int)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 1), (2, 1), (3, 1)", kTableName));
+
+  // conn_ should be used by at most one thread for thread safety.
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    auto status = create_conn.ExecuteFormat(
+        "CREATE UNIQUE INDEX $0 ON $1 (b ASC)", kIndexName, kTableName);
+    // The CREATE INDEX should fail due to duplicate key on b=1.
+    ASSERT_NOK(status);
+    ASSERT_TRUE(status.message().ToBuffer().find("duplicate") != std::string::npos)
+        << "Expected duplicate key error, got: " << status;
+  });
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin write thread";
+    ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+
+    // Delete one of the duplicates, but two remain.
+    LOG(INFO) << "Delete row (3, 1)";
+    ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE a = 3", kTableName));
+
+    // It should still be in the backfill stage.
+    ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(
+        kIndexName, IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady})));
+
+    // Unblock CREATE INDEX waiting to do backfill.
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+  thread_holder_.JoinAll();
 }
 
 // Override to use YSQL backends manager.
