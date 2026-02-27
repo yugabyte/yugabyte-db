@@ -213,7 +213,7 @@ class PgTimeout {
   // This deadline is not applicable to heartbeats.
   CoarseTimePoint global_deadline_;
   // The timeout representing lock_timeout in postgres.
-  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+  MonoDelta lock_timeout_;
 };
 } // namespace
 
@@ -621,7 +621,8 @@ static PggateRPC kDebugLogRPCs[] = {
   PggateRPC::kAcquireAdvisoryLock,
   PggateRPC::kReleaseAdvisoryLock,
   PggateRPC::kAcquireObjectLock,
-  PggateRPC::kTruncateTable
+  PggateRPC::kTruncateTable,
+  PggateRPC::kReleaseSessionObjectLock
 };
 
 class PgClient::Impl : public BigDataFetcher {
@@ -1085,7 +1086,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id,
-      YbcObjectLockMode mode, std::optional<PgTablespaceOid> tablespace_oid) {
+      YbcObjectLockMode mode, bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
     object_locks_arena_.Reset(ResetMode::kKeepLast);
     tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
     req.set_session_id(session_id_);
@@ -1099,6 +1100,7 @@ class PgClient::Impl : public BigDataFetcher {
       lock_oid.set_tablespace_oid(*tablespace_oid);
     }
     req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
+    req.set_is_session_lock(is_session_lock);
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
@@ -2168,8 +2170,8 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
 
 Status PgClient::AcquireObjectLock(
     tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-    std::optional<PgTablespaceOid> tablespace_oid) {
-  return impl_->AcquireObjectLock(options, lock_id, mode, tablespace_oid);
+    bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
+  return impl_->AcquireObjectLock(options, lock_id, mode, is_session_lock, tablespace_oid);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {

@@ -146,6 +146,8 @@ service PgClientService {
       returns (PgAcquireObjectLockResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   }
+  rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
+      returns (PgReleaseSessionObjectLockResponsePB);
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -1345,26 +1347,39 @@ enum ObjectLockMode {
   ACCESS_EXCLUSIVE_LOCK = 8;
 }
 
+message ObjectLockOid {
+  uint64 database_oid = 1;
+  uint64 relation_oid = 2;
+  uint64 object_oid = 3;
+  uint64 object_sub_oid = 4;
+  uint32 tablespace_oid = 5;
+}
+
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
 
-  message LockOId {
-    uint64 database_oid = 1;
-    uint64 relation_oid = 2;
-    uint64 object_oid = 3;
-    uint64 object_sub_oid = 4;
-    uint32 tablespace_oid = 5;
-  }
-  LockOId lock_oid = 3;
+  ObjectLockOid lock_oid = 3;
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
   ObjectLockMode lock_type = 4;
 
   reserved 5; // ASH metadata is now passed in RequestHeader PB
+
+  bool is_session_lock = 6;
 }
 
 message PgAcquireObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgReleaseSessionObjectLockRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  ObjectLockOid lock_oid = 3;
+}
+
+message PgReleaseSessionObjectLockResponsePB {
   AppStatusPB status = 1;
 }
 

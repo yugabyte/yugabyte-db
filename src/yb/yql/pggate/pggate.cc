@@ -2548,8 +2548,13 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 // Table Locks.
 //------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  return pg_session_->AcquireObjectLock(lock_id, mode);
+Status PgApiImpl::AcquireObjectLock(
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return pg_session_->AcquireObjectLock(lock_id, mode, is_session_lock);
+}
+
+Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
 }
 
 //------------------------------------------------------------------------------------------------

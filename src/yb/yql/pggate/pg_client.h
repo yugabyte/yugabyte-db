@@ -72,7 +72,8 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock)
 
 struct PerformResult {
   Status status;
@@ -288,7 +289,7 @@ class PgClient {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 

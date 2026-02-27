@@ -230,6 +230,9 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
     "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
 
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
@@ -2424,6 +2427,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
           TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED)),
         &context);
     return;
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_pause_wait_for_ysql_backends_catalog_version)) {
+    TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version);
   }
 
   const PgOid database_oid = req->database_oid();

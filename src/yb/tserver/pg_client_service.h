@@ -103,6 +103,7 @@ class TserverXClusterContextIf;
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     (GetYbSystemTableInfo) \
+    (ReleaseSessionObjectLock) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \

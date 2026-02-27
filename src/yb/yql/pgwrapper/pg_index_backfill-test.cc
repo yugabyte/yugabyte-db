@@ -790,17 +790,12 @@ TEST_P(PgIndexBackfillTestThrottled, ThrottledBackfill) {
 class PgIndexBackfillTestDeadlines : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
-    options->extra_master_flags.push_back(
-        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
     options->extra_master_flags.push_back(
         Format("--ysql_index_backfill_rpc_timeout_ms=$0", kBackfillRpcDeadlineSmallMs));
     options->extra_master_flags.push_back(
         Format("--backfill_index_timeout_grace_margin_ms=$0", kBackfillRpcDeadlineSmallMs / 2));
 
-    options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
-    options->extra_tserver_flags.push_back(
-        Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
     options->extra_tserver_flags.push_back("--ysql_prefetch_limit=100");
     options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
     options->extra_tserver_flags.push_back(
@@ -884,6 +879,7 @@ TEST_P(PgIndexBackfillTest, Nonconcurrent) {
 class PgIndexBackfillTestSimultaneously : public PgIndexBackfillTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
         Format("--ysql_yb_index_state_flags_update_delay=$0",
                kIndexStateFlagsUpdateDelay.ToMilliseconds()));
@@ -919,6 +915,13 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       PGConn create_conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
           ConnectToDB(kDatabaseName), IsolationLevel::SNAPSHOT_ISOLATION));
       ASSERT_OK(create_conn.Execute("SET yb_user_ddls_preempt_auto_analyze=false"));
+      if (EnableTableLocks()) {
+        // When object locking is enabled, ShareUpdateExclusive lock on the parent rel in phase 1 of
+        // create index would suceed for just one thread, and the rest would timeout. And the thread
+        // that succeeded in phase 1 waits for other backends to get to the latest catalog version.
+        // So early terminate the other waiting backends that would eventually fail anyways.
+        ASSERT_OK(create_conn.Execute("SET lock_timeout='10s'"));
+      }
       statuses[i] = MoveStatus(create_conn.ExecuteFormat(
           "CREATE INDEX $0 ON $1 (i)",
           kIndexName, kTableName));
@@ -954,14 +957,18 @@ TEST_P(PgIndexBackfillTestSimultaneously, CreateIndexSimultaneously) {
       };
       ASSERT_TRUE(HasSubstring(msg, allowed_msgs)) << status;
       LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
-      if (msg.find("Restart read required") == std::string::npos
-          && msg.find(relation_already_exists_msg) == std::string::npos) {
+      if (msg.find("Restart read required") == std::string::npos &&
+          msg.find(relation_already_exists_msg) == std::string::npos &&
+          (!EnableTableLocks() || msg.find("Catalog Version Mismatch") == std::string::npos)) {
         // Failed index creations do two schema changes:
         // - add index with INDEX_PERM_WRITE_AND_DELETE
         // - remove index because of DDL transaction rollback ("Table transaction failed, deleting")
         expected_schema_version += 2;
       } else {
         // If the DocDB index was never created in the first place, it incurs no schema changes.
+        // When table locks are enabled, if the backend observes a catalog version mismatch, it
+        // implies that that backend failed to acquire the relevant locks in the first phase itself,
+        // and that other index creation went through.
       }
     }
   }
