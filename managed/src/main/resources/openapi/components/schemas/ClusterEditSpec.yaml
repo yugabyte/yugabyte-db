@@ -15,6 +15,10 @@ properties:
     format: int32
     example: 3
     minimum: 1
+  dedicated_nodes:
+    description: Whether to run tserver and master processes in dedicated nodes in this cluster. Omit to leave the existing value unchanged.
+    type: boolean
+    example: false
   node_spec:
     $ref: "./ClusterNodeSpec.yaml"
   networking_spec:
@@ -23,6 +27,10 @@ properties:
     $ref: "./ClusterProviderEditSpec.yaml"
   placement_spec:
     $ref: "./ClusterPlacementSpec.yaml"
+  provider_specs:
+    type: array
+    items:
+      $ref: "./ClusterPerProviderSpec.yaml"
   partitions_spec:
     type: array
     items:

@@ -288,7 +288,7 @@ libraryDependencies ++= Seq(
   // aarch64 binaries (same PG 14.5) so the embedded server starts natively there.
   "io.zonky.test.postgres" % "embedded-postgres-binaries-darwin-arm64v8" % "14.5.0" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "1.6.3-2026.1" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.7.0-2026.1" % Test,
 )
 
 // Clear default resolvers.
@@ -733,7 +733,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
     openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/clients/v2").absolutePath,
-    version := "1.6.3-2026.1",
+    version := "1.7.0-2026.1",
     target := file("client/java/target/v2"),
   )
 

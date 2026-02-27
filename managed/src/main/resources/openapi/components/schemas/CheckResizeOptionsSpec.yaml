@@ -5,12 +5,17 @@ description: |
 type: object
 required:
   - cluster_uuid
-  - node_spec
 properties:
   cluster_uuid:
     description: Cluster UUID to evaluate.
     type: string
     format: uuid
   node_spec:
-    description: Proposed node settings for the cluster.
+    description: 'Deprecated: use provider_nodes_specs for multicloud clusters. Proposed node settings for a single-provider cluster.'
     $ref: "./ClusterNodeSpec.yaml"
+    deprecated: true
+  provider_nodes_specs:
+    description: Proposed node settings per provider for multicloud clusters.
+    type: array
+    items:
+      $ref: "./PerProviderResizeNodesSpec.yaml"

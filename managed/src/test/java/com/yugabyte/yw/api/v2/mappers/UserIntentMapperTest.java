@@ -13,6 +13,8 @@ import api.v2.models.AvailabilityZoneNodeSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterPerProcessNodeSpec;
+import api.v2.models.ClusterSpec;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -121,6 +123,63 @@ public class UserIntentMapperTest {
     assertNotNull(masterNodeSpec);
     assertEquals("m5.2xlarge", masterNodeSpec.getInstanceType());
     assertEquals(Integer.valueOf(75), masterNodeSpec.getStorageSpec().getVolumeSize());
+  }
+
+  @Test
+  public void testEditOmittingDedicatedNodesPreservesExisting() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.dedicatedNodes = true;
+
+    ClusterEditSpec editSpec = new ClusterEditSpec().uuid(UUID.randomUUID()).numNodes(5);
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(editSpec, userIntent);
+
+    assertTrue(userIntent.dedicatedNodes);
+    assertEquals(5, userIntent.numNodes);
+  }
+
+  @Test
+  public void testClusterLevelDedicatedNodesPreferredOverNodeSpec() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    clusterSpec.setDedicatedNodes(true);
+    clusterSpec.setNodeSpec(new ClusterNodeSpec().dedicatedNodes(false));
+
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertTrue(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testDeprecatedNodeSpecDedicatedNodesStillHonored() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    clusterSpec.setNodeSpec(new ClusterNodeSpec().dedicatedNodes(true));
+
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertTrue(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testCreateOmittingDedicatedNodesDefaultsFalse() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertFalse(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testGflagsOnlyResizeDoesNotRequireNodeSpec() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(UUID.randomUUID());
+    // gflags-only: no node_spec / provider_nodes_specs
+
+    UserIntent mapped =
+        UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
+            resizeCluster, userIntent);
+
+    assertEquals("c5.xlarge", mapped.instanceType);
   }
 
   @Test

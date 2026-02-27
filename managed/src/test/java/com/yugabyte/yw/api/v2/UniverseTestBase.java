@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.api.v2;
 
+import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.newProvider;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -13,11 +14,19 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNotNull;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
+import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.AllowedTasksOnFailure;
 import com.yugabyte.yba.v2.client.models.AuditLogConfig;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
@@ -30,9 +39,11 @@ import com.yugabyte.yba.v2.client.models.ClusterNetworkingSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
+import com.yugabyte.yba.v2.client.models.ClusterPerProviderSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderSpec;
+import com.yugabyte.yba.v2.client.models.ClusterResizeStorageSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
@@ -45,10 +56,15 @@ import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.K8SNodeResourceSpec;
 import com.yugabyte.yba.v2.client.models.NodeDetails;
 import com.yugabyte.yba.v2.client.models.NodeProxyConfig;
+import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
+import com.yugabyte.yba.v2.client.models.ProviderNodeSpec;
+import com.yugabyte.yba.v2.client.models.ProviderRootNodesSpec;
 import com.yugabyte.yba.v2.client.models.QueryLogConfig;
+import com.yugabyte.yba.v2.client.models.ResizeProviderNodeSpec;
+import com.yugabyte.yba.v2.client.models.ResizeProviderRootNodesSpec;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec.ArchEnum;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
@@ -63,6 +79,7 @@ import com.yugabyte.yba.v2.client.models.User;
 import com.yugabyte.yba.v2.client.models.UserInfo;
 import com.yugabyte.yba.v2.client.models.UserSpec;
 import com.yugabyte.yba.v2.client.models.XClusterInfo;
+import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yba.v2.client.models.YCQLAuditConfig;
 import com.yugabyte.yba.v2.client.models.YCQLSpec;
 import com.yugabyte.yba.v2.client.models.YSQLAuditConfig;
@@ -77,21 +94,25 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.forms.AllowedUniverseTasksResp;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ProviderSpecification;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -105,6 +126,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
@@ -119,12 +141,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
+import org.mockito.ArgumentCaptor;
 
 @Slf4j
 public class UniverseTestBase extends UniverseControllerTestBase {
@@ -175,6 +200,39 @@ public class UniverseTestBase extends UniverseControllerTestBase {
           + "E1pTE1HS\n"
           + "-----END CERTIFICATE-----\n";
   @Rule public TestName testname = new TestName();
+
+  protected void setNewUIEnabled() {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+  }
+
+  protected UUID setupUniverse(boolean multicloud) throws ApiException, IOException {
+    UniverseCreateSpec universeCreateSpec =
+        multicloud ? getUniverseCreateSpecV2Multicloud() : getUniverseCreateSpecV2();
+    return setupUniverse(universeCreateSpec, null);
+  }
+
+  protected UUID setupUniverse(
+      UniverseCreateSpec universeCreateSpec, Consumer<UniverseDefinitionTaskParams> paramsCallback)
+      throws ApiException, IOException {
+    UniverseApi api = new UniverseApi();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
+
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
+    if (paramsCallback != null) {
+      ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =
+          ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+      verify(mockCommissioner).submit(eq(TaskType.CreateUniverse), v1CreateParamsCapture.capture());
+      UniverseDefinitionTaskParams v1CreateParams = v1CreateParamsCapture.getValue();
+      paramsCallback.accept(v1CreateParams);
+    }
+    return createTask.getResourceUuid();
+  }
 
   @Before
   public void setUpV2Client() throws NoSuchAlgorithmException, IOException, ApiException {
@@ -359,6 +417,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
   }
 
   protected UniverseCreateSpec getUniverseCreateSpecV2() {
+    return getUniverseCreateSpecV2(false);
+  }
+
+  protected UniverseCreateSpec getUniverseCreateSpecV2Multicloud() {
+    return getUniverseCreateSpecV2Geo(true);
+  }
+
+  protected UniverseCreateSpec getUniverseCreateSpecV2(boolean multicloud) {
     UniverseCreateSpec universeCreateSpec = new UniverseCreateSpec();
     universeCreateSpec.arch(ArchEnum.AARCH64);
     UniverseSpec universeSpec = new UniverseSpec();
@@ -389,20 +455,30 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         .clientRootCa(clientRootCA);
     universeSpec.encryptionInTransitSpec(eit);
     ClusterSpec primaryClusterSpec = new ClusterSpec();
+    ClusterPerProviderSpec perProviderSpec = new ClusterPerProviderSpec();
     primaryClusterSpec.setClusterType(ClusterTypeEnum.PRIMARY);
     primaryClusterSpec.setNumNodes(6);
+    ClusterStorageSpec storageSpec =
+        new ClusterStorageSpec()
+            .volumeSize(54321)
+            .numVolumes(2)
+            .storageType(ClusterStorageType.GP2);
     ClusterNodeSpec primaryNodeSpec = new ClusterNodeSpec();
-    primaryNodeSpec
-        .instanceType(ApiUtils.UTIL_INST_TYPE)
-        .setStorageSpec(
-            new ClusterStorageSpec()
-                .volumeSize(54321)
-                .numVolumes(2)
-                .storageType(ClusterStorageType.GP2));
-    primaryClusterSpec.setNodeSpec(primaryNodeSpec);
+    primaryNodeSpec.instanceType(ApiUtils.UTIL_INST_TYPE).setStorageSpec(storageSpec);
+    NodeProxyConfig proxy = new NodeProxyConfig().httpProxy("http://proxy:1234");
+    if (multicloud) {
+      ProviderNodeSpec tserverSpec =
+          new ProviderNodeSpec()
+              .instanceType(ApiUtils.UTIL_INST_TYPE)
+              .storageSpec(storageSpec)
+              .backupProxyConfig(proxy);
+      perProviderSpec.nodesSpecs(new ProviderRootNodesSpec().tserverSpecification(tserverSpec));
+    } else {
+      primaryClusterSpec.setNodeSpec(primaryNodeSpec);
+      primaryClusterSpec.setInstanceTags(Map.of("itag1", "ival1", "itag2", "ival2"));
+    }
     primaryClusterSpec.setReplicationFactor(5);
     primaryClusterSpec.setUseSpotInstance(true);
-    primaryClusterSpec.setInstanceTags(Map.of("itag1", "ival1", "itag2", "ival2"));
     PlacementCloud placementCloud =
         placementFromProvider(
             primaryClusterSpec.getNumNodes(), primaryClusterSpec.getReplicationFactor());
@@ -414,18 +490,27 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     primaryClusterSpec.setPlacementSpec(
         new ClusterPlacementSpec().cloudList(List.of(placementCloud)));
-    ClusterProviderSpec providerSpec = new ClusterProviderSpec();
-    providerSpec.setProvider(providerUuid);
-    providerSpec.setRegionList(List.of(Region.getByProvider(providerUuid).get(0).getUuid()));
-    providerSpec.setImageBundleUuid(ImageBundle.getAll(providerUuid).get(0).getUuid());
-    providerSpec.setAccessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
-    primaryClusterSpec.setProviderSpec(providerSpec);
-    NodeProxyConfig proxy = new NodeProxyConfig().httpProxy("http://proxy:1234");
-    primaryClusterSpec.setNetworkingSpec(
+    ClusterNetworkingSpec clusterNetworkingSpec =
         new ClusterNetworkingSpec()
             .enableLb(true)
-            .enableExposingService(ExposingServiceState.EXPOSED)
-            .proxyConfig(proxy));
+            .enableExposingService(ExposingServiceState.EXPOSED);
+    if (multicloud) {
+      perProviderSpec
+          .provider(providerUuid)
+          .imageBundleUuid(ImageBundle.getAll(providerUuid).get(0).getUuid())
+          .accessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE)
+          .networkingSpec(clusterNetworkingSpec)
+          .instanceTags(Map.of("itag1", "ival1", "itag2", "ival2"));
+      primaryClusterSpec.addProviderSpecsItem(perProviderSpec);
+    } else {
+      ClusterProviderSpec providerSpec = new ClusterProviderSpec();
+      providerSpec.setProvider(providerUuid);
+      providerSpec.setRegionList(List.of(Region.getByProvider(providerUuid).get(0).getUuid()));
+      providerSpec.setImageBundleUuid(ImageBundle.getAll(providerUuid).get(0).getUuid());
+      providerSpec.setAccessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
+      primaryClusterSpec.setProviderSpec(providerSpec);
+      primaryClusterSpec.setNetworkingSpec(clusterNetworkingSpec.proxyConfig(proxy));
+    }
     primaryClusterSpec.setGflags(createPrimaryClusterGFlags());
     primaryClusterSpec.setAuditLogConfig(createPrimaryAuditLogConfig());
     primaryClusterSpec.setQueryLogConfig(createPrimaryQueryLogConfig());
@@ -433,8 +518,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     return universeCreateSpec;
   }
 
-  protected UniverseCreateSpec getUniverseCreateSpecV2Geo() {
-    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
+  protected UniverseCreateSpec getUniverseCreateSpecV2Geo(boolean multicloud) {
+    UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2(multicloud);
+    universeCreateSpec.getSpec().name("Test-V2-Universe-Geo");
     ClusterSpec clusterSpec = universeCreateSpec.getSpec().getClusters().get(0);
     clusterSpec.setPlacementSpec(null);
     List<ClusterPartitionSpec> geoPartitionSpecList = new ArrayList<>();
@@ -473,6 +559,46 @@ public class UniverseTestBase extends UniverseControllerTestBase {
                         .numVolumes(1)
                         .storageClass("standart")));
     return universeCreateSpec;
+  }
+
+  protected Universe createMulticloudUniverse(String name, String config) {
+    Universe universe = createFromConfig(Provider.getOrBadRequest(providerUuid), name, config);
+    DeviceInfo deviceInfo = ApiUtils.getDummyDeviceInfo(2, 54321);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          UserIntent userIntent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          ProviderSpecification providerSpecification = new ProviderSpecification();
+          providerSpecification.setProviderUUID(providerUuid);
+          providerSpecification.setProviderType(
+              Provider.getOrBadRequest(providerUuid).getCloudCode());
+          providerSpecification.setAccessKeyCode(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
+          providerSpecification.setImageBundleUUID(
+              ImageBundle.getAll(providerUuid).get(0).getUuid());
+          providerSpecification.setNodesSpecs(
+              HierarchicalNodesSpec.RootNodesSpec.builder()
+                  .tserverSpecification(
+                      HierarchicalNodesSpec.NodeSpec.builder()
+                          .instanceType(ApiUtils.UTIL_INST_TYPE)
+                          .deviceInfo(deviceInfo)
+                          .build())
+                  .build());
+          userIntent.providerSpecifications = new ArrayList<>(List.of(providerSpecification));
+          userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+          userIntent.deviceInfo = deviceInfo;
+        },
+        false);
+    return Universe.getOrBadRequest(universe.getUniverseUUID());
+  }
+
+  protected PerProviderResizeNodesSpec buildPerProviderResizeNodesSpec(
+      UUID provider, String instanceType, int volumeSize) {
+    ClusterResizeStorageSpec storageSpec = new ClusterResizeStorageSpec().volumeSize(volumeSize);
+    ResizeProviderNodeSpec tserverSpec =
+        new ResizeProviderNodeSpec().instanceType(instanceType).storageSpec(storageSpec);
+    ResizeProviderRootNodesSpec nodesSpec =
+        new ResizeProviderRootNodesSpec().tserverSpecification(tserverSpec);
+    return new PerProviderResizeNodesSpec().provider(provider).nodesSpec(nodesSpec);
   }
 
   protected UniverseCreateSpec getUniverseCreateSpecWithRRV2() {
@@ -744,20 +870,31 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     } else {
       assertThat(v2Cluster.getUseSpotInstance(), is(dbCluster.userIntent.useSpotInstance));
     }
-    validateProviderSpec(v2Cluster.getProviderSpec(), dbCluster);
+
     if (v2Cluster.getPartitionsSpec() == null || v2Cluster.getPartitionsSpec().isEmpty()) {
       validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);
     } else {
       validateGeoPartitions(v2Cluster, dbCluster);
     }
-    validateNetworkingSpec(
-        v2Cluster.getNetworkingSpec(), dbCluster, v2PrimaryCluster.getNetworkingSpec());
+    if (!CollectionUtils.isEmpty(v2Cluster.getProviderSpecs())) {
+      validateProviderSpecs(
+          v2Cluster.getProviderSpecs(), dbCluster.userIntent.providerSpecifications);
+    } else {
+      validateClusterNodeSpec(
+          v2Cluster.getNodeSpec(), dbCluster.userIntent, v2PrimaryCluster.getNodeSpec());
+      validateProviderSpec(v2Cluster.getProviderSpec(), dbCluster);
+      validateNetworkingSpec(
+          v2Cluster.getNetworkingSpec(), dbCluster, v2PrimaryCluster.getNetworkingSpec());
+    }
+
     validateGFlags(
         v2Cluster.getGflags(), dbCluster.userIntent.specificGFlags, v2PrimaryCluster.getGflags());
-    validateInstanceTags(
-        v2Cluster.getInstanceTags(),
-        dbCluster.userIntent.instanceTags,
-        v2PrimaryCluster.getInstanceTags());
+    if (v2Cluster.getInstanceTags() != null) {
+      validateInstanceTags(
+          v2Cluster.getInstanceTags(),
+          dbCluster.userIntent.instanceTags,
+          v2PrimaryCluster.getInstanceTags());
+    }
     validateAuditLogConfig(
         v2Cluster.getAuditLogConfig(),
         dbCluster.userIntent.auditLogConfig,
@@ -766,6 +903,49 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         v2Cluster.getQueryLogConfig(),
         dbCluster.userIntent.queryLogConfig,
         v2PrimaryCluster.getQueryLogConfig());
+  }
+
+  private void validateProviderSpecs(
+      List<ClusterPerProviderSpec> providerSpecs,
+      List<UniverseDefinitionTaskParams.ProviderSpecification> providerSpecifications) {
+    Map<UUID, UniverseDefinitionTaskParams.ProviderSpecification> byProvider =
+        providerSpecifications.stream().collect(Collectors.toMap(p -> p.getProviderUUID(), p -> p));
+
+    // Edit payloads may update a subset of providers; create payloads include the full set.
+    assertThat(providerSpecs.size(), lessThanOrEqualTo(byProvider.size()));
+
+    for (ClusterPerProviderSpec value : providerSpecs) {
+      UniverseDefinitionTaskParams.ProviderSpecification providerSpecification =
+          byProvider.get(value.getProvider());
+      assertNotNull(providerSpecification);
+      Provider provider = Provider.getOrBadRequest(value.getProvider());
+
+      assertThat(providerSpecification.getProviderType(), is(provider.getCloudCode()));
+      // Only assert fields present in the v2 payload (partial updates on edit leave others null).
+      if (value.getAccessKeyCode() != null) {
+        assertThat(providerSpecification.getAccessKeyCode(), is(value.getAccessKeyCode()));
+      }
+      if (value.getImageBundleUuid() != null) {
+        assertThat(providerSpecification.getImageBundleUUID(), is(value.getImageBundleUuid()));
+      }
+      if (value.getAwsInstanceProfile() != null) {
+        assertThat(
+            providerSpecification.getAwsInstanceProfile(), is(value.getAwsInstanceProfile()));
+      }
+      if (value.getNodesSpecs() != null
+          && value.getNodesSpecs().getTserverSpecification() != null) {
+        if (value.getNodesSpecs().getTserverSpecification().getInstanceType() != null) {
+          assertThat(
+              providerSpecification.getNodesSpecs().getTserverSpecification().getInstanceType(),
+              is(value.getNodesSpecs().getTserverSpecification().getInstanceType()));
+        }
+        if (value.getNodesSpecs().getTserverSpecification().getStorageSpec() != null) {
+          validateStorageSpec(
+              value.getNodesSpecs().getTserverSpecification().getStorageSpec(),
+              providerSpecification.getNodesSpecs().getTserverSpecification().getDeviceInfo());
+        }
+      }
+    }
   }
 
   private void validateGeoPartitions(ClusterSpec v2Cluster, Cluster dbCluster) {
@@ -813,10 +993,9 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateClusterNodeSpec(
       ClusterNodeSpec v2NodeSpec, UserIntent dbUserIntent, ClusterNodeSpec v2PrimaryNodeSpec) {
-    if (v2NodeSpec.getDedicatedNodes() == null) {
-      assertThat(dbUserIntent.dedicatedNodes, is(false));
-    } else {
-      assertThat(v2NodeSpec.getDedicatedNodes(), is(dbUserIntent.dedicatedNodes));
+    if (v2NodeSpec == null) {
+      assertTrue(dbUserIntent.isMulticloudSupport());
+      return;
     }
     if (v2NodeSpec.getCgroupSize() == null) {
       assertThat(dbUserIntent.getCgroupSize(), is(nullValue()));
@@ -884,16 +1063,6 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
   }
 
-  private void validateStorageSpec(ClusterStorageSpec v2StorageSpec, DeviceInfo deviceInfo) {
-    assertThat(v2StorageSpec.getNumVolumes(), is(deviceInfo.numVolumes));
-    assertThat(v2StorageSpec.getVolumeSize(), is(deviceInfo.volumeSize));
-    assertThat(v2StorageSpec.getDiskIops(), is(deviceInfo.diskIops));
-    assertThat(v2StorageSpec.getMountPoints(), is(deviceInfo.mountPoints));
-    assertThat(v2StorageSpec.getStorageClass(), is(deviceInfo.storageClass));
-    assertThat(v2StorageSpec.getStorageType().getValue(), is(deviceInfo.storageType.name()));
-    assertThat(v2StorageSpec.getThroughput(), is(deviceInfo.throughput));
-  }
-
   private void validateK8SNodeResourceSpec(ClusterNodeSpec v2NodeSpec, UserIntent dbUserIntent) {
     if (v2NodeSpec.getK8sMasterResourceSpec() == null) {
       assertThat(dbUserIntent.masterK8SNodeResourceSpec, is(nullValue()));
@@ -950,34 +1119,39 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     if (v2StorageSpec == null) {
       v2StorageSpec = v2PrimaryStorageSpec;
     }
+    validateStorageSpec(
+        v2StorageSpec,
+        dbUserIntent.getBaseDeviceInfo(dbUserIntent.maybeGetSingleProviderUUID().get()));
+  }
+
+  private void validateStorageSpec(ClusterStorageSpec v2StorageSpec, DeviceInfo deviceInfo) {
     if (v2StorageSpec.getNumVolumes() == null) {
-      assertThat(dbUserIntent.deviceInfo.numVolumes, is(nullValue()));
+      assertThat(deviceInfo.numVolumes, is(nullValue()));
     } else {
-      assertThat(v2StorageSpec.getNumVolumes(), is(dbUserIntent.deviceInfo.numVolumes));
+      assertThat(v2StorageSpec.getNumVolumes(), is(deviceInfo.numVolumes));
     }
     if (v2StorageSpec.getVolumeSize() == null) {
-      assertThat(dbUserIntent.deviceInfo.volumeSize, is(nullValue()));
+      assertThat(deviceInfo.volumeSize, is(nullValue()));
     } else {
-      assertThat(v2StorageSpec.getVolumeSize(), is(dbUserIntent.deviceInfo.volumeSize));
+      assertThat(v2StorageSpec.getVolumeSize(), is(deviceInfo.volumeSize));
     }
     if (v2StorageSpec.getDiskIops() == null) {
-      assertThat(dbUserIntent.deviceInfo.diskIops, is(nullValue()));
+      assertThat(deviceInfo.diskIops, is(nullValue()));
     } else {
-      assertThat(v2StorageSpec.getDiskIops(), is(dbUserIntent.deviceInfo.diskIops));
+      assertThat(v2StorageSpec.getDiskIops(), is(deviceInfo.diskIops));
     }
     if (v2StorageSpec.getMountPoints() == null) {
-      assertThat(dbUserIntent.deviceInfo.mountPoints, is(nullValue()));
+      assertThat(deviceInfo.mountPoints, is(nullValue()));
     } else {
-      assertThat(v2StorageSpec.getMountPoints(), is(dbUserIntent.deviceInfo.mountPoints));
+      assertThat(v2StorageSpec.getMountPoints(), is(deviceInfo.mountPoints));
     }
     if (v2StorageSpec.getStorageClass() == null) {
-      assertThat(dbUserIntent.deviceInfo.storageClass, anyOf(nullValue(), emptyString()));
+      assertThat(deviceInfo.storageClass, anyOf(nullValue(), emptyString()));
     } else {
-      assertThat(v2StorageSpec.getStorageClass(), is(dbUserIntent.deviceInfo.storageClass));
+      assertThat(v2StorageSpec.getStorageClass(), is(deviceInfo.storageClass));
     }
-    assertThat(
-        v2StorageSpec.getStorageType().getValue(), is(dbUserIntent.deviceInfo.storageType.name()));
-    assertThat(v2StorageSpec.getThroughput(), is(dbUserIntent.deviceInfo.throughput));
+    assertThat(v2StorageSpec.getStorageType().getValue(), is(deviceInfo.storageType.name()));
+    assertThat(v2StorageSpec.getThroughput(), is(deviceInfo.throughput));
   }
 
   private void validateNetworkingSpec(
@@ -1686,6 +1860,10 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     if (v2Cluster.getProviderSpec() != null) {
       validateProviderEditSpec(v2Cluster.getProviderSpec(), dbCluster);
+    }
+    if (v2Cluster.getProviderSpecs() != null && !v2Cluster.getProviderSpecs().isEmpty()) {
+      validateProviderSpecs(
+          v2Cluster.getProviderSpecs(), dbCluster.userIntent.providerSpecifications);
     }
     if (v2Cluster.getPlacementSpec() != null) {
       validatePlacementSpec(v2Cluster.getPlacementSpec(), dbCluster.placementInfo);

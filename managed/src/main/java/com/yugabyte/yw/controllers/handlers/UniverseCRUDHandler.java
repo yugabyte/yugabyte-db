@@ -237,6 +237,7 @@ public class UniverseCRUDHandler {
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
             || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || isProviderSpecificationsChanged(cluster, currentCluster)
             || (isK8s
                 && !isSameInstanceTypes(
                     cluster.userIntent, currentCluster.userIntent, nodesInCluster))
@@ -282,6 +283,18 @@ public class UniverseCRUDHandler {
       }
     }
     return result;
+  }
+
+  private static boolean isProviderSpecificationsChanged(Cluster cluster, Cluster currentCluster) {
+    Set<UniverseDefinitionTaskParams.ProviderSpecification> current = new HashSet<>();
+    if (currentCluster.userIntent.providerSpecifications != null) {
+      current.addAll(currentCluster.userIntent.providerSpecifications);
+    }
+    Set<UniverseDefinitionTaskParams.ProviderSpecification> newOne = new HashSet<>();
+    if (cluster.userIntent.providerSpecifications != null) {
+      newOne.addAll(cluster.userIntent.providerSpecifications);
+    }
+    return !Objects.equals(current, newOne);
   }
 
   private static boolean isRegionListUpdate(Cluster cluster, Cluster currentCluster) {
@@ -1102,7 +1115,14 @@ public class UniverseCRUDHandler {
         primaryIntent.tserverGFlags = trimFlags(primaryIntent.tserverGFlags);
 
         // Check if universe has multi-regions configured at creation time.
-        int numRegions = primaryIntent.regionList.size();
+        int numRegions =
+            (int)
+                primaryCluster
+                    .getOverallPlacement()
+                    .azInfoStream()
+                    .map(azInfo -> azInfo.region.uuid)
+                    .distinct()
+                    .count();
         boolean isMultiRegion = numRegions > 1;
         universe.updateConfig(
             ImmutableMap.of(Universe.IS_MULTIREGION, Boolean.toString(isMultiRegion)));

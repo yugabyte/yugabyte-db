@@ -1846,6 +1846,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
+    public DeviceInfo getBaseDeviceInfo(UUID providerUUID) {
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            providerUUID, null, ServerType.TSERVER, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
+      }
+      return deviceInfo;
+    }
+
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
       return getDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
     }
