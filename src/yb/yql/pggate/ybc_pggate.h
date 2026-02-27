@@ -1092,6 +1092,8 @@ YbcStatus YBCQueryAutoAnalyze(
 
 YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values);
 YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
 bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);

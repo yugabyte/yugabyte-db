@@ -3351,6 +3351,11 @@ void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
   handle->ResetScan();
 }
 
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
+  handle->SetParams(num_params, param_values);
+}
+
 YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {
   return handle->ExecScan();
 }

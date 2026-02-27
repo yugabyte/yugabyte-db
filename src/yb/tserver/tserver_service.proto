@@ -716,6 +716,15 @@ message ConnectivityStateResponsePB {
 message PgRemoteExecRequestPB {
   optional string query = 1;
   optional string tserver_uuid = 2;
+
+  message PgQueryParamPB {
+    // Text-format value. Absent when the parameter is NULL.
+    optional string value = 1;
+  }
+
+  // One entry per query parameter ($1, $2, ...).
+  // A param with no value set represents SQL NULL.
+  repeated PgQueryParamPB params = 3;
 }
 
 message PgRemoteExecResponsePB {

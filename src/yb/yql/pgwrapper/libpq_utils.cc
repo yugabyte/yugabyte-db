@@ -683,12 +683,20 @@ bool PGConn::IsBusy() {
   return PQisBusy(impl_.get()) == kIsBusy;
 }
 
-Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+Result<PGResultPtr> PGConn::Fetch(
+    const std::string& command, std::optional<PGResultFormat> data_format,
+    const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << command;
+  if (simple_query_protocol_) {
+    DCHECK(!data_format) << "data_format cannot be specified with simple query protocol";
+    DCHECK(params.empty()) << "Parameters passed but connection uses simple query protocol";
+    return CheckResult(PGResultPtr(PQexec(impl_.get(), command.c_str())), command);
+  }
+  auto format = data_format.value_or(PGResultFormat::kBinary);
   return CheckResult(
-      PGResultPtr(simple_query_protocol_
-          ? PQexec(impl_.get(), command.c_str())
-          : PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1)),
+      PGResultPtr(PQexecParams(
+          impl_.get(), command.c_str(), static_cast<int>(params.size()), nullptr,
+          params.data(), nullptr, nullptr, static_cast<int>(format))),
       command);
 }
 
