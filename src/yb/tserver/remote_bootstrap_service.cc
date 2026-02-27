@@ -126,6 +126,9 @@ DEFINE_test_flag(
 DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
               "Timeout for change role operation during remote bootstrap.");
 
+DEFINE_test_flag(double, fault_fail_rbs_fetch_data_prob, 0.0,
+    "Fraction of the time when the node would fail RemoteBootstrapService::FetchData() RPC call.");
+
 METRIC_DEFINE_gauge_int32(server, num_remote_bootstrap_sessions_serving_data,
     "Number of active Remote Bootstrap Sessions transferring data", yb::MetricUnit::kUnits,
     "Number of Remote Bootstrap Sessions served by this node that are actively transferring data.");
@@ -268,6 +271,12 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
   if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_fetch_data_secs)) {
     LOG(INFO) << "Injecting FetchData latency for test";
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_fetch_data_secs));
+  }
+
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_fault_fail_rbs_fetch_data_prob))) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::IO_ERROR, "TEST_fault_fail_rbs_fetch_data_prob",
+        STATUS_FORMAT(NetworkError, "TEST_fault_fail_rbs_fetch_data_prob"));
   }
 
   const string& session_id = req->session_id();

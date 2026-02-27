@@ -90,11 +90,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/sync_point.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 
 DEFINE_NON_RUNTIME_int32(test_delete_leader_num_iters, 3,
              "Number of iterations to run in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
@@ -2338,6 +2340,62 @@ TEST_F(RemoteBootstrapITest, AcceptRBSAfterTabletTombstone) {
       waitfor_timeout,
       "Timed out waiting for a new copy of the tablet replica to be added back to the target "
       "tserver"));
+}
+
+TEST_F(RemoteBootstrapITest, TestFetchDataIsRetriedOnFailures) {
+  const int num_tablet_servers = 3;
+  const auto timeout = MonoDelta::FromSeconds(kTimeMultiplier * 30);
+
+  std::vector<string> tserver_flags = {
+      // Minimize log retention.
+      "--log_min_segments_to_retain=1",
+      "--log_min_seconds_to_retain=0",
+      // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is set to 0
+      "--xcluster_checkpoint_max_staleness_secs=0",
+      // Minimize log replay.
+      "--retryable_request_timeout_secs=0",
+      // Reduce the WAL segment size so that the number of WAL segments are > 1.
+      "--initial_log_segment_size_bytes=1024",
+      "--log_segment_size_bytes=1024",
+      "--maintenance_manager_polling_interval_ms=300",
+      "--db_write_buffer_size=100000"
+  };
+  std::vector<string> master_flags = { "--enable_load_balancing=false" };
+  ASSERT_NO_FATALS(StartCluster(tserver_flags, master_flags, num_tablet_servers));
+
+  const int ts_to_restart_idx = 2;
+  const std::string ts_to_restart_uuid = cluster_->tablet_server(ts_to_restart_idx)->uuid();
+  TServerDetails* ts_to_restart_details = ts_map_[ts_to_restart_uuid].get();
+
+  // Shut down one tserver so the tablet runs with 2 replicas.
+  ASSERT_OK(cluster_->RemoveTabletServer(ts_to_restart_uuid, MonoTime::Now() + timeout));
+
+  // Create table and run write workload so the leader has data and WAL.
+  TestYcqlWorkload workload(cluster_.get());
+  workload.set_sequential_write(true);
+  workload.Setup(YBTableType::YQL_TABLE_TYPE);
+  workload.Start();
+
+  // Get tablet id and leader.
+  vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+  TServerDetails* ts0 = ts_map_[cluster_->tablet_server(0)->uuid()].get();
+  ASSERT_OK(itest::WaitForNumTabletsOnTS(ts0, 1, timeout, &tablets));
+  string tablet_id = tablets[0].tablet_status().tablet_id();
+
+  TServerDetails* leader_ts;
+  ASSERT_OK(itest::FindTabletLeader(ts_map_, tablet_id, timeout, &leader_ts));
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server_by_uuid(leader_ts->uuid()),
+                              "TEST_fault_fail_rbs_fetch_data_prob", "0.1"));
+  ASSERT_OK(cluster_->tablet_server(ts_to_restart_idx)->Restart());
+  ASSERT_OK(itest::AddServer(
+      leader_ts, tablet_id, ts_to_restart_details, PeerMemberType::PRE_VOTER, std::nullopt,
+      timeout));
+  workload.WaitInserted(500);
+  workload.StopAndJoin();
+  ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(
+      ts_to_restart_idx, tablet_id, TABLET_DATA_READY, timeout));
+  ASSERT_OK(itest::WaitUntilCommittedConfigMemberTypeIs(
+      3, leader_ts, tablet_id, timeout, PeerMemberType::VOTER));
 }
 
 Result<std::string> RemoteBootstrapITest::SetUp3TabletServerClusterAndTable(
