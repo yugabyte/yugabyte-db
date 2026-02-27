@@ -260,7 +260,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager,
+    SharedLockManager* lock_manager,
     dockv::SkipPrefixLocks skip_prefix_locks) {
   PrepareDocWriteOperationResult result;
 

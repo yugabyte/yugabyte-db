@@ -28,9 +28,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
-namespace yb {
-
-namespace docdb {
+namespace yb::docdb {
 
 class UnlockedBatch;
 
@@ -39,7 +37,7 @@ class UnlockedBatch;
 // in the destructor.
 class LockBatch {
  public:
-  LockBatch() {}
+  LockBatch() = default;
   LockBatch(SharedLockManager* lock_manager,
             LockBatchEntries<SharedLockManager>&& key_to_intent_type,
             CoarseTimePoint deadline);
@@ -135,5 +133,4 @@ class UnlockedBatch {
   DISALLOW_COPY_AND_ASSIGN(UnlockedBatch);
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

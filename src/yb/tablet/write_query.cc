@@ -867,11 +867,17 @@ Status WriteQuery::DoExecute() {
     }
   }
 
+  // Need to release scoped operation, because lock could take significant amount of time.
+  // Also it leads to deadlock if other operation will try to shut down RocksDB at this point.
+  scoped_read_operation_.Reset();
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), metrics_, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager(), skip_prefix_locks));
+
+  scoped_read_operation_ = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation_);
 
   DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
