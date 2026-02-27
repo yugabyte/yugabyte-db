@@ -135,7 +135,7 @@ import-data:
   adaptive-parallelism-max:
 ```
 
-| Number of maximum parallel jobs to use while importing data when adaptive parallelism is enabled. By default, voyager tries to determine the total number of cores `N` and use `N/2` as the maximum parallel jobs. |
+|Number of maximum parallel jobs to use while importing data when adaptive parallelism is enabled. By default, voyager tries to determine the total number of cores `N` and use it as the maximum parallel jobs.|
 
 | --parallel-jobs |
 
