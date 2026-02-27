@@ -1093,6 +1093,7 @@ public class PlacementInfoUtil {
     Cluster oldCluster;
 
     validatePartitions(cluster);
+    Util.fillIntentFromProviderSpecifications(cluster.userIntent);
     if (clusterOpType == ClusterOperationType.EDIT) {
       if (universe == null) {
         throw new IllegalArgumentException(
@@ -2022,7 +2023,7 @@ public class PlacementInfoUtil {
       for (Iterator<PlacementRegion> regionIter = cloud.regionList.iterator();
           regionIter.hasNext(); ) {
         PlacementRegion region = regionIter.next();
-        if (!intentRegions.contains(region.uuid)) {
+        if (intentRegions != null && !intentRegions.contains(region.uuid)) {
           regionIter.remove();
         }
       }

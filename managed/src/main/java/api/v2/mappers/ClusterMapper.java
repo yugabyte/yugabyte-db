@@ -18,6 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.List;
 import java.util.UUID;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.BeanMapping;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
@@ -36,6 +37,7 @@ public interface ClusterMapper {
 
   @Mapping(target = ".", source = "userIntent")
   @Mapping(target = "nodeSpec", source = "userIntent")
+  @Mapping(target = "dedicatedNodes", source = "userIntent.dedicatedNodes")
   @Mapping(target = "networkingSpec", source = "userIntent")
   @Mapping(target = "providerSpec", source = "userIntent")
   @Mapping(target = "placementSpec", source = "placementInfo")
@@ -43,6 +45,15 @@ public interface ClusterMapper {
   @Mapping(target = "gflags", source = "userIntent")
   @Mapping(target = "partitionsSpec", source = "partitions")
   ClusterSpec toV2ClusterSpec(Cluster v1Cluster);
+
+  @AfterMapping
+  default void setProviderSpecs(Cluster v1Cluster, @MappingTarget ClusterSpec clusterSpec) {
+    if (v1Cluster.userIntent != null && v1Cluster.userIntent.isMulticloudSupport()) {
+      clusterSpec.setProviderSpecs(
+          UserIntentMapper.INSTANCE.providerSpecificationsToClusterPerProviderSpecs(
+              v1Cluster.userIntent.providerSpecifications));
+    }
+  }
 
   @Mapping(target = "userIntent", source = ".")
   @Mapping(target = "placementInfo", source = "placementSpec")
