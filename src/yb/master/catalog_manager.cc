@@ -6829,6 +6829,7 @@ Status CatalogManager::DeleteIndexInfoFromTable(
   // Heed issue #6233.
   if (!l->pb.has_fully_applied_schema()) {
     MultiStageAlterTable::CopySchemaDetailsToFullyApplied(&indexed_table_data.pb);
+    VLOG(1) << "Copied schema details to fully applied for indexed table " << indexed_table_id;
   }
   auto *indexes = indexed_table_data.pb.mutable_indexes();
   for (int i = 0; i < indexes->size(); i++) {
@@ -6851,6 +6852,8 @@ Status CatalogManager::DeleteIndexInfoFromTable(
       // Update the in-memory state.
       TRACE("Committing in-memory state");
       l.Commit();
+      VLOG(1) << "Successfully deleted index info from table " << indexed_table_id << " for index "
+              << index_table_id << " in sys-catalog";
       return Status::OK();
     }
   }
@@ -13371,6 +13374,11 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     if (!lock.locked()) {
       return;
     }
+
+    VLOG(1) << Format(
+        "Done preparing table deletion for $0, transaction id: $1, indexed table: $2", table->id(),
+        transaction_id, indexed_table ? indexed_table->id() : "null");
+
     // Clean up any DDL verification state that is waiting for this table to be deleted.
     if (!transaction_id.IsNil() && indexed_table) {
       // When deleting an index, we also need to update the indexed table
@@ -13398,6 +13406,7 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
             500ms /* initial_delay */,
             1.0 /* delay_multiplier */),
         Format("Fully_applied_schema of $0 fail to clear", *indexed_table));
+      VLOG(1) << Format("Done waiting for fully_applied_schema of $0 to clear", *indexed_table);
     }
     Status s = sys_catalog_->Upsert(epoch, table);
     if (!s.ok()) {
