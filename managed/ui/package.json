@@ -63,8 +63,8 @@
     "trailingComma": "none"
   },
   "devDependencies": {
-    "@storybook/react": "7.0.4",
-    "@storybook/react-vite": "7.0.4",
+    "@storybook/react": "10.2.13",
+    "@storybook/react-vite": "10.2.13",
     "@testing-library/dom": "8.20.1",
     "@testing-library/jest-dom": "5.17.0",
     "@testing-library/react": "12.1.5",
@@ -83,7 +83,7 @@
     "eslint-plugin-import": "2.32.0",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "5.1.0",
-    "eslint-plugin-storybook": "0.6.11",
+    "eslint-plugin-storybook": "10.2.13",
     "events": "^3.3.0",
     "jsdom": "27.4.0",
     "ncp": "2.0.0",
@@ -92,7 +92,7 @@
     "rimraf": "2.7.1",
     "sass": "1.52.1",
     "source-map-explorer": "2.5.0",
-    "storybook": "7.0.4",
+    "storybook": "10.2.13",
     "vite": "6.4.1",
     "vite-plugin-dynamic-import": "1.4.1",
     "vite-plugin-svgr": "4.3.0",
