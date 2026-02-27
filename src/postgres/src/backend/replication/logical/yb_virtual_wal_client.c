@@ -391,7 +391,29 @@ GetDynamicTypeEntity(int attr_num, Oid relid)
 }
 
 YbVirtualWalRecord *
-YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
+YBXLogReadRecord(XLogReaderState *state, List *publication_names,
+				 char **errormsg)
+{
+	/* reset error state */
+	*errormsg = NULL;
+	state->errormsg_buf[0] = '\0';
+
+	YBResetDecoder(state);
+
+	YbVirtualWalRecord *record = YBCReadRecord(publication_names);
+
+	if (record)
+	{
+		state->ReadRecPtr = record->lsn;
+		state->yb_virtual_wal_record = record;
+		TrackUnackedTransaction(record);
+	}
+
+	return record;
+}
+
+YbVirtualWalRecord *
+YBCReadRecord(List *publication_names)
 {
 	MemoryContext caller_context;
 	YbVirtualWalRecord *record = NULL;
@@ -402,12 +424,6 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	elog(DEBUG4, "YBCReadRecord");
 
 	caller_context = MemoryContextSwitchTo(cached_records_context);
-
-	/* reset error state */
-	*errormsg = NULL;
-	state->errormsg_buf[0] = '\0';
-
-	YBResetDecoder(state);
 
 	/* Fetch a batch of changes from CDC service if needed. */
 	if (cached_records == NULL ||
@@ -485,11 +501,8 @@ YBCReadRecord(XLogReaderState *state, List *publication_names, char **errormsg)
 	}
 
 	last_getconsistentchanges_response_empty = false;
-	record = &cached_records->rows[cached_records_last_sent_row_idx++];
-	state->ReadRecPtr = record->lsn;
-	state->yb_virtual_wal_record = record;
 
-	TrackUnackedTransaction(record);
+	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 
 	MemoryContextSwitchTo(caller_context);
 	return record;
@@ -758,7 +771,8 @@ YBCRefreshReplicaIdentities(Oid *table_oids, int num_tables)
 	YbcReplicationSlotDescriptor *yb_replication_slot;
 	int			replica_identity_idx = 0;
 
-	YBCGetReplicationSlot(MyReplicationSlot->data.name.data, &yb_replication_slot);
+	YBCGetReplicationSlot(MyReplicationSlot->data.name.data,
+						  &yb_replication_slot, /* if_exists */ false);
 
 	/* Populate the replica identities for new tables in MyReplicationSlot. */
 	for (replica_identity_idx = 0;
