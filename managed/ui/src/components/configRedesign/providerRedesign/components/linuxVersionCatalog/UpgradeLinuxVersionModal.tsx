@@ -8,12 +8,11 @@
  */
 
 import { FC, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import clsx from 'clsx';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Trans, useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { find, isEmpty } from 'lodash';
 import * as yup from 'yup';
 import { useMutation } from 'react-query';
@@ -26,7 +25,10 @@ import {
   YBModal,
   YBSelectField
 } from '../../../../../redesign/components';
-import { useIsTaskNewUIEnabled } from '../../../../../redesign/features/tasks/TaskUtils';
+import {
+  useIsTaskNewUIEnabled,
+  useInterceptBackupTaskLinks
+} from '../../../../../redesign/features/tasks/TaskUtils';
 import { showTaskInDrawer } from '../../../../../actions/tasks';
 import {
   createErrorMessage,
@@ -41,7 +43,6 @@ import {
 } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { ImageBundleDefaultTag, ImageBundleYBActiveTag } from './LinuxVersionUtils';
 import { upgradeVM } from './VersionCatalogApi';
-import { useInterceptBackupTaskLinks } from '../../../../../redesign/features/tasks/TaskUtils';
 
 interface UpgradeLinuxVersionModalProps {
   visible: boolean;

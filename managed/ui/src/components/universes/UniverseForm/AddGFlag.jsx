@@ -213,10 +213,9 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
 
   //renderers
   const renderFormComponent = (flag) => {
-    // eslint-disable-next-line no-prototype-builtins
-    const defaultKey = selectedFlag?.hasOwnProperty('current')
+    const defaultKey = Object.hasOwn(selectedFlag ?? {}, 'current')
       ? 'current'
-      : selectedFlag?.hasOwnProperty('default')
+      : Object.hasOwn(selectedFlag ?? {}, 'default')
       ? 'default'
       : 'target';
 

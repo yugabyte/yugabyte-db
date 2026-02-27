@@ -8,7 +8,6 @@ import { toast } from 'react-toastify';
 import { Typography } from '@material-ui/core';
 import _ from 'lodash';
 
-import { formatBytes } from '../../../utils/Formatters';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { TableAction } from '../../tables';
 import { YBPanelItem } from '../../panels';
@@ -16,7 +15,7 @@ import { YBPanelItem } from '../../panels';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBBanner, YBBannerVariant, YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
-import { formatSchemaName } from '../../../utils/Formatters';
+import { formatBytes, formatSchemaName } from '../../../utils/Formatters';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBButton } from '../../../redesign/components';
 import {
@@ -32,7 +31,6 @@ import './ListTables.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 import tableIcon from '../images/table.png';
-
 
 class TableTitle extends Component {
   render() {

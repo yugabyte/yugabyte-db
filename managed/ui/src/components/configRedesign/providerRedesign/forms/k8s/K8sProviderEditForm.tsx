@@ -5,8 +5,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import { useState } from 'react';
-import JsYaml from 'js-yaml';
-import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
+import { load as loadYaml } from 'js-yaml';
+import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { toast } from 'react-toastify';
@@ -36,6 +36,7 @@ import {
 } from '../configureRegion/ConfigureK8sRegionModal';
 import {
   KUBERNETES_PROVIDER_OPTIONS,
+  K8S_FORM_MAPPERS,
   QUAY_IMAGE_REGISTRY,
   REDHAT_IMAGE_REGISTRY
 } from './constants';
@@ -89,7 +90,6 @@ import {
 } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RuntimeConfigKey } from '../../../../../redesign/helpers/constants';
-import { K8S_FORM_MAPPERS } from './constants';
 
 interface K8sProviderEditFormProps {
   editProvider: EditProvider;
@@ -663,7 +663,7 @@ const constructProviderPayload = async (
   let kubernetesImagePullSecretName = '';
   try {
     // Type cast is required since JsYaml.load doesn't know the type of the input file
-    const kubernetesPullSecretYAML = JsYaml.load(kubernetesPullSecretContent) as K8sPullSecretFile;
+    const kubernetesPullSecretYAML = loadYaml(kubernetesPullSecretContent) as K8sPullSecretFile;
     kubernetesImagePullSecretName = kubernetesPullSecretYAML?.metadata?.name ?? '';
   } catch (error) {
     throw new Error(`An error occurred while reading the pull secret file as YAML: ${error}`);
