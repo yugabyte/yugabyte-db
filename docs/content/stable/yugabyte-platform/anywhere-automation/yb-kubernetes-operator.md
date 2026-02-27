@@ -26,6 +26,7 @@ The YugabyteDB Operator provides additional Custom Resource Definitions (CRDs) t
 - Support Bundle CRD - collect logs when a universe fails
 - Backup and Restore CRDs - take full backups of a universe and restore for data protection
 - Storage Config CRD - configure backup destinations
+- Provider CRD (YBProvider) - define a Kubernetes provider for multi-cluster deployments and operator-managed universes
 
 For details of each CRD, you can run a `kubectl explain` on the CR. For example:
 
@@ -205,6 +206,44 @@ spec:
 ```
 
 Any modifications to the universe can be done by modifying the CRD using `kubectl apply/edit` operations.
+
+#### Universe CRD placement and resource specs
+
+The YBUniverse CRD supports `placementInfo` to specify which regions and zones pods run in, and `tserverResourceSpec` and `masterResourceSpec` to set CPU and memory for tserver and master pods:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe-demo
+spec:
+  placementInfo:
+    defaultRegion: us-west1
+    regions:
+    - code: us-west1
+      zones:
+      - code: us-west1-a
+        numNodes: 2
+        preferred: true
+      - code: us-west1-b
+        numNodes: 1
+        preferred: true
+  tserverResourceSpec:
+    requests:
+      cpu: "2"
+      memory: 4Gi
+    limits:
+      cpu: "3"
+      memory: 4Gi
+  masterResourceSpec:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # ... other spec fields (numNodes, replicationFactor, deviceInfo, etc.)
+```
 
 ### Add a different software release of YugabyteDB
 
@@ -611,6 +650,108 @@ spec:
   - YbcLogs
   - K8sInfo
   - GFlags
+```
+
+## Operator Import Universe
+
+{{<tags/feature/ea idea="12874">}}Operator Import Universe allows you to import an existing YugabyteDB Anywhere universe that is running on Kubernetes so that it is managed by the YugabyteDB Kubernetes Operator. This lets existing customers adopt the operator for universes that were created via the UI or other methods.
+
+There are no gFlags for this feature; it is exposed only as a new API. To avoid using it, do not call the API.
+
+### Unsupported scenarios
+
+Operator Import Universe is not supported in the following cases:
+
+- The Kubernetes operator is not enabled on YugabyteDB Anywhere.
+- The operator is watching a single namespace and the namespace in the import payload does not match that namespace.
+- The universe is part of an [xCluster](../../../architecture/docdb-replication/async-replication/) setup.
+- The universe uses availability zone (AZ) level overrides.
+- The universe has a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster.
+
+### API
+
+**Precheck** (recommended before import):
+
+```http
+POST api/v2/customers/$CUUID/universes/$UNI_UUID/operator-import/precheck
+Content-Type: application/json
+
+{"namespace": "<namespace>"}
+```
+
+- `namespace`: Kubernetes namespace where the custom resources will be created. Must be a namespace the operator is watching (same as the runtime config `yb.kubernetes.operator.namespace` when that is set).
+- Returns `200` on successful precheck.
+
+**Import**:
+
+```http
+POST api/v2/customers/$CUUID/universes/$UNI_UUID/operator-import
+Content-Type: application/json
+
+{"namespace": "<namespace>"}
+```
+
+- `namespace`: Same as for precheck.
+- Returns: task UUID and resource UUID.
+
+Use your [API token](./#account-details) for authentication when calling these endpoints.
+
+### Resources imported
+
+Importing a universe creates or adopts the following in the target namespace:
+
+- Universe (YBUniverse CR)
+- Provider (YBProvider CR), if all universes managed by that provider are being brought under operator control
+- Backups
+- Backup schedules
+- Storage configs used by those backups or schedules
+- Secrets used to access the storage configs
+- Release (Release CR)
+- Secrets used to access the release
+
+### Side effects
+
+After a universe and its related resources are imported to be managed by the operator:
+
+- Most edit operations are allowed only via the operator. The API and UI block edit actions on the imported resource.
+- This operation **cannot be reversed**.
+
+{{< warning title="Update CRDs before operator import" >}}
+Before using Operator Import Universe, update the Custom Resource Definitions on your Kubernetes cluster to the latest version that matches your installed YugabyteDB Anywhere version. Skipping this step can lead to edit-universe operations that scale down pod resources.
+
+Apply the latest CRDs as described in [Use YugabyteDB Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
+{{< /warning >}}
+
+## Provider CRD (YBProvider)
+
+The Provider CRD (YBProvider) defines a Kubernetes provider so you can run multi-cluster YugabyteDB deployments with the operator. For multi-cluster setup steps, see [Configure Kubernetes multi-cluster environment](../../configure-yugabyte-platform/kubernetes/#configure-kubernetes-multi-cluster-environment).
+
+Example YBProvider:
+
+```yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBProvider
+metadata:
+  name: test-provider
+spec:
+  cloudInfo:
+    kubernetesProvider: gke
+    kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+  regions:
+    - code: us-west1
+      zones:
+        - code: us-west1-a
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-b
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-c
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
 ```
 
 ## Limitations
