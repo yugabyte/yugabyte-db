@@ -135,8 +135,15 @@ class YsqlManager : public YsqlManagerIf {
       PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
       const ReadHybridTime& read_time = ReadHybridTime()) const override;
 
+  // Background task of LISTEN/NOTIFY.
+  Status ListenNotifyBgTask();
+
  private:
   Result<bool> StartRunningInitDbIfNeededInternal(const LeaderEpoch& epoch);
+
+  // Helper functions for background task of LISTEN/NOTIFY.
+  Status CreateYbSystemDBIfNeeded();
+  Status CreateListenNotifyObjects();
 
   Master& master_;
   CatalogManager& catalog_manager_;
@@ -150,6 +157,10 @@ class YsqlManager : public YsqlManagerIf {
   std::atomic<bool> pg_proc_exists_{false};
 
   bool advisory_locks_table_created_ = false;
+
+  bool yb_system_db_created_ = false;
+  bool creating_listen_notify_objects_ = false;
+  bool created_listen_notify_objects_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(YsqlManager);
 };

@@ -39,6 +39,29 @@ DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
 namespace yb::master {
 
+namespace {
+
+Status ExecuteStatementsAsync(
+    const std::string& database_name, const std::vector<std::string>& statements,
+    CatalogManagerIf& catalog_manager, const std::string& failure_warn_prefix, bool* executing,
+    bool* execution_successful) {
+  auto callback = [failure_warn_prefix, executing, execution_successful](const Status& status) {
+    if (status.ok()) {
+      *execution_successful = true;
+    } else {
+      WARN_NOT_OK(status, failure_warn_prefix);
+    }
+    *executing = false;
+  };
+  auto deadline = CoarseMonoClock::now() + MonoDelta::FromSeconds(60);
+  RETURN_NOT_OK(
+      ExecutePgsqlStatements(database_name, statements, catalog_manager, deadline, callback));
+  *executing = true;
+  return Status::OK();
+}
+
+}  // namespace
+
 YsqlManager::YsqlManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : master_(master),
@@ -305,6 +328,82 @@ Result<bool> YsqlManager::GetPgIndexStatus(
     PgOid database_oid, PgOid index_oid, const std::string& status_col_name,
     const ReadHybridTime& read_time) const {
   return sys_catalog_.ReadPgIndexBoolColumn(database_oid, index_oid, status_col_name, read_time);
+}
+
+Status YsqlManager::ListenNotifyBgTask() {
+  if (!FLAGS_enable_ysql || created_listen_notify_objects_) {
+    return Status::OK();
+  }
+  auto num_live_tservers = VERIFY_RESULT(catalog_manager_.GetNumLiveTServersForActiveCluster());
+
+  if (num_live_tservers == 0) {
+    LOG(INFO) << "No live tservers found, skipping LISTEN/NOTIFY background task for now";
+  } else {
+    RETURN_NOT_OK(CreateYbSystemDBIfNeeded());
+    RETURN_NOT_OK(CreateListenNotifyObjects());
+  }
+  return Status::OK();
+}
+
+Status YsqlManager::CreateYbSystemDBIfNeeded() {
+  DCHECK(FLAGS_enable_ysql);
+
+  if (yb_system_db_created_ || creating_listen_notify_objects_) {
+    return Status::OK();
+  }
+
+  // Check if kYbSystemDbName namespace already exists.
+  if (VERIFY_RESULT(catalog_manager_.sys_catalog()->NamespaceExists(kYbSystemDbName))) {
+    yb_system_db_created_ = true;
+    return Status::OK();
+  }
+
+  auto statement = Format("CREATE DATABASE $0", kYbSystemDbName);
+  auto failure_warn_prefix = Format("Failed to create database $0", kYbSystemDbName);
+
+  return ExecuteStatementsAsync(
+      "yugabyte", {statement}, catalog_manager_, failure_warn_prefix,
+      &creating_listen_notify_objects_, &yb_system_db_created_);
+}
+
+Status YsqlManager::CreateListenNotifyObjects() {
+  DCHECK(FLAGS_enable_ysql);
+
+  if (created_listen_notify_objects_ || creating_listen_notify_objects_ || !yb_system_db_created_) {
+    return Status::OK();
+  }
+
+  std::vector<std::string> statements;
+  statements.emplace_back(Format(
+      R"(CREATE TABLE IF NOT EXISTS $0 (
+           notif_uuid uuid NOT NULL,
+           sender_node_uuid uuid NOT NULL,
+           sender_pid int NOT NULL,
+           db_oid oid NOT NULL,
+           is_listen bool NOT NULL,
+           data bytea NOT NULL,
+           extra_options jsonb,
+           CONSTRAINT $0_pkey PRIMARY KEY (notif_uuid HASH)
+         ) SPLIT INTO 1 TABLETS)",
+      kPgYbNotificationsTableName));
+  statements.emplace_back(Format(
+      R"(DO $$$$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_publication
+                WHERE pubname = '$0'
+            ) THEN CREATE PUBLICATION $0 FOR TABLE $1;
+            END IF;
+        END
+        $$$$)",
+      kPgYbNotificationsPublicationName, kPgYbNotificationsTableName));
+
+  auto failure_warn_prefix = Format("Failed to create LISTEN/NOTIFY objects");
+
+  return ExecuteStatementsAsync(
+      kYbSystemDbName, statements, catalog_manager_, failure_warn_prefix,
+      &creating_listen_notify_objects_, &created_listen_notify_objects_);
 }
 
 }  // namespace yb::master

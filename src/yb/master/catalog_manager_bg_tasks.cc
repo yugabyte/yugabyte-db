@@ -90,6 +90,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
 
 namespace yb::master {
 
@@ -212,6 +213,12 @@ void CatalogManagerBgTasks::RunOnceAsLeader(const LeaderEpoch& epoch) {
       WARN_NOT_OK(
           catalog_manager_->CreatePgAutoAnalyzeService(epoch),
           "Failed to create Auto Analyze service");
+
+    if (FLAGS_TEST_ysql_yb_enable_listen_notify) {
+      WARN_NOT_OK(
+          catalog_manager_->ysql_manager_->ListenNotifyBgTask(),
+          "Failed to complete LISTEN/NOTIFY background task");
+    }
   }
 
   // Report metrics.

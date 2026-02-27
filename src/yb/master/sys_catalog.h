@@ -371,6 +371,8 @@ class SysCatalogTable {
     return tablet_peer_;
   }
 
+  Result<bool> NamespaceExists(const NamespaceName& ns_name);
+
  private:
   friend class CatalogManager;
   friend class ScopedLeaderSharedLock;
