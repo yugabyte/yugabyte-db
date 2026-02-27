@@ -145,6 +145,11 @@ public class AppInit {
     try {
       log.info("Yugaware Application has started");
       setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+      String displayVersion = Util.getYbaVersion();
+      if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+        displayVersion = displayVersion + " (FIPS)";
+      }
+      log.info("YBA version: {}", displayVersion);
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
