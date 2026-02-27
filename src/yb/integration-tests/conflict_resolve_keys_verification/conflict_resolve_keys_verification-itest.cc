@@ -173,6 +173,10 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
       // includes: truncate colocate table, advisory lock, single row txn
       isolation_folder = "others";
     }
+
+    // Make the output more consistent for the table with index
+    content_str =
+      "set ysql_max_in_flight_ops=1; set ysql_session_max_batch_size=1;\n" + content_str;
     ASSERT_OK(WriteStringToFile(env, content_str, tmp_sql_path));
 
     std::string target_output_file = Format(
@@ -254,9 +258,14 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
         input, std::regex("(in_memory|intent_check|regular_check|intent_write|regular_write)"));
   }
 
+  bool NeedSort(const std::string& input) {
+    return std::regex_search(input, std::regex("(regular_write)"));
+  }
+
   std::string SortFileByGroups(const std::string& content) {
     // Parse content into groups
     std::vector<std::string> groups;
+    std::vector<std::string> groups_need_sort;
     std::istringstream stream(content);
     std::string line;
     std::string current_group;
@@ -267,7 +276,8 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
       if (ContainsAnyPattern(line)) {
         // Save previous group if exists
         if (in_group && !current_group.empty()) {
-          groups.push_back(current_group);
+          auto& g = NeedSort(current_group) ? groups_need_sort : groups;
+          g.push_back(current_group);
         }
         // Start new group
         current_group = line + "\n";
@@ -280,11 +290,13 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
 
     // Don't forget the last group
     if (in_group && !current_group.empty()) {
-      groups.push_back(current_group);
+      auto& g = NeedSort(current_group) ? groups_need_sort : groups;
+      g.push_back(current_group);
     }
 
     // Sort groups
-    std::sort(groups.begin(), groups.end());
+    std::sort(groups_need_sort.begin(), groups_need_sort.end());
+    groups.insert(groups.end(), groups_need_sort.begin(), groups_need_sort.end());
 
     // Build sorted content
     std::string sorted_content;

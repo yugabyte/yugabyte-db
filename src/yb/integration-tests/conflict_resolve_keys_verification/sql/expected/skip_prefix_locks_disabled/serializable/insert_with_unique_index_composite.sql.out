@@ -1,12 +1,5 @@
 in_memory:
 {SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], []), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], ["b"]), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], ["b", null]), []), [kStrongRead, kStrongWrite]}
-
-
-in_memory:
-{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
 {SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
 {SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
 {SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
@@ -17,13 +10,6 @@ intent_check:
 {SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
 {SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
 {SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
-
-
-intent_check:
-{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], []), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], ["b"]), []), [kWeakRead, kWeakWrite]}
-{SubDocKey(DocKey(0xad65, ["a"], ["b", null]), []), [kStrongRead, kStrongWrite]}
 
 
 intent_write:
@@ -34,6 +20,20 @@ Wrote 11 key/value pairs to kIntents RocksDB:
  6. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
  8. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
  10. PutCF: SubDocKey(DocKey([], []), []) [kWeakRead, kWeakWrite] HT{ days: 0 time: 0 } => TransactionId(********-****-****-****-************) none
+
+
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], ["b"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], ["b", null]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], ["b"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xad65, ["a"], ["b", null]), []), [kStrongRead, kStrongWrite]}
 
 
 intent_write:
