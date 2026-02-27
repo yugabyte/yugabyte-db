@@ -25,7 +25,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Incorrectly configured ulimit along with snapshot operations can cause data loss
 | {{<product "ybdb">}}
 | {{<release "2.20">}}, {{<release "2024.1">}}, {{<release "2024.2">}}
-| {{<nobreak "28 February 2026">}}
+| {{<nobreak "27 February 2026">}}
 |
 | {{<ta 30104>}}
 | Index inconsistency with Insert On Conflict with partial or expression index
