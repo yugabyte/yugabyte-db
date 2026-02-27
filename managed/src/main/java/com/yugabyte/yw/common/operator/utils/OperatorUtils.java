@@ -36,6 +36,8 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
+import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -123,10 +125,12 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -2100,5 +2104,138 @@ public class OperatorUtils {
       // On error, return false to avoid unnecessary updates
       return false;
     }
+  }
+
+  /**
+   * Creates a DrConfigRestartForm from the DrConfig CR. Used when restarting DR after failover or
+   * when DR is in halted state.
+   */
+  public DrConfigRestartForm getDrConfigRestartFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    DrConfigRestartForm restartForm =
+        getDrConfigRestartFormFromCr(drConfig, drConfig.getMetadata().getNamespace(), scInformer);
+    restartForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return restartForm;
+  }
+
+  @VisibleForTesting
+  DrConfigRestartForm getDrConfigRestartFormFromCr(
+      DrConfig drConfig, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get the DR config model to access current state
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+
+    // Get source universe for database ID resolution
+    String crSourceUniverseName = drConfig.getSpec().getSourceUniverse();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+
+    // Resolve database names to IDs
+    TableType tableType = TableType.PGSQL_TABLE_TYPE;
+    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    Map<String, String> namespaceNameNamespaceIdMap =
+        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+
+    List<String> specDatabases = drConfig.getSpec().getDatabases();
+    Set<String> dbIds = new HashSet<>();
+    if (specDatabases != null) {
+      for (String dbName : specDatabases) {
+        String namespaceId = namespaceNameNamespaceIdMap.get(dbName.trim());
+        if (namespaceId != null) {
+          dbIds.add(namespaceId);
+        }
+      }
+    }
+
+    // Get storage config UUID
+    String crStorageConfig = drConfig.getSpec().getStorageConfig();
+    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
+    if (storageConfigUUID == null) {
+      throw new Exception("No storage config found with name " + crStorageConfig);
+    }
+
+    DrConfigRestartForm restartForm = new DrConfigRestartForm();
+    restartForm.dbs = dbIds;
+
+    // Set bootstrap params from storage config
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = storageConfigUUID;
+    restartForm.bootstrapParams = new RestartBootstrapParams();
+    restartForm.bootstrapParams.backupRequestParams = backupRequestParams;
+
+    return restartForm;
+  }
+
+  /**
+   * Creates a DrConfigReplaceReplicaForm from the DrConfig CR. Used when changing the
+   * target/replica universe while keeping the source the same.
+   */
+  public DrConfigReplaceReplicaForm getDrConfigReplaceReplicaFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    DrConfigReplaceReplicaForm replaceReplicaForm =
+        getDrConfigReplaceReplicaFormFromCr(
+            drConfig, drConfig.getMetadata().getNamespace(), scInformer);
+    replaceReplicaForm.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(drConfig));
+    return replaceReplicaForm;
+  }
+
+  @VisibleForTesting
+  DrConfigReplaceReplicaForm getDrConfigReplaceReplicaFormFromCr(
+      DrConfig drConfig, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get the DR config model to find the current primary universe
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    // Get source universe (primary) - this stays the same
+    String crSourceUniverseName = drConfig.getSpec().getSourceUniverse();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+
+    // Get new target universe (new replica)
+    String crTargetUniverseName = drConfig.getSpec().getTargetUniverse();
+    Universe newTargetUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crTargetUniverseName, namespace);
+    if (newTargetUniverse == null) {
+      throw new Exception("No universe found with name " + crTargetUniverseName);
+    }
+
+    // Get storage config UUID
+    String crStorageConfig = drConfig.getSpec().getStorageConfig();
+    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
+    if (storageConfigUUID == null) {
+      throw new Exception("No storage config found with name " + crStorageConfig);
+    }
+
+    DrConfigReplaceReplicaForm replaceReplicaForm = new DrConfigReplaceReplicaForm();
+    // primaryUniverseUuid is the current source (stays the same)
+    replaceReplicaForm.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    // drReplicaUniverseUuid is the new target (replacement replica)
+    replaceReplicaForm.drReplicaUniverseUuid = newTargetUniverse.getUniverseUUID();
+
+    // Set bootstrap params from storage config
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = storageConfigUUID;
+    replaceReplicaForm.bootstrapParams = new RestartBootstrapParams();
+    replaceReplicaForm.bootstrapParams.backupRequestParams = backupRequestParams;
+
+    return replaceReplicaForm;
   }
 }

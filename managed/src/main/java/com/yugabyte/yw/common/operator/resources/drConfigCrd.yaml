@@ -46,11 +46,13 @@ spec:
                 # 1. No change (normal case)
                 # 2. Switchover: source becomes target AND target becomes source
                 # 3. Failover: source becomes old target AND target becomes empty string
+                # 4. Restart/Change replica: source stays the same, target changes (including from empty to new value)
                 - rule: >
                     (oldSelf.sourceUniverse == self.sourceUniverse && oldSelf.targetUniverse == self.targetUniverse) ||
                     (self.sourceUniverse == oldSelf.targetUniverse && self.targetUniverse == oldSelf.sourceUniverse) ||
-                    (self.sourceUniverse == oldSelf.targetUniverse && self.targetUniverse == '')
-                  message: "sourceUniverse and targetUniverse can only be changed for switchover (swap source and target) or failover (target becomes source, target set to empty)"
+                    (self.sourceUniverse == oldSelf.targetUniverse && self.targetUniverse == '') ||
+                    (self.sourceUniverse == oldSelf.sourceUniverse && self.targetUniverse != oldSelf.targetUniverse && self.targetUniverse != '')
+                  message: "sourceUniverse and targetUniverse can only be changed for switchover (swap), failover (target becomes source, target cleared), or restart/change replica (source unchanged, target changed)"
               properties:
                 sourceUniverse:
                   description: >
@@ -63,6 +65,7 @@ spec:
                     Name of the target universe for which DrConfig needs to be setup.
                     During switchover, this swaps with sourceUniverse.
                     Set to empty string to trigger failover operation.
+                    Can be changed to a new universe for restart after failover or to change replica.
                   type: string
                 databases:
                   description: >
@@ -83,6 +86,13 @@ spec:
                     Storage configuration for the backup,
                     should contain name of storage config object
                   type: string
+                paused:
+                  description: >
+                    Controls the active state of the DR config.
+                    Set to true to pause replication, set to false to resume.
+                    Default is false (active/running).
+                  type: boolean
+                  default: false
               required:
               - sourceUniverse
               - targetUniverse

@@ -1,7 +1,5 @@
 package com.yugabyte.yw.controllers;
 
-import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getRequestedTableInfoList;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
@@ -10,7 +8,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.XClusterCreatePrecheck;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.dr.DrConfigHelper;
@@ -31,7 +28,6 @@ import com.yugabyte.yw.forms.DrConfigSafetimeResp.NamespaceSafetime;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSetTablesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
-import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -68,15 +64,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 import play.libs.Json;
@@ -384,85 +376,19 @@ public class DrConfigController extends AuthenticatedController {
     log.info("Received restart drConfig request");
 
     // Todo: restart does not trigger bootstrapping. It does not remove extra xCluster configs.
-
-    // Parse and validate request.
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    drConfigHelper.verifyTaskAllowed(drConfig, TaskType.RestartDrConfig);
-
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigRestartForm restartForm = parseRestartForm(customerUUID, request);
-    if (restartForm.bootstrapParams == null) {
-      restartForm.bootstrapParams = drConfig.getBootstrapBackupParams();
-    }
-    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
-    Universe sourceUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
-    Universe targetUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
-      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
-    }
-
-    log.info("DR state is {}", drConfig.getState());
-
-    XClusterConfigTaskParams taskParams;
-    if (xClusterConfig.getType() != ConfigType.Db) {
-      List<TableInfo> sourceTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-
-      // Todo: Always add non existing tables to the xCluster config on restart.
-      // Empty `dbs` field indicates a request to restart the entire config.
-      // This is consistent with the restart xCluster config behaviour.
-      Set<String> tableIds =
-          CollectionUtils.isEmpty(restartForm.dbs)
-              ? xClusterConfig.getTableIds()
-              : XClusterConfigTaskBase.getTableIds(
-                  getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
-
-      taskParams =
-          XClusterConfigController.getRestartTaskParams(
-              ybService,
-              xClusterConfig,
-              sourceUniverse,
-              targetUniverse,
-              tableIds,
-              restartForm.bootstrapParams,
-              false /* dryRun */,
-              isForceDelete,
-              drConfig.isHalted() /*isForceBootstrap*/,
-              softwareUpgradeHelper);
-    } else {
-      taskParams =
-          XClusterConfigController.getDbScopedRestartTaskParams(
-              xClusterConfig,
-              sourceUniverse,
-              targetUniverse,
-              restartForm.dbs,
-              restartForm.bootstrapParams,
-              drConfig.isHalted() /*isForceBootstrap*/,
-              softwareUpgradeHelper);
-    }
-
-    UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
-    CustomerTask.create(
-        customer,
-        sourceUniverse.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.DrConfig,
-        CustomerTask.TaskType.Restart,
-        drConfig.getName());
-    log.info("Submitted restart DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    UUID taskUUID =
+        drConfigHelper.restartDrConfigTask(customerUUID, drConfigUuid, restartForm, isForceDelete);
     auditService()
         .createAuditEntryWithReqBody(
             request,
             TargetType.DrConfig,
-            drConfig.getUuid().toString(),
+            drConfigUuid.toString(),
             ActionType.Restart,
             Json.toJson(restartForm),
             taskUUID);
-    return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
+    return new YBPTask(taskUUID, drConfigUuid).asResult();
   }
 
   /**
@@ -507,143 +433,31 @@ public class DrConfigController extends AuthenticatedController {
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.1.0")
   public Result replaceReplica(UUID customerUUID, UUID drConfigUuid, Request request) {
     log.info("Received replaceReplica drConfig request");
-
-    // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
-    drConfigHelper.verifyTaskAllowed(drConfig, TaskType.EditDrConfig);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
-
-    XClusterUtil.ensureUpgradeIsComplete(sourceUniverse, targetUniverse);
-
+    // Parse and validate request.
     DrConfigReplaceReplicaForm replaceReplicaForm =
         parseReplaceReplicaForm(customerUUID, sourceUniverse, targetUniverse, request);
     if (replaceReplicaForm.bootstrapParams == null) {
       replaceReplicaForm.bootstrapParams = drConfig.getBootstrapBackupParams();
     }
-    Universe newTargetUniverse =
-        Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
-
-    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
-      autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);
-    }
-
-    DrConfigTaskParams taskParams;
-    // Create xCluster config object.
-    XClusterConfig newTargetXClusterConfig =
-        drConfig.addXClusterConfig(
-            sourceUniverse.getUniverseUUID(),
-            newTargetUniverse.getUniverseUUID(),
-            xClusterConfig.getType(),
-            xClusterConfig.isAutomaticDdlMode());
-
-    try {
-      if (xClusterConfig.getType() != ConfigType.Db) {
-        Set<String> tableIds = xClusterConfig.getTableIds();
-
-        // Add index tables.
-        Map<String, List<String>> mainTableIndexTablesMap =
-            XClusterConfigTaskBase.getMainTableIndexTablesMap(
-                this.ybService, sourceUniverse, tableIds);
-        Set<String> indexTableIdSet =
-            mainTableIndexTablesMap.values().stream()
-                .flatMap(List::stream)
-                .collect(Collectors.toSet());
-        tableIds.addAll(indexTableIdSet);
-
-        log.debug("tableIds are {}", tableIds);
-
-        List<TableInfo> sourceTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-        List<TableInfo> requestedTableInfoList =
-            XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
-
-        List<TableInfo> newTargetTableInfoList =
-            XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
-        Map<String, String> sourceTableIdNewTargetTableIdMap =
-            XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-                requestedTableInfoList, newTargetTableInfoList);
-
-        XClusterConfigTaskBase.verifyTablesNotInReplication(
-            ybService,
-            tableIds,
-            xClusterConfig.getTableType(),
-            ConfigType.Txn,
-            sourceUniverse.getUniverseUUID(),
-            sourceTableInfoList,
-            newTargetUniverse.getUniverseUUID(),
-            newTargetTableInfoList,
-            true /* skipTxnReplicationCheck */);
-        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
-
-        BootstrapParams bootstrapParams =
-            drConfigHelper.getBootstrapParamsFromRestartBootstrapParams(
-                replaceReplicaForm.bootstrapParams, tableIds);
-        XClusterConfigController.xClusterBootstrappingPreChecks(
-            requestedTableInfoList,
-            sourceTableInfoList,
-            newTargetUniverse,
-            sourceUniverse,
-            sourceTableIdNewTargetTableIdMap,
-            ybService,
-            bootstrapParams,
-            null /* currentReplicationGroupName */);
-
-        newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
-        newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
-            mainTableIndexTablesMap);
-        taskParams =
-            new DrConfigTaskParams(
-                drConfig,
-                xClusterConfig,
-                newTargetXClusterConfig,
-                bootstrapParams,
-                requestedTableInfoList,
-                mainTableIndexTablesMap,
-                sourceTableIdNewTargetTableIdMap);
-      } else {
-        newTargetXClusterConfig.updateNamespaces(xClusterConfig.getDbIds());
-        taskParams =
-            new DrConfigTaskParams(
-                drConfig,
-                xClusterConfig,
-                newTargetXClusterConfig,
-                newTargetXClusterConfig.getDbIds(),
-                Collections.emptyMap());
-      }
-
-      // Todo: add a dryRun option here.
-
-      newTargetXClusterConfig.setSecondary(true);
-      newTargetXClusterConfig.update();
-    } catch (Exception e) {
-      newTargetXClusterConfig.delete();
-      throw e;
-    }
-
-    // Submit task to set up xCluster config.
-    UUID taskUUID = commissioner.submit(TaskType.EditDrConfig, taskParams);
-    CustomerTask.create(
-        customer,
-        sourceUniverse.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.DrConfig,
-        CustomerTask.TaskType.Edit,
-        drConfig.getName());
-    log.info("Submitted replaceReplica DrConfig({}), task {}", drConfig.getUuid(), taskUUID);
+    UUID taskUUID =
+        drConfigHelper.replaceReplicaTask(
+            customer, drConfig, xClusterConfig, sourceUniverse, targetUniverse, replaceReplicaForm);
     auditService()
         .createAuditEntryWithReqBody(
             request,
             TargetType.DrConfig,
-            drConfig.getUuid().toString(),
+            drConfigUuid.toString(),
             ActionType.Edit,
             Json.toJson(replaceReplicaForm),
             taskUUID);
-    return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
+    return new YBPTask(taskUUID, drConfigUuid).asResult();
   }
 
   /**
@@ -933,48 +747,10 @@ public class DrConfigController extends AuthenticatedController {
 
   private Result toggleDrState(
       UUID customerUUID, UUID drConfigUUID, Request request, CustomerTask.TaskType taskType) {
-    String operation = taskType == CustomerTask.TaskType.Resume ? "resume" : "pause";
-    log.info("Received {} DrConfig({}) request", operation, drConfigUUID);
-
-    // Parse and validate request.
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
-    drConfigHelper.verifyTaskAllowed(drConfig, TaskType.EditXClusterConfig);
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.status = taskType == CustomerTask.TaskType.Resume ? "Running" : "Paused";
-    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
-    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
-
-    Universe sourceUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
-    Universe targetUniverse =
-        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
-
-    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
-      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
-    }
-
-    XClusterConfigTaskParams params =
-        new XClusterConfigTaskParams(
-            xClusterConfig,
-            editFormData,
-            null /* requestedTableInfoList */,
-            null /* mainTableToAddIndexTablesMap */,
-            null /* tableIdsToAdd */,
-            Collections.emptyMap() /* sourceTableIdTargetTableIdMap */,
-            null /* tableIdsToRemove */);
-
-    // Submit task to edit xCluster config.
-    UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
-    CustomerTask.create(
-        customer,
-        xClusterConfig.getSourceUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.DrConfig,
-        taskType,
-        drConfig.getName());
-
-    log.info("Submitted {} DrConfig({}), task {}", operation, drConfigUUID, taskUUID);
+    UUID taskUUID =
+        drConfigHelper.toggleDrState(customerUUID, drConfigUUID, editFormData, taskType);
 
     auditService()
         .createAuditEntryWithReqBody(

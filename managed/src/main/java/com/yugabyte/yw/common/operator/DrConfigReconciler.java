@@ -9,9 +9,13 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
+import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
+import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -107,11 +111,14 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     }
   }
 
-  // Handles 4 cases by comparing CR spec with database model:
+  // Handles multiple cases by comparing CR spec with database model:
   // Case 1: Failover operation (targetUniverse is empty string)
   // Case 2: Switchover operation (source and target swapped compared to DB)
-  // Case 3: Database list update (databases differ from DB)
-  // Case 4: No change needed
+  // Case 3: Replace replica operation (source unchanged, target changed to different universe)
+  // Case 4: Restart operation (source unchanged, target changed from empty to new universe)
+  // Case 5: Pause/Resume operation (paused field changed)
+  // Case 6: Database list update (databases differ from DB)
+  // Case 7: No change needed
   @Override
   protected void updateActionReconcile(DrConfig drConfig, Customer cust) throws Exception {
 
@@ -148,20 +155,24 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
       }
 
       String specTargetName = drConfig.getSpec().getTargetUniverse();
-
-      // Case 1: Failover - targetUniverse is empty string
-      if (specTargetName != null && specTargetName.isEmpty()) {
-        log.info("DR config {} requires failover (target is empty)", resourceName);
-        handleFailover(drConfig, cust, status);
-        return;
-      }
+      String specSourceName = drConfig.getSpec().getSourceUniverse();
 
       Universe currentSourceUniverse =
           Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       Universe currentTargetUniverse =
           Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
-      String specSourceName = drConfig.getSpec().getSourceUniverse();
+      // Case 1: Failover - targetUniverse is empty string
+      if (specTargetName != null && specTargetName.isEmpty()) {
+        if (!drConfigModel.isHalted()) {
+          log.info("DR config {} requires failover (target is empty)", resourceName);
+          handleFailover(drConfig, cust, status);
+          return;
+        }
+        // Already halted post-failover, no action needed
+        log.debug("DR config {} already in halted state, skipping failover", resourceName);
+        return;
+      }
 
       // Case 2: Switchover - source and target are swapped compared to DB
       if (specSourceName.equals(currentTargetUniverse.getName())
@@ -171,14 +182,41 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
         return;
       }
 
-      // Case 3: Database list update - compare with current DB state
+      // Case 3 & 4: Source unchanged, target changed (replace replica or restart)
+      if (specSourceName.equals(currentSourceUniverse.getName())
+          && !specTargetName.equals(currentTargetUniverse.getName())) {
+        // Check if this is a restart (DR was in halted state) or replace replica
+        if (drConfigModel.isHalted()) {
+          log.info("DR config {} requires restart (halted state, new target)", resourceName);
+          handleRestart(drConfig, cust, drConfigModel);
+        } else {
+          log.info("DR config {} requires replace replica (target changed)", resourceName);
+          handleReplaceReplica(drConfig, cust, drConfigModel, xClusterConfig);
+        }
+        return;
+      }
+
+      // Case 5: Pause/Resume - check if paused state differs
+      if (requiresPauseResumeUpdate(drConfig, xClusterConfig)) {
+        Boolean specPaused = drConfig.getSpec().getPaused();
+        if (specPaused != null && specPaused) {
+          log.info("DR config {} requires pause", resourceName);
+          handlePause(drConfig, cust, drConfigModel);
+        } else {
+          log.info("DR config {} requires resume", resourceName);
+          handleResume(drConfig, cust, drConfigModel);
+        }
+        return;
+      }
+
+      // Case 6: Database list update - compare with current DB state
       if (requiresDatabaseUpdate(drConfig, drConfigModel)) {
         log.info("DR config {} requires database update", resourceName);
         handleDatabaseUpdate(drConfig, cust, status);
         return;
       }
 
-      // Case 4: No change needed
+      // Case 7: No change needed
       log.debug("DR config {} does not require any update", resourceName);
     } catch (Exception e) {
       log.error("Failed to process update for DR config {}", resourceName, e);
@@ -242,6 +280,7 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
         // Check if further updates are needed
         if (optionalDrConfig.isPresent()) {
           com.yugabyte.yw.models.DrConfig drConfigModel = optionalDrConfig.get();
+          drConfigModel.refresh();
           if (requiresUpdate(drConfig, drConfigModel)) {
             workqueue.requeue(
                 mapKey, OperatorWorkQueue.ResourceAction.UPDATE, false /* incrementRetry */);
@@ -267,6 +306,7 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
       return;
     }
 
+    drConfigModel.refresh();
     // Check if any update is required
     if (requiresUpdate(drConfig, drConfigModel)) {
       log.debug("NoOp Action: DR Config {} requires update, requeuing Update", resourceName);
@@ -277,7 +317,10 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     }
   }
 
-  /** Check if any update is required (failover, switchover, or database update). */
+  /**
+   * Check if any update is required (failover, switchover, replace replica, restart, pause/resume,
+   * or database update).
+   */
   private boolean requiresUpdate(DrConfig drConfig, com.yugabyte.yw.models.DrConfig drConfigModel) {
     XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
     if (xClusterConfig == null) {
@@ -285,10 +328,11 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     }
 
     String specTargetName = drConfig.getSpec().getTargetUniverse();
+    String specSourceName = drConfig.getSpec().getSourceUniverse();
 
     // Check for failover: target is empty string
     if (specTargetName != null && specTargetName.isEmpty()) {
-      if (xClusterConfig.getTargetUniverseUUID() != null) {
+      if (!drConfigModel.isHalted() && xClusterConfig.getTargetUniverseUUID() != null) {
         return true;
       }
       return false;
@@ -299,11 +343,20 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     Universe currentTargetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
-    String specSourceName = drConfig.getSpec().getSourceUniverse();
-
     // Check for switchover: source and target are swapped
     if (specSourceName.equals(currentTargetUniverse.getName())
         && specTargetName.equals(currentSourceUniverse.getName())) {
+      return true;
+    }
+
+    // Check for replace replica or restart: source unchanged, target changed
+    if (specSourceName.equals(currentSourceUniverse.getName())
+        && !specTargetName.equals(currentTargetUniverse.getName())) {
+      return true;
+    }
+
+    // Check for pause/resume
+    if (requiresPauseResumeUpdate(drConfig, xClusterConfig)) {
       return true;
     }
 
@@ -311,10 +364,23 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     return requiresDatabaseUpdate(drConfig, drConfigModel);
   }
 
+  /**
+   * Check if pause/resume update is required by comparing CR spec paused field with xCluster
+   * config.
+   */
+  private boolean requiresPauseResumeUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {
+    Boolean specPaused = drConfig.getSpec().getPaused();
+    // Default to false if not specified
+    boolean isPausedInSpec = specPaused != null && specPaused;
+    boolean isPausedInDb = xClusterConfig.isPaused();
+    return isPausedInSpec != isPausedInDb;
+  }
+
   // Delete the DR config
   @Override
   protected void handleResourceDeletion(
       DrConfig drConfig, Customer cust, OperatorWorkQueue.ResourceAction action) throws Exception {
+
     String mapKey = OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata());
     String resourceName = drConfig.getMetadata().getName();
     DrConfigStatus status = drConfig.getStatus();
@@ -489,6 +555,98 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     if (taskUUID != null) {
       drConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata()), taskUUID);
       updateDrConfigCrStatus(drConfig, "DR config set databases task created.", taskUUID);
+    }
+  }
+
+  private void handleRestart(
+      DrConfig drConfig, Customer cust, com.yugabyte.yw.models.DrConfig drConfigModel)
+      throws Exception {
+    String resourceName = drConfig.getMetadata().getName();
+    UUID drConfigUUID = drConfigModel.getUuid();
+    UUID customerUUID = cust.getUuid();
+
+    DrConfigRestartForm restartForm =
+        operatorUtils.getDrConfigRestartFormFromCr(drConfig, scInformer);
+
+    UUID taskUUID =
+        drConfigHelper.restartDrConfigTask(
+            customerUUID, drConfigUUID, restartForm, false /* isForceDelete */);
+
+    log.info("DR config {} restart triggered with task: {}", resourceName, taskUUID);
+    if (taskUUID != null) {
+      drConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata()), taskUUID);
+    }
+  }
+
+  private void handleReplaceReplica(
+      DrConfig drConfig,
+      Customer cust,
+      com.yugabyte.yw.models.DrConfig drConfigModel,
+      XClusterConfig xClusterConfig)
+      throws Exception {
+    String resourceName = drConfig.getMetadata().getName();
+
+    // Get current universes
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
+    DrConfigReplaceReplicaForm replaceReplicaForm =
+        operatorUtils.getDrConfigReplaceReplicaFormFromCr(drConfig, scInformer);
+
+    UUID taskUUID =
+        drConfigHelper.replaceReplicaTask(
+            cust,
+            drConfigModel,
+            xClusterConfig,
+            sourceUniverse,
+            targetUniverse,
+            replaceReplicaForm);
+
+    log.info("DR config {} replace replica triggered with task: {}", resourceName, taskUUID);
+    if (taskUUID != null) {
+      drConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata()), taskUUID);
+    }
+  }
+
+  private void handlePause(
+      DrConfig drConfig, Customer cust, com.yugabyte.yw.models.DrConfig drConfigModel)
+      throws Exception {
+    String resourceName = drConfig.getMetadata().getName();
+    UUID drConfigUUID = drConfigModel.getUuid();
+    UUID customerUUID = cust.getUuid();
+
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.status = "Paused";
+    editFormData.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+
+    UUID taskUUID =
+        drConfigHelper.toggleDrState(
+            customerUUID, drConfigUUID, editFormData, CustomerTask.TaskType.Pause);
+
+    log.info("DR config {} pause triggered with task: {}", resourceName, taskUUID);
+    if (taskUUID != null) {
+      drConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata()), taskUUID);
+    }
+  }
+
+  private void handleResume(
+      DrConfig drConfig, Customer cust, com.yugabyte.yw.models.DrConfig drConfigModel)
+      throws Exception {
+    String resourceName = drConfig.getMetadata().getName();
+    UUID drConfigUUID = drConfigModel.getUuid();
+    UUID customerUUID = cust.getUuid();
+
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.status = "Running";
+    editFormData.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+
+    UUID taskUUID =
+        drConfigHelper.toggleDrState(
+            customerUUID, drConfigUUID, editFormData, CustomerTask.TaskType.Resume);
+
+    log.info("DR config {} resume triggered with task: {}", resourceName, taskUUID);
+    if (taskUUID != null) {
+      drConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(drConfig.getMetadata()), taskUUID);
     }
   }
 
