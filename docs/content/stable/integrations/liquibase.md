@@ -95,7 +95,7 @@ You configure Liquibase as follows:
   classpath: <relative-path-to-postgres-jar>/postgresql-42.2.8.jar:<relative-path-to-liquibase-yugabytedb-<version>-jar>/liquibase-yugabytedb-<version>.jar
   ```
 
-  Defining the classpath is necessary if you have placed the JAR files in a folder other than `/lib`. For more information, see [Creating and configuring the liquibase.properties file](https://docs.liquibase.com/workflows/liquibase-community/creating-config-properties.html).
+  Defining the classpath is necessary if you have placed the JAR files in a folder other than `/lib`. For more information, see [What is the liquibase.properties file](https://docs.liquibase.com/community/user-guide-5-0/what-is-the-liquibase-properties-file) in the Liquibase documentation.
 
   When using the YugabyteDB on-premises and specifying the URL, enter your IP address or host name, and then include the port followed by the database name, as per the following format:
 

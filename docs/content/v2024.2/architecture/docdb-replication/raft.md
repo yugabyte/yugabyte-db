@@ -75,5 +75,5 @@ Raft is designed to be fault-tolerant, meaning that it can continue to operate e
 
 ## Learn more
 
-- Original Raft research paper: [In Search of an Understandable Consensus Algorithm](https://Raft.github.io/Raft.pdf)
+- Original Raft research paper: [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
 - [Origin of the name: Raft](https://groups.google.com/g/raft-dev/c/95rZqptGpmU)

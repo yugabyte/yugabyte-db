@@ -14,7 +14,7 @@ aliases:
 type: indexpage
 ---
 
-Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, indexes are treated internally as tables, and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree-implementation.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
+Indexes are powerful tools designed to improve the speed of data retrieval operations by creating efficient pathways to access the data in a table. Similar to an index in a book, SQL indexes allow the database to quickly locate the desired rows without scanning the entire table. While indexes enhance query performance, they can also impact the speed of INSERT, UPDATE, and DELETE operations. In YugabyteDB, indexes are treated internally as tables, and just like tables, they are distributed and stored in [LSM](https://en.wikipedia.org/wiki/Log-structured_merge-tree) format, as opposed to the [B-tree](https://www.postgresql.org/docs/current/btree.html#BTREE-STRUCTURE) structure used by indexes in PostgreSQL.
 
 {{<note>}}
 The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed. Indexes are not colocated with the base table.

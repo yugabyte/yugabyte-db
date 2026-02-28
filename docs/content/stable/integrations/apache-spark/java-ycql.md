@@ -122,7 +122,7 @@ For additional examples, see the following:
 
 ## Using JSONB
 
-You can use the `jsonb` data type for your columns. JSONB values are processed using the [Spark JSON functions](https://spark.apache.org/docs/3.0.0/sql-ref-functions-builtin.html#json-functions).
+You can use the `jsonb` data type for your columns. JSONB values are processed using the [Spark JSON functions](https://archive.apache.org/dist/spark/docs/3.0.0/sql-ref-functions-builtin.html#json-functions).
 
 The following example shows how to select the phone code using the `get_json_object` function to select the sub-object at the specific path:
 
