@@ -98,6 +98,49 @@ TEST(FormatPgGFlagValueTest, QuotingBehavior) {
   ASSERT_EQ(FormatPgGFlagValue("true", "bool"), "true");
 }
 
+TEST(ParsePgBindAddressesTest, All) {
+  auto check = [](const std::string& input, uint16_t default_port,
+                   const std::string& expected_addrs, uint16_t expected_port) {
+    auto result = ASSERT_RESULT(ParsePgBindAddresses(input, default_port));
+    ASSERT_EQ(result.listen_addresses, expected_addrs) << "input: " << input;
+    ASSERT_EQ(result.port, expected_port) << "input: " << input;
+  };
+  // Single address
+  check("127.0.0.1:5434", 5433, "127.0.0.1", 5434);
+  check("127.0.0.1", 5433, "127.0.0.1", 5433);
+  check("0.0.0.0:5434", 5433, "0.0.0.0", 5434);
+  // Multiple addresses, same port
+  check("127.0.0.1:5434,127.0.0.2:5434", 5433, "127.0.0.1,127.0.0.2", 5434);
+  check("127.0.0.1,127.0.0.2", 5433, "127.0.0.1,127.0.0.2", 5433);
+  check("127.0.0.1:5433,127.0.0.2", 5433, "127.0.0.1,127.0.0.2", 5433);
+  // Three addresses
+  check("10.0.0.1:5434,10.0.0.2:5434,10.0.0.3:5434", 5433, "10.0.0.1,10.0.0.2,10.0.0.3", 5434);
+  // IPv6
+  check("[::1]:5434", 5433, "::1", 5434);
+  check("[::1]:5434,[::2]:5434", 5433, "::1,::2", 5434);
+  // Mixed IPv4 and IPv6
+  check("127.0.0.1:5434,[::1]:5434", 5433, "127.0.0.1,::1", 5434);
+
+  // Invalid: different ports 
+  ASSERT_NOK(ParsePgBindAddresses("127.0.0.1:5434,127.0.0.2:5436", 5433));
+  // Invalid: explicit port vs different default
+  ASSERT_NOK(ParsePgBindAddresses("127.0.0.1:5434,127.0.0.2", 5433));
+  // Invalid: three addresses, one different
+  ASSERT_NOK(ParsePgBindAddresses("127.0.0.1:5434,127.0.0.2:5434,127.0.0.3:5436", 5433));
+  // Invalid: IPv6 different ports
+  ASSERT_NOK(ParsePgBindAddresses("[::1]:5434,[::2]:5436", 5433));
+  // Invalid: empty string
+  ASSERT_NOK(ParsePgBindAddresses("", 5433));
+  // Error message is descriptive
+  auto bad = ParsePgBindAddresses("127.0.0.1:5434,127.0.0.2:5436", 5433);
+  ASSERT_NOK(bad);
+  auto msg = bad.status().ToString();
+  ASSERT_STR_CONTAINS(msg, "same port");
+  ASSERT_STR_CONTAINS(msg, "Got port 5436");
+  ASSERT_STR_CONTAINS(msg, "expected port 5434");
+  ASSERT_STR_CONTAINS(msg, "127.0.0.2");
+}
+
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
 
 auto GetFlushCompactFlags(FlushOrCompaction flush_or_compaction) {

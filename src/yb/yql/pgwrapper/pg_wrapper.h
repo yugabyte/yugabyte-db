@@ -64,6 +64,20 @@ struct PgProcessConf : public ProcessWrapperCommonConfig {
   bool run_in_binary_upgrade = false;
 };
 
+// Result of parsing a potentially comma-separated bind address string (e.g.,
+// "127.0.0.1:5433,127.0.0.2:5433") into PostgreSQL-compatible listen_addresses and port.
+struct PgListenAddressAndPort {
+  std::string listen_addresses;  // Comma-separated hosts, e.g. "127.0.0.1,127.0.0.2"
+  std::string first_host;        // First host, e.g. "127.0.0.1"
+  uint16_t port;
+};
+
+// Parses a comma-separated list of "host:port" pairs into a comma-separated listen_addresses
+// string and a single port. All addresses must use the same port (PostgreSQL only supports a
+// single port for all listen addresses). Returns an error if ports differ.
+Result<PgListenAddressAndPort> ParsePgBindAddresses(
+    const std::string& bind_addresses, uint16_t default_port);
+
 // Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.
 class PgWrapper : public ProcessWrapper {
  public:

@@ -619,7 +619,16 @@ void AppendPgGFlags(vector<string>* lines) {
 }
 
 HostPort GetPgHostPort(const PgProcessConf& conf) {
-  return HostPort(conf.listen_addresses, conf.pg_port);
+  // Use only the first address for the socket directory path. PostgreSQL's -k flag
+  // (unix_socket_directories) treats commas as separators between directory paths. If
+  // listen_addresses is "127.0.0.1,127.0.0.2", PgDeriveSocketDir would produce
+  // "/tmp/.yb.127.0.0.1,127.0.0.2:5433", but PG splits this at the comma and looks for
+  // "/tmp/.yb.127.0.0.1" instead, which does not exist.
+  auto comma_pos = conf.listen_addresses.find(',');
+  auto host = comma_pos == std::string::npos
+      ? conf.listen_addresses
+      : conf.listen_addresses.substr(0, comma_pos);
+  return HostPort(std::move(host), conf.pg_port);
 }
 
 }  // namespace
@@ -799,15 +808,43 @@ string GetPostgresInstallRoot() {
   return JoinPathSegments(yb::env_util::GetRootDir("postgres"), "postgres");
 }
 
+Result<PgListenAddressAndPort> ParsePgBindAddresses(
+    const std::string& bind_addresses, uint16_t default_port) {
+  auto host_ports = VERIFY_RESULT_PREPEND(
+      HostPort::ParseStrings(bind_addresses, default_port),
+      "Failed to parse bind addresses");
+  SCHECK(!host_ports.empty(), InvalidArgument, "No bind addresses specified");
+  const uint16_t port = host_ports.front().port();
+  std::string listen_addresses;
+  for (const auto& hp : host_ports) {
+    SCHECK_EQ(
+        hp.port(), port, InvalidArgument,
+        Format(
+            "All addresses in pgsql_proxy_bind_address must use the same port. "
+            "PostgreSQL does not support listening on different ports for different addresses. "
+            "Got port $0 for address '$1' but expected port $2",
+            hp.port(), hp.host(), port));
+    if (!listen_addresses.empty()) {
+      listen_addresses += ',';
+    }
+    listen_addresses += hp.host();
+  }
+  auto first_host = host_ports.front().host();
+  return PgListenAddressAndPort{
+      .listen_addresses = std::move(listen_addresses),
+      .first_host = std::move(first_host),
+      .port = port};
+}
+
 Result<PgProcessConf> PgProcessConf::CreateValidateAndRunInitDb(
     const std::string& bind_addresses,
     const std::string& data_dir) {
   PgProcessConf conf;
   if (!bind_addresses.empty()) {
-    auto pg_host_port = VERIFY_RESULT(HostPort::FromString(
+    auto parsed = VERIFY_RESULT(ParsePgBindAddresses(
         bind_addresses, PgProcessConf::kDefaultPort));
-    conf.listen_addresses = pg_host_port.host();
-    conf.pg_port = pg_host_port.port();
+    conf.listen_addresses = std::move(parsed.listen_addresses);
+    conf.pg_port = parsed.port;
   }
   conf.data_dir = data_dir;
   PgWrapper pg_wrapper(conf);
