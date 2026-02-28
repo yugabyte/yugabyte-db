@@ -3011,12 +3011,12 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 
 	Assert(!isnull);
 	const void *data = DatumGetPointer(data_datum);
-	size_t		datalen = VARSIZE_ANY(data);
+	size_t		datalen = VARSIZE_ANY_EXHDR(data);
 
 	memcpy(qe->data, VARDATA_ANY(data), datalen);
 
 	/*
-	 * Both AsyncQueueEntryEmptySize amd datalen count the two null terminators
+	 * Both AsyncQueueEntryEmptySize and datalen count the two null terminators
 	 * in the 'data' field. Adjust to avoid double counting them.
 	 */
 	int			entryLength = AsyncQueueEntryEmptySize + datalen - 2;
