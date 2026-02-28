@@ -152,6 +152,10 @@ public class PitrConfig extends Model {
     return find.query().where().eq("universe_uuid", universeUUID).findList();
   }
 
+  public static Optional<PitrConfig> maybeGetByName(UUID universeUUID, String name) {
+    return find.query().where().eq("universe_uuid", universeUUID).eq("name", name).findOneOrEmpty();
+  }
+
   public static List<PitrConfig> getDisabledByUniverseUUID(UUID universeUUID) {
     return find.query().where().eq("universe_uuid", universeUUID).eq("disabled", true).findList();
   }

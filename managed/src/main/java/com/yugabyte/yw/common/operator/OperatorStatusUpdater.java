@@ -84,6 +84,10 @@ public interface OperatorStatusUpdater {
     // no-op implementation
   }
 
+  default void updatePitrRestoreStatus(String message, UUID taskUUID, Universe universe) {
+    // no-op implementation
+  }
+
   default void updateYBUniverseStatus(
       Universe universe,
       KubernetesResourceDetails universeName,
