@@ -2705,6 +2705,15 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status GetTabletForKey(
+      const PgGetTabletForKeyRequestPB& req, PgGetTabletForKeyResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tablet_metadata = VERIFY_RESULT(
+        client().GetTabletsMetadata(req.table_id(), req.partition_key()));
+    resp->set_tablet_id(tablet_metadata[0].tablet_id());
+    return Status::OK();
+  }
+
   Status ServersMetrics(
       const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
       rpc::RpcContext* context) {

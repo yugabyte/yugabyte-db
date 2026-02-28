@@ -347,6 +347,9 @@ class PgClient {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   Status SetCronLastMinute(int64_t last_minute);

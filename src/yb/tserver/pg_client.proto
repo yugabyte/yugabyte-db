@@ -117,6 +117,8 @@ service PgClientService {
 
   rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
 
+  rpc GetTabletForKey(PgGetTabletForKeyRequestPB) returns (PgGetTabletForKeyResponsePB);
+
   rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
@@ -1213,6 +1215,16 @@ message PgTabletsMetadataRequestPB {
 message PgTabletsMetadataResponsePB {
   AppStatusPB status = 1;
   repeated tablet.TabletStatusPB tablets = 2;
+}
+
+message PgGetTabletForKeyRequestPB {
+  bytes table_id = 1;
+  bytes partition_key = 2;
+}
+
+message PgGetTabletForKeyResponsePB {
+  AppStatusPB status = 1;
+  string tablet_id = 2;
 }
 
 message PgServersMetricsRequestPB {

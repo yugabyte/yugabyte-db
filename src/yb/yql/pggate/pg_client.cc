@@ -1795,6 +1795,20 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key) {
+    tserver::PgGetTabletForKeyRequestPB req;
+    req.set_table_id(table_id);
+    req.set_partition_key(partition_key);
+
+    tserver::PgGetTabletForKeyResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetTabletForKey, req, resp, PggateRPC::kGetTabletForKey));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return resp.tablet_id();
+  }
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
     tserver::PgServersMetricsRequestPB req;
     tserver::PgServersMetricsResponsePB resp;
@@ -2303,6 +2317,11 @@ Result<cdc::UpdateAndPersistLSNResponsePB> PgClient::UpdateAndPersistLSN(
 
 Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool local_only) {
   return impl_->TabletsMetadata(local_only);
+}
+
+Result<std::string> PgClient::GetTabletForKey(
+    const std::string& table_id, const std::string& partition_key) {
+  return impl_->GetTabletForKey(table_id, partition_key);
 }
 
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
