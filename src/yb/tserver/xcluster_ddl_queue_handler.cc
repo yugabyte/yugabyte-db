@@ -253,7 +253,7 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
   VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
   query_info.query = doc[kDDLJsonQuery].GetString();
 
-  query_info.schema =
+  query_info.search_path_schema =
       HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
   query_info.user =
       HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
@@ -289,7 +289,7 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
         VALIDATE_MEMBER(rel, kDDLJsonRelPgSchemaName, String);
         rel_info.relation_pgschema_name = rel[kDDLJsonRelPgSchemaName].GetString();
       } else {
-        rel_info.relation_pgschema_name = query_info.schema;
+        rel_info.relation_pgschema_name = query_info.search_path_schema;
       }
       rel_info.is_index =
           HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
@@ -459,7 +459,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
     RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
         {namespace_name_, rel.relation_pgschema_name, rel.relation_name},
         PgObjectId(source_db_oid, rel.relfile_oid), rel.colocation_id, backfill_time_opt));
-    new_relations.insert({namespace_name_, query_info.schema, rel.relation_name});
+    new_relations.insert({namespace_name_, rel.relation_pgschema_name, rel.relation_name});
   }
 
   return Status::OK();
@@ -479,8 +479,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   // Set schema and role after setting the superuser extension variables.
-  if (!query_info.schema.empty()) {
-    setup_query << Format("SET SCHEMA '$0';", query_info.schema);
+  if (!query_info.search_path_schema.empty()) {
+    setup_query << Format("SET SCHEMA '$0';", query_info.search_path_schema);
   }
   if (!query_info.user.empty()) {
     setup_query << Format("SET ROLE $0;", query_info.user);
