@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"node-agent/ynp/command"
@@ -61,6 +62,35 @@ func testRootCmd() *cobra.Command {
 	}
 }
 
+// Check for the presence of the overridden config values in the generated config.ini file.
+func checkLine(t *testing.T, iniFile string, searchStrings []string) {
+	file, err := os.Open(iniFile)
+	if err != nil {
+		t.Fatalf("unable to open file: %v", err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	unprocessed := map[string]struct{}{}
+	for _, str := range searchStrings {
+		unprocessed[str] = struct{}{}
+	}
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		for _, searchString := range searchStrings {
+			if line == searchString {
+				t.Logf("Found %s", searchString)
+				delete(unprocessed, searchString)
+			}
+		}
+	}
+	for str := range unprocessed {
+		t.Logf("Search string %s is not found", str)
+	}
+	if len(unprocessed) > 0 {
+		t.Fatalf("Not all search strings are found in the file")
+	}
+}
+
 type TestProvisionCommand struct {
 	*command.ProvisionCommand
 }
@@ -83,7 +113,6 @@ func (c *TestProvisionCommand) Init() error {
 
 // TestYNPProvision tests the basic generation of the scripts.
 func TestYNPProvision(t *testing.T) {
-
 	configPath := filepath.Join(os.TempDir(), "config.json")
 	err := os.WriteFile(configPath, []byte(ynpCloudConfig), 0644)
 	if err != nil {
@@ -112,6 +141,7 @@ func TestYNPProvision(t *testing.T) {
 	}
 }
 
+// TestNoDuplicateConfig tests that if there are duplicate keys in the config in the same section.
 func TestNoDuplicateConfig(t *testing.T) {
 	configMap := map[string]map[string]any{}
 	err := json.Unmarshal([]byte(ynpCloudConfig), &configMap)
@@ -152,4 +182,46 @@ func TestNoDuplicateConfig(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "Duplicate key loglevel in section DEFAULT") {
 		t.Fatalf("Expected error about duplicate key, got %v", err)
 	}
+}
+
+// TestConfigOverride tests that the config overrides are applied correctly and reflected in the generated config.
+func TestConfigOverride(t *testing.T) {
+	configPath := filepath.Join(os.TempDir(), "config.json")
+	err := os.WriteFile(configPath, []byte(ynpCloudConfig), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+	projectDir := os.Getenv("PROJECT_DIR")
+	ynpBasePath := filepath.Join(projectDir, "resources/ynp")
+	yamlConfigPath := filepath.Join(projectDir, "resources/node-agent-provision.yaml")
+	testRootCmd := testRootCmd()
+	testRootCmd.SetArgs([]string{
+		"--ynp_base_path",
+		ynpBasePath,
+		"--config_file",
+		yamlConfigPath,
+		"--extra_vars",
+		configPath,
+		"--dry_run",
+		"--skip_module",
+		"InstallNodeAgent", /* This needs YBA */
+		"--skip_module",
+		"ConfigureSystemd", /* This requires some setup */
+		"--config_override",
+		`ynp.node_ip="10.20.30.40"`,
+		"--config_override",
+		`ynp.chrony_servers=["1.2.3.4", "5.6.7.8"]`,
+		"--config_override",
+		`yba.instance_type.name="large"`,
+	})
+	setupCommand(testRootCmd)
+	if err := testRootCmd.Execute(); err != nil {
+		t.Fatalf("Error executing command: %v\n", err)
+	}
+	iniFile := filepath.Join(ynpBasePath, "configs/config.ini")
+	checkLine(t, iniFile, []string{
+		"bind_ip = 10.20.30.40",
+		"chrony_servers = 1.2.3.4, 5.6.7.8",
+		"instance_type_name = large",
+	})
 }
