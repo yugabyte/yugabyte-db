@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from contextlib import contextmanager
 from overrides import overrides
@@ -776,8 +777,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         env_script_content = self.get_env_script_content()
 
-        pg_compile_commands_paths = []
-
         external_extension_dirs = [os.path.join(self.pg_build_root, d) for d
                                    in ('third-party-extensions', 'yb-extensions')]
         work_dirs = [
@@ -787,47 +786,36 @@ class PostgresBuilder(YbBuildToolBase):
             os.path.join(self.pg_build_root, 'src/tools/pg_bsd_indent'),
         ] + external_extension_dirs
 
-        # TODO(#27196): parallelize this for loop.
-        for work_dir in work_dirs:
-            # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
-            # But in the case where the YB project is built with make,
-            # MAKELEVEL is not 0 at this point. We temporarily unset MAKELEVEL to
-            # deal with this.
-            with WorkDirContext(work_dir), SavedEnviron('MAKELEVEL'):
-                self.write_debug_scripts(env_script_content)
+        # Parallelize the build process for work_dirs
+        # Use ThreadPoolExecutor to run builds in parallel
+        max_workers = min(len(work_dirs), multiprocessing.cpu_count())
+        logging.info("Starting parallel build with %d workers for %d work directories", 
+                     max_workers, len(work_dirs))
+        
+        pg_compile_commands_paths = []
+        start_time_sec = time.time()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all work directory builds to the executor
+            future_to_work_dir = {
+                executor.submit(self.build_work_dir, work_dir, make_cmd, env_script_content, 
+                               external_extension_dirs): work_dir
+                for work_dir in work_dirs
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_work_dir):
+                work_dir = future_to_work_dir[future]
+                try:
+                    compile_commands_paths = future.result()
+                    pg_compile_commands_paths.extend(compile_commands_paths)
+                    logging.info("Completed build for work directory: %s", work_dir)
+                except Exception as exc:
+                    logging.error("Build failed for work directory %s: %s", work_dir, exc)
+                    raise RuntimeError(f"PostgreSQL build failed in directory {work_dir}: {exc}")
 
-                make_cmd_suffix = []
-                if work_dir in external_extension_dirs:
-                    make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
-
-                # Actually run Make.
-                if is_verbose_mode():
-                    logging.info("Running make in the %s directory", work_dir)
-
-                complete_make_cmd = make_cmd + make_cmd_suffix
-                complete_make_cmd_str = shlex_join(complete_make_cmd)
-                self.run_make_with_retries(work_dir, complete_make_cmd_str)
-
-                if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
-                    self.run_make_install(make_cmd, make_cmd_suffix)
-                else:
-                    logging.info(
-                            "Not running 'make install' in the %s directory since we are only "
-                            "generating the compilation database", work_dir)
-
-                if self.export_compile_commands and not self.skip_pg_compile_commands:
-                    logging.info("Generating the compilation database in directory '%s'", work_dir)
-
-                    compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
-                    with SavedEnviron(YB_PG_SKIP_CONFIG_STATUS='1'):
-                        if not os.path.exists(compile_commands_path):
-                            run_program(
-                                ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
-
-                    if not os.path.exists(compile_commands_path):
-                        raise RuntimeError("Failed to generate compilation database at: %s" %
-                                           compile_commands_path)
-                    pg_compile_commands_paths.append(compile_commands_path)
+        elapsed_time_sec = time.time() - start_time_sec
+        logging.info("Parallel build completed in %.2f sec", elapsed_time_sec)
 
         if self.export_compile_commands:
             self.write_compile_commands_files(pg_compile_commands_paths)
@@ -876,6 +864,56 @@ class PostgresBuilder(YbBuildToolBase):
         else:
             raise RuntimeError(
                     f"Maximum build attempts reached ({TRANSIENT_BUILD_RETRIES} attempts).")
+
+    def build_work_dir(self, work_dir: str, make_cmd: List[str], env_script_content: str, 
+                      external_extension_dirs: List[str]) -> List[str]:
+        """
+        Build a single work directory. Returns list of compile commands paths.
+        This method is designed to be called in parallel.
+        """
+        pg_compile_commands_paths = []
+        
+        # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
+        # But in the case where the YB project is built with make,
+        # MAKELEVEL is not 0 at this point. We temporarily unset MAKELEVEL to
+        # deal with this.
+        with WorkDirContext(work_dir), SavedEnviron('MAKELEVEL'):
+            self.write_debug_scripts(env_script_content)
+
+            make_cmd_suffix = []
+            if work_dir in external_extension_dirs:
+                make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
+
+            # Actually run Make.
+            if is_verbose_mode():
+                logging.info("Running make in the %s directory", work_dir)
+
+            complete_make_cmd = make_cmd + make_cmd_suffix
+            complete_make_cmd_str = shlex_join(complete_make_cmd)
+            self.run_make_with_retries(work_dir, complete_make_cmd_str)
+
+            if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
+                self.run_make_install(make_cmd, make_cmd_suffix)
+            else:
+                logging.info(
+                        "Not running 'make install' in the %s directory since we are only "
+                        "generating the compilation database", work_dir)
+
+            if self.export_compile_commands and not self.skip_pg_compile_commands:
+                logging.info("Generating the compilation database in directory '%s'", work_dir)
+
+                compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
+                with SavedEnviron(YB_PG_SKIP_CONFIG_STATUS='1'):
+                    if not os.path.exists(compile_commands_path):
+                        run_program(
+                            ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
+
+                if not os.path.exists(compile_commands_path):
+                    raise RuntimeError("Failed to generate compilation database at: %s" %
+                                       compile_commands_path)
+                pg_compile_commands_paths.append(compile_commands_path)
+
+        return pg_compile_commands_paths
 
     def get_env_script_content(self) -> str:
         """
