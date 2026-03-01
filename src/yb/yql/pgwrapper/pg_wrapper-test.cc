@@ -909,5 +909,28 @@ TEST_F(PgWrapperTest, GetPgSocketDir) {
   ASSERT_EQ(result, 1);
 }
 
+class PgWrapperDualStackTest : public PgWrapperOneNodeClusterTest {
+};
+
+// Ensure that listening on :: also means listening on 0.0.0.0.
+TEST_F(PgWrapperDualStackTest, TestIPv4Connectivity) {
+  MonoDelta timeout = 15s;
+
+  auto port = pg_ts->ysql_port();
+  // Restart the tablet server with the bind address set to [::] and the same port.
+  ASSERT_OK(pg_ts->Restart(
+      false /* start_cql_proxy */,
+      {{"pgsql_proxy_bind_address", Format("[::]:$0", port)}}));
+
+  ASSERT_OK(WaitForPostgresToStart(timeout));
+
+  auto conn = ASSERT_RESULT(PGConnBuilder({
+      .host = "127.0.0.1",
+      .port = port,
+      .dbname = "postgres"
+  }).Connect());
+  ASSERT_OK(conn.Execute("SELECT 1"));
+}
+
 }  // namespace pgwrapper
 }  // namespace yb
