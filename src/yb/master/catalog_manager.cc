@@ -565,6 +565,7 @@ DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
 DECLARE_bool(ysql_enable_colocated_tables_with_tablespaces);
+DECLARE_bool(ysql_colocate_allow_hash_schema);
 
 DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, false,
     "Whether to enable the use of heartbeat catalog versions cache for the "
@@ -4422,7 +4423,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // This is because postgres does not know that this index table is in a colocated database.
   // When we get to the "tablespaces" step where we store this into PG metadata, then PG will know
   // if db/table is colocated and do the work there.
-  if (colocated && IsIndex(req)) {
+  //
+  // When ysql_colocate_allow_hash_schema is enabled, we also convert hash columns for regular
+  // colocated tables. This allows development setups to use HASH schemas while still benefiting
+  // from colocated tablet reuse for faster table creation.
+  if (colocated && (IsIndex(req) || FLAGS_ysql_colocate_allow_hash_schema)) {
     for (auto& col_pb : *req.mutable_schema()->mutable_columns()) {
       col_pb.set_is_hash_key(false);
     }
@@ -4449,9 +4454,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     schema.InitColumnIdsByDefault();
   }
 
-  if (colocated) {
+  if (colocated && !FLAGS_ysql_colocate_allow_hash_schema) {
     // If the table is colocated, then there should be no hash partition columns.
     // Do the same for tables that are being placed in tablegroups.
+    // Skip this check when ysql_colocate_allow_hash_schema is enabled, as we convert
+    // hash columns to range columns above.
     if (schema.num_hash_key_columns() > 0) {
       Status s = STATUS(InvalidArgument, "Cannot colocate hash partitioned table");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);

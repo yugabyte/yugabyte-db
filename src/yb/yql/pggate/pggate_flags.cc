@@ -125,6 +125,11 @@ TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 DEFINE_UNKNOWN_bool(
     ysql_colocate_database_by_default, false, "Enable colocation by default on each database.");
 
+DEFINE_UNKNOWN_bool(
+    ysql_colocate_allow_hash_schema, false,
+    "Development only: Allow HASH primary keys in colocated databases by converting them to "
+    "range keys. This enables faster table creation while keeping HASH in the schema definition.");
+
 DEFINE_UNKNOWN_bool(ysql_beta_feature_tablespace_alteration, false,
             "Whether to enable the incomplete 'tablespace_alteration' beta feature");
 
