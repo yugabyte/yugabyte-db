@@ -84,6 +84,16 @@ static const struct am_propname am_propnames[] =
 	{
 		"can_include", AMPROP_CAN_INCLUDE
 	},
+	/* YB properties */
+	{
+		"yb_is_for_yb_relation", AMPROP_YB_IS_FOR_YB_RELATION
+	},
+	{
+		"yb_is_copartitioned", AMPROP_YB_IS_COPARTITIONED
+	},
+	{
+		"yb_can_update_tuple_inplace", AMPROP_YB_CAN_UPDATE_TUPLE_INPLACE
+	},
 };
 
 static IndexAMProperty
@@ -399,6 +409,16 @@ indexam_property(FunctionCallInfo fcinfo,
 
 		case AMPROP_CAN_INCLUDE:
 			PG_RETURN_BOOL(routine->amcaninclude);
+
+		/* YB properties */
+		case AMPROP_YB_IS_FOR_YB_RELATION:
+			PG_RETURN_BOOL(routine->yb_amisforybrelation);
+
+		case AMPROP_YB_IS_COPARTITIONED:
+			PG_RETURN_BOOL(routine->yb_amiscopartitioned);
+
+		case AMPROP_YB_CAN_UPDATE_TUPLE_INPLACE:
+			PG_RETURN_BOOL(routine->ybamcanupdatetupleinplace);
 
 		default:
 			PG_RETURN_NULL();
