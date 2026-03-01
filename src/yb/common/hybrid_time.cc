@@ -99,13 +99,22 @@ string HybridTime::ToString() const {
           boost::date_time::c_local_adjustor<boost::posix_time::ptime>::utc_to_local(utc_time);
       auto date = local_time.date();
       auto time_of_day = local_time.time_of_day();
-      auto days = (boost::posix_time::ptime(date) - start).hours() / 24;
+      int years = static_cast<int>(date.year()) - 1970;
+      int day_of_year = date.day_of_year() - 1; // Jan 1st is 1 
       auto time_of_day_str = boost::posix_time::to_simple_string(time_of_day);
-      if (logical) {
-        return Format("{ days: $0 time: $1 logical: $2 }", days, time_of_day_str, logical);
+      if (years > 0){
+	if (logical) {
+          return Format("{ years: $0 days: $1 time: $2 logical: $3 }", years,  days, time_of_day_str, logical);
+        } else {
+          return Format("{ years: $0 days: $1 time: $2 }", years, days, time_of_day_str);
+        }
       } else {
-        return Format("{ days: $0 time: $1 }", days, time_of_day_str);
-      }
+	if (logical) {
+          return Format("{ days: $0 time: $1 logical: $2 }", days, time_of_day_str, logical);
+        } else {
+          return Format("{ days: $0 time: $1 }", days, time_of_day_str);
+        }
+      }	
   }
 }
 
