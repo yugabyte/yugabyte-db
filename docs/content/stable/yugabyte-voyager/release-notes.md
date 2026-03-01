@@ -17,6 +17,18 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.3.1 - March 2, 2026
+
+### Enhancements
+
+- Commands executed after cutover to target now correctly use the provided config file and forward flags.
+- Assessment report now includes recommended partial index SQL for columns with high-frequency values, or a high percentage of NULL values to improve performance on YugabyteDB.
+- Increased default `--adaptive-parallelism-max` from total cores/2 to total cores to better utilize cluster CPU during data migration, with improved core detection for load-balanced and managed clusters.
+
+### Bug fix
+
+- Reduced excessive logging in import data when no batch is available, preventing log flooding and unnecessary CPU usage during slower batch production.
+
 ## v2026.2.2 - February 17, 2026
 
 ### Enhancements
