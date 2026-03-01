@@ -1838,6 +1838,52 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
 }
 
+TEST_F(AdminCliTest, TestFlushTableOutputFormat) {
+  BuildAndStart();
+  const string output = ASSERT_RESULT(CallAdmin("flush_table", kTableName.namespace_name(), kTableName.table_name(), "30" /* timeout */));
+  const string expected_table_name = Format("$0.$1", kTableName.namespace_name(), kTableName.table_name());
+  const std::regex regex(Format(R"(Flushed \[$0.*\] tables\.)", expected_table_name));
+  ASSERT_TRUE(std::regex_search(output, regex)) << "Unexpected output format: " << output;
+}
+
+TEST_F(AdminCliTest, TestFlushTableWithMissingTable) {
+  BuildAndStart();
+  const auto result = CallAdmin("flush_table");
+  ASSERT_FALSE(result.ok());
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Empty list of tables");
+  ASSERT_STR_CONTAINS(result.status().ToString(), "Usage:");
+}
+
+TEST_F(AdminCliTest, TestFlushTableWithInvalidTable) {
+  BuildAndStart();
+  const auto result = CallAdmin("flush_table", "ycql.nonexistent_namespace", "nonexistent_table");
+  ASSERT_FALSE(result.ok());
+  ASSERT_STR_CONTAINS(result.status().ToString(), "not found");
+}
+
+TEST_F(AdminCliTest, TestFlushTableWithTableId) {
+  BuildAndStart();
+  const string master_address = ToString(cluster_->master()->bound_rpc_addr());
+  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+
+  auto tables = ASSERT_RESULT(client->ListTables(/* filter */ kTableName.table_name(), /* exclude_ysql */ true));
+  ASSERT_EQ(1, tables.size());
+  const auto table_id = tables.front().table_id();
+  const auto table_id_arg = Format("tableid.$0", table_id);
+
+  const string output = ASSERT_RESULT(CallAdmin("flush_table", table_id_arg, /* timeout */ "30"));
+  const string expected_table_name = Format("$0.$1", kTableName.namespace_name(), kTableName.table_name());
+  const std::regex regex(Format(R"(Flushed \[$0.*\] tables\.)", expected_table_name));
+  ASSERT_TRUE(std::regex_search(output, regex)) << "Unexpected output format: " << output;
+}
+
+TEST_F(AdminCliTest, TestFlushTableWithTableIdAndInvalidTableId) {
+  BuildAndStart();
+  const auto result = CallAdmin("flush_table", "tableid.nonexistent_table_id", /* timeout */ "30");
+  ASSERT_FALSE(result.ok());
+  ASSERT_STR_CONTAINS(result.status().ToString(), "not found");
+}
+
 TEST_F(AdminCliTest, TestCompactionStatusBeforeCompaction) {
   BuildAndStart();
   const string master_address = ToString(cluster_->master()->bound_rpc_addr());
