@@ -10,6 +10,41 @@ SELECT
 FROM yb_tablet_metadata WHERE relname IN ('test_table_1', 'test_table_2')
 ORDER BY start_hash_code NULLS FIRST;
 
+-- Test that attributes column is present with correct type and structure
+SELECT
+    relname,
+    pg_typeof(attributes) AS attr_type,
+    jsonb_typeof(attributes->'replicas') AS replicas_type,
+    (SELECT count(*) FROM jsonb_object_keys(attributes->'replicas'))::int
+        = array_length(replicas, 1) AS key_count_match
+FROM yb_tablet_metadata
+WHERE relname = 'test_table_1'
+ORDER BY start_hash_code NULLS FIRST
+LIMIT 1;
+
+-- Test that all size values are non-negative for each replica
+SELECT replica, (attrs->>'active_sst_sizes')::bigint AS active_sst_sizes,
+                (attrs->>'wal_sizes')::bigint AS wal_sizes
+FROM yb_tablet_metadata tm,
+     unnest(tm.replicas) AS replica,
+     LATERAL (SELECT tm.attributes->'replicas'->replica AS attrs) a
+WHERE tm.relname = 'test_table_1'
+  AND ((attrs->>'active_sst_sizes')::bigint < 0
+    OR (attrs->>'wal_sizes')::bigint < 0);
+
+-- Test that every replica in the replicas array has an entry in attributes
+SELECT replica
+FROM yb_tablet_metadata tm, unnest(tm.replicas) AS replica
+WHERE tm.relname = 'test_table_1'
+  AND NOT (tm.attributes->'replicas' ? replica);
+
+-- Test that every replica address corresponds to a live tserver
+SELECT unnest(replicas) AS orphan_replica
+FROM yb_tablet_metadata
+WHERE relname = 'test_table_1'
+EXCEPT
+SELECT host || ':' || port FROM yb_servers();
+
 -- Test that we are able to join with yb_servers()
 SELECT
     ytm.relname,
