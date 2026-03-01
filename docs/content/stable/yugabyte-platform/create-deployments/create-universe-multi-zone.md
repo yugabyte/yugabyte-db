@@ -38,13 +38,28 @@ For information on modifying or scaling an existing universe, refer to [Modify u
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
 
-### Configure ClockBound (optional)
+### Additional settings
+
+#### Configure ClockBound (optional)
 
 {{<tags/feature/ea idea="2133">}}[ClockBound](https://github.com/aws/clock-bound) improves clock accuracy and reduces read-restart errors in YSQL. To enable ClockBound for [cloud provider](../../configure-yugabyte-platform/aws/) universes, set the provider's `yb.provider.configure_clockbound_cloud_provisioning` runtime configuration flag to `true` (before creating the universe). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 When enabled, ClockBound is automatically configured during node provisioning, and the universe creation task sets the [time_source](../../../reference/configuration/yb-master/#time-source) flag to `clockbound`.
 
 ClockBound is supported on AWS and GCP. Azure and Kubernetes deployments are not supported.
+
+#### Configure EarlyOOM (optional)
+
+{{<tags/feature/ea idea="1804">}} EarlyOOM runs on database nodes and kills processes under extreme memory pressure to prevent VM hangs (it prefers keeping PostgreSQL).
+
+| Action | Details |
+| :----- | :------ |
+| Enable EarlyOOM | Set the **Enables Earlyoom Installation on Nodes** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_earlyoom`) to true. |
+| Enable by default for new universes | Set the **Enable earlyoom by default** Global runtime configuration flag `yb.node_agent.enable_earlyoom_by_default` to `true`. |
+| Disable EarlyOOM | Set the **Enable earlyoom by default** Global runtime configuration flag `yb.ui.feature_flags.enable_earlyoom` to `false`, then perform a [rolling restart](../../manage-deployments/edit-config-flags/#modify-configuration-flags) for the change to take effect. |
+| Apply to existing universes | Enable or disable EarlyOOM as needed, then use **Edit Universe** > **Apply Changes** or a [rolling restart](../../manage-deployments/edit-config-flags/#modify-configuration-flags) for the change to take effect. See [Edit EarlyOOM](../../manage-deployments/edit-universe/#edit-earlyoom).|
+
+Note that only a Super Admin user can modify Global configuration settings. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 ## Create a universe
 
