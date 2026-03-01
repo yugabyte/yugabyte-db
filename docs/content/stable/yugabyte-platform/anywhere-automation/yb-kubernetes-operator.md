@@ -623,12 +623,14 @@ spec:
 ### Before you begin
 
 - Enable the Operator. The YBA Operator must be enabled on the YBA instance.
-- Verify namespace configuration. If the operator is configured to watch a single namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
+- Verify namespace configuration.
+  - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
+  - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
 - Update CRDs. You must update the Custom Resource Definitions (CRDs) on your Kubernetes cluster to the latest from the YBA version installed. Failure to do so may result in scaling down of pod resources during future edit operations.
 
   Refer to the [YBA Operator installation guide](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments) for the standard procedure.
 
-{{< warning title="Irreverisbility" >}}
+{{< warning title="Irreversibility" >}}
 After a universe and its related resources are imported to be managed by the operator most edit operations are allowed only via the operator. The API and UI block edit actions on the imported resource. This operation _cannot_ be reversed.
 {{< /warning >}}
 
