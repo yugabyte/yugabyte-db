@@ -907,11 +907,9 @@ YBCExecuteDelete(Relation rel,
 			CacheInvalidateCatalog(RelationGetRelid(rel));
 		}
 	}
-
-	YBCExecWriteStmt(delete_stmt,
-					 rel,
-					 target_tuple_fetched ? NULL : &rows_affected_count);
-
+	int rows_affected_aux = 0;
+	YBCExecWriteStmt(delete_stmt, rel, &rows_affected_aux);
+	rows_affected_count += rows_affected_aux;
 	/*
 	 * Fetch values of the columns required to evaluate returning clause
 	 * expressions. They are put into the slot Postgres uses to evaluate
@@ -962,7 +960,7 @@ YBCExecuteDelete(Relation rel,
 	/* Cleanup. */
 	YBCPgDeleteStatement(delete_stmt);
 
-	return target_tuple_fetched || rows_affected_count > 0;
+	return rows_affected_count > 0;
 }
 
 void
