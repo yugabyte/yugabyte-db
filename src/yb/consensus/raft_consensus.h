@@ -196,11 +196,13 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
-      LeaderLeaseStatus* leader_lease_status) const override;
+      LeaderLeaseStatus* leader_lease_status,
+      ConsensusWatermarksPB* consensus_watermarks_opid_list) const override;
 
   ConsensusStatePB ConsensusStateUnlocked(
       ConsensusConfigType type,
-      LeaderLeaseStatus* leader_lease_status) const override;
+      LeaderLeaseStatus* leader_lease_status, 
+      ConsensusWatermarksPB* consensus_watermarks_opid_list) const override;
 
   // Returns a copy of ConsensusState from the committed consensus state cache.
   // This method is thread safe.
