@@ -40,7 +40,7 @@ class ReadTabletProvider {
   virtual Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
       TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
       YBConsistencyLevel consistency_level, AllowSplitTablet allow_split_tablet,
-      ReadResponseMsg* resp) = 0;
+      ReadResponseMsg* resp, HybridTime* follower_safe_time = nullptr) = 0;
 
   virtual ~ReadTabletProvider() = default;
 };

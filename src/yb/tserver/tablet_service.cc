@@ -633,9 +633,9 @@ class ScanResultChecksummer {
 Result<std::shared_ptr<tablet::AbstractTablet>> TabletServiceImpl::GetTabletForRead(
   TabletIdView tablet_id, tablet::TabletPeerPtr tablet_peer,
   YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet,
-  tserver::ReadResponseMsg* resp) {
+  tserver::ReadResponseMsg* resp, HybridTime* follower_safe_time) {
   return GetTablet(server_->tablet_peer_lookup(), tablet_id, std::move(tablet_peer),
-                   consistency_level, allow_split_tablet, resp);
+                   consistency_level, allow_split_tablet, resp, follower_safe_time);
 }
 
 TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)

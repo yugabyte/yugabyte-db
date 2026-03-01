@@ -193,6 +193,7 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   HostPortPB host_port_pb_;
   bool allow_retry_ = false;
   bool reading_from_non_leader_ = false;
+  HybridTime follower_safe_time_;
   RequestScope request_scope_;
   std::shared_ptr<ReadQuery> retained_self_;
   std::shared_ptr<TabletConsensusInfoPB> tablet_consensus_info_;
@@ -300,7 +301,7 @@ Status ReadQuery::DoPerform() {
   } else {
     abstract_tablet_ = VERIFY_RESULT(read_tablet_provider_.GetTabletForRead(
         req_->tablet_id(), std::move(peer_tablet.tablet_peer), req_->consistency_level(),
-        AllowSplitTablet::kFalse, resp_));
+        AllowSplitTablet::kFalse, resp_, &follower_safe_time_));
     leader_peer.leader_term = OpId::kUnknownTerm;
   }
 
@@ -466,7 +467,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
 
   const auto read_time_was_empty = !read_time_;
   if (read_time_was_empty) {
-    safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
+    safe_ht_to_read_ = follower_safe_time_.is_valid()
+        ? follower_safe_time_
+        : VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
     read_time_.read = safe_ht_to_read_;
@@ -480,8 +483,10 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.global_limit = read_time_.read;
     }
   } else {
-    HybridTime current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
-      require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
+    HybridTime current_safe_time = follower_safe_time_.is_valid()
+        ? follower_safe_time_
+        : VERIFY_RESULT(abstract_tablet_->SafeTime(
+            require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
     // Read query is allowed to ignore ambiguity window for writes that
     // occur after this moment.
     if (current_safe_time < read_time_.local_limit) {

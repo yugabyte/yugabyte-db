@@ -306,7 +306,8 @@ Result<TabletPeerTablet> LookupTabletPeer(
 Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     TabletPeerLookupIf* tablet_manager, TabletIdView tablet_id,
     tablet::TabletPeerPtr tablet_peer, YBConsistencyLevel consistency_level,
-    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp) {
+    AllowSplitTablet allow_split_tablet, ReadResponseMsg* resp,
+    HybridTime* follower_safe_time) {
   tablet::TabletPtr tablet_ptr = nullptr;
   if (tablet_peer) {
     DCHECK_EQ(tablet_peer->tablet_id(), tablet_id);
@@ -338,10 +339,12 @@ Result<std::shared_ptr<tablet::AbstractTablet>> GetTablet(
     // than FLAGS_max_stale_read_bound_time_ms.
     if (PREDICT_FALSE(!s.ok())) {
       if (FLAGS_max_stale_read_bound_time_ms > 0) {
-        // TODO(hector): This safe time could be reused by the read operation.
         auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
         auto safe_time = tablet->mvcc_manager()->SafeTimeForFollower(
             HybridTime::kMin, CoarseTimePoint::min());
+        if (follower_safe_time) {
+          *follower_safe_time = safe_time;
+        }
         auto now = tablet_peer->clock_ptr()->Now();
         auto follower_staleness = now.PhysicalDiff(safe_time);
         if (follower_staleness > MonoDelta::FromMilliseconds(FLAGS_max_stale_read_bound_time_ms)) {
