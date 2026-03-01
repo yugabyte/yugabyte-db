@@ -959,6 +959,7 @@ Result<tablet::TableInfoPtr> GetTableInfoForSysCatalogTable(
 Status PopulateCDCSDKIntentRecord(
     const OpId& op_id,
     const TransactionId& transaction_id,
+    uint32_t xrepl_origin_id,
     const std::vector<docdb::IntentKeyValueForCDC>& intents,
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -1147,6 +1148,10 @@ Status PopulateCDCSDKIntentRecord(
       row_message->set_transaction_id(transaction_id.ToString());
       row_message->set_commit_time(commit_time.ToPB());
       row_message->set_record_time(intent.intent_ht.hybrid_time().ToUint64());
+
+      if (xrepl_origin_id) {
+        row_message->set_xrepl_origin_id(xrepl_origin_id);
+      }
 
       if (IsOldRowNeededOnDelete(record_type) &&
          (row_message->op() == RowMessage_Op_DELETE)) {
@@ -1504,6 +1509,10 @@ Status PopulateCDCSDKWriteRecord(
       // Populate PostgreSQL replication origin id if available.
       if (msg->write().has_xrepl_origin_id()) {
         xrepl_origin_id = msg->write().xrepl_origin_id();
+      }
+
+      if (xrepl_origin_id) {
+        row_message->set_xrepl_origin_id(xrepl_origin_id);
       }
 
       // Check whether operation is WRITE or DELETE.
@@ -1868,10 +1877,10 @@ Status ProcessIntents(
   // Need to populate the CDCSDKRecords
   if (!keyValueIntents->empty()) {
     RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
-        op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map,
-        composite_atts_map, request_source, cached_schema_details, schema_packing_storages, resp,
-        consumption, &write_id, &reverse_index_key, commit_time, client, end_of_transaction,
-        throughput_metrics));
+        op_id, transaction_id, xrepl_origin_id, *keyValueIntents, metadata, tablet_peer,
+        enum_oid_label_map, composite_atts_map, request_source, cached_schema_details,
+        schema_packing_storages, resp, consumption, &write_id, &reverse_index_key, commit_time,
+        client, end_of_transaction, throughput_metrics));
   }
 
   if (end_of_transaction) {
