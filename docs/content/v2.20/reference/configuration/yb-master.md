@@ -389,25 +389,25 @@ Default: `3000` (3 seconds)
 
 Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
-Default: `1`
+Default: `25`
 
 ##### --load_balancer_max_concurrent_moves
 
 Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
-Default: `2`
+Default: `100`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
 Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
-Default: `1`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_removals
 
 Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
-Default: `1`
+Default: `50`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps
 
@@ -423,9 +423,9 @@ Default: `2`
 
 ##### --load_balancer_max_over_replicated_tablets
 
-Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor.
+Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
-Default: `1`
+Default: `50`
 
 ##### --load_balancer_num_idle_runs
 
