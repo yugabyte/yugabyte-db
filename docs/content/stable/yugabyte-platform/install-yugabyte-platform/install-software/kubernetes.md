@@ -145,7 +145,7 @@ If you are looking for a customization which is not listed, you can view all the
 
 ### Use YugabyteDB Kubernetes Operator to automate YBA deployments
 
-The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments.
+The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. If you already have universes created via the UI or API, you can [import them for operator management](../../../anywhere-automation/yb-kubernetes-operator/#operator-import-universe).
 
 Note that for YugabyteDB Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
 

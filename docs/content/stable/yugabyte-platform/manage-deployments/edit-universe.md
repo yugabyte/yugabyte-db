@@ -22,6 +22,8 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 
 -> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
+-> If you want to manage your existing Kubernetes universes using the YugabyteDB Anywhere Operator, you can use the [Operator import universe](../../anywhere-automation/yb-kubernetes-operator/#operator-import-universe) feature. Note that this process is irreversible and transitions the universe from Helm management to YugabyteDB Anywhere Operator management.
+
 ## Edit a universe
 
 To change the configuration of a universe, do the following:
