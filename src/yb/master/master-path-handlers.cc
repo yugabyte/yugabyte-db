@@ -920,6 +920,11 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
           jw.String("uptime_seconds");
           jw.Uint64(desc->uptime_seconds());
+          if(desc->uptime_seconds() > 0) {
+            jw.Uint64(desc->uptime_seconds());
+          } else {
+            jw.String("unknown");
+          }
         } else {
           jw.String("status");
           jw.String(kTserverDead);
