@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: managed-labs
     parent: yugabytedb-managed
-    weight: 15
+    weight: 30
 type: docs
 ---
 

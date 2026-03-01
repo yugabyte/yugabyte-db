@@ -45,7 +45,7 @@ The configuration file groups parameters into logical sections based on their us
 * The `source`, `source-replica`, and `target` sections contain database-specific configurations.
 * Command-specific sections such as `export-schema`, `import-data`, and others, can override parameters for individual commands.
 
-You can refer to the following configurtion file templates:
+You can refer to the following configuration file templates:
 
 * [offline-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/offline-migration.yaml)
 * [live-migration.yaml](https://github.com/yugabyte/yb-voyager/blob/{{< yb-voyager-release >}}/yb-voyager/config-templates/live-migration.yaml)

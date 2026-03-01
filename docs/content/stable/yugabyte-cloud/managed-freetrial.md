@@ -7,7 +7,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: managed-freetrial
     parent: yugabytedb-managed
-    weight: 20
+    weight: 40
 type: docs
 ---
 

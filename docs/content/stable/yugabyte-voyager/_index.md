@@ -23,10 +23,10 @@ Use YugabyteDB Voyager to manage end-to-end database migration, including cluste
 
 {{< sections/text-with-right-image
   title="Get Started"
-  description="Install YugabyteDB Voyager on different operating systems (RHEL, Ubuntu, macOS), or via environments such as Docker or an Airgapped installation."
+  description="Install YugabyteDB Voyager and perform an end-to-end offline migration with our quick start guide."
   imageTransparent=true
-  buttonText="Install"
-  buttonUrl="install-yb-voyager/"
+  buttonText="Quick start"
+  buttonUrl="quickstart/"
   imageTransparent=true
   imageAlt="YugabyteDB Voyager" imageUrl="/images/homepage/voyager-transparent.svg"
 >}}

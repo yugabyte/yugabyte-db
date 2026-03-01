@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-clusters
-    weight: 100
+    weight: 400
 type: indexpage
 showRightNav: true
 ---
