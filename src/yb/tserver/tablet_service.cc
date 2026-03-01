@@ -2393,6 +2393,13 @@ void TabletServiceAdminImpl::UpgradeYsql(
 
   LOG(INFO) << "Starting YSQL upgrade";
 
+  if(!FLAGS_enable_ysql) {
+    const auto status = STATUS(IllegalState, "YSQL is not enabled");
+    LOG(INFO) << "YSQL upgrade failed: " << status;
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+    return;
+  }
+
   pgwrapper::YsqlUpgradeHelper upgrade_helper(server_->pgsql_proxy_bind_address(),
                                               server_->GetSharedMemoryPostgresAuthKey(),
                                               FLAGS_heartbeat_interval_ms,
