@@ -21,6 +21,12 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 26910>}}
+| Incorrectly configured ulimit along with snapshot operations can cause data loss
+| {{<product "ybdb">}}
+| {{<release "2.20">}}, {{<release "2024.1">}}, {{<release "2024.2">}}
+| {{<nobreak "27 February 2026">}}
+|
 | {{<ta 30104>}}
 | Index inconsistency with Insert On Conflict with partial or expression index
 | {{<product "ysql">}}
