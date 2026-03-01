@@ -745,6 +745,62 @@ Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(
   return entry;
 }
 
+Result<std::vector<CDCStateTableEntry>> CDCStateTable::FetchEntriesForTablet(
+    const TabletId& tablet_id, CDCStateTableEntrySelector&& field_filter) {
+  DCHECK(!tablet_id.empty());
+
+  std::vector<std::string> columns;
+  // Always project key columns first, followed by requested columns, to reuse DeserializeRow.
+  columns.emplace_back(kCdcTabletId);
+  columns.emplace_back(kCdcStreamId);
+  MoveCollection(&field_filter.columns_, &columns);
+
+  VLOG_WITH_FUNC(1) << tablet_id << ", Columns: " << yb::ToString(columns);
+
+  auto cdc_table = VERIFY_RESULT(GetTable());
+  auto session = MakeSession();
+
+  std::vector<CDCStateTableEntry> results;
+
+  const auto read_op = cdc_table->NewReadOp();
+  auto* const req_read = read_op->mutable_request();
+  // Bind hash key to limit results to the specific tablet_id.
+  QLAddStringHashValue(req_read, tablet_id);
+  req_read->set_return_paging_state(true);
+  req_read->set_limit(1024);
+  cdc_table->AddColumns(columns, req_read);
+
+  // Apply and page until done.
+  while (true) {
+    session->Apply(read_op);
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    auto flush_status = session->TEST_FlushAndGetOpsErrors();
+    if (!flush_status.status.ok()) {
+      for (const auto& error : flush_status.errors) {
+        LOG_WITH_FUNC(WARNING) << "Failed operation: " << error->failed_op().ToString()
+                               << ", status: " << error->status();
+      }
+      RETURN_NOT_OK(flush_status.status);
+    }
+
+    auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+    RETURN_NOT_OK(row_block);
+    const auto row_count = (*row_block)->row_count();
+    for (int i = 0; i < row_count; ++i) {
+      const auto& row = (*row_block)->row(i);
+      auto entry = VERIFY_RESULT(DeserializeRow(row, columns));
+      results.push_back(std::move(entry));
+    }
+
+    if (!read_op->response().has_paging_state()) {
+      break;
+    }
+    *req_read->mutable_paging_state() = read_op->response().paging_state();
+  }
+
+  return results;
+}
+
 void CDCStateTable::Shutdown() {
   shutdown_->SetShuttingDown();
 }
