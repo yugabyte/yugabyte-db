@@ -1151,6 +1151,46 @@ public class GFlagsUtil {
   }
 
   /**
+   * Make sure FIPS related GFlags are not overridden + check provider type - as only K8S is
+   * currently supported.
+   *
+   * @param fipsEnabled
+   */
+  public static void validateFipsCompliancy(
+      UniverseDefinitionTaskParams.UserIntent userIntent, boolean fipsEnabled) {
+    if (fipsEnabled) {
+      if (userIntent.providerType != CloudType.kubernetes) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Currently only Kubernetes provider is supported for FIPS compliant universe");
+      }
+      // This is for new universes only, so don't consider old form of GFLags
+      if (userIntent.specificGFlags != null && !userIntent.specificGFlags.isInheritFromPrimary()) {
+        Collection<UUID> azUuids = new ArrayList<>(Collections.singletonList(null));
+        if (userIntent.specificGFlags.getPerAZ() != null) {
+          azUuids.addAll(userIntent.specificGFlags.getPerAZ().keySet());
+        }
+        for (UUID azUuid : azUuids) {
+          Map<String, String> masterGFlags =
+              userIntent.specificGFlags.getGFlags(azUuid, UniverseTaskBase.ServerType.MASTER);
+          if (masterGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
+              && !masterGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+          }
+          Map<String, String> tserverGFlags =
+              userIntent.specificGFlags.getGFlags(azUuid, ServerType.TSERVER);
+          if (tserverGFlags.containsKey(GFlagsUtil.OPENSSL_REQUIRE_FIPS)
+              && !tserverGFlags.get(GFlagsUtil.OPENSSL_REQUIRE_FIPS).equals("true")) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "FIPS enabled YBAnywhere only supports FIPS enabled universe");
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Checks consistency between gflags and userIntent. Throws PlatformServiceException if any
    * problems are found.
    *
