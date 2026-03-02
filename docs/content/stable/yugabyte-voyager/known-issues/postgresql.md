@@ -884,7 +884,7 @@ HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_loc
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
 
-**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
+**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/current/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
 
 ```sql
 ERROR:  PREPARE TRANSACTION not supported yet

@@ -348,4 +348,4 @@ support-platform
 
 yb-version
 : Inserts the current version of a particular release series.
-: This shortcode has quite a few options. Refer to the [comments at the top of the file](https://github.com/yugabyte/yugabyte-db/blob/master/docs/layouts/shortcodes/yb-version.html) for usage details.
+: This shortcode has quite a few options. Refer to the [comments at the top of the file](https://github.com/yugabyte/yugabyte-db/blob/master/docs/layouts/_shortcodes/yb-version.html) for usage details.

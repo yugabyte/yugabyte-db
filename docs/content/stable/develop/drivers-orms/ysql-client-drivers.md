@@ -58,7 +58,7 @@ Homebrew users on macOS can install libpq using `brew install libpq`. You can do
 
 The [libpqxx](http://pqxx.org/development/libpqxx/) driver is the official C++ client API for PostgreSQL. libpqxx is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/en/latest/).
+For details and documentation, refer to the [libpqxx README](https://github.com/jtv/libpqxx#readme) and [libpqxx documentation](https://libpqxx.readthedocs.io/stable/).
 
 For a tutorial on building a sample C++ application with libpqxx, refer to [Connect an application](../cpp/ysql/).
 
