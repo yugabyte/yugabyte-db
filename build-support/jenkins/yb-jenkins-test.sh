@@ -265,46 +265,6 @@ fi
 # Finished running tests.
 remove_latest_symlink
 
-log "Aggregating test reports"
-"$YB_SCRIPT_PATH_AGGREGATE_TEST_REPORTS" \
-      --yb-src-root "${YB_SRC_ROOT}" \
-      --output-dir "${YB_SRC_ROOT}" \
-      --build-type "${build_type}" \
-      --compiler-type "${YB_COMPILER_TYPE}" \
-      --build-root "${BUILD_ROOT}"
-
-log "Analyzing test results"
-test_results_from_junit_xml_path=${YB_SRC_ROOT}/test_results.json
-test_results_from_spark_path=${BUILD_ROOT}/full_build_report.json.gz
-planned_tests_path=${BUILD_ROOT}/planned_tests.json
-
-if [[ -f $test_results_from_junit_xml_path &&
-      -f $test_results_from_spark_path &&
-      $NUM_REPETITIONS == 1 ]]; then
-  (
-    set -x
-    "$YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS" \
-          "--aggregated-json-test-results=$test_results_from_junit_xml_path" \
-          "--planned-tests=$planned_tests_path" \
-          "--run-tests-on-spark-report=$test_results_from_spark_path" \
-          "--archive-dir=$YB_SRC_ROOT" \
-          "--successful-tests-out-path=$YB_SRC_ROOT/test_successes.txt" \
-          "--test-list-out-path=$YB_SRC_ROOT/test_list.txt" \
-          "--analysis-out-path=$YB_SRC_ROOT/test_analysis.txt"
-  )
-else
-  if [[ ! -f $test_results_from_junit_xml_path ]]; then
-    log "File $test_results_from_junit_xml_path does not exist"
-  fi
-  if [[ ! -f $test_results_from_spark_path ]]; then
-    log "File $test_results_from_spark_path does not exist"
-  fi
-  if [[ $NUM_REPETITIONS != 1 ]]; then
-    log "Analyze script cannot handle multiple repetitions."
-  fi
-  log "Not running $YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS"
-fi
-
 if [[ -n ${FAILURES} ]]; then
   heading "Failure summary"
   echo >&2 "${FAILURES}"
