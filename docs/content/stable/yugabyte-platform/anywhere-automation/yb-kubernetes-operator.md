@@ -18,6 +18,8 @@ The Operator establishes `ybuniverse` as a Custom Resource Definition (CRD) in K
 
 You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. Custom resources support seamless upgrades with no downtime, as well as automated, transparent scaling, and cluster-balanced deployments.
 
+{{<tags/feature/ea idea="12874">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
+
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
 ## YugabyteDB Kubernetes Operator CRDs
@@ -679,7 +681,7 @@ Currently, universes with any of the following configurations are not supported 
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
-- Update CRDs. You must update the CRDs on your Kubernetes cluster to the latest from the YBA version installed. Failure to do so may result in scaling down of pod resources during future edit operations.
+- Update universe CRDs. You must update the CRDs for your Kubernetes universe to the latest for the version of YugabyteDB Anywhere you have installed. Failure to do so may result in scaling down of pod resources during future edit operations.
 
 {{< warning title="Irreversibility" >}}
 After a universe and its related resources are imported to be managed by the Operator, most edit operations are allowed only via the Operator. The API and UI block edit actions on the imported resource. The import _cannot_ be reversed.
