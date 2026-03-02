@@ -630,7 +630,7 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_ysql);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -6413,11 +6413,9 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   {
     SharedLock lock(mutex_);
-    SCHECK_EC_FORMAT(
-        !IsTablePartOfCDCSDK(table_id) ||
-            CDCSDKAllowTableRewrite(table_id, true /* is_truncate_request */),
-        NotSupported, MasterError(MasterErrorPB::INVALID_REQUEST),
-        "Cannot truncate a table $0 that has a CDCSDK Stream", table_id);
+    if (IsTablePartOfCDCSDK(table_id)) {
+      RETURN_NOT_OK(CDCSDKAllowTableRewrite(table_id, true /* is_truncate_request */));
+    }
   }
 
   // Send a Truncate() request to each tablet in the table.
@@ -7257,7 +7255,7 @@ Status CatalogManager::DeleteTableInternal(
   // streaming of dropped / re-written tables by CDC is disabled.
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
   // the streams associated with the 'deleted_table_ids' are not being dropped.
-  if (!FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
   }
 
@@ -13955,7 +13953,7 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
 
   xcluster_manager_->PopulateTabletDeleteRetainerInfoForTableDrop(table_info, retainer);
 
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     SharedLock lock(mutex_);
     CDCSDKPopulateDeleteRetainerInfoForTableDrop(table_info, retainer);
   }

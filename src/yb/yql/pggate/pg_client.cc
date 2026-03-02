@@ -78,7 +78,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1678,7 +1678,7 @@ class PgClient::Impl : public BigDataFetcher {
       *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
       for (const auto& e : oid_to_relfilenode) {
         req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
       }
@@ -1732,7 +1732,7 @@ class PgClient::Impl : public BigDataFetcher {
       *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
       for (const auto& e : oid_to_relfilenode) {
         req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
       }

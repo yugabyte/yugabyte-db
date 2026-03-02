@@ -139,7 +139,7 @@ DEFINE_NON_RUNTIME_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replicati
     "This replaces the previous mechanism of periodic publication refresh with PG "
     "like semantics for dynamic tables");
 
-DEFINE_test_flag(bool, enable_table_rewrite_for_cdcsdk_table, false,
+DEFINE_RUNTIME_PREVIEW_bool(enable_table_rewrite_for_cdcsdk_table, false,
     "When set, CDC will not block DDLs causing table rewrites. Also records from the re-written "
     "tablets will be streamed by CDC after finishing the streaming of data from older tablets.");
 

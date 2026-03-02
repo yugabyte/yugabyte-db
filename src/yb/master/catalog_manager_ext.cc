@@ -147,7 +147,7 @@ DEFINE_RUNTIME_AUTO_bool(
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb {
 
@@ -3208,7 +3208,7 @@ void CatalogManager::CleanupHiddenTables(
     lock.Commit();
   }
 
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     // A hidden table, with all the tablets deleted can be removed from the stream metadata of
     // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
     // task will remove the tables from such streams' metadata.

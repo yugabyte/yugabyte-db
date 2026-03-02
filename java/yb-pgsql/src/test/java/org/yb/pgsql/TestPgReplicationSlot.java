@@ -969,21 +969,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     tserverFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    tserverFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    tserverFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    tserverFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     masterFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    masterFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    masterFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    masterFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
     restartClusterWithFlags(masterFlags, tserverFlags);
   }
