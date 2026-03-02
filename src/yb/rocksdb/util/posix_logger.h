@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <atomic>
@@ -53,29 +54,27 @@ const int kDebugLogChunkSize = 128 * 1024;
 
 class PosixLogger : public Logger {
  private:
-  FILE* file_;
+  int fd_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
   std::atomic_size_t log_size_;
-  int fd_;
   static const uint64_t flush_every_seconds_ = 5;
   std::atomic_uint_fast64_t last_flush_micros_;
   Env* env_;
   std::atomic<bool> flush_pending_;
   std::string fname_;
  public:
-  PosixLogger(const std::string& fname, FILE* f, uint64_t (*gettid)(), Env* env,
+  PosixLogger(const std::string& fname, int fd, uint64_t (*gettid)(), Env* env,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
-        file_(f),
+        fd_(fd),
         gettid_(gettid),
         log_size_(0),
-        fd_(fileno(f)),
         last_flush_micros_(0),
         env_(env),
         flush_pending_(false),
         fname_(fname) {}
   virtual ~PosixLogger() {
-    fclose(file_);
+    close(fd_);
   }
   virtual void Flush() override {
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
@@ -83,7 +82,7 @@ class PosixLogger : public Logger {
       bool expected_flush_pending = true;
       // TODO: use a weaker memory order?
       if (flush_pending_.compare_exchange_strong(expected_flush_pending, false)) {
-        fflush(file_);
+        fsync(fd_);
       }
     }
     last_flush_micros_ = env_->NowMicros();
@@ -172,7 +171,21 @@ class PosixLogger : public Logger {
       }
 #endif
 
-      size_t sz = fwrite(base, 1, write_size, file_);
+      // Write using raw fd I/O to avoid macOS stdio FILE* stream limit (~32K).
+      const char* src = base;
+      size_t left = write_size;
+      while (left > 0) {
+        ssize_t done = write(fd_, src, left);
+        if (done < 0) {
+          if (errno == EINTR) {
+            continue;
+          }
+          break;
+        }
+        src += done;
+        left -= done;
+      }
+      size_t sz = write_size - left;
       // TODO: use a weaker memory order?
       flush_pending_.store(true);
       assert(sz == write_size);

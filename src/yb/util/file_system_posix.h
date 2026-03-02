@@ -23,7 +23,7 @@ size_t GetUniqueIdFromFile(int fd, uint8_t* id);
 
 class PosixSequentialFile : public SequentialFile {
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
+  PosixSequentialFile(const std::string& fname, int fd, const FileSystemOptions& options);
   virtual ~PosixSequentialFile();
 
   Status Read(size_t n, Slice* result, uint8_t* scratch) override;
@@ -34,7 +34,6 @@ class PosixSequentialFile : public SequentialFile {
 
  private:
   std::string filename_;
-  FILE* file_;
   int fd_;
   bool use_os_buffer_;
 };
