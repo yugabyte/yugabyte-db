@@ -32,6 +32,7 @@ The following additional CRDs support day 2 operations.
 | [SupportBundle](#support-bundle) | Collect logs when a universe fails. |
 | [StorageConfig](#backup-and-restore) | Configure backup destinations. |
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
+| [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
 | YBProvider | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
 
 For details of each CRD, run `kubectl explain` on the CR.
