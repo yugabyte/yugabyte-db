@@ -55,6 +55,11 @@ YB_DEFINE_ENUM(
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 
+struct TxnReadPoint {
+  uint64_t txn; // Transaction serial number
+  uint64_t read_time_serial_no; // Read time serial number
+};
+
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
   PgTxnManager(
@@ -119,7 +124,11 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   [[nodiscard]] YbcReadPointHandle GetCurrentReadPoint() const;
   [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
+  [[nodiscard]] TxnReadPoint GetCurrentReadPointState() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
+  // Restores the read point to saved_read_point.read_time, but only if the current
+  // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
+  Status RestoreReadPoint(const TxnReadPoint& saved_read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
 
   Result<std::string> ExportSnapshot(
