@@ -20,7 +20,7 @@ To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | true |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. This flag is an alias for the `enable_parallel_append` PostgreSQL parameter. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | true |
 | yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | false |
 | yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. | 10000 |
 | yb_parallel_range_size | Approximate size (in MB) of parallel range for DocDB relation scans. | 1 |
