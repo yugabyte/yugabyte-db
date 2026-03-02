@@ -38,7 +38,8 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 - Avoid running a backup during or before a scheduled maintenance.
 
 {{< warning title="Backups and high DDL activity" >}}
-In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
+Starting with YugabyteDB v2025.1.1, taking YSQL backups during DDL operations is supported; backups can succeed even when DDL changes occur during the backup process.
+On versions before v2025.1.1, a backup can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
 {{< /warning >}}
 
 {{<index/block>}}

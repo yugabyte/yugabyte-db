@@ -675,7 +675,7 @@ Sets the maximum batch size per transaction when using [COPY FROM](../../../api/
 ##### yb_enable_derived_equalities
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -684,7 +684,7 @@ Enables derivation of additional equalities for columns that are generated or co
 ##### yb_enable_derived_saops
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -693,7 +693,7 @@ Enable derivation of IN clauses for columns generated or computed using a `yb_ha
 ##### yb_max_saop_merge_streams
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `0`
 {{% /tags/wrap %}}
 
