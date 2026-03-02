@@ -30,6 +30,8 @@ For higher availability, you can install additional YugabyteDB Anywhere (YBA) in
 
 For information on installing YugabyteDB Anywhere on OpenShift, refer to [Install YugabyteDB Anywhere on OpenShift](../openshift/).
 
+For information on using the YugabyteDB Kubernetes Operator to install YugabyteDB Anywhere and manage universes, refer to [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
+
 ## Install YugabyteDB Anywhere
 
 You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
@@ -84,8 +86,6 @@ You install YugabyteDB Anywhere on a Kubernetes cluster as follows:
     ```
 
     You can enable TLS by following instructions provided in [Configure TLS](#configure-tls).
-
-    To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, see [Use YugabyteDB Kubernetes Operator to automate YugabyteDB Anywhere deployments](#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
 
 1. Use the following command to check the service:
 
@@ -142,88 +142,6 @@ helm install yw-test yugabytedb/yugaware \
 You can copy the preceding code block into a file called `yba-values.yaml` and then install YugabyteDB Anywhere using this command. Alternatively, you can pass the values using the `--set key=value` flag. For more information, see [Customizing the chart before installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). It is recommend to use a values file and store it in a version control system.
 
 If you are looking for a customization which is not listed, you can view all the supported options and their default values by running the `helm show values yugabytedb/yugaware --version {{<yb-version version="stable" format="short">}}` command and copying the specific section to your own values file.
-
-### Use YugabyteDB Kubernetes Operator to automate YBA deployments
-
-The [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/) automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. If you already have universes created via the UI or API, you can [import them for operator management](../../../anywhere-automation/yb-kubernetes-operator/#operator-import-universe).
-
-Note that for YugabyteDB Kubernetes Operator to work correctly, you need to set `rbac.create=true`, as the operator needs ClusterRoles to create its own providers.
-
-To install YugabyteDB Anywhere and a universe using the YugabyteDB Kubernetes Operator, do the following:
-
-1. Apply the following Custom Resource Definition:
-
-    ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
-    ```
-
-1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
-
-    ```sh
-    # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
-    helm install yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
-      --namespace yb-platform \
-      --set yugaware.kubernetesOperatorEnabled=true \
-      --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
-      --set yugaware.defaultUser.enabled=true \
-      --set yugaware.defaultUser.username=yb_platform_user \
-      --set yugaware.defaultUser.email='yugabyte_k8s@yugabyte.com' \
-      --set yugaware.defaultUser.password='Password#Test123'
-    ```
-
-1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
-
-    ```sh
-    kubectl get pods -n <yba_namespace>
-    ```
-
-1. Create the following custom resource, and save it as `demo-universe.yaml`.
-
-    ```yaml
-    # demo-universe.yaml
-    apiVersion: operator.yugabyte.io/v1alpha1
-    kind: YBUniverse
-    metadata:
-      name: demo-test
-    spec:
-      numNodes: 1
-      replicationFactor: 1
-      enableYSQL: true
-      enableNodeToNodeEncrypt: true
-      enableClientToNodeEncrypt: true
-      enableLoadBalancer: true
-      ybSoftwareVersion: "{{< yb-version version="stable" format="build">}}" <- This will be the YBA  version
-      enableYSQLAuth: false
-      enableYCQL: true
-      enableYCQLAuth: false
-      gFlags:
-        tserverGFlags: {}
-        masterGFlags: {}
-      deviceInfo:
-        volumeSize: 100
-        numVolumes: 1
-        storageClass: "yb-standard"
-    ```
-
-1. Create a universe using the custom resource `demo-universe.yaml` as follows:
-
-    ```sh
-    kubectl apply -f demo-universe.yaml -n yb-platform-test
-    ```
-
-1. Check the status of the universe as follows:
-
-    ```sh
-    kubectl get ybuniverse  -n yb-operator
-    ```
-
-    ```output
-    NAME        STATE   SOFTWARE VERSION
-    demo-test   Ready   {{< yb-version version="stable" format="build">}}
-    ```
-
-For more details, see [YugabyteDB Kubernetes Operator](../../../anywhere-automation/yb-kubernetes-operator/).
 
 ### Customize the creation of an internal service account
 
