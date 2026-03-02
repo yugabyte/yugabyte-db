@@ -2035,4 +2035,30 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum time to wait for node agent to restart after an upgrade",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // File Collection configs (Internal - for troubleshooting APIs)
+  public static final ConfKeyInfo<Duration> fileCollectionDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Download Timeout",
+          "Maximum time to wait for downloading collected files from all DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionNodeDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.node_download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Per-Node Download Timeout",
+          "Maximum time to wait for downloading collected files from a single DB node",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionCleanupTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.cleanup_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Cleanup Timeout",
+          "Maximum time to wait for cleaning up collected files from DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
