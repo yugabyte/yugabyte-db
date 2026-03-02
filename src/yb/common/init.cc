@@ -35,16 +35,18 @@
 #include <csignal>
 #include <string>
 
+#include "yb/common/version_info.h"
+
 #include "yb/gutil/cpu.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
-#include "yb/common/version_info.h"
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -53,7 +55,8 @@
 using std::string;
 
 DEFINE_NON_RUNTIME_string(fs_data_dirs, "",
-              "Comma-separated list of data directories. This argument must be specified.");
+    "Comma-separated list of data directories.  These must be absolute paths.  This argument "
+    "must be specified.");
 TAG_FLAG(fs_data_dirs, stable);
 
 DEFINE_NON_RUNTIME_bool(stop_on_parent_termination, false,

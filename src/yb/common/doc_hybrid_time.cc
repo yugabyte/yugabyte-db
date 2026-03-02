@@ -13,17 +13,13 @@
 
 #include "yb/common/doc_hybrid_time.h"
 
-#include "yb/gutil/casts.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/checked_narrow_cast.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/varint.h"
 
 using std::string;
 
@@ -32,15 +28,6 @@ using yb::FastEncodeDescendingSignedVarInt;
 using strings::SubstituteAndAppend;
 
 namespace yb {
-
-// It does not really matter what write id we use here. We determine DocHybridTime validity based
-// on its HybridTime component's validity. However, given that HybridTime::kInvalid is close to the
-// highest possible value of the underlying in-memory representation of HybridTime, we use
-// kMaxWriteId for the write id portion of this constant for consistency.
-const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid, kMaxWriteId);
-
-const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
-const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);
 
 const EncodedDocHybridTime kEncodedDocHybridTimeMin{DocHybridTime::kMin};
 
