@@ -1686,23 +1686,13 @@ In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
 
-#### Single column index
-
-Using a single-column index on a low-cardinality column leads to uneven data distribution, regardless of the sharding strategy.
-
 **Workaround**:
 
-It is recommended to drop the index if it is not required.
+Make the index range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
 
-If the index is used in queries, combine it with a high-cardinality column to create either a multi-column index with the sharding key on the high-cardinality column or a multi-column range-sharding index. This ensures better data distribution across all nodes.
+- For Voyager versions v2025.9.1 or later, Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
 
-#### Multi-column index
-
-In a multi-column index with a low cardinality column as the sharding key, the data will be unevenly distributed.
-
-**Workaround**:
-
-Make the index range-sharded to distribute data based on the combined values of all columns, or reorder the index columns to place the high-cardinality column first. This enables sharding on the high-cardinality column and ensures even distribution across all nodes.
+- For Voyager versions earlier than v2025.9.1, you must manually modify the index to be range-sharded.
 
 **Example**:
 
@@ -1717,39 +1707,14 @@ CREATE TABLE orders (
     status order_statuses
 );
 
---single column index on column having only 5 values
-CREATE INDEX idx_order_status on orders (status);
-
---multi column index on first column with only 5 values
 CREATE INDEX idx_order_status_order_id on orders (status, order_id);
 ```
 
-Since the number of distinct values of the column `status` is 5, there will be a maximum of 5 tablets created, limiting the scalability.
-
-Suggested change to both types of indexes is one of the following.
-
-Make it a multi-column range-index:
+Make the index as range-sharded to distribute the data evenly:
 
 ```sql
---These indexes will distribute the data on the combine value of both and as order_id is high cardinality column, it will make sure that data is distributed evenly
-
---adding order_id and making it a range-sharded index explictly
-CREATE INDEX idx_order_status on orders(status ASC, order_id);
-
 --making it a range-sharded index explictly
 CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id);
-```
-
-Make it multi-column with a sharding key on a high-cardinality column:
-
-```sql
---these indexes will distribute the data on order_id first and then each shard is clustered on status
-
---making it multi column by adding order_id as first column
-CREATE INDEX idx_orders_status on orders(order_id, status);
-
---reordering the columns to place the order_id first and then keeping status.
-CREATE INDEX idx_order_status_order_id on orders (order_id, status);
 ```
 
 ---
