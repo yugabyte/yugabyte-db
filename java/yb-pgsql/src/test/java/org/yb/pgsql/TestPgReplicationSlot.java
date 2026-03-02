@@ -80,9 +80,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
-        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG2");
-    flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
@@ -93,8 +90,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put(
-      "vmodule", "cdc_service=4,cdcsdk_producer=4");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
