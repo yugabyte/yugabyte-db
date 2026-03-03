@@ -526,7 +526,7 @@ You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags ar
 
 - [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) - Controls retention of intents, in ms. If a request for change records is not received for this interval, un-streamed intents are garbage collected and the CDC stream is considered expired. This expiry is not reversible, and the only course of action would be to create a new CDC stream. The default value of this flag is 8 hours (8 x 3600 x 1000 ms).
 
-- [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 4 hours (14400 seconds).
+- [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 4 hours (28800 seconds).
 
 - [cdc_snapshot_batch_size](../../../../reference/configuration/yb-tserver/#cdc-snapshot-batch-size) - This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../debezium-connector-yugabytedb/) configuration.
 
