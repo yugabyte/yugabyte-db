@@ -4603,7 +4603,18 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 				 " for database %u",
 				 message_lists.num_lists,
 				 local_catalog_version, shared_catalog_version, MyDatabaseId);
-			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			if (full_refresh_allowed)
+				YbUpdateCatalogCacheVersion(shared_catalog_version);
+			else
+				/*
+				 * We don't want to update pg_stat_activity catalog version in the
+				 * middle of transaction. As of 2026-03-04, if full_refresh_allowed
+				 * is false it implies we are in the middle of a transaction. If we
+				 * change to allow full refresh in the middle of transaction in the
+				 * future, make sure we continue not to update pg_stat_activity
+				 * catalog version here.
+				 */
+				YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
 			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
@@ -5038,8 +5049,12 @@ YBCheckSharedCatalogCacheVersion()
 	if (need_global_cache_refresh)
 		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
 							  false /* is_retry */ );
-	else if (yb_test_preload_catalog_tables)
-		YBRefreshCache();
+	else
+	{
+		yb_pgstat_set_catalog_version(local_catalog_version);
+		if (yb_test_preload_catalog_tables)
+			YBRefreshCache();
+	}
 }
 
 /*
