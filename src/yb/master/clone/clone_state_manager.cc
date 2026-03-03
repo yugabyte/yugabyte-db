@@ -633,6 +633,7 @@ Status CloneStateManager::ScheduleCloneOps(
         clone_state->TargetSnapshotId().data(), clone_state->TargetSnapshotId().size());
     req.set_target_table_id(target_table->id());
     req.set_target_namespace_name(target_table_lock->namespace_name());
+    req.set_target_namespace_id(target_table_lock->namespace_id());
     req.set_clone_request_seq_no(clone_pb_lock->pb.clone_request_seq_no());
     req.set_target_pg_table_id(target_table_lock->pb.pg_table_id());
     if (target_table_lock->pb.has_index_info()) {

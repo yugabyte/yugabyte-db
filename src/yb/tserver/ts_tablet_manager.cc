@@ -1319,6 +1319,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   const auto target_table_id = request->target_table_id().ToBuffer();
   const auto target_tablet_id = request->target_tablet_id().ToBuffer();
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
+  const auto target_namespace_id = request->target_namespace_id().ToBuffer();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
   const auto target_skip_table_tombstone_check =
       request->target_skip_table_tombstone_check();
@@ -1391,9 +1392,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       tablet::Primary(source_table->primary()),
       target_table_id,
       target_namespace_name,
-      // TODO: Plumb target_namespace_id through the clone path.
-      // https://github.com/yugabyte/yugabyte-db/pull/30308#discussion_r2828653802
-      "" /* namespace_id */,
+      target_namespace_id,
       source_table->table_name,
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
