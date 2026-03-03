@@ -110,9 +110,6 @@ func NewProvisionCommand(
 
 // Init initializes the ProvisionCommand.
 func (pc *ProvisionCommand) Init() error {
-	if err := pc.runPrechecks(); err != nil {
-		return err
-	}
 	err := pc.discoverOSInfo()
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to discover OS info: %v", err)
@@ -275,6 +272,9 @@ func (pc *ProvisionCommand) ListModules() error {
 }
 
 func (pc *ProvisionCommand) Execute() error {
+	if err := pc.runPrechecks(); err != nil {
+		return err
+	}
 	if err := pc.validateSpecificModules(); err != nil {
 		return err
 	}
