@@ -34,9 +34,8 @@ using std::map;
 DECLARE_bool(TEST_exit_on_finish);
 
 const string kDbName = "/lbd_cmd_test";
-const string kKeyFileOption = "--key_file=" + rocksdb::DBTestBase::kKeyId + ":" +
-                              rocksdb::DBTestBase::kKeyFile;
-
+const string kKeyFileOption = "--key_file=" + std::string(rocksdb::DBTestBase::kKeyId) + ":" +
+                              std::string(rocksdb::DBTestBase::kKeyFile);
 
 class LdbCmdTest : public rocksdb::DBTestBase, public testing::WithParamInterface<bool> {
  public:
