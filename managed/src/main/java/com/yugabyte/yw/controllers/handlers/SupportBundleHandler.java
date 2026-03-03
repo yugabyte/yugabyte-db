@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -122,6 +124,34 @@ public class SupportBundleHandler {
             bundleData.promDumpStartDate, bundleData.promDumpEndDate)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "'promDumpStartDate' should be before the 'promDumpEndDate'");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && bundleData.promExportType == PromExportType.REMOTE_READ
+        && bundleData.promQueries != null
+        && !bundleData.promQueries.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Custom Prometheus queries (promQueries) are not supported when promExportType is"
+              + " REMOTE_READ. Clear promQueries or set promExportType to PROMQL.");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && (bundleData.promExportType == null || bundleData.promExportType == PromExportType.PROMQL)
+        && bundleData.promMetricsFormat == PrometheusMetricsFormat.PROM_CHUNK) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Binary format is not supported when promExportType is PROMQL. "
+              + "Clear promMetricsFormat or set promMetricsFormat to PROMQL_JSON.");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && (bundleData.promExportType == null || bundleData.promExportType == PromExportType.PROMQL)
+        && !bundleData.promDumpDownSample) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Export without downsampling is not allowed when promExportType is PROMQL. "
+              + "Set promDumpDownSample to true or use REMOTE_READ export method.");
     }
 
     // Vaidate that the given query names can be used as dir.

@@ -57,6 +57,9 @@ import play.libs.Json;
 @Slf4j
 public class CommonUtils {
 
+  public static final String RESULT_SUCCESS = "success";
+  public static final String RESULT_FAILURE = "failure";
+
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
   public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 

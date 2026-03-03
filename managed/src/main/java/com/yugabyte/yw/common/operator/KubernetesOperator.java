@@ -298,7 +298,8 @@ public class KubernetesOperator {
                           commissioner,
                           taskExecutor,
                           supportBundleUtil,
-                          operatorUtils);
+                          operatorUtils,
+                          confGetter);
 
                   StorageConfigReconciler scReconciler =
                       new StorageConfigReconciler(

@@ -238,6 +238,7 @@ libraryDependencies ++= Seq(
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
+  "org.xerial.snappy" % "snappy-java" % "1.1.10.7",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
