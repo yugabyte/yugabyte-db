@@ -166,7 +166,8 @@ export const colors = {
     ybGray: '#DEDEE0',
     ybOrangeFocus: '#EF582480',
     ybPurple: '#5D5FEF',
-    grey005: '#FBFCFD'
+    grey005: '#FBFCFD',
+    grey050: '#F7F9FB'
   },
   ybaShadows: {
     inputBoxShadow: 'inset 0 1px 1px rgb(0 0 0 / 8%), 0 0 8px rgb(239 88 36 / 20%)'

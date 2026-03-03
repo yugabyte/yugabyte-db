@@ -284,6 +284,24 @@
             "upgradePlan": "UPGRADE PLAN",
             "upgradePace": "UPGRADE PACE"
           },
+          "summaryCard": {
+            "targetVersion": "TARGET VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE",
+            "canaryUpgrade": "Canary Upgrade",
+            "expressUpgrade": "Express Upgrade",
+            "masterServers": "Master Servers",
+            "readReplica": "read replica",
+            "pause": "PAUSE",
+            "rollingUpgrade": "Rolling Upgrade",
+            "concurrentUpgrade": "Concurrent Upgrade",
+            "batch": "BATCH",
+            "maxSize": "MAX SIZE",
+            "waitTime": "WAIT TIME",
+            "nodeCount_one": "{{count}} Node",
+            "nodeCount_other": "{{count}} Nodes"
+          },
           "dbVersionStep": {
             "stepTitle": "Database Version",
             "stepDescription": "What database version do you want to upgrade to?",

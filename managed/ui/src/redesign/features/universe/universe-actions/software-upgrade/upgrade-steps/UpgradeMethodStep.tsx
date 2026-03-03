@@ -280,6 +280,7 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
     if (isFormDisabled) return;
     setValue('upgradeMethod', method);
     if (method === UpgradeMethod.CANARY) {
+      // Only rolling upgrade is supported when upgradeMethod is CANARY.
       setValue('upgradePace', UpgradePace.ROLLING);
     }
   };
@@ -388,13 +389,10 @@ export const UpgradeMethodStep = ({ maxNodesPerBatchMaximum }: UpgradeMethodStep
                                     },
                                     max: {
                                       value: maxNodesPerBatchMaximum,
-                                      message: t(
-                                        'fields.validationError.maxNodesPerBatchMaximum',
-                                        {
-                                          keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
-                                          max: maxNodesPerBatchMaximum
-                                        }
-                                      )
+                                      message: t('fields.validationError.maxNodesPerBatchMaximum', {
+                                        keyPrefix: UPGRADE_MODAL_KEY_PREFIX,
+                                        max: maxNodesPerBatchMaximum
+                                      })
                                     }
                                   }}
                                   inputProps={{
