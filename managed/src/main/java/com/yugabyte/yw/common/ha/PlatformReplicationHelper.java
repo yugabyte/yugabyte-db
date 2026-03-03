@@ -420,7 +420,7 @@ public class PlatformReplicationHelper {
     }
     // No outgoing remote call and this event must make the change.
     HighAvailabilityConfig.doWithLock(
-        optional.get().getUuid(),
+        optional.get().getClusterKey(),
         config -> {
           config
               .getLocal()
@@ -530,7 +530,7 @@ public class PlatformReplicationHelper {
     log.debug("Syncing data to {}...", remoteAddr);
     boolean succeeded =
         HighAvailabilityConfig.doWithTryLock(
-                remoteInstance.getConfig().getUuid(),
+                remoteInstance.getConfig().getClusterKey(),
                 config -> {
                   // Ensure that the remote instance is demoted if this instance is the most current
                   // leader.
