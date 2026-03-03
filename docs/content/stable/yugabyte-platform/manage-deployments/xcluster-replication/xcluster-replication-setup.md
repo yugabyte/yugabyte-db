@@ -131,6 +131,7 @@ When xCluster is [set up](#set-up-xcluster-replication) or [restarted](#restart-
 
 A full copy is required in the following circumstances:
 
+- Automatic mode is being used.
 - Any databases or tables or index tables being added are not empty. Newly created index tables associated with non-empty main tables are considered non-empty and trigger a full copy.
 - Any newly added databases or tables or index tables are not present on the target universe.
 
