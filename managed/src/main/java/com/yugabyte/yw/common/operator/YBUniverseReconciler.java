@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.common.operator;
 
-import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
-
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -18,6 +16,7 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
@@ -808,7 +807,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           kubernetesStatusUpdater.updateUniverseState(
               KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
           // Case with new edits
-        } else if (!StringUtils.equals(
+        } else if (!HelmUtils.equal(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
           log.info("Updating Kubernetes Overrides");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -887,6 +886,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           taskUUID = updateYBUniverse(universeDetails, cust, ybUniverse);
         } else {
           log.info("No update made");
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.READY);
         }
       }
       if (taskUUID != null) {
