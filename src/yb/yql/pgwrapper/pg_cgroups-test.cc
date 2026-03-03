@@ -69,6 +69,16 @@ class PgCgroupsTest : public PgMiniTestBase {
         NotFound, "no thread with cmdline[0] starting with '$0'", process_name_prefix);
   }
 
+  Status CheckThreadIdsForThreadName(Cgroup& cgroup, std::string_view thread_name_prefix) {
+    for (const auto& name : VERIFY_RESULT(cgroup.ReadThreadNames())) {
+      LOG(INFO) << "Thread name: " << name;
+      if (name.substr(0, thread_name_prefix.size()) == thread_name_prefix) {
+        return Status::OK();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "no thread with name starting with '$0'", thread_name_prefix);
+  }
+
   size_t NumTabletServers() override {
     return 1;
   }
@@ -118,6 +128,7 @@ TEST_F_EX(PgCgroupsTest, TestQosBackend, PgQosCgroupsTest) {
   auto conn = ASSERT_RESULT(Connect());
   auto& cgroup = ASSERT_RESULT_REF(db_cgroup(conn));
   ASSERT_OK(CheckThreadIdsForPgProcess(cgroup, "postgres: postgres yugabyte"));
+  ASSERT_OK(CheckThreadIdsForThreadName(cgroup, "shmem_exchange_"));
 }
 
 TEST_F_EX(PgCgroupsTest, TestQosParallelWorkers, PgQosCgroupsTest) {

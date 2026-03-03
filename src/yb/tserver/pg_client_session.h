@@ -112,6 +112,9 @@ struct PgClientSessionContext {
   const std::string& instance_uuid;
   docdb::ObjectLockOwnerRegistry* lock_owner_registry;
   const TransactionManagerProvider transaction_manager_provider;
+#ifdef __linux__
+  TServerCgroupManager* cgroup_manager;
+#endif
 };
 
 using RequestProcessingPreconditionWaiter = LWFunction<Status(size_t, CoarseTimePoint)>;

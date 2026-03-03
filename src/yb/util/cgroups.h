@@ -70,11 +70,12 @@ class Cgroup {
 
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
 
-  // This function has an inherent race condition: the threads it reads may change
+  // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
-  // another thread before returning. It should only be used for testing and for
+  // another thread before returning. They should only be used for testing and for
   // informational purposes like logs and debugging UI.
   Result<std::vector<int64_t>> ReadThreadIds();
+  Result<std::vector<std::string>> ReadThreadNames();
 
   // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
   std::string_view name() const { return name_; }

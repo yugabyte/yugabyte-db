@@ -70,8 +70,8 @@ Result<std::string> ReadConfigFromPath(const std::string& path, size_t max_lengt
   std::string out(max_length + 1, '\0');
   ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
   if (static_cast<size_t>(bytes_read) > max_length) {
-    return STATUS_FROM_ERRNO(Format(
-        "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out), errno);
+    return STATUS_FORMAT(
+        IllegalState, "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
   }
 
   if (bytes_read == 0) {
@@ -436,6 +436,21 @@ Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
     ids.push_back(VERIFY_RESULT(CheckedStol<int64_t>(Slice(id_str))));
   }
   return ids;
+}
+
+Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
+  std::vector<std::string> names;
+  for (int64_t thread_id : VERIFY_RESULT(ReadThreadIds())) {
+    auto result = ReadConfigFromPath(
+        Format("/proc/$0/comm", thread_id), Thread::kMaxThreadNameInPerf + 1);
+    if (!result.ok()) {
+      // This is possible if thread has exited since ReadThreadIds().
+      LOG(WARNING) << "Failed to read /proc/" << thread_id << "/comm: " << result.status();
+      continue;
+    }
+    names.emplace_back(*result);
+  }
+  return names;
 }
 
 std::string Cgroup::full_name() const {

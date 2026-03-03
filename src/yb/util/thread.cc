@@ -126,10 +126,6 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-// See comment below in SetThreadName.
-constexpr int kMaxThreadNameInPerf = 15;
-const char Thread::kPaddingChar = 'x';
-
 struct QueueLink {
   explicit QueueLink(bool remove_) : remove(remove_) {}
 
@@ -904,7 +900,7 @@ Status Thread::StartThread(const std::string& category, const std::string& name,
   // aggregations when using the linux perf tool, as that groups up stacks based on the 15 char
   // prefix of all the thread names.
   if (name.length() < kMaxThreadNameInPerf) {
-    padded_name += string(kMaxThreadNameInPerf - name.length(), Thread::kPaddingChar);
+    padded_name += string(kMaxThreadNameInPerf - name.length(), kPaddingChar);
   }
   const string log_prefix = Substitute("$0 ($1) ", padded_name, category);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500 /* ms */, log_prefix, "starting thread");
