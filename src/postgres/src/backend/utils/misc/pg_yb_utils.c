@@ -2191,10 +2191,11 @@ YBCGetDatabaseOidByRelid(Oid relid)
 {
 	Relation	relation = RelationIdGetRelation(relid);
 	bool		relisshared = relation->rd_rel->relisshared;
+	bool		belongs_to_yb_system_db = relation->belongs_to_yb_system_db;
 
 	RelationClose(relation);
 	return YBCGetDatabaseOidFromShared(relisshared,
-									   relation->belongs_to_yb_system_db);
+									   belongs_to_yb_system_db);
 }
 
 Oid
