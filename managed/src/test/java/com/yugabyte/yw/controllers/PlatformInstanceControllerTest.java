@@ -33,11 +33,15 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.ha.PlatformInstanceClient;
 import com.yugabyte.yw.common.ha.PlatformInstanceClientFactory;
+import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Users;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
@@ -119,6 +123,24 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
             + instanceUUID.toString()
             + "/demote";
     return doRequestWithAuthToken("POST", uri, authToken);
+  }
+
+  private Path createBackupFile(String host, String backupFileName) {
+    try {
+      PlatformReplicationHelper platformReplicationHelper =
+          app.injector().instanceOf(PlatformReplicationHelper.class);
+      Path replicationDir = platformReplicationHelper.getReplicationDirFor(host);
+      if (Files.notExists(replicationDir)) {
+        Files.createDirectories(replicationDir);
+      }
+      Path backupFilePath = replicationDir.resolve(backupFileName);
+      if (Files.notExists(backupFilePath)) {
+        Files.createFile(backupFilePath);
+      }
+      return backupFilePath;
+    } catch (IOException e) {
+      throw new RuntimeException("Error creating backup file", e);
+    }
   }
 
   @Test
@@ -297,6 +319,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
         .thenReturn(mockPlatformInstanceClient);
     when(mockPlatformInstanceClient.testConnection()).thenReturn(false);
+    createBackupFile("def.com", "backup_26-03-04-19-46.tgz");
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUuid();
@@ -312,7 +335,7 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
             "/api/settings/ha/config/%s/instance/%s/promote?isForcePromote=false",
             configUUID.toString(), instanceUUID.toString());
     String authToken = user.createAuthToken();
-    JsonNode body = Json.newObject().put("backup_file", "/foo/bar");
+    JsonNode body = Json.newObject().put("backup_file", "backup_26-03-04-19-46.tgz");
     Result promoteResult =
         assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", uri, authToken, body));
     assertBadRequest(
@@ -383,10 +406,8 @@ public class PlatformInstanceControllerTest extends FakeDBApplication {
     when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString(), anyMap()))
         .thenReturn(mockPlatformInstanceClient);
     when(mockPlatformInstanceClient.testConnection()).thenReturn(true);
-
     PlatformReplicationManager platformReplicationManager =
         app.injector().instanceOf(PlatformReplicationManager.class);
-
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     UUID configUUID = config.getUuid();
