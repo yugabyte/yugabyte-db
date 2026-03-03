@@ -630,7 +630,7 @@ spec:
 
   Refer to the [YBA Operator installation guide](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments) for the standard procedure.
 
-{{< warning title="Irreversibility" >}}
+{{< warning title="Import cannot be reversed" >}}
 After a universe and its related resources are imported to be managed by the operator most edit operations are allowed only via the operator. The API and UI block edit actions on the imported resource. This operation _cannot_ be reversed.
 {{< /warning >}}
 
