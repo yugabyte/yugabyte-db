@@ -86,6 +86,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel query (yb_enable_parallel_append=true)
 
+- Upgrades do not support [vector indexes](../additional-features/pg-extensions/extension-pgvector/#vector-indexing) {{<tags/feature/tp idea="1111">}}. Drop the indexes and then re-add them after the upgrade is finalized.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:
