@@ -228,3 +228,9 @@ export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezone
 export const I18N_DURATION_KEY_PREFIX = 'common.duration';
 export const I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX = 'iconAltText';
 export const PERF_ADVISOR_PATH = 'perfAdvisor';
+
+export const PerfAdvisorModalIntention = {
+  ENABLE_OR_DISABLE_PA_COLLECTOR: 'enableOrDisablePACollector',
+  ENABLE_ADVANCED_OBSERVABILITY_ONLY: 'enableAdvancedObservabilityOnly',
+  DISABLE_ADVANCED_OBSERVABILITY_ONLY: 'disableAdvancedObservabilityOnly'
+};

@@ -108,6 +108,12 @@ const mapDispatchToProps = (dispatch) => {
     showEnablePerfAdvisorModal: () => {
       dispatch(openDialog('enablePerfAdvisorModal'));
     },
+    showEnableAdvancedObservabilityModal: () => {
+      dispatch(openDialog('enableAdvancedObservabilityModal'));
+    },
+    showDisableAdvancedObservabilityModal: () => {
+      dispatch(openDialog('disableAdvancedObservabilityModal'));
+    },
     showForceDeleteUniverseModal: () => {
       dispatch(openDialog('forceDeleteUniverseModal'));
     },

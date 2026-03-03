@@ -147,7 +147,13 @@ public class PerfAdvisorService {
     return client.getUniverseMetadata(paCollector, universe.getUniverseUUID()) != null;
   }
 
-  public void putUniverse(PACollector paCollector, Universe universe) {
+  public PerfAdvisorClient.UniverseMetadata getUniverseMetadata(
+      PACollector paCollector, Universe universe) {
+    return client.getUniverseMetadata(paCollector, universe.getUniverseUUID());
+  }
+
+  public void putUniverse(
+      PACollector paCollector, Universe universe, boolean advancedObservability) {
     RuntimeConfig<Universe> runtimeConfig = configFactory.forUniverse(universe);
 
     boolean dbQueryApiEnabled =
@@ -166,7 +172,8 @@ public class PerfAdvisorService {
             .setCustomerId(paCollector.getCustomerUUID())
             .setDataMountPoints(splitMountPoints(MetricQueryHelper.getDataMountPoints(universe)))
             .setOtherMountPoints(
-                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)));
+                splitMountPoints(MetricQueryHelper.getOtherMountPoints(confGetter, universe)))
+            .setMetricsExportToPrometheusEnabled(advancedObservability);
     client.putUniverseMetadata(paCollector, universeMetadata);
   }
 

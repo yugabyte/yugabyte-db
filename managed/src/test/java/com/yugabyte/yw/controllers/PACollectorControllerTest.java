@@ -44,7 +44,7 @@ public class PACollectorControllerTest extends FakeDBApplication {
   private String authToken;
   private Users user;
   private PerfAdvisorService perfAdvisorService;
-  private PACollectorController troubleshootingPlatformController;
+  private PACollectorController paCollectorController;
 
   @InjectMocks private PACollectorController controller;
 
@@ -55,11 +55,11 @@ public class PACollectorControllerTest extends FakeDBApplication {
     authToken = user.createAuthToken();
 
     perfAdvisorService = app.injector().instanceOf(PerfAdvisorService.class);
-    troubleshootingPlatformController = app.injector().instanceOf(PACollectorController.class);
+    paCollectorController = app.injector().instanceOf(PACollectorController.class);
   }
 
   @Test
-  public void testListTroubleshootingPlatforms() throws IOException {
+  public void testListPACollectors() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
@@ -101,7 +101,7 @@ public class PACollectorControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateTroubleshootingPlatform() throws IOException {
+  public void testCreatePACollector() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
@@ -126,7 +126,7 @@ public class PACollectorControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditTroubleshootingPlatform() throws IOException {
+  public void testEditPACollector() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");
@@ -157,7 +157,7 @@ public class PACollectorControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteTroubleshootingPlatform() throws IOException {
+  public void testDeletePACollector() throws IOException {
     try (MockWebServer server = new MockWebServer()) {
       server.start();
       HttpUrl baseUrl = server.url("/api/customer/" + customer.toString() + "/metadata");

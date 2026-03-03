@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.pa;
 
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.models.filters.PACollectorFilter;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -33,20 +35,31 @@ public class EmbeddedCollectorInitializer {
   private final PerfAdvisorService perfAdvisorService;
   private final MetricUrlProvider metricUrlProvider;
   private final RoleBindingUtil roleBindingUtil;
+  private final PlatformScheduler platformScheduler;
 
   @Inject
   public EmbeddedCollectorInitializer(
       SettableRuntimeConfigFactory configFactory,
       PerfAdvisorService perfAdvisorService,
       MetricUrlProvider metricUrlProvider,
-      RoleBindingUtil roleBindingUtil) {
+      RoleBindingUtil roleBindingUtil,
+      PlatformScheduler platformScheduler) {
     this.configFactory = configFactory;
     this.perfAdvisorService = perfAdvisorService;
     this.metricUrlProvider = metricUrlProvider;
     this.roleBindingUtil = roleBindingUtil;
+    this.platformScheduler = platformScheduler;
   }
 
-  public void initialize() {
+  public void start() {
+    log.info("Started Embedded PA Collector initialization");
+    platformScheduler.scheduleOnce(
+        getClass().getSimpleName(),
+        Duration.ZERO, // InitialDelay
+        this::initialize);
+  }
+
+  private void initialize() {
     String embeddedPaUrl = configFactory.staticApplicationConf().getString("yb.pa.url");
     String embeddedPaToken = configFactory.staticApplicationConf().getString("yb.pa.api_token");
     String platformUrl = configFactory.staticApplicationConf().getString("yb.platform.url");

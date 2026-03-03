@@ -63,7 +63,7 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
             () -> {
               perfAdvisorService.getOrBadRequest(defaultCustomerUuid, uuid);
             });
-    assertThat(exception.getMessage(), equalTo("Troubleshooting Platform not found"));
+    assertThat(exception.getMessage(), equalTo("PA Collector not found"));
   }
 
   @Test
@@ -115,7 +115,7 @@ public class PerfAdvisorServiceTest extends FakeDBApplication {
               });
       assertThat(
           exception.getMessage(),
-          equalTo("errorJson: {\"tpUrl\":[\"platform with such url already exists.\"]}"));
+          equalTo("errorJson: {\"paUrl\":[\"collector with such url already exists.\"]}"));
     }
   }
 
