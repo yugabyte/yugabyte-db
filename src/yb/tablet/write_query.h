@@ -158,9 +158,11 @@ class WriteQuery {
 
   Status DoTransactionalConflictsResolved();
 
-  void CompleteExecute(HybridTime safe_time);
+  Status PickReadTimeIfNecessary();
 
-  Status DoCompleteExecute(HybridTime safe_time);
+  void CompleteExecute();
+
+  Status DoCompleteExecute();
 
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();
