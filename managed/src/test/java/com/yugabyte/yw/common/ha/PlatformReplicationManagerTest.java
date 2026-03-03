@@ -13,7 +13,6 @@ package com.yugabyte.yw.common.ha;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
@@ -118,8 +117,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       String inputPath,
       boolean isCreate,
       String backupDir,
-      boolean isYbaInstaller,
-      boolean enableSingleTransaction) {
+      boolean isYbaInstaller) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
     if (isCreate) {
@@ -152,9 +150,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       } else {
         expectedCommandArgs.add("--skip_dump_file_delete");
       }
-    }
-    if (enableSingleTransaction) {
-      expectedCommandArgs.add("--single_transaction");
     }
 
     expectedCommandArgs.add("--db_username");
@@ -207,8 +202,6 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
-    when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
-        .thenReturn(false);
     mockReplicationUtil.shellProcessHandler = shellProcessHandler;
     doCallRealMethod()
         .when(mockReplicationUtil)
@@ -232,8 +225,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             inputPath.getAbsolutePath(),
             isCreate,
             "/tmp/foo.bar",
-            isYbaInstaller,
-            !isCreate);
+            isYbaInstaller);
 
     if (isCreate) {
       backupManager.createBackup();
