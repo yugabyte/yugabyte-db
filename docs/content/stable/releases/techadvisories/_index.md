@@ -23,7 +23,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
 | {{<ta 26910>}}
 | Incorrectly configured ulimit along with snapshot operations can cause data loss
-| {{<product "ybdb">}}
+| {{<product "ybdb,yba">}}
 | {{<release "2.20">}}, {{<release "2024.1">}}, {{<release "2024.2">}}
 | {{<nobreak "27 February 2026">}}
 |
