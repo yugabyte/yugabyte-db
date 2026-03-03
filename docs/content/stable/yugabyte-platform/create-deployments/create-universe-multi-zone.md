@@ -50,7 +50,7 @@ ClockBound is supported on AWS and GCP. Azure and Kubernetes deployments are not
 
 #### Configure EarlyOOM (optional)
 
-{{<tags/feature/ea idea="1804">}} EarlyOOM runs on database nodes and kills processes under extreme memory pressure to prevent VM hangs (it prefers keeping PostgreSQL).
+{{<tags/feature/ea idea="1804">}} EarlyOOM is a process that runs on database nodes. When the VM is under extreme memory pressure, EarlyOOM will selectively kill processes, while preserving PostgreSQL processes, to prevent the VM from crashing.
 
 | Action | Details |
 | :----- | :------ |
