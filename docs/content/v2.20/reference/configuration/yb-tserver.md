@@ -1131,7 +1131,7 @@ Default: `50`
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1000`
+Default: `1680`
 
 ##### --cdc_snapshot_batch_size
 
