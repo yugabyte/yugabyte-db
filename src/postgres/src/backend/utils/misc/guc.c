@@ -7817,7 +7817,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL,
 			GUC_EXPLAIN
 		},
-		&yb_qpm_configuration.track, YB_QPM_TRACK_NONE, yb_qpm_track_options,
+		&yb_qpm_configuration.track, YB_QPM_TRACK_ALL, yb_qpm_track_options,
 		NULL, NULL, NULL
 	},
 
