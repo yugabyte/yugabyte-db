@@ -248,15 +248,21 @@ YbGetCatalogCacheVersionForTablePrefetching()
 }
 
 void
-YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version)
 {
 	yb_catalog_cache_version = catalog_cache_version;
-	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
+}
+
+void
+YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+{
+	YbUpdateCatalogCacheVersionNoPgStat(catalog_cache_version);
+	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
 void

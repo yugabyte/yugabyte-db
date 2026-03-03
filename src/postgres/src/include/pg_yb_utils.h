@@ -105,6 +105,7 @@ extern bool YbGetNeedInvalidateAllTableCache();
 extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
 extern void YbSetNewCatalogVersion(uint64_t new_version);
 

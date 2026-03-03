@@ -232,7 +232,9 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
     "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
 
-DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version, false,
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_1, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_2, false,
     "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
 DECLARE_int32(heartbeat_interval_ms);
@@ -2433,9 +2435,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
     return;
   }
 
-  if (PREDICT_FALSE(FLAGS_TEST_pause_wait_for_ysql_backends_catalog_version)) {
-    TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version);
-  }
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_1);
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_2);
 
   const PgOid database_oid = req->database_oid();
   const uint64_t catalog_version = req->catalog_version();
