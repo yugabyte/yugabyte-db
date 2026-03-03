@@ -677,7 +677,25 @@ Currently, universes with any of the following configurations are not supported 
 
 ### Before you begin
 
-- Enable the Operator. The YBA Operator must be enabled on the YBA instance.
+- Enable the Operator. The YBA Operator must be enabled on the YBA instance as follows:
+
+    1. Apply the following CRD:
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+    1. Run the following `helm upgrade` command to set the parameters from the preceding YAML file:
+
+    ```sh
+    # Modify the fields kubernetesOperatorNamespace as required
+    helm upgrade yba yugabytedb/yugaware \
+      --version {{< yb-version version="stable" format="short">}} \
+      --namespace yb-platform \
+      --set yugaware.kubernetesOperatorEnabled=true \
+      --set yugaware.kubernetesOperatorNamespace='yb-platform-test'
+    ```
+
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
