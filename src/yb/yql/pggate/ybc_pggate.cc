@@ -3033,21 +3033,38 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
 
     for (const auto& tablet_metadata : tablet_metadatas) {
       const char** replicas_array = nullptr;
+      uint64_t* sst_sizes_array = nullptr;
+      uint64_t* wal_sizes_array = nullptr;
+      const auto replicas_count = tablet_metadata.replicas().size();
 
-      if (!tablet_metadata.replicas().empty()) {
+      if (replicas_count > 0) {
         replicas_array = static_cast<const char**>(
-            YBCPAlloc(tablet_metadata.replicas().size() * sizeof(const char*)));
+            YBCPAlloc(replicas_count * sizeof(const char*)));
 
-        for (int i = 0; i < tablet_metadata.replicas().size(); ++i) {
+        for (int i = 0; i < static_cast<int>(replicas_count); ++i) {
           replicas_array[i] = YBCPAllocStdString(tablet_metadata.replicas(i));
+        }
+
+        sst_sizes_array = static_cast<uint64_t*>(
+            YBCPAlloc(replicas_count * sizeof(uint64_t)));
+        wal_sizes_array = static_cast<uint64_t*>(
+            YBCPAlloc(replicas_count * sizeof(uint64_t)));
+
+        for (int i = 0; i < static_cast<int>(replicas_count); ++i) {
+          sst_sizes_array[i] = i < tablet_metadata.replica_sst_sizes_size()
+              ? tablet_metadata.replica_sst_sizes(i) : 0;
+          wal_sizes_array[i] = i < tablet_metadata.replica_wal_sizes_size()
+              ? tablet_metadata.replica_wal_sizes(i) : 0;
         }
       }
 
       new (dest) YbcPgGlobalTabletsDescriptor {
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
-        .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .replicas_count = static_cast<size_t>(replicas_count),
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .replica_sst_sizes = sst_sizes_array,
+        .replica_wal_sizes = wal_sizes_array
       };
       ++dest;
     }
