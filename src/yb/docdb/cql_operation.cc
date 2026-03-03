@@ -643,37 +643,49 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValueBackward(
       BloomFilterOptions::Fixed(pk_doc_key_->Encode().AsSlice()),
       request_.query_id(),
       txn_op_context_,
-      // This should be done with Max so that we do not filter out any records.
+      // This should be done with kMaxReadTime so that we do not filter out any records.
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
-  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+  DocHybridTime oldest_past_min_dht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
       iter.get(), dockv::SubDocKey(*pk_doc_key_), requested_read_time.read));
-  const HybridTime oldest_past_min_ht_liveness =
-      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-          iter.get(),
-          dockv::SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
-          requested_read_time.read));
-  VLOG_WITH_FUNC(3) << "before MakeAtMost: oldest_past_min_ht=" << oldest_past_min_ht
-                     << ", oldest_past_min_ht_liveness=" << oldest_past_min_ht_liveness;
-  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
-  VLOG_WITH_FUNC(3) << "after MakeAtMost: oldest_past_min_ht=" << oldest_past_min_ht;
-  if (!oldest_past_min_ht.is_valid()) {
+  const DocHybridTime oldest_past_min_dht_liveness = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), dockv::SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
+      requested_read_time.read));
+  // Use kMaxWriteId to include other column values that may have been written as
+  // part of the write.
+  const auto modified_oldest_past_min_dht_liveness =
+      DocHybridTime(oldest_past_min_dht_liveness.hybrid_time(), kMaxWriteId);
+  VLOG_WITH_FUNC(3) << "before MakeAtMost: oldest_past_min_dht=" << oldest_past_min_dht
+                    << ", modified_oldest_past_min_dht_liveness: "
+                    << modified_oldest_past_min_dht_liveness
+                    << ", oldest_past_min_dht_liveness=" << oldest_past_min_dht_liveness;
+  // Pick the older (smaller) DocHybridTime of the two.
+  if (modified_oldest_past_min_dht_liveness.is_valid() &&
+      (!oldest_past_min_dht.is_valid() ||
+       modified_oldest_past_min_dht_liveness < oldest_past_min_dht)) {
+    oldest_past_min_dht = modified_oldest_past_min_dht_liveness;
+  }
+  VLOG_WITH_FUNC(3) << "after MakeAtMost: oldest_past_min_dht=" << oldest_past_min_dht;
+  if (!oldest_past_min_dht.is_valid()) {
     return false;
   }
-  return HasDuplicateUniqueIndexValue(
-      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
+  auto read_time = ReadHybridTime::SingleTime(oldest_past_min_dht.hybrid_time());
+  return HasDuplicateUniqueIndexValue(data, read_time, oldest_past_min_dht.write_id());
 }
 
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
-    const DocOperationApplyData& data, const ReadHybridTime& read_time) {
+    const DocOperationApplyData& data, const ReadHybridTime& read_time,
+    IntraTxnWriteId write_id) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocQLScanSpec spec(doc_read_context_->schema(), *pk_doc_key_, request_.query_id(), true);
+  auto altered_read_op_data =
+      data.read_operation_data.WithAlteredReadTimeAndWriteId(read_time, write_id);
   auto iterator = DocRowwiseIterator(
       *unique_index_key_projection_,
       *doc_read_context_,
       txn_op_context_,
       data.doc_write_batch->doc_db(),
-      data.read_operation_data.WithAlteredReadTime(read_time),
+      altered_read_op_data,
       data.doc_write_batch->pending_op());
   RETURN_NOT_OK(iterator.Init(spec));
 
@@ -708,11 +720,9 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
   return false;
 }
 
-Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
-    IntentAwareIterator* iter,
-    const dockv::SubDocKey& sub_doc_key,
-    HybridTime min_read_time) {
-  HybridTime result;
+Result<DocHybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
+    IntentAwareIterator* iter, const dockv::SubDocKey& sub_doc_key, HybridTime min_read_time) {
+  DocHybridTime result = DocHybridTime::kInvalid;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
   if (VERIFY_RESULT_REF(iter->Fetch())) {
