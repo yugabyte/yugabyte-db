@@ -140,8 +140,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     com.yugabyte.yw.forms.UniverseResp v1Response =
         com.yugabyte.yw.forms.UniverseResp.create(universe, null, confGetter);
     log.info("Getting Universe with UUID: {}", uniUUID);
-    // map to v2 Universe
-    api.v2.models.Universe v2Response = UniverseRespMapper.INSTANCE.toV2Universe(v1Response);
+    api.v2.models.Universe v2Response =
+        UniverseRespMapper.INSTANCE.toV2Universe(v1Response, universe);
     if (log.isTraceEnabled()) {
       log.trace("Got Universe {}", prettyPrint(v2Response));
     }
