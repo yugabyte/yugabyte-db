@@ -24,7 +24,7 @@ This information is provided by YugabyteDB, Inc. ("Yugabyte") and is for general
 
 - Customers conducting penetration testing are expected to be familiar with YugabyteDB and YugabyteDB Anywhere. If clarification is needed, consult our public documentation.
 
-- YugabyteDB and YugabyteDB Anywhere are assumed to be configured in accordance with Yugabyte security best practices.
+- YugabyteDB and YugabyteDB Anywhere are assumed to be configured in accordance with Yugabyte security [best practices](../../secure/security-checklist/).
 
 ## Scope
 

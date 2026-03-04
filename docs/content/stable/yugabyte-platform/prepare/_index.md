@@ -19,7 +19,7 @@ Don't install YugabyteDB Anywhere on servers that you will use for database clus
 {{< /warning >}}
 
 {{< warning title="Antivirus and endpoint scanning" >}}
-Antivirus and endpoint scanning software can potentially impact the operation of YugabyteDB Anywhere and the universes it manages. Refer to [Antivirus and endpoint scanning](../../faq/antivirus/) for recommendations on using antivirus and endpoint scanning tools.
+Antivirus and endpoint scanning software can potentially impact the operation of YugabyteDB Anywhere and the universes it manages. Refer to [Antivirus and endpoint scanning](/stable/faq/antivirus/) for recommendations on using antivirus and endpoint scanning tools.
 {{< /warning >}}
 
 {{< tip title="Track your progress" >}}
