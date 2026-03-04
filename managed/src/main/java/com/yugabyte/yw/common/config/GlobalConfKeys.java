@@ -1985,6 +1985,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " \\/some\\/path\\/.+",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> logWSRequests =
+      new ConfKeyInfo<>(
+          "yb.log.logWSRequests",
+          ScopeType.GLOBAL,
+          "Log WS Requests",
+          "When enabled, logs outgoing WS client request details (method, URL, proxy host) at debug"
+              + " level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowLocalLoginWithSso =
       new ConfKeyInfo<>(
           "yb.security.allow_local_login_with_sso",

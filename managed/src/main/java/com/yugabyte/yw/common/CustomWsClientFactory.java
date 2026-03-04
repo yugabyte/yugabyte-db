@@ -41,16 +41,19 @@ public class CustomWsClientFactory {
 
   private final AtomicLong currentId = new AtomicLong();
   private final Map<Long, CustomWSClient> clients = new ConcurrentHashMap<>();
+  private final WSRequestLoggingFilter wsRequestLoggingFilter;
 
   @Inject
   public CustomWsClientFactory(
       ApplicationLifecycle lifecycle,
       Materializer materializer,
       Environment environment,
-      RuntimeConfigFactory runtimeConfigFactory) {
+      RuntimeConfigFactory runtimeConfigFactory,
+      WSRequestLoggingFilter wsRequestLoggingFilter) {
     this.materializer = materializer;
     this.environment = environment;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.wsRequestLoggingFilter = wsRequestLoggingFilter;
     lifecycle.addStopHook(
         () -> {
           List<CustomWSClient> toClose = new ArrayList<>(clients.values());
@@ -84,6 +87,7 @@ public class CustomWsClientFactory {
     Long id = currentId.incrementAndGet();
     CustomWSClient result =
         new CustomWSClient(id, customWsClient, client -> clients.remove(client.getId()));
+    result.addFilter(wsRequestLoggingFilter);
     clients.put(id, result);
     return result;
   }

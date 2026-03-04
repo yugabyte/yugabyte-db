@@ -980,4 +980,33 @@ public class CommonUtils {
     String regex = "^" + Pattern.quote(initialRoot);
     return pathToModify.replaceAll(regex, finalRoot);
   }
+
+  public static Optional<String> getEnvBothCase(String var) {
+    String ret = System.getenv(var);
+    if (StringUtils.isBlank(ret)) {
+      ret = System.getenv(var.toUpperCase());
+      if (StringUtils.isBlank(ret)) {
+        ret = null;
+      }
+    }
+    return Optional.ofNullable(ret);
+  }
+
+  public static void logEnvVar(String name) {
+    Optional<String> value = getEnvBothCase(name);
+    if (value.isEmpty()) {
+      log.info("Environment variable '{}' is not set", name);
+    } else {
+      log.info("Environment variable '{}' is set to '{}'", name, value.get());
+    }
+  }
+
+  public static void logSystemProperty(String name) {
+    String value = System.getProperty(name);
+    if (value == null) {
+      log.info("System property '{}' is not set", name);
+    } else {
+      log.info("System property '{}' is set to '{}'", name, value);
+    }
+  }
 }
