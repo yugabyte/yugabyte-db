@@ -2402,36 +2402,31 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the current schema version of the target table as follows:
-    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
-    // current schema version is greater than all schema versions that might exist in the snapshot
-    // used for clone.
-    // 2- Restoring a backup case: bump the schema version to 1 + the schema version of
-    // SysTableEntryPB found in the SnapshotInfoPB if the latter is greater. This is because it is
-    // guaranteed that the schema version found in snapshotInfo is the maximum schema version that
-    // can be found in the snapshot at backup creation time. The one extra schema version bump is
-    // used to avoid any conflict with the snapshot's older schema packings at tserver side.
-    // The last version is used for the committed schema on the master of the restore side
-    // The semantics are as follows: At tserver, all schema packings coming from the snapshot
-    // will be used in tablet-meta and the last schema will have the correct committed schema
-    // created at restore side as part of executing the SQL dump. The last schema is send from the
-    // master to the tservers during ImportSnapshot.
-    if (is_clone) {
-      // The Source table should be found as we are cloning from it.
+    // Bump up the current schema version of the target table
+    // CQL index tables always have schema version 0 because we do not support dropping or
+    // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
+    // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
+    // checked against the table schema_version when applying the write. Therefore we must never
+    // bump the schema version for CQL index tables.
+    if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
+      SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
+    } else if (is_clone) {
+      // Bump the schema version to 1 + the current schema version of source table. This ensures
+      // that the current schema version is greater than all schema versions that might exist in the
+      //  snapshot used for clone.
       TRACE("Looking up source table");
       TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
-      if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
-          source_table_lock->is_index()) {
-        // CQL index tables as of November 2024 always have schema version 0 because we do not
-        // support dropping or renaming columns yet. CQL index deletes depend on this because they
-        // implicitly use a schema_version of 0 (by not setting the field in the protobuf write
-        // request). This is checked against the table schema_version when applying the write.
-        SCHECK_EQ(meta.version() == 0, true, IllegalState, "CQL index table should have version 0");
-      } else {
-        schema_version = source_table_lock->pb.version() + 1;
-      }
+      schema_version = source_table_lock->pb.version() + 1;
     } else if (meta.version() >= table->LockForRead()->pb.version()) {
+      // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
+      // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
+      // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
+      // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
+      // at tserver side. At the tserver, all schema packings from the snapshot will be used in
+      // tablet-meta and the last schema will have the correct committed schema created at restore
+      // side as part of executing the SQL dump. The last schema is sent from master to tservers
+      // during ImportSnapshot.
       schema_version = meta.version() + 1;
     }
 
