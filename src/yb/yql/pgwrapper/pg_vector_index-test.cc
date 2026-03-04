@@ -45,8 +45,8 @@
 #include "yb/util/path_util.h"
 #include "yb/util/test_thread_holder.h"
 
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/distance.h"
+#include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
@@ -55,8 +55,7 @@ DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_usearch_exact);
 DECLARE_bool(vector_index_enable_compactions);
 DECLARE_bool(vector_index_no_deletions_skip_filter_check);
-DECLARE_bool(vector_index_use_hnswlib);
-DECLARE_bool(vector_index_use_yb_hnsw);
+DECLARE_string(vector_index_backend);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
@@ -132,16 +131,13 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     FLAGS_ysql_use_packed_row_v2 = packing_mode == PackingMode::kV2;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:
-        FLAGS_vector_index_use_hnswlib = false;
-        FLAGS_vector_index_use_yb_hnsw = false;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
         break;
       case VectorIndexEngine::kYbHnsw:
-        FLAGS_vector_index_use_hnswlib = false;
-        FLAGS_vector_index_use_yb_hnsw = true;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
         break;
       case VectorIndexEngine::kHnswlib:
-        FLAGS_vector_index_use_hnswlib = true;
-        FLAGS_vector_index_use_yb_hnsw = false;
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
         break;
     }
 

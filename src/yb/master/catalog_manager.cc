@@ -197,6 +197,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
@@ -604,11 +605,19 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
-DEFINE_RUNTIME_bool(vector_index_use_yb_hnsw, true,
-    "Whether to use YbHnsw for stored vector index");
+DEPRECATE_FLAG(bool, vector_index_use_hnswlib, "02_2026");
+DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 
-DEFINE_RUNTIME_bool(vector_index_use_hnswlib, false,
-    "Whether to use Hnswlib for vector index backend");
+static constexpr char kHnswlib[] = "hnswlib";
+static constexpr char kUsearch[] = "usearch";
+static constexpr char kYbHnsw[] = "yb_hnsw";
+
+DEFINE_RUNTIME_string(
+    vector_index_backend, kYbHnsw,
+    "Which vector index backend to use. Options are \"yb_hnsw\", \"hnswlib\", and \"usearch\".");
+
+DEFINE_validator(vector_index_backend,
+    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw));
 
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
@@ -4468,9 +4477,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     if (is_vector_index) {
       auto& vector_index_options = *index_info.mutable_vector_idx_options();
       vector_index_options.set_id(AsString(VERIFY_RESULT(GetPgsqlTableOid(req.table_id()))));
-      if (FLAGS_vector_index_use_hnswlib) {
+      auto backend = FLAGS_vector_index_backend;
+      if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (FLAGS_vector_index_use_yb_hnsw) {
+      } else if (backend == kYbHnsw) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
       }
     } else if (!is_pg_table) {
