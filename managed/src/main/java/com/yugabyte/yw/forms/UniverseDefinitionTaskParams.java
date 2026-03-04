@@ -1012,8 +1012,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableConnectionPooling = false;
 
-    @ApiModelProperty(notes = "default: true")
-    public boolean enableYEDIS = true;
+    @ApiModelProperty(notes = "default: false")
+    public boolean enableYEDIS = false;
 
     @ApiModelProperty() public boolean enableNodeToNodeEncrypt = false;
 
