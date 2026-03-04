@@ -79,6 +79,7 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
