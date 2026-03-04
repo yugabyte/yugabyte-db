@@ -5755,6 +5755,11 @@
       "legendFormat" : "Operations",
       "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
       "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RPCs",
+      "expr" : "sum(sum by (saved_name, namespace_name, table_id, table_name)(rate({export_type=\"tserver_export\", table_id=~\".+\", node_prefix=~\"$dbcluster\", saved_name=\"rpc_inbound_calls_rejected_because_memory_pressure\"}[300s]))) by (saved_name)",
+      "refId" : "D"
     } ],
     "gridPos" : {
       "w" : 12,
@@ -11951,6 +11956,11 @@
       "legendFormat" : "Operations",
       "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"operation_memory_pressure_rejections\"}[300s]))) by (saved_name)",
       "refId" : "C"
+    }, {
+      "hide" : false,
+      "legendFormat" : "RPCs",
+      "expr" : "avg(sum by (exported_instance, saved_name)(rate({node_prefix=~\"$dbcluster\", export_type=\"tserver_export\", saved_name=\"rpc_inbound_calls_rejected_because_memory_pressure\"}[300s]))) by (saved_name)",
+      "refId" : "D"
     } ],
     "gridPos" : {
       "w" : 12,
