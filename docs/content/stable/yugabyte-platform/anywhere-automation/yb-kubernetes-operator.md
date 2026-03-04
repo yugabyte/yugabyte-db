@@ -169,6 +169,10 @@ The yugaware chart, when installed with `rbac.create=true`, automatically create
 
 ## Installation
 
+{{< tabpane text=true >}}
+
+ {{% tab header="Install YBA with operator" %}}
+
 To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the following:
 
 1. Apply the following CRD:
@@ -197,6 +201,110 @@ To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the 
     ```sh
     kubectl get pods -n <yba_namespace>
     ```
+
+ {{% /tab %}}
+
+ {{% tab header="Install operator on existing YBA" %}}
+
+<span id="existing-yba-installs"></span>
+
+You can install the YugabyteDB Kubernetes operator by upgrading an existing YBA as follows:
+
+1. Apply the following Custom Resource Definition:
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+1. Get a list of Helm chart releases in namespace using the following command:
+
+    ```sh
+    helm ls
+    ```
+
+    ```output
+    NAME    NAMESPACE       REVISION        UPDATED                                 STATUS          CHART           APP VERSION
+    yba         yb-platform-test      1               2024-05-08 16:42:47.480260572 +0000 UTC deployed        yugaware-2.19.3 2.19.3.0-b140
+    ```
+
+1. Run the following `helm upgrade` command to enable the YBA upgrade:
+
+    ```sh
+    helm upgrade yba yugabytedb/yugaware --version 2024.1.0 --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test"
+    ```
+
+1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+
+    ```sh
+    kubectl get pods -n <yba_namespace>
+    ```
+
+    ```sh
+    kubectl get pods -n <operator_namespace>
+    ```
+
+    ```output
+    NAME                                       READY   STATUS    RESTARTS   AGE
+    chart-1706728534-yugabyte-k8s-operator-0   3/3     Running   0          26h
+    ```
+
+    Additionally, you should see no stack traces, but the following messages in the `KubernetesOperatorReconciler` log:
+
+    ```output
+    LOG.info("Finished running ybUniverseController");
+    ```
+
+1. Create the following custom resource, and save it as `demo-universe.yaml`.
+
+    ```yaml
+    # demo-universe.yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBUniverse
+    metadata:
+      name: demo-test
+    spec:
+      numNodes: 1
+      replicationFactor: 1
+      enableYSQL: true
+      enableNodeToNodeEncrypt: true
+      enableClientToNodeEncrypt: true
+      enableLoadBalancer: true
+      # Use your YBA version
+      ybSoftwareVersion: "2024.1.0-b2"
+      enableYSQLAuth: false
+      enableYCQL: true
+      enableYCQLAuth: false
+      gFlags:
+        tserverGFlags: {}
+        masterGFlags: {}
+      deviceInfo:
+        volumeSize: 100
+        numVolumes: 1
+        storageClass: "yb-standard"
+    ```
+
+1. Create a universe using the custom resource, `demo-universe.yaml` as follows:
+
+    ```sh
+    kubectl apply -f demo-universe.yaml -n yb-platform
+    ```
+
+1. Check the status of the universe as follows:
+
+    ```sh
+    kubectl get ybuniverse  -n yb-operator
+    ```
+
+    ```output
+    NAME                STATE   SOFTWARE VERSION
+    anab-test-2         Ready   2.23.0.0-b33
+    anab-test-backups   Ready   2.21.1.0-b269
+    anab-test-restore   Ready   2.21.1.0-b269
+    ```
+
+ {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Example workflows
 
@@ -677,25 +785,7 @@ Currently, universes with any of the following configurations are not supported 
 
 ### Before you begin
 
-- Enable the Operator. The YBA Operator must be enabled on the YBA instance as follows:
-
-    1. Apply the following CRD:
-
-    ```sh
-    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
-    ```
-
-    1. Run the following `helm upgrade` command to set the parameters from the preceding YAML file:
-
-    ```sh
-    # Modify the fields kubernetesOperatorNamespace as required
-    helm upgrade yba yugabytedb/yugaware \
-      --version {{< yb-version version="stable" format="short">}} \
-      --namespace yb-platform \
-      --set yugaware.kubernetesOperatorEnabled=true \
-      --set yugaware.kubernetesOperatorNamespace='yb-platform-test'
-    ```
-
+- Install the Operator. The YBA Operator must be enabled on the YBA instance. See [Installation - Install operator on existing YBA](#installation) for steps to enable the operator on an existing YBA.
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
