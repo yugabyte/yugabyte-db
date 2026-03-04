@@ -8,8 +8,6 @@ menu:
     parent: configuration
     weight: 3500
 type: docs
-rightNav:
-  hideH3: true
 ---
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
@@ -114,7 +112,7 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 {{< note title="Note" >}}
 
-Parallel query has not been added to EPCM.
+Parallel query is not included in EPCM, but is included here because it contributes to PostgreSQL parity.
 
 {{< /note >}}
 

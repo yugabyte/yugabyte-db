@@ -8,8 +8,6 @@ menu:
     parent: configuration
     weight: 3500
 type: docs
-rightNav:
-  hideH3: true
 ---
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
