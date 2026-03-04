@@ -31,7 +31,7 @@ You can use YugabyteDB to schedule and manage backups of your universe data. Thi
 - [Point-in-time recovery](pitr/). Recover universe data from a specific point in time.
 - [Flexible storage](configure-backup-storage/). Store backups in the cloud or in your data center.
 - [Disaster recovery](disaster-recovery/). Failover to an asynchronously replicated universe in case of unplanned outages.
-- Starting with YugabyteDB v2025.1.1, taking YSQL backups during DDLs is supported.
+- Starting with YugabyteDB v2025.2.1, taking YSQL backups during DDLs is supported by default.
 
 {{< note title="Note" >}}
 Configurable performance parameters and incremental backups are mediated using the yb-controller process, which is only available in YugabyteDB Anywhere v2.16 or later for universes with YugabyteDB version 2.16 or later.
