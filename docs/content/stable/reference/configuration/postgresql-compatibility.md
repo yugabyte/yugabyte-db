@@ -136,16 +136,22 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 {{< note title="Note" >}}
 
-Parallel query has not been added to EPCM.
+Parallel query is not included in EPCM, but is included here because it contributes to PostgreSQL parity.
 
 {{< /note >}}
 
 Configuration parameters:
 
-- Parallel query - `yb_parallel_range_rows`
+- Parallel query
+  - `yb_enable_parallel_scan_colocated=true`
+  - `yb_enable_parallel_scan_hash_sharded=true`
+  - `yb_enable_parallel_scan_range_sharded=true`
+  - `yb_parallel_range_rows=10000` (recommended)
 - Parallel append - `yb_enable_parallel_append=true`
 
-Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
+Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. YugabyteDB supports parallel query for colocated, hash-, and range-sharded tables.
+
+Parallel query provides feature compatibility and improved performance parity.
 
 {{<lead link="../../../additional-features/parallel-query/">}}
 To learn about using parallel queries, see [Parallel queries](../../../additional-features/parallel-query/).
