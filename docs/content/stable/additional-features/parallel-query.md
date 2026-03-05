@@ -53,6 +53,7 @@ To enable parallel query, set the following parameters:
 Parallel append is enabled in tandem with the [cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/) (CBO). When you set CBO to `on`, parallel append is enabled as follows:
 
 - yb_enable_parallel_append is set to `true`.
+- enable_parallel_append is set to `true` (the default).
 - yb_parallel_range_rows is set to `10000`.
 
 Note that when upgrading a deployment to v2025.2 or later, if the universe has CBO enabled (`on`), parallel append is automatically enabled.

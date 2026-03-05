@@ -44,4 +44,5 @@ For more information, refer to [How Parallel Query Works](https://www.postgresql
 To enable parallel query, set the following parameters:
 
 - yb_enable_parallel_append: `true`.
+- enable_parallel_append: `true` (the default).
 - yb_parallel_range_rows: a value other than 0 (10000 recommended).
