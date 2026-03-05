@@ -571,7 +571,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.ha.ws",
             "yb.query_stats.live_queries.ws",
             "yb.metrics.ws",
-            "yb.troubleshooting.ws",
+            "yb.pa.ws",
             "yb.perf_advisor",
             // TODO (PLAT-7110)
             "yb.releases.path",

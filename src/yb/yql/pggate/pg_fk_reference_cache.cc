@@ -149,8 +149,7 @@ class PgFKReferenceCache::Impl {
           }
     });
     const auto ybctids = VERIFY_RESULT(batch.Read(
-        database_id, table_locality_map_,
-        make_lw_function([](YbcPgExecParameters& params) { params.rowmark = ROW_MARK_KEYSHARE; })));
+        database_id, table_locality_map_, {.rowmark = ROW_MARK_KEYSHARE}));
     // In case all FK has been read successfully it is reasonable to move requested intents into
     // references instead of cleanup intents and create new elements in references.
     if (ybctids.size() == requested_read_count) {

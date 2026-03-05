@@ -51,6 +51,8 @@ namespace master {
 
 class CatalogManager;
 
+int32_t TEST_transaction_status_check_run_count();
+
 class CatalogManagerBgTasks final {
  public:
   explicit CatalogManagerBgTasks(Master* master);
@@ -75,6 +77,17 @@ class CatalogManagerBgTasks final {
       const LeaderEpoch& epoch, const std::vector<TableInfoPtr>& tables,
       const TabletInfoMap& tablets);
 
+  void ScaleUpTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch);
+  Status DoScaleUpTransactionStatusTables(
+      size_t num_live_tservers, const LeaderEpoch& epoch);
+  Status ScaleUpLocalTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch,
+      const TableId& global_txn_table_id);
+  Status AddTabletsToTransactionStatusTableIfNeeded(
+      const TableInfoPtr& table, size_t num_live_tservers,
+      const ReplicationInfoPB& repl_info, bool is_global, const LeaderEpoch& epoch);
+  Status AddTabletsToTransactionStatusTable(
+      const TableInfoPtr& table, size_t tablets_to_add, const LeaderEpoch& epoch);
+
   std::atomic<bool> closing_;
   bool pending_updates_;
   mutable Mutex lock_;
@@ -84,6 +97,8 @@ class CatalogManagerBgTasks final {
   CatalogManager* catalog_manager_;
   bool was_leader_ = false;
   scoped_refptr<EventStats> cluster_balancer_duration_;
+  CoarseTimePoint last_transaction_status_check_time_;
+  size_t last_live_tservers_;
 };
 
 }  // namespace master

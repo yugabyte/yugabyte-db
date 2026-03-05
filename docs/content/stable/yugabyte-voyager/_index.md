@@ -10,6 +10,7 @@ type: indexpage
 aliases:
   - /stable/voyager/
   - /stable/tools/voyager/
+  - /stable/yugabyte-voyager/overview/
 menu:
   stable_yugabyte-voyager:
     name: "Overview"

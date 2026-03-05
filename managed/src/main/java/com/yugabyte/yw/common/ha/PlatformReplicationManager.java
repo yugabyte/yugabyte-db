@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
@@ -42,6 +43,9 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -52,6 +56,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -69,6 +75,14 @@ public class PlatformReplicationManager {
 
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
+  // Format is backup_26-02-05-20-42.tgz.
+  private static final Pattern BACKUP_FILE_PATTERN =
+      Pattern.compile("([a-zA-Z]+_)(\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})(\\..*)");
+
+  // The date time format is always in UTC.
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("yy-MM-dd-HH-mm").withZone(ZoneId.of("UTC"));
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
@@ -82,6 +96,8 @@ public class PlatformReplicationManager {
   private final ConfigHelper configHelper;
 
   private final RuntimeConfGetter confGetter;
+
+  private final OperatorResourceRestorer operatorResourceRestorer;
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -103,13 +119,15 @@ public class PlatformReplicationManager {
       FileDataService fileDataService,
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      OperatorResourceRestorer operatorResourceRestorer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.configHelper = configHelper;
     this.confGetter = confGetter;
+    this.operatorResourceRestorer = operatorResourceRestorer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -488,6 +506,30 @@ public class PlatformReplicationManager {
     return result;
   }
 
+  /* Validate the backup locally by checking the time against node agent upgrade time.
+   * This is a best effort that should work majority of the cases.
+   * TODO: This will become unnecessary once PLAT-16195 is done.
+   */
+  public boolean validateBackup(String backupName) {
+    Matcher matcher = BACKUP_FILE_PATTERN.matcher(backupName);
+    if (matcher.find()) {
+      String timePart = matcher.group(2);
+      Instant instant = Instant.from(DATE_TIME_FORMATTER.parse(timePart));
+      log.info("Checking backup time {} and instant {} locally", timePart, instant);
+      // Weird to have the backup validation depend on the node agent upgrade, but this is just a
+      // best effort until PLAT-16195 is done.
+      return replicationHelper.isLiveNodeAgentUpgradePendingAt(instant) == false;
+    }
+    log.error("Backup file name {} doesn't match expected pattern", backupName);
+    return false;
+  }
+
+  /* Makes a remote call to validate the backup. */
+  public boolean validateRemoteBackup(
+      HighAvailabilityConfig config, String remoteAddress, String backupName) {
+    return replicationHelper.validateRemoteBackup(config, remoteAddress, backupName);
+  }
+
   @VisibleForTesting
   public boolean sendBackup(PlatformInstance remoteInstance) {
     HighAvailabilityConfig config = remoteInstance.getConfig();
@@ -845,8 +887,21 @@ public class PlatformReplicationManager {
   public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
     boolean succeeded =
         restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+    // Apply stored operator resources to Kubernetes whose persisted resourceVersion
+    // is strictly greater than the live Kubernetes version, or that are absent.
+    if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      try {
+        operatorResourceRestorer.restoreOperatorResources();
+      } catch (Exception e) {
+        log.error("Failed to restore operator resources to Kubernetes", e);
+        succeeded = false;
+      }
+    }
     if (succeeded) {
-      config.refresh();
+      // Refetch the latest HA config using the cluster key as UUID can get changed.
+      config =
+          HighAvailabilityConfig.getByClusterKey(config.getClusterKey())
+              .orElseThrow(() -> new IllegalStateException("HA config not found"));
       // Fix the local instance after restore.
       updateLocalInstanceAfterRestore(config);
       // Keep the local instance as follower after restore.

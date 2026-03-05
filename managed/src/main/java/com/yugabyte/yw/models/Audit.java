@@ -147,8 +147,8 @@ public class Audit extends Model {
     @EnumValue("Telemetry Provider")
     TelemetryProvider,
 
-    @EnumValue("Troubleshooting Platform")
-    TroubleshootingPlatform,
+    @EnumValue("PA Collector")
+    PACollector,
 
     @EnumValue("GFlags")
     GFlags,
@@ -317,20 +317,20 @@ public class Audit extends Model {
     @EnumValue("Delete Telemetry Provider Config")
     DeleteTelemetryConfig,
 
-    @EnumValue("Create Troubleshooting Platform Config")
-    CreateTroubleshootingConfig,
+    @EnumValue("Create PA Collector Config")
+    CreatePACollectorConfig,
 
-    @EnumValue("Edit Troubleshooting Platform Config")
-    EditTroubleshootingConfig,
+    @EnumValue("Edit PA Collector Config")
+    EditPACollectorConfig,
 
-    @EnumValue("Delete Troubleshooting Platform Config")
-    DeleteTroubleshootingConfig,
+    @EnumValue("Delete PA Collector Config")
+    DeletePACollectorConfig,
 
-    @EnumValue("Register Universe with Troubleshooting Platform")
-    TroubleshootingPlatformRegister,
+    @EnumValue("Register Universe with PA Collector")
+    PACollectorRegister,
 
-    @EnumValue("Unregister Universe from Troubleshooting Platform")
-    TroubleshootingPlatformUnregister,
+    @EnumValue("Unregister Universe from PA Collector")
+    PACollectorUnregister,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
@@ -634,6 +634,12 @@ public class Audit extends Model {
 
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
+
+    @EnumValue("Run Script on Database Nodes")
+    RunScript,
+
+    @EnumValue("Collect Files from Database Nodes")
+    CollectFiles,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

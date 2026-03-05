@@ -60,7 +60,7 @@ public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
-  private static final KeyLock<UUID> KEY_LOCK = new KeyLock<>();
+  private static final KeyLock<String> KEY_LOCK = new KeyLock<>();
 
   private static volatile boolean isSwitchOverInProgress = false;
 
@@ -160,8 +160,9 @@ public class HighAvailabilityConfig extends Model {
 
   public static HighAvailabilityConfig update(
       UUID uuid, String clusterKey, boolean acceptAnyCertificate) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(uuid);
     return doWithLock(
-        uuid,
+        haConfig.getClusterKey(),
         config -> {
           config.setClusterKey(clusterKey);
           config.setAcceptAnyCertificate(acceptAnyCertificate);
@@ -255,12 +256,14 @@ public class HighAvailabilityConfig extends Model {
   }
 
   // Invoke the function after acquiring the lock.
-  public static <T> T doWithLock(UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    KEY_LOCK.acquireLock(haConfigUuid);
+  public static <T> T doWithLock(String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    KEY_LOCK.acquireLock(clusterKey);
     try {
-      return function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid));
+      return function.apply(
+          HighAvailabilityConfig.getByClusterKey(clusterKey)
+              .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key")));
     } finally {
-      KEY_LOCK.releaseLock(haConfigUuid);
+      KEY_LOCK.releaseLock(clusterKey);
     }
   }
 
@@ -268,13 +271,16 @@ public class HighAvailabilityConfig extends Model {
   // non-null if the lock is acquired to distinguish between lock acquisition failure vs actual
   // value.
   public static <T> Optional<T> doWithTryLock(
-      UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    if (KEY_LOCK.tryLock(haConfigUuid)) {
+      String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    if (KEY_LOCK.tryLock(clusterKey)) {
       try {
         return Optional.ofNullable(
-            function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid)));
+            function.apply(
+                HighAvailabilityConfig.getByClusterKey(clusterKey)
+                    .orElseThrow(
+                        () -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key"))));
       } finally {
-        KEY_LOCK.releaseLock(haConfigUuid);
+        KEY_LOCK.releaseLock(clusterKey);
       }
     }
     return Optional.empty();

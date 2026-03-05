@@ -111,7 +111,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
 
-- Support for transaction savepoints is tracked in issue {{<issue 10936>}}.
+- Transaction savepoints are supported starting from v2025.2.1.0. Issue {{<issue 10936>}}.
 
 - Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 

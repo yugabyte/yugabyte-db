@@ -279,7 +279,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Application Logs Regex Pattern",
           "Regex pattern used to filter application log files when creating support bundles.",
-          ConfDataType.RegexStringType,
+          ConfDataType.RawStringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> supportBundleApplicationLogsSdfPattern =
       new ConfKeyInfo<>(
@@ -1985,6 +1985,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " \\/some\\/path\\/.+",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> logWSRequests =
+      new ConfKeyInfo<>(
+          "yb.log.logWSRequests",
+          ScopeType.GLOBAL,
+          "Log WS Requests",
+          "When enabled, logs outgoing WS client request details (method, URL, proxy host) at debug"
+              + " level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowLocalLoginWithSso =
       new ConfKeyInfo<>(
           "yb.security.allow_local_login_with_sso",
@@ -2018,4 +2027,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable running platform HA restore operations in a transaction",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

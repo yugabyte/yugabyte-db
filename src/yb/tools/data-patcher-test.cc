@@ -302,8 +302,8 @@ TEST_F(DataPatcherTest, AddTimeDelta) {
   ASSERT_OK(RunDataPatcher(args));
 
   LOG(INFO) << "Turning off clock skew checking and restarting the cluster";
-  SetAtomicFlag(0, &FLAGS_clock_skew_force_crash_bound_usec);
-  SetAtomicFlag(false, &FLAGS_fail_on_out_of_range_clock_skew);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_clock_skew_force_crash_bound_usec) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
   start_cluster();
   delta_changers = jump_clocks();
 

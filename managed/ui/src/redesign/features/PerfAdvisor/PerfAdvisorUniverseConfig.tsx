@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBButton, YBInput, YBLabel } from '../../components';
 import { YBPanelItem } from '../../../components/panels';
-import { UnregisterPerfAdvisorDialog } from './PerfAdvisorDialog/UnregisterPerfAdvisorDialog';
-import { EditPerfAdvisorConfigDialog } from './PerfAdvisorDialog/EditPerfAdvisorConfigDialog';
+import { UnregisterPerfAdvisorModal } from './PerfAdvisorDialog/UnregisterPerfAdvisorModal';
+import { EditPerfAdvisorConfigModal } from './PerfAdvisorDialog/EditPerfAdvisorConfigModal';
 
 const useStyles = makeStyles((theme) => ({
   infoBox: {
@@ -24,12 +24,14 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface PerfAdvisorUniverseConfigProps {
-  tpUrl: string;
+  paUrl: string;
   ybaUrl: string;
   metricsUrl: string;
+  metricsUsername: string;
+  metricsPassword: string;
   metricsScrapePeriodSecs: number;
   inUseStatus: boolean;
-  tpUuid: string;
+  paUuid: string;
   customerUUID: string;
   apiToken: string;
   tpApiToken: string;
@@ -37,11 +39,13 @@ interface PerfAdvisorUniverseConfigProps {
 }
 
 export const PerfAdvisorUniverseConfig = ({
-  tpUrl,
+  paUrl,
   ybaUrl,
   metricsUrl,
+  metricsUsername,
+  metricsPassword,
   metricsScrapePeriodSecs,
-  tpUuid,
+  paUuid,
   customerUUID,
   inUseStatus,
   apiToken,
@@ -71,13 +75,15 @@ export const PerfAdvisorUniverseConfig = ({
 
   const configData = {
     customerUUID,
-    tpUrl,
+    paUrl,
     ybaUrl,
     apiToken,
     tpApiToken,
     metricsUrl,
+    metricsUsername,
+    metricsPassword,
     metricsScrapePeriodSecs,
-    tpUuid,
+    paUuid,
     inUseStatus
   };
 
@@ -92,7 +98,7 @@ export const PerfAdvisorUniverseConfig = ({
             <YBInput
               name="id"
               type="text"
-              value={tpUrl}
+              value={paUrl}
               disabled
               className={helperClasses.textBox}
             />
@@ -108,6 +114,28 @@ export const PerfAdvisorUniverseConfig = ({
               {t('clusterDetail.troubleshoot.ybPlatformMetricsUrlLabel')}
             </YBLabel>
             <YBInput type="text" disabled value={metricsUrl} className={helperClasses.textBox} />
+          </Box>
+          <Box className={helperClasses.infoBox}>
+            <YBLabel dataTestId="PerfAdvisorUniverseConfig-metricsUsernameLabel" width="300px">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsUsernameLabel')}
+            </YBLabel>
+            <YBInput
+              type="text"
+              disabled
+              value={metricsUsername}
+              className={helperClasses.textBox}
+            />
+          </Box>
+          <Box className={helperClasses.infoBox}>
+            <YBLabel dataTestId="PerfAdvisorUniverseConfig-metricsPasswordLabel" width="300px">
+              {t('clusterDetail.troubleshoot.ybPlatformMetricsPasswordLabel')}
+            </YBLabel>
+            <YBInput
+              type="text"
+              disabled
+              value={metricsPassword}
+              className={helperClasses.textBox}
+            />
           </Box>
           <Box className={helperClasses.infoBox}>
             <YBLabel
@@ -137,7 +165,7 @@ export const PerfAdvisorUniverseConfig = ({
             </YBButton>
           </Box>
           {showEditPaConfigDialog && (
-            <EditPerfAdvisorConfigDialog
+            <EditPerfAdvisorConfigModal
               open={showEditPaConfigDialog}
               onRefetchConfig={onRefetchConfig}
               onClose={onEditPaConfigDialogClose}
@@ -145,7 +173,7 @@ export const PerfAdvisorUniverseConfig = ({
             />
           )}
           {showDeletePaConfigDialog && (
-            <UnregisterPerfAdvisorDialog
+            <UnregisterPerfAdvisorModal
               open={showDeletePaConfigDialog}
               onRefetchConfig={onRefetchConfig}
               onClose={onDeletePaConfigDialogClose}

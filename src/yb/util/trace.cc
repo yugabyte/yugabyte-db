@@ -120,7 +120,7 @@ const char* const_basename(const char* filepath) {
 template <class Children>
 void DumpChildren(
     std::ostream* out, int32_t tracing_depth, bool include_time_deltas, const Children* children) {
-  if (tracing_depth > GetAtomicFlag(&FLAGS_print_nesting_levels)) {
+  if (tracing_depth > FLAGS_print_nesting_levels) {
     return;
   }
   const auto nesting_prefix = GetNestingPrefix(tracing_depth);
@@ -321,10 +321,10 @@ ThreadSafeArena* Trace::GetAndInitArena() {
 }
 
 scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
-  if (GetAtomicFlag(&FLAGS_enable_tracing)) {
+  if (FLAGS_enable_tracing) {
     return scoped_refptr<Trace>(new Trace());
   }
-  const int32_t sampling_freq = GetAtomicFlag(&FLAGS_sampled_trace_1_in_n);
+  const int32_t sampling_freq = FLAGS_sampled_trace_1_in_n;
   if (sampling_freq <= 0) {
     VLOG(2) << "Sampled tracing returns nullptr";
     return nullptr;
@@ -354,7 +354,7 @@ bool Trace::must_print() const {
 
 scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   if (parent) {
-    auto max_children = GetAtomicFlag(&FLAGS_tracing_max_children_per_trace);
+    auto max_children = FLAGS_tracing_max_children_per_trace;
     if (max_children > 0 && parent->NumChildren() >= max_children) {
       TRACE_TO(parent, "Cannot add more child traces");
       YB_LOG_EVERY_N_SECS(WARNING, 10) << "Trace has too many child traces. Cannot add more.";
@@ -409,7 +409,7 @@ size_t Trace::NumChildren() const {
 
 TraceEntry* Trace::NewEntry(
     size_t msg_len, const char* file_path, int line_number, CoarseTimePoint now) {
-  auto max_entries = GetAtomicFlag(&FLAGS_tracing_max_entries_per_trace);
+  auto max_entries = FLAGS_tracing_max_entries_per_trace;
   if (max_entries > 0 && NumEntries() >= max_entries) {
     YB_LOG_EVERY_N_SECS(WARNING, 10) << "Trace has too many entries. Will not add more entries;";
     return nullptr;
@@ -452,7 +452,7 @@ void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
 
 void Trace::DumpToLogInfo(bool include_time_deltas) const {
   auto trace_buffer = DumpToString(include_time_deltas);
-  const size_t trace_max_dump_size = GetAtomicFlag(&FLAGS_trace_max_dump_size);
+  const size_t trace_max_dump_size = FLAGS_trace_max_dump_size;
   const size_t kMaxDumpSize =
       (trace_max_dump_size > 0 ? trace_max_dump_size : std::numeric_limits<uint32_t>::max());
   size_t start = 0;

@@ -34,6 +34,7 @@ public class RuntimeConfigChangeNotifier {
   @Inject
   public RuntimeConfigChangeNotifier(
       AccessLogExcludeListener accessLogExcludeListener,
+      LogWSRequestsListener logWSRequestsListener,
       MetricCollectionLevelListener metricCollectionLevelListener,
       MonitoredMountRootsListener monitoredMountRootsListener,
       UseNewRbacAuthzListener useNewRbacAuthzListener,
@@ -45,6 +46,7 @@ public class RuntimeConfigChangeNotifier {
       addListener(new WSClientKeyListener(wsClientKey));
     }
     addListener(accessLogExcludeListener);
+    addListener(logWSRequestsListener);
     addListener(metricCollectionLevelListener);
     addListener(monitoredMountRootsListener);
     addListener(useNewRbacAuthzListener);

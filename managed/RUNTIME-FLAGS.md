@@ -72,7 +72,7 @@
 | "Enable K8s Support Bundle" | "yb.support_bundle.k8s_enabled" | "GLOBAL" | "This config lets you enable support bundle creation on k8s universes." | "Boolean" |
 | "Enable On Prem Support Bundle" | "yb.support_bundle.onprem_enabled" | "GLOBAL" | "This config lets you enable support bundle creation for onprem universes." | "Boolean" |
 | "Allow collection of cores in Support Bundle" | "yb.support_bundle.allow_cores_collection" | "GLOBAL" | "This global config allows you to disable collection of cores in support bundle, even if it is passed as a component while creating." | "Boolean" |
-| "Application Logs Regex Pattern" | "yb.support_bundle.application_logs_regex_pattern" | "GLOBAL" | "Regex pattern used to filter application log files when creating support bundles." | "Regex String" |
+| "Application Logs Regex Pattern" | "yb.support_bundle.application_logs_regex_pattern" | "GLOBAL" | "Regex pattern used to filter application log files when creating support bundles." | "Raw String" |
 | "Application Logs SDF Pattern" | "yb.support_bundle.application_logs_sdf_pattern" | "GLOBAL" | "SimpleDateFormat pattern used to parse dates from application log file names when creating support bundles." | "String" |
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
 | "Snapshot creation delay" | "yb.snapshot_creation.delay" | "GLOBAL" | "Delay per attempt while waiting for AWS Snapshot Creation" | "Integer" |

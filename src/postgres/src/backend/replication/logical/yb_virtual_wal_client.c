@@ -292,12 +292,7 @@ InitVirtualWal(List *publication_names,
 	bool		yb_is_pub_all_tables = false;
 	bool		skip_setting_yb_read_time = false;
 
-	/*
-	 * YB_TODO(#27686): Using the value of ysql_yb_enable_implicit_dynamic_tables_logical_replication
-	 * for decision making here will yield improper behaviour when streams with pub refresh
-	 * mechanism are upgraded to a version where the flag is true by default.
-	 */
-	if (*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication)
+	if (MyReplicationSlot->data.yb_detect_publication_changes_implicitly)
 	{
 		elog(DEBUG2,
 			 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
@@ -353,7 +348,7 @@ InitVirtualWal(List *publication_names,
 							yb_publication_oids, list_length(publication_names),
 							yb_is_pub_all_tables);
 
-	if (!*YBCGetGFlags()->ysql_yb_enable_implicit_dynamic_tables_logical_replication &&
+	if (!MyReplicationSlot->data.yb_detect_publication_changes_implicitly &&
 		!skip_setting_yb_read_time)
 	{
 		elog(DEBUG2,

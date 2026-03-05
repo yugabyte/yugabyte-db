@@ -342,6 +342,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paCollectorUuid = null;
+
   @Data
   public static class PerInstanceTypeReservation {
     private String instanceType;
@@ -527,7 +533,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public void validate(
-        boolean validateGFlagsConsistency, boolean isAuthEnforced, Set<NodeDetails> nodes) {
+        boolean validateGFlagsConsistency,
+        boolean isAuthEnforced,
+        boolean isFipsEnabled,
+        Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
       }
@@ -554,6 +563,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {

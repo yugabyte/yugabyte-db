@@ -739,7 +739,7 @@ export interface Certificate {
   expiryDate: string;
   privateKey: string;
   certificate: string;
-  certType: 'SelfSigned' | 'CustomCertHostPath';
+  certType: 'SelfSigned' | 'CustomCertHostPath' | 'K8SCertManager';
 }
 
 export interface AccessKey {

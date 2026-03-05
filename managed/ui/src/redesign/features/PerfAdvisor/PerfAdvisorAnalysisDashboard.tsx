@@ -97,7 +97,7 @@ export const PerfAdvisorAnalysisDashboard = ({
           onSelectedIssue={onSelectedIssue}
           onSelectedQuery={onSelectedQuery}
           timezone={currentUserTimezone}
-          apiUrl={isNonEmptyString(paData?.[0]?.tpUrl) ? `${paData[0].tpUrl}/api` : ''}
+          apiUrl={isNonEmptyString(paData?.[0]?.paUrl) ? `${paData[0].paUrl}/api` : ''}
         />
       </Box>
     </>

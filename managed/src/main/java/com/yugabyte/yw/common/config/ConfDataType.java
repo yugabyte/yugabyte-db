@@ -62,9 +62,9 @@ public class ConfDataType<T> {
           (s) -> {
             return parseString(s);
           });
-  static ConfDataType<String> RegexStringType =
+  static ConfDataType<String> RawStringType =
       new ConfDataType<>(
-          "Regex String",
+          "Raw String",
           String.class,
           Config::getString,
           (s) -> {

@@ -1,0 +1,36 @@
+-- -----------------------------------------------------------------------------
+-- TEST 1: COPY Failure and Rollback
+-- -----------------------------------------------------------------------------
+BEGIN;
+CREATE TABLE copy_rollback_test (id INT PRIMARY KEY, name TEXT);
+-- Attempt a copy that fails halfway due to a malformed integer
+-- Use a temporary table or file-based simulation
+COPY copy_rollback_test FROM STDIN;
+WARNING:  ROWS_PER_TRANSACTION is not supported in a transaction block
+DETAIL:  Defaulting to using one transaction for all statements in the transaction block.
+HINT:  Either run this COPY outside of a transaction block or set rows_per_transaction option to `0`  to remove this warning.
+ERROR:  invalid input syntax for type integer: "three"
+CONTEXT:  COPY copy_rollback_test, line 3, column id: "three"
+-- On failure, everything should be cleaned up.
+ROLLBACK;
+SELECT count(*) FROM copy_rollback_test;
+ERROR:  relation "copy_rollback_test" does not exist
+LINE 1: SELECT count(*) FROM copy_rollback_test;
+                             ^
+-- -----------------------------------------------------------------------------
+-- TEST 2: Successful COPY Visibility
+-- -----------------------------------------------------------------------------
+BEGIN;
+CREATE TABLE copy_vis_test (id INT PRIMARY KEY);
+COPY copy_vis_test FROM STDIN;
+WARNING:  ROWS_PER_TRANSACTION is not supported in a transaction block
+DETAIL:  Defaulting to using one transaction for all statements in the transaction block.
+HINT:  Either run this COPY outside of a transaction block or set rows_per_transaction option to `0`  to remove this warning.
+-- Verify immediate visibility after COPY
+SELECT count(*) FROM copy_vis_test;
+ count 
+-------
+     3
+(1 row)
+
+COMMIT;

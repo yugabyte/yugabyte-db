@@ -886,7 +886,7 @@ class TransactionParticipant::Impl
             // apply op id to metadata. If cdc_immediate_transaction_cleanup is not false, it has
             // been removed from memory already, but we don't know if CDC still needs it, so we
             // can't cleanup and have to depend on SST file cleanup.
-            if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+            if (FLAGS_cdc_immediate_transaction_cleanup) {
               VLOG_WITH_PREFIX(1)
                   << "Transaction with unknown apply record opId, unsafe to cleanup. "
                   << "TransactionId: " << transaction_id;
@@ -926,7 +926,7 @@ class TransactionParticipant::Impl
   }
 
   Status ProcessApply(const TransactionApplyData& data) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_skip_process_apply))) {
+    if (PREDICT_FALSE(FLAGS_TEST_skip_process_apply)) {
       return Status::OK();
     }
     VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
@@ -1138,7 +1138,7 @@ class TransactionParticipant::Impl
         return STATUS_FORMAT(InternalError, "Flag TEST_txn_participant_error_on_load set.");
       }
       loader_.Start(pending_op_counter_blocking_rocksdb_shutdown_start, db_);
-      if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_load_transactions_sync))) {
+      if (PREDICT_FALSE(FLAGS_TEST_load_transactions_sync)) {
         RETURN_NOT_OK(loader_.WaitAllLoaded());
         std::this_thread::sleep_for(500ms);
       }
@@ -1956,12 +1956,12 @@ class TransactionParticipant::Impl
     const TransactionId& txn_id = (**it).id();
     const OpId& op_id = (**it).GetApplyOpId();
     if (op_id <= checkpoint_op_id) {
-      if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_TEST_no_schedule_remove_intents))) {
+      if (PREDICT_TRUE(!FLAGS_TEST_no_schedule_remove_intents)) {
         (**it).ScheduleRemoveIntents(*it, reason);
       }
     } else {
-      if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata) ||
-          !GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      if (!FLAGS_cdc_write_post_apply_metadata ||
+          !FLAGS_cdc_immediate_transaction_cleanup) {
         should_remove_transaction = false;
         return {should_remove_transaction, post_apply_metadata_entry};
       }
@@ -2092,7 +2092,7 @@ class TransactionParticipant::Impl
     }
     // Skip this cleanup if CDC is active on this tablet; we defer to full SST file deletion
     // triggered when CDC checkpoint moves.
-    if (!GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) ||
+    if (!FLAGS_cdc_immediate_transaction_cleanup ||
         latest_checkpoint == OpId::Max()) {
       if (flags.Test(TransactionLoadFlag::kCleanup)) {
         VLOG_WITH_PREFIX(2) << "Schedule cleanup for: " << id;
@@ -2264,8 +2264,7 @@ class TransactionParticipant::Impl
   }
 
   void HandleApplying(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
-    if (RandomActWithProbability(GetAtomicFlag(
-        &FLAGS_TEST_transaction_ignore_applying_probability))) {
+    if (RandomActWithProbability(FLAGS_TEST_transaction_ignore_applying_probability)) {
       VLOG_WITH_PREFIX(2)
           << "TEST: Rejected apply: "
           << FullyDecodeTransactionId(operation->request()->transaction_id());

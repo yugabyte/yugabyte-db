@@ -191,5 +191,23 @@ fi
 systemctl restart systemd-journald
 echo "systemd-journald restarted successfully."
 
+# Uninstall system-level node agent service if it exists
+if systemctl list-units --all | grep -qF yb-node-agent.service; then
+    echo "Uninstalling system-level node agent service"
+    systemctl stop yb-node-agent.service
+    systemctl disable yb-node-agent.service
+    rm -f /etc/systemd/system/yb-node-agent.service
+    systemctl daemon-reload
+    echo "System-level node agent service removed"
+fi
+
+# For earlyoom MEMLOCK requirement
+if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/system.conf; then
+    echo 'DefaultLimitMEMLOCK=500000' | tee -a /etc/systemd/system.conf
+fi
+if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
+    echo 'DefaultLimitMEMLOCK=500000' | tee -a /etc/systemd/user.conf
+fi
+
 echo "Kernel settings configured."
 echo "OS Configuration applied successfully."

@@ -75,6 +75,7 @@ public class RedactingService {
           .add("$..config.private_key")
           .add("$..credentials.private_key_id")
           .add("$..credentials.private_key")
+          .add("$..credentialsString")
           .add("$..GCP_CONFIG.private_key_id")
           .add("$..GCP_CONFIG.private_key")
           .add("$..gceApplicationCredentialsPath")

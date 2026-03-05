@@ -424,7 +424,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             any(Universe.class), eq(UniverseConfKeys.setEnableNestloopOff)))
         .thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
+    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient, null);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements))  */ SELECT s.dbid, s.userid, s.userid::regrole as"
@@ -455,7 +455,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
             any(Universe.class), eq(UniverseConfKeys.setEnableNestloopOff)))
         .thenReturn(true);
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient);
+    QueryHelper queryHelper = new QueryHelper(mockConfGetter, executor, mockWsClient, null);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false, false);
     assertEquals(
         "/*+ Leading((d pg_stat_statements)) Set(enable_nestloop off) */ SELECT s.dbid, s.userid,"

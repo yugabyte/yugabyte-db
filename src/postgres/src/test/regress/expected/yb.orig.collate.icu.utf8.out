@@ -297,6 +297,9 @@ Indexes:
     "tab2_id_idx" lsm (id COLLATE "C" DESC)
 
 ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) COLLATE "en-US-x-icu"; -- no rewrite
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d tab2
                     Table "collate_tests.tab2"
  Column |         Type          |  Collation  | Nullable | Default 

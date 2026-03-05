@@ -64,7 +64,6 @@ typedef struct {
   const uint32_t* yb_max_recursion_depth;
   const uint32_t* ysql_conn_mgr_stats_interval;
   const bool*     ysql_enable_read_request_cache_for_connection_auth;
-  const bool*     ysql_yb_enable_implicit_dynamic_tables_logical_replication;
   // TODO(arpan): Currently, the following flag is marked UNKOWN. If it turns out to be runtime
   // updatable, we would need to move it out of here and perhaps declare a GUC instead.
   const int32_t*  timestamp_history_retention_interval_sec;

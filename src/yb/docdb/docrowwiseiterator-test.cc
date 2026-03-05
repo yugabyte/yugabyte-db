@@ -1012,11 +1012,11 @@ void VerifyOldestRecordTime(IntentAwareIterator *iter, const DocKey &doc_key,
   const KeyBytes subkey_bytes = subkey.EncodeWithoutHt();
   const Slice subkey_slice = subkey_bytes.AsSlice();
   Slice read_value;
-  HybridTime oldest_past_min_ht =
+  DocHybridTime oldest_past_min_dht =
       ASSERT_RESULT(iter->FindOldestRecord(subkey_slice, min_hybrid_time));
-  LOG(INFO) << "iter->FindOldestRecord returned " << oldest_past_min_ht
-            << " for " << SubDocKey::DebugSliceToString(subkey_slice);
-  ASSERT_EQ(oldest_past_min_ht, expected_oldest_record_time);
+  LOG(INFO) << "iter->FindOldestRecord returned " << oldest_past_min_dht << " for "
+            << SubDocKey::DebugSliceToString(subkey_slice);
+  ASSERT_EQ(oldest_past_min_dht.hybrid_time(), expected_oldest_record_time);
 }
 
 void VerifyOldestRecordTime(IntentAwareIterator *iter, const DocKey &doc_key,

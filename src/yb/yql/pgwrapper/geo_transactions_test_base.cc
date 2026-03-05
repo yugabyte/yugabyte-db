@@ -46,6 +46,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_track_last_transaction);
 DECLARE_bool(TEST_name_transaction_tables_with_tablespace_id);
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
+DECLARE_bool(skip_prefix_locks);
 
 namespace yb::client {
 namespace {
@@ -79,6 +80,8 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves_per_table) = 10;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 0;
+  // disable skip_prefix_locks because serializable is being used
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
 
   pgwrapper::PgMiniTestBase::SetUp();
   InitTransactionManagerAndPool();

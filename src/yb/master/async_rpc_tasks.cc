@@ -841,6 +841,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::CAS_FAILED:
     case TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT:
     case TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT:
+    case TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN:
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();

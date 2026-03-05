@@ -138,6 +138,10 @@ DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
 DEFINE_RUNTIME_bool(load_balancer_ignore_cloud_info_similarity, false,
     "If true, ignore the similarity between cloud infos when deciding which tablet to move");
 
+DEFINE_RUNTIME_bool(cluster_balancer_stepdown_to_preferred_leader_on_remove, true,
+    "If true, when removing a replica which happens to be the leader from a tablet, the cluster "
+    "balancer will step down the leader to a tserver in the most preferred zone.");
+
 DECLARE_int32(replication_factor);
 
 METRIC_DEFINE_gauge_int64(cluster,
@@ -1674,6 +1678,62 @@ Status ClusterLoadBalancer::RemoveReplica(
   return state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
+TabletServerId ClusterLoadBalancer::SelectBestLeaderAfterStepdown(
+    const TabletId& tablet_id, const TabletServerId& ts_to_exclude) {
+  // Helper function to compute the score of a tserver (lower is better).
+  auto get_ts_leader_affinity = [&](const TabletServerId& ts_uuid) -> size_t {
+    // Leader blacklisted / unknown servers are prioritized last.
+    const auto& ts_meta = state_->per_ts_meta_.find(ts_uuid);
+    if (ts_meta == state_->per_ts_meta_.end() ||
+        global_state_->leader_blacklisted_servers_.contains(ts_uuid)) {
+      return state_->affinitized_zones_.size() + 1;
+    }
+
+    // Check which affinitized zone this tserver belongs to (if any).
+    // Use MatchesCloudInfo to support wildcard matching (e.g., cloud.region.*).
+    const auto& ts_desc = ts_meta->second.descriptor;
+    for (size_t priority = 0; priority < state_->affinitized_zones_.size(); ++priority) {
+      for (const auto& zone_cloud_info : state_->affinitized_zones_[priority]) {
+        if (ts_desc->MatchesCloudInfo(zone_cloud_info)) {
+          return priority;
+        }
+      }
+    }
+    return state_->affinitized_zones_.size();
+  };
+
+  // Find all running replicas of this tablet (excluding the one we're removing).
+  std::vector<std::pair<TabletServerId, size_t>> ts_and_priority;
+  for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
+    if (ts_uuid == ts_to_exclude) {
+      continue;
+    }
+    if (ts_meta.running_tablets.count(tablet_id) > 0) {
+      auto score = get_ts_leader_affinity(ts_uuid);
+      ts_and_priority.emplace_back(ts_uuid, score);
+    }
+  }
+
+  if (ts_and_priority.empty()) {
+    return "";
+  }
+
+  // Sort by priority (lower is better), with ties broken by leader load.
+  std::sort(ts_and_priority.begin(), ts_and_priority.end(),
+            [this](const auto& lhs, const auto& rhs) {
+              if (lhs.second != rhs.second) {
+                return lhs.second < rhs.second;
+              }
+              return state_->GetLeaderLoad(lhs.first) < state_->GetLeaderLoad(rhs.first);
+            });
+
+  // Return the tserver with the best (lowest) score.
+  const auto& best_replica = ts_and_priority[0];
+  VLOG(1) << Format("Selected preferred leader $0 (score $1) for tablet $2 during removal of $3",
+                    best_replica.first, best_replica.second, tablet_id, ts_to_exclude);
+  return best_replica.first;
+}
+
 Status ClusterLoadBalancer::MoveLeader(const LeaderMoveDetails& move_details) {
   LOG(INFO) << Format("Moving leader of tablet $0 from $1 to $2. Reason: $3",
                    move_details.tablet_id, move_details.from_ts, move_details.to_ts,
@@ -1685,7 +1745,7 @@ Status ClusterLoadBalancer::MoveLeader(const LeaderMoveDetails& move_details) {
         move_details.tablet_id, move_details.from_ts, move_details.to_ts);
   }
   RETURN_NOT_OK(SendMoveLeader(
-      tablet_opt->get(), move_details.from_ts, false /* should_remove_leader */,
+      tablet_opt->get(), move_details.from_ts, /*should_remove_leader=*/false,
       move_details.reason, move_details.to_ts));
   return state_->MoveLeader(
       move_details.tablet_id, move_details.from_ts, move_details.to_ts, move_details.to_ts_path);
@@ -1856,7 +1916,13 @@ Status ClusterLoadBalancer::SendRemoveReplica(
   auto l = tablet->LockForRead();
   // If the replica is also the leader, first step it down and then remove.
   if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-    return SendMoveLeader(tablet, ts_uuid, true /* should_remove_leader */, reason);
+    // Select a preferred leader based on leader affinity before stepping down.
+    TabletServerId preferred_leader = "";
+    if (FLAGS_cluster_balancer_stepdown_to_preferred_leader_on_remove) {
+      preferred_leader = SelectBestLeaderAfterStepdown(tablet->id(), ts_uuid);
+    }
+    return SendMoveLeader(tablet, ts_uuid, /*should_remove_leader=*/true, reason,
+                          preferred_leader);
   }
   SCHECK_EQ(
       state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,

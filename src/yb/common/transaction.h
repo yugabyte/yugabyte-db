@@ -512,9 +512,9 @@ std::ostream& operator<<(std::ostream& out, const PostApplyTransactionMetadata& 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const char* kGlobalTransactionsTableName;
-extern const std::string kMetricsSnapshotsTableName;
-extern const std::string kTransactionTablePrefix;
+inline constexpr const char* kGlobalTransactionsTableName = "transactions";
+inline constexpr const char* kMetricsSnapshotsTableName = "metrics";
+inline constexpr const char* kTransactionTablePrefix = "transactions_";
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 

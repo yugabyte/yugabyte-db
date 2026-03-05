@@ -865,6 +865,106 @@ is_ctest_verbose() {
   [[ ${YB_CTEST_VERBOSE:-0} == "1" ]]
 }
 
+is_linux_with_cgroups_setup() {
+  if ! is_linux ; then
+    return 1
+  fi
+
+  # Our devserver/workstation setup for cgroup v1 creates this globally modifiable CPU cgroup.
+  if [[ -e /sys/fs/cgroup/cpu/yb-unit-test ]]; then
+    return 0
+  fi
+
+  # cgroup v2 requires cpu controller delegated to user@.service
+  local user_at_cgroup="/sys/fs/cgroup/user.slice/user-$UID.slice/user@$UID.service"
+  if [[ -e "$user_at_cgroup/cgroup.controllers" &&
+        "$(cat "$user_at_cgroup/cgroup.controllers")" == *"cpu"* ]]; then
+    return 0
+  fi
+
+  # Alternate setup used on Spark workers for cgroup v2.
+  if grep -q 'yb_spark_worker_supervisor.service/supervisor' /proc/$$/cgroup ; then
+    return 0
+  fi
+
+  return 1
+}
+
+# shellcheck disable=SC2120
+determine_cgroup_version() {
+  expect_no_args "$#"
+  cgroup_version=1
+  if [[ "$(stat -fc %T /sys/fs/cgroup)" == "cgroup2fs" ]]; then
+    cgroup_version=2
+  fi
+}
+
+find_cgroup_for_controller() {
+  expect_num_args 1 "$@"
+
+  local controller="$1"
+
+  # CGroup V1: /proc/$$/cgroup contains multiple lines. We're looking for the ones looking like:
+  #     6:$CONTROLLER:/
+  # (numbers may vary, and there may be multiple controllers co-mounted like 5:cpu,cpuacct:/).
+  # CGroup V2: /proc/$$/cgroup contains a single line, always starting with 0:: like:
+  #     0::/user.slice/.../run-r9635f7af80544fa48553dcba56d772f4.scope
+  local cgroup_regex='^\(0::\|.*:.*\<'"$controller"'\>.*:\)'
+  controller_cgroup="$(grep "$cgroup_regex" /proc/$$/cgroup | cut -d ':' -f 3)"
+}
+
+run_cmd_in_dedicated_cgroup() {
+  local controller="$1"
+  local cgroup="$2"
+  shift 2
+
+  local cmd=("$@")
+
+  # shellcheck disable=SC2119
+  determine_cgroup_version
+
+  local cgroup_root="/sys/fs/cgroup"
+  if [[ $cgroup_version == 1 ]] ; then
+    cgroup_root="/sys/fs/cgroup/$controller"
+  fi
+
+  local new_cgroup="$cgroup_root$cgroup"
+  if [[ -e $new_cgroup ]]; then
+    fatal "$new_cgroup already exists"
+  fi
+  log "Creating cgroup for unit test: $new_cgroup"
+  mkdir -p "$new_cgroup"
+
+  (
+    # Move this wrapper into the cgroup so that the process is started inside the cgroup as well.
+    echo $BASHPID > "$new_cgroup/cgroup.procs"
+
+    "${cmd[@]}"
+  )
+
+  # Delete all child cgroups. -depth to delete bottom-up.
+  find "$new_cgroup" -mindepth 1 -depth -type d -exec rmdir {} \;
+
+  log "Removing cgroup: $new_cgroup"
+  # TSan builds may leave llvm-symbolizer running for a brief period after the main process
+  # exits. We can't clean up the cgroup until that has exited, so wait for a bit.
+  local i=0
+  while [[ "$(wc -l < "$new_cgroup/cgroup.procs")" -gt 0 && $i -lt 10 ]]; do
+    log "Waiting for all processes in $new_cgroup to finish"
+    sleep 1
+    i=$((i + 1))
+  done
+  while IFS= read -r pid ; do
+    # Disable failure on error here, since there is a race: process may exit before we read
+    # information about it. This is just to help with debugging if we do have lingering
+    # processes, so the race is ok.
+    set +e
+    log "Lingering process: exe=$(readlink "/proc/$pid/exe") cmd=$(strings "/proc/$pid/cmdline")"
+    set -e
+  done < "$new_cgroup/cgroup.procs"
+  rmdir "$new_cgroup"
+}
+
 run_one_cxx_test() {
   expect_no_args "$#"
   expect_vars_to_be_set \
@@ -885,6 +985,51 @@ run_one_cxx_test() {
   local test_wrapper_cmd_line=(
     "$BUILD_ROOT"/bin/run-with-timeout $(( timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
+
+  if is_linux_with_cgroups_setup ; then
+    local test_cmd_line_with_cgroups
+
+    # shellcheck disable=SC2119
+    determine_cgroup_version
+
+    if [[ $cgroup_version == 1 ]]; then
+      # Move this process to /yb-unit-test cgroup of CPU controller, so that later
+      # run_cmd_in_dedicated_cgroup has a writable cgroup to revert to (we are initially in
+      # the root cgroup that we cannot write to).
+      echo $BASHPID >> /sys/fs/cgroup/cpu/yb-unit-test/cgroup.procs
+    fi
+    if [[ $cgroup_version == 2 ]] && ! is_jenkins ; then
+      # CGroup v2 doesn't let non-root move a process from cgroup A to cgroup B unless it has write
+      # permission to the cgroup.procs file in the common ancestor of A and B. So we use systemd
+      # to run things in a cgroup we have control over.
+      test_cmd_line_with_cgroups=(
+        systemd-run --scope --user -p "Delegate=cpu" "${test_wrapper_cmd_line[@]}"
+      )
+    else
+      # For CGroups v2 + Jenkins, since we run things as a systemd system service on Jenkins,
+      # systemd-run --user doesn't work (user is not logged in normally). So we instead have the
+      # following hierarchy set up under the service cgroup:
+      #   $SERVICE_CGROUP
+      #     - supervisor (supervisor script, this script, etc.)
+      #     - yb_unit_test (inner cgroup with CPU controller)
+      # and can just make a child cgroup under $THIS_PROCESS_CGROUP/../yb_unit_test that is
+      # dedicated to this test run.
+      #
+      # For CGroup v1 we just rely on a global writable cgroup dedicated for YB unit tests
+      # (/sys/fs/cgroup/cpu/yb-unit-test) that our dev and Jenkins environments have set up.
+      # Since we have already moved to the /yb-unit-test cgroup of the CPU controller,
+      # $THIS_PROCESS_CGROUP/../yb_unit_test is just /yb_unit_test.
+      local random_md5
+      random_md5="$(head -c 32 /dev/urandom | md5sum | cut -d' ' -f 1)"
+      find_cgroup_for_controller cpu
+      local cgroup_name="$controller_cgroup/../yb-unit-test/run-r$random_md5.scope"
+      test_cmd_line_with_cgroups=(
+        run_cmd_in_dedicated_cgroup cpu "$cgroup_name" "${test_wrapper_cmd_line[@]}"
+      )
+    fi
+
+    test_wrapper_cmd_line=("${test_cmd_line_with_cgroups[@]}")
+  fi
   if [[ $TEST_TMPDIR == "/" || $TEST_TMPDIR == "/tmp" ]]; then
     # Let's be paranoid because we'll be deleting everything inside this directory.
     fatal "Invalid TEST_TMPDIR: '$TEST_TMPDIR': must be a unique temporary directory."
@@ -1871,6 +2016,7 @@ run_python_doctest() {
           $python_file == src/postgres/src/test/locale/sort-test.py ||
           $python_file == src/postgres/third-party-extensions/* ||
           $python_file == bin/test_bsopt.py ||
+          $python_file == python/ai/rag_agent/* ||
           $python_file == thirdparty/* ]]; then
       continue
     fi

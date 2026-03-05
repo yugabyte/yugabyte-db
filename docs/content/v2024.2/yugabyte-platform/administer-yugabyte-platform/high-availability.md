@@ -149,7 +149,7 @@ For example, if your metrics retention is 14 days on your active instance, and y
 
 After HA is operational, you should enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add Certificate Authority (CA) certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/). This allows a standby to connect to the active instance if the standby is promoted to active status.
+1. Gather the Certificate Authority (CA) certificates for the active instance, and for all standby instances.
 
     **Automatically generated CA certificates**
 
@@ -164,6 +164,10 @@ After HA is operational, you should enable certificate validation to improve sec
     **Custom CA certificates**
 
     If YBA was set up to use a custom server certificate, locate the corresponding CA certificate. Ensure the CA certificate includes the full chain (root and intermediate).
+
+1. On the active instance, [add the certificates you collected to the trust store](../../security/enable-encryption-in-transit/trust-store/).
+
+    This allows a standby to connect to the active instance if the standby is promoted to active status.
 
 1. On the active instance, navigate to **Admin > High Availability > Replication Configuration**, click **Actions**, and choose **Enable Certificate Validation**.
 

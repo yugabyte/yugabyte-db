@@ -151,7 +151,7 @@ void FlushJob::RecordFlushIOStats() {
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   ADOPT_WAIT_STATE(wait_state_);
   SCOPED_WAIT_STATUS(RocksDB_Flush);
-  if (PREDICT_FALSE(yb::GetAtomicFlag(&FLAGS_TEST_rocksdb_crash_on_flush))) {
+  if (PREDICT_FALSE(FLAGS_TEST_rocksdb_crash_on_flush)) {
     CHECK(false) << "a flush should not have been scheduled.";
   }
 
@@ -227,7 +227,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // This includes both SST and MANIFEST files IO.
   RecordFlushIOStats();
 
-  auto stream = event_logger_->LogToBuffer(log_buffer_);
+  auto stream = event_logger_->LogToBuffer(log_buffer_, InfoLogLevel::DETAIL_LEVEL);
   stream << "job" << job_context_->job_id << "event"
          << "flush_finished";
   stream << "lsm_state";
@@ -263,7 +263,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     uint64_t total_num_entries = 0, total_num_deletes = 0;
     size_t total_memory_usage = 0;
     for (MemTable* m : mems) {
-      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Flushing memtable with next log file: %" PRIu64 "\n",
           cfd_->GetName().c_str(), job_context_->job_id, m->GetNextLogNumber());
       memtables.push_back(m->NewIterator(ro, &arena));
@@ -293,7 +293,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       ScopedArenaIterator iter(
           NewMergingIterator(cfd_->internal_comparator().get(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
-      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": started",
           cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber());
 
@@ -320,7 +320,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       info.table_properties = table_properties_;
       LogFlush(db_options_.info_log);
     }
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
         " bytes %s%s %s",
         cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber(),

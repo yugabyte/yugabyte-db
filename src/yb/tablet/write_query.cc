@@ -243,7 +243,7 @@ WriteQuery::WriteQuery(
   }
 
   metrics_ = std::make_shared<TabletMetricsHolder>(
-      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update), global_tablet_metrics_,
+      FLAGS_batch_tablet_metrics_update, global_tablet_metrics_,
       &scoped_tablet_metrics_);
 }
 
@@ -867,11 +867,17 @@ Status WriteQuery::DoExecute() {
     }
   }
 
+  // Need to release scoped operation, because lock could take significant amount of time.
+  // Also it leads to deadlock if other operation will try to shut down RocksDB at this point.
+  scoped_read_operation_.Reset();
   dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), metrics_, isolation_level_, row_mark_type,
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager(), skip_prefix_locks));
+
+  scoped_read_operation_ = tablet->CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(scoped_read_operation_);
 
   DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
@@ -1043,7 +1049,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   //
   // Note: Acquiring the write permit pre conflict resolution could lead to other issues.
   // Refer https://github.com/yugabyte/yugabyte-db/issues/20730 for details.
-  if (PREDICT_TRUE(!GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion))) {
+  if (PREDICT_TRUE(!FLAGS_disable_alter_vs_write_mutual_exclusion)) {
     auto write_permit = tablet->GetPermitToWrite(deadline());
     RETURN_NOT_OK(write_permit);
     // Save the write permit to be released after the operation is submitted
@@ -1456,7 +1462,7 @@ void WriteQuery::UpdateQLIndexes() {
 void WriteQuery::UpdateQLIndexesFlushed(
     const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
     const IndexOps& index_ops, client::FlushStatus* flush_status) {
-  while (GetAtomicFlag(&FLAGS_TEST_writequery_stuck_from_callback_leak)) {
+  while (FLAGS_TEST_writequery_stuck_from_callback_leak) {
     std::this_thread::sleep_for(100ms);
   }
   std::unique_ptr<WriteQuery> query(std::move(self_));
@@ -1590,7 +1596,7 @@ std::pair<PgsqlResponseMsg*, PgsqlMetricsCaptureType>
   if (!pgsql_write_ops_.empty()) {
     auto& write_op = pgsql_write_ops_.at(0);
     auto metrics_capture = write_op->request().metrics_capture();
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+    if (FLAGS_ysql_analyze_dump_metrics &&
         metrics_capture != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
       return {write_op->response(), metrics_capture};
     }

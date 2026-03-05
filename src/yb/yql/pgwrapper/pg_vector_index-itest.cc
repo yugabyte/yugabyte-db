@@ -175,7 +175,7 @@ class PgVectorIndexBackfillITest : public PgVectorIndexITest {
     options->extra_tserver_flags.push_back(
         Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
     // yb_hnsw wrapper currently does not support retrieving vectors by id.
-    options->extra_master_flags.push_back("--vector_index_use_yb_hnsw=false");
+    options->extra_master_flags.push_back("--vector_index_backend=usearch");
   }
 };
 

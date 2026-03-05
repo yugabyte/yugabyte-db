@@ -445,6 +445,20 @@ using namespace std::literals;  // NOLINT
 namespace yb {
 namespace pgwrapper {
 
+string FormatPgGFlagValue(const string& value, const string& type) {
+  if (type == "string") {
+    auto trimmed = boost::algorithm::trim_copy(value);
+    if (trimmed.size() >= 2 && trimmed.front() == '\'' && trimmed.back() == '\'') {
+      // Already single-quoted — pass through unchanged.
+      return value;
+    }
+    // Add single quotes and escape internal single quotes.
+    string escaped_value = boost::replace_all_copy(value, "'", "''");
+    return Format("'$0'", escaped_value);
+  }
+  return value;
+}
+
 namespace {
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
@@ -594,7 +608,8 @@ void AppendPgGFlags(vector<string>* lines) {
     }
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
-    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+    lines->push_back(
+        Format("$0=$1", pg_variable_name, FormatPgGFlagValue(flag.current_value, flag.type)));
   }
 
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.

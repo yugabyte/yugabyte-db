@@ -13,7 +13,7 @@ type: docs
 
 ## Uninstall YugabyteDB Anywhere
 
-Before uninstalling YugabyteDB Anywhere, you may want to [back up](../back-up-restore-yba/) configuration settings or data you want to keep.
+Before uninstalling YugabyteDB Anywhere, you may want to [back up](../back-up-restore-installer/) configuration settings or data you want to keep.
 
 Note that uninstalling YugabyteDB Anywhere removes the YugabyteDB Anywhere application, but does not automatically remove YugabyteDB universes. If YugabyteDB Anywhere is managing universes, delete them as needed before uninstalling the application.
 

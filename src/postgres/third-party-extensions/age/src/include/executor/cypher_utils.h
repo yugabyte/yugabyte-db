@@ -127,4 +127,6 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
                                   TupleTableSlot *elemTupleSlot,
                                   EState *estate, CommandId cid);
 
+void YbCommandCounterIncrement();
+
 #endif

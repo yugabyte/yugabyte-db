@@ -131,6 +131,10 @@ public class DestroyUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
 
+      // Unregister universe from PA Collector if it was registered
+      createUnregisterUniverseFromPaCollectorTask(universe.getUniverseUUID())
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+
       // cleanup the supportBundles if any
       deleteSupportBundle(universe.getUniverseUUID());
 

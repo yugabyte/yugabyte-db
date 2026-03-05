@@ -652,8 +652,8 @@ YbcStatus YBCPgNewInsertBlock(
 YbcStatus YBCPgNewInsert(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle);
 
@@ -667,8 +667,8 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 YbcStatus YBCPgNewUpdate(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 
@@ -676,8 +676,8 @@ YbcStatus YBCPgExecUpdate(YbcPgStatement handle);
 YbcStatus YBCPgNewDelete(YbcPgOid database_oid,
                          YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting);
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle);
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle);
 
@@ -687,8 +687,8 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 YbcStatus YBCPgNewTruncateColocated(YbcPgOid database_oid,
                                     YbcPgOid table_relfilenode_oid,
                                     YbcPgTableLocalityInfo locality_info,
-                                    YbcPgStatement *handle,
-                                    YbcPgTransactionSetting transaction_setting);
+                                    YbcPgTransactionSetting transaction_setting,
+                                    YbcPgStatement *handle);
 
 YbcStatus YBCPgExecTruncateColocated(YbcPgStatement handle);
 
@@ -1011,6 +1011,11 @@ YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid,
+    const YbcPgKeyValue* key_values, size_t num_values,
+    const char** tablet_id);
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
@@ -1043,7 +1048,9 @@ YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapsho
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will
@@ -1074,6 +1081,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextCopyBatch(
     uint64_t tuples_processed, const char *table_name);
 YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOid db_oid);
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
+YbcStatus YBCQueryAutoAnalyze(
+    YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 
 #ifdef __cplusplus
 }  // extern "C"

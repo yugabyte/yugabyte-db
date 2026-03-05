@@ -507,6 +507,12 @@ Result<pgwrapper::PGResultPtr> XClusterYsqlTestBase::ScanToStrings(
   return result;
 }
 
+Result<bool> XClusterYsqlTestBase::IsIndexValid(
+    pgwrapper::PGConn& conn, const std::string& index_name) {
+  return conn.FetchRow<bool>(Format(
+      "SELECT indisvalid FROM pg_index WHERE indexrelid = '$0'::regclass", index_name));
+}
+
 Result<int> XClusterYsqlTestBase::GetRowCount(
     const YBTableName& table_name, Cluster* cluster, bool read_latest) {
   auto conn = VERIFY_RESULT(

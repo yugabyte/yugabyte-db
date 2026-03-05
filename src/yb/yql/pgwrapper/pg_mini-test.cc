@@ -58,6 +58,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/metrics.h"
@@ -718,7 +719,7 @@ TEST_F(PgMiniTest, WriteRetry) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
@@ -727,7 +728,7 @@ TEST_F(PgMiniTest, WriteRetry) {
                 status.ToString().find("Duplicate request") != std::string::npos) << status;
   }
 
-  SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0;
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
@@ -839,7 +840,7 @@ class PgMiniLargeClockSkewTest : public PgMiniTest {
   void SetUp() override {
     server::SkewedClock::Register();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
-    SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
     PgMiniTestBase::SetUp();
   }
 };
@@ -1303,7 +1304,7 @@ TEST_F(PgMiniTest, MoveMaster) {
 }
 
 TEST_F(PgMiniTest, DDLWithRestart) {
-  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_leader_resolution) = true;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -3312,13 +3313,92 @@ TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
       << "Local tserver UUID mismatch";
 }
 
-Status FetchMatrix(PGConn& conn, const std::string& command, int rows, int cols) {
-  auto res = VERIFY_RESULT(conn.FetchRows<RowAsString>(command));
-  SCHECK_EQ(res.size(), rows, RuntimeError, "Unexpected number of rows");
-  if (!res.empty()) {
-    SCHECK_EQ(res.front().size(), cols, RuntimeError, "Unexpected number of cols");
+// Despite the call to the stored procedure failing and the client issuing a commit, assert that
+// the transaction abort is initiated inline with the commit request in addition to returning the
+// failure status.
+//
+// Without the explicit abort, we expect the strong references of YBTransaction to drop to 0 and
+// the txn heartbeat thread to stop, causing the status tablet to clean up the transaction due
+// to missed heartbeats. But we observed a case of a stale transaction being left behind in the
+// system, and weren't able to track down the leaked strong reference. Hence, we now initiate the
+// abort inline and ensure that the transaction eventually gets cleaned up.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(TestAbortTxnErroredWithReadRestartOnCommit),
+          PgMiniLargeClockSkewTest) {
+  google::SetVLOGLevel("transaction*", 2);
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t1 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO t1 select generate_series(1, 10), 0"));
+  ASSERT_OK(setup_conn.Execute(R"#(
+CREATE OR REPLACE PROCEDURE test_proc()
+ LANGUAGE plpgsql
+AS $procedure$
+DECLARE
+    i int;
+BEGIN
+    BEGIN
+        DELETE FROM t1 WHERE k <= 10;
+    END;
+    BEGIN
+        FOREACH i IN ARRAY ARRAY[1, 2, 3, 4, 5, 6, 7, 8, 9, 10] LOOP
+            BEGIN
+                PERFORM SUM(v) FROM t2 WHERE k < 500 OR k > 1200;
+                INSERT INTO t1 VALUES(i, 0);
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'INSERT FAILED WITH %', SQLERRM;
+                RETURN;
+            END;
+        END LOOP;
+    END;
+END;
+$procedure$
+  )#"));
+
+  constexpr std::chrono::milliseconds kClockSkew = -100ms;
+  constexpr CoarseDuration kWaitTime = 30s;
+  auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
+  TestThreadHolder thread_holder;
+  std::atomic<int> num_read_restarts(0);
+  thread_holder.AddThreadFunctor([this, &num_read_restarts, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET statement_timeout='60s'"));
+    for (int iter = 0; !stop.load(std::memory_order_acquire); iter++) {
+      ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t1 VALUES($0, $0)", 100 + iter));
+      auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+      ASSERT_OK(conn.Execute("CALL test_proc()"));
+      RegexWaiterLogSink log_waiter(Format(R"#(.*$0.*Abort)#", txn_id.ToString()));
+      auto status = conn.Execute("COMMIT");
+      if (!status.ok()) {
+        ASSERT_NOK_STR_CONTAINS(
+            status, "Commit of transaction that requires restart is not allowed");
+        num_read_restarts++;
+        ASSERT_OK(log_waiter.WaitFor(1s * kTimeMultiplier));
+      }
+    }
+  });
+
+  for (int i = 0; i < 2; ++i) {
+    thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.Execute("SET statement_timeout='60s'"));
+      const auto start_key = i * 1000 + 1;
+      const auto end_key = (i + 1) * 1000;
+      while (!stop.load(std::memory_order_acquire)) {
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO t2 select generate_series($0, $1), 0", start_key, end_key));
+        ASSERT_OK(conn.Execute("COMMIT"));
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(conn.ExecuteFormat(
+            "DELETE FROM t2 WHERE k >= $0 AND k <= $1", start_key, end_key));
+        ASSERT_OK(conn.Execute("COMMIT"));
+      }
+    });
   }
-  return Status::OK();
+
+  thread_holder.WaitAndStop(kWaitTime);
+  ASSERT_GT(num_read_restarts, 0);
 }
 
 }  // namespace yb::pgwrapper

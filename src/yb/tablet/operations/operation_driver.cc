@@ -177,7 +177,7 @@ void OperationDriver::ExecuteAsync() {
   ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state());
   SCOPED_WAIT_STATUS(OnCpu_Active);
 
-  auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
+  auto delay = FLAGS_TEST_delay_execute_async_ms;
   if (delay != 0 && operation_type() == OperationType::kWrite) {
     auto tablet_result = operation_->tablet_safe();
     if (!tablet_result.ok()) {

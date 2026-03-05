@@ -63,6 +63,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.forms.AZUpgradeStep;
+import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -95,13 +97,18 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -511,6 +518,76 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(2, customer.getUuid());
+  }
+
+  @Test
+  public void testSoftwareUpgradeWithCanaryConfig() {
+    UUID validPrimaryAzUuid = UUID.randomUUID();
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementCloud cloud = new PlacementCloud();
+    cloud.uuid = UUID.randomUUID();
+    cloud.code = "aws";
+    PlacementRegion region = new PlacementRegion();
+    region.uuid = UUID.randomUUID();
+    region.code = "region-1";
+    PlacementAZ az = new PlacementAZ();
+    az.uuid = validPrimaryAzUuid;
+    az.name = "az-1";
+    az.replicationFactor = 1;
+    region.azList = new ArrayList<>();
+    region.azList.add(az);
+    cloud.regionList = new ArrayList<>();
+    cloud.regionList.add(region);
+    placementInfo.cloudList = new ArrayList<>();
+    placementInfo.cloudList.add(cloud);
+
+    Universe universeWithPlacement =
+        ModelFactory.createUniverse(
+            "CanaryUpgradeUniverse",
+            UUID.randomUUID(),
+            customer.getId(),
+            Common.CloudType.aws,
+            placementInfo);
+    universeWithPlacement.getUniverseDetails().softwareUpgradeState =
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+    universeWithPlacement.save();
+
+    AZUpgradeStep step = new AZUpgradeStep();
+    step.azUUID = validPrimaryAzUuid;
+    step.pauseAfterTserverUpgrade = true;
+    CanaryUpgradeConfig canaryConfig = new CanaryUpgradeConfig();
+    canaryConfig.pauseAfterMasters = true;
+    canaryConfig.primaryClusterAZSteps = List.of(step);
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+
+    Result result =
+        runUpgrade(
+            universeWithPlacement,
+            p -> {
+              SoftwareUpgradeParams sp = (SoftwareUpgradeParams) p;
+              // Use preview-to-preview upgrade (2.19.0.0-b1) to avoid preview/stable version check
+              sp.ybSoftwareVersion = "2.19.0.0-b1";
+              sp.canaryUpgradeConfig = canaryConfig;
+            },
+            SoftwareUpgradeParams.class,
+            "software");
+
+    assertOk(result);
+    ArgumentCaptor<SoftwareUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.SoftwareUpgrade), argCaptor.capture());
+    SoftwareUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals("2.19.0.0-b1", taskParams.ybSoftwareVersion);
+    assertNotNull(taskParams.canaryUpgradeConfig);
+    assertTrue(taskParams.canaryUpgradeConfig.pauseAfterMasters);
+    assertNotNull(taskParams.canaryUpgradeConfig.primaryClusterAZSteps);
+    assertEquals(1, taskParams.canaryUpgradeConfig.primaryClusterAZSteps.size());
+    assertEquals(
+        validPrimaryAzUuid, taskParams.canaryUpgradeConfig.primaryClusterAZSteps.get(0).azUUID);
+    assertTrue(
+        taskParams.canaryUpgradeConfig.primaryClusterAZSteps.get(0).pauseAfterTserverUpgrade);
   }
 
   @Test

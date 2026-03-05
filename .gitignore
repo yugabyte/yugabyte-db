@@ -126,3 +126,7 @@ managed/src/main/java/com/yugabyte/yw/common/operator/io/*
 
 # jenv local version
 **/.java-version
+
+# AI assistant configuration (local only)
+CLAUDE.md
+.claude/

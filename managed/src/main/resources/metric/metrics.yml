@@ -1879,7 +1879,7 @@ lsm_rocksdb_memory_rejections:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1891,6 +1891,7 @@ lsm_rocksdb_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+        "rpc_inbound_calls_rejected_because_memory_pressure": "RPCs"
 
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
@@ -3611,7 +3612,7 @@ table_memory_rejections:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"
     table_id: ".+"
   group_by: "saved_name"
   layout:
@@ -3623,6 +3624,7 @@ table_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+        "rpc_inbound_calls_rejected_because_memory_pressure": "RPCs"
 
 table_compaction:
   metric: ""

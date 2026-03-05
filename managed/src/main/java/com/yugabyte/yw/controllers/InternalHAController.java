@@ -76,6 +76,14 @@ public class InternalHAController extends Controller {
     return PlatformResults.withData(config);
   }
 
+  public Result validateBackup(String backupName, Http.Request request) {
+    HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request))
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(NOT_FOUND, "Could not find HA Config by cluster key"));
+    return PlatformResults.withData(replicationManager.validateBackup(backupName));
+  }
+
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
   public Result syncInstances(long timestamp, Http.Request request) {
     log.debug("Received request to sync instances from {}", request.remoteAddress());
@@ -89,7 +97,7 @@ public class InternalHAController extends Controller {
     List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
     Set<PlatformInstance> processedInstances =
         HighAvailabilityConfig.doWithTryLock(
-                config.getUuid(),
+                config.getClusterKey(),
                 c -> {
                   Optional<PlatformInstance> localInstance = c.getLocal();
                   if (!localInstance.isPresent()) {
@@ -148,7 +156,7 @@ public class InternalHAController extends Controller {
                 () -> new PlatformServiceException(BAD_REQUEST, "Could not find HA Config"));
     // Use non-blocking lock-acquire for syncs to avoid deadlock.
     return HighAvailabilityConfig.doWithTryLock(
-            config.getUuid(),
+            config.getClusterKey(),
             c -> {
               Optional<PlatformInstance> localInstance = c.getLocal();
               if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
@@ -214,8 +222,8 @@ public class InternalHAController extends Controller {
     // Use non-blocking lock-acquire for background syncs to avoid deadlock.
     PlatformInstance localInstance =
         promote
-            ? HighAvailabilityConfig.doWithLock(config.getUuid(), func)
-            : HighAvailabilityConfig.doWithTryLock(config.getUuid(), func).orElse(null);
+            ? HighAvailabilityConfig.doWithLock(config.getClusterKey(), func)
+            : HighAvailabilityConfig.doWithTryLock(config.getClusterKey(), func).orElse(null);
     if (localInstance == null) {
       log.warn("Local leader was not demoted possibly due to an ongoining promotion");
     }

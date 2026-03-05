@@ -4,6 +4,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
@@ -44,6 +45,7 @@ public class SupportBundleReconciler
 
   private final SupportBundleUtil supportBundleUtil;
   private final OperatorUtils operatorUtils;
+  private final RuntimeConfGetter confGetter;
 
   public SupportBundleReconciler(
       SharedIndexInformer<io.yugabyte.operator.v1alpha1.SupportBundle> informer,
@@ -56,7 +58,8 @@ public class SupportBundleReconciler
       Commissioner commissioner,
       TaskExecutor taskExecutor,
       SupportBundleUtil sbu,
-      OperatorUtils operatorUtils) {
+      OperatorUtils operatorUtils,
+      RuntimeConfGetter confGetter) {
     this.resourceClient = resourceClient;
     this.informer = informer;
     this.lister = new Lister<>(informer.getIndexer());
@@ -65,6 +68,7 @@ public class SupportBundleReconciler
     this.taskExecutor = taskExecutor;
     this.supportBundleUtil = sbu;
     this.operatorUtils = operatorUtils;
+    this.confGetter = confGetter;
   }
 
   @Override
@@ -145,7 +149,7 @@ public class SupportBundleReconciler
       log.error("Error fetching universe with name " + bundle.getSpec().getUniverseName());
       return;
     }
-    SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
+    SupportBundle supportBundle = SupportBundle.create(bundleData, universe, confGetter);
     markStatus(bundle, SupportBundleStatus.Status.GENERATING, supportBundle.getBundleUUID());
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);

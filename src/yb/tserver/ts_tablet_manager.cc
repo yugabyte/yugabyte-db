@@ -1319,6 +1319,7 @@ Status TSTabletManager::DoApplyCloneTablet(
   const auto target_table_id = request->target_table_id().ToBuffer();
   const auto target_tablet_id = request->target_tablet_id().ToBuffer();
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
+  const auto target_namespace_id = request->target_namespace_id().ToBuffer();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
   const auto target_skip_table_tombstone_check =
       request->target_skip_table_tombstone_check();
@@ -1391,6 +1392,7 @@ Status TSTabletManager::DoApplyCloneTablet(
       tablet::Primary(source_table->primary()),
       target_table_id,
       target_namespace_name,
+      target_namespace_id,
       source_table->table_name,
       source_table->table_type,
       /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
@@ -2022,9 +2024,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::RetryableRequests retryable_requests(
       mem_manager_->FindOrCreateOverheadMemTrackerForTablet(cmeta->tablet_id()), kLogPrefix);
   retryable_requests.SetServerClock(server_->Clock());
-  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+  retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
-  if (GetAtomicFlag(&FLAGS_enable_copy_retryable_requests_from_parent) &&
+  if (FLAGS_enable_copy_retryable_requests_from_parent &&
           cmeta->has_split_parent_tablet_id()) {
     auto parent_tablet_requests = GetTabletRetryableRequests(cmeta->split_parent_tablet_id());
     if (parent_tablet_requests.ok()) {
@@ -2043,7 +2045,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   LOG_TIMING_PREFIX(INFO, kLogPrefix, "bootstrapping tablet") {
     // Read flag before CAS to avoid TSAN race conflict with GetAllFlags.
-    if (GetAtomicFlag(&FLAGS_TEST_force_single_tablet_failure) &&
+    if (FLAGS_TEST_force_single_tablet_failure &&
         CompareAndSetFlag(&FLAGS_TEST_force_single_tablet_failure,
                           true /* expected */, false /* val */)) {
       LOG(WARNING) << "Setting the state of a tablet to FAILED";

@@ -110,7 +110,7 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(ycql_enable_stat_statements);
-DECLARE_bool(TEST_ycql_use_jwt_auth);
+DECLARE_bool(ycql_use_jwt_auth);
 DECLARE_string(ycql_jwt_users_to_skip_csv);
 DECLARE_string(ycql_ident_conf_csv);
 
@@ -273,7 +273,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
-  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+  if (FLAGS_ycql_enable_tracing_flag && request_->trace_requested()) {
     call_->EnsureTraceCreated();
     call_->trace()->set_end_to_end_traces_requested(true);
   }
@@ -1005,7 +1005,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
   unique_ptr<CQLResponse> response = nullptr;
   bool authenticated = false;
 
-  if (FLAGS_TEST_ycql_use_jwt_auth && !UserIn(params.username, FLAGS_ycql_jwt_users_to_skip_csv)) {
+  if (FLAGS_ycql_use_jwt_auth && !UserIn(params.username, FLAGS_ycql_jwt_users_to_skip_csv)) {
     Result<bool> jwt_auth_result = CheckJWTAuth(
         params, service_impl_->GetJwtJwks(), service_impl_->GetJwtMatchingClaimKey(),
         service_impl_->GetJwtAllowedIssuers(), service_impl_->GetJwtAllowedAudience(),

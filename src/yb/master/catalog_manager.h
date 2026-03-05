@@ -798,6 +798,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Delete CDC streams metadata for a table.
   Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
+  // Delete all the CDCSDK streams on a namespace.
+  Status DropAllCDCSDKStreams(const NamespaceId& ns_id) EXCLUDES(mutex_);
+
   // Add new table metadata to all CDCSDK streams of required namespace.
   Status AddNewTableToCDCDKStreamsMetadata(const TableId& table_id, const NamespaceId& ns_id)
       EXCLUDES(mutex_);
@@ -2287,6 +2290,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
       REQUIRES_SHARED(mutex_);
 
+  // Returns true, if there exists atleast one stream which uses pub refresh mechanism (detected by
+  // the absence / false value of the field detect_publication_changes_implicitly in stream
+  // metadata).
+  // Should be called only for tables residing in DB with logical replication streams.
+  bool IsTablePartOfCDCStreamUsingPubRefresh(const TableId& table_id) const REQUIRES_SHARED(mutex_);
+
   bool IsPitrActive();
 
   // Checks if the database being deleted contains any replicated tables.
@@ -3124,7 +3133,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
       EXCLUDES(mutex_);
 
-  bool CDCSDKAllowTableRewrite(const TableId& table_id, bool is_truncate_request) const
+  Status CDCSDKAllowTableRewrite(const TableId& table_id, bool is_truncate_request) const
       REQUIRES_SHARED(mutex_);
 
   Status RemoveTabletEntriesInCDCState(

@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
@@ -552,6 +553,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(msg);
       return false;
     }
+    Architecture arch = universe.getUniverseDetails().arch;
+    if (arch != null) {
+      try {
+        release.getLocalReleasePathStringForArchitecture(arch);
+        return true;
+      } catch (Exception e) {
+        log.error("Error validating local release for universe: {}", e.getMessage(), e);
+        return false;
+      }
+    }
+    log.debug(
+        "Universe arch not set, falling back to validating all local release artifacts for "
+            + "version {}",
+        release.getVersion());
     Set<String> localFilePaths = release.getLocalReleasePathStrings();
     for (String path : localFilePaths) {
       Path localPath = Paths.get(path);
@@ -1428,6 +1443,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);
     UniverseUpdateSucceeded task = createTask(UniverseUpdateSucceeded.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to register the universe with the first PA Collector for the customer. Only
+   * runs when yb.pa.auto_registration.enabled is true; uses
+   * yb.pa.auto_registration.advanced_observability for the advanced observability flag.
+   */
+  public SubTaskGroup createRegisterUniverseWithPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RegisterUniverseWithPaCollector", SubTaskGroupType.ConfigureUniverse);
+    RegisterUniverseWithPaCollector.Params params = new RegisterUniverseWithPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    RegisterUniverseWithPaCollector task = createTask(RegisterUniverseWithPaCollector.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to unregister the universe from the PA Collector. No-op if the universe is not
+   * registered. Clears paCollectorUuid from universe details on success or on PA unregister failure
+   * so destroy can proceed.
+   */
+  public SubTaskGroup createUnregisterUniverseFromPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UnregisterUniverseFromPaCollector", SubTaskGroupType.RemovingUnusedServers);
+    UnregisterUniverseFromPaCollector.Params params =
+        new UnregisterUniverseFromPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    UnregisterUniverseFromPaCollector task = createTask(UnregisterUniverseFromPaCollector.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);

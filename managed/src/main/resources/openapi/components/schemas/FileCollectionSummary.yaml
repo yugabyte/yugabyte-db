@@ -1,0 +1,50 @@
+title: FileCollectionSummary
+description: Summary of file collection across all nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  total_nodes:
+    description: Total number of nodes targeted
+    type: integer
+    example: 3
+  successful_nodes:
+    description: Number of nodes where collection succeeded
+    type: integer
+    example: 3
+  failed_nodes:
+    description: Number of nodes where collection failed
+    type: integer
+    example: 0
+  total_files_collected:
+    description: Total number of files collected across all nodes
+    type: integer
+    example: 15
+  total_files_skipped:
+    description: Total number of files skipped across all nodes
+    type: integer
+    example: 2
+  total_files_failed:
+    description: Total number of files that failed to collect across all nodes
+    type: integer
+    example: 0
+  total_bytes_collected:
+    description: Total bytes collected across all nodes
+    type: integer
+    format: int64
+    example: 15728640
+  total_execution_time_ms:
+    description: Total time taken for file collection in milliseconds
+    type: integer
+    format: int64
+    example: 5000
+  all_succeeded:
+    description: Whether all node file collections succeeded
+    type: boolean
+    example: true
+required:
+  - total_nodes
+  - successful_nodes
+  - failed_nodes
+  - total_files_collected
+  - total_execution_time_ms
+  - all_succeeded

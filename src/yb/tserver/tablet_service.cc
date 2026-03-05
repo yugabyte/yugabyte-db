@@ -187,6 +187,10 @@ TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 DEFINE_test_flag(int32, index_backfill_fail_after_random_wait_upto_ms, 0,
     "If set to > 0 BackfillIndex calls will be failed after randomly waiting.");
 
+DEFINE_test_flag(bool, block_backfill_before_index_map, false,
+    "If true, BackfillIndex will block right before looking up the index_map. "
+    "Used to test the race between table drop and backfill to repro GH#29830.");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -229,6 +233,11 @@ DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
 
 DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
     "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
+
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_1, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
+DEFINE_test_flag(bool, pause_wait_for_ysql_backends_catalog_version_2, false,
+    "Pause any WaitForYsqlBackendsCatalogVersion requests until flags is reset.");
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
@@ -856,7 +865,7 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
-  auto max_sleep_ms = GetAtomicFlag(&FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms);
+  auto max_sleep_ms = FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms;
   if (max_sleep_ms > 0) {
     auto rand_wait = RandomUniformInt(0, max_sleep_ms);
     LOG(INFO) << "Randomly sleeping for " << rand_wait << " ms before failing";
@@ -874,7 +883,22 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const auto index_map = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  while (FLAGS_TEST_block_backfill_before_index_map) {
+    constexpr auto kSpinWait = 100ms;
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Blocking BackfillIndex before index_map lookup";
+    SleepFor(kSpinWait);
+  }
+  auto index_map_result = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  if (!index_map_result.ok()) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(
+            NotFound, "Indexed table $0 not found in tablet $1 metadata: $2",
+            req->indexed_table_id(), req->tablet_id(), index_map_result.status().ToString()),
+        TabletServerErrorPB::TABLET_NOT_FOUND, &context);
+    return;
+  }
+  const auto& index_map = *index_map_result;
   std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
@@ -1126,7 +1150,7 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   ScopedRWOperationPause pause_writes;
   if (!req->has_retention_requester_id() &&
       ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
-       !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
+       !FLAGS_disable_alter_vs_write_mutual_exclusion) ||
       tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
@@ -1742,11 +1766,10 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
             << "]), partition=" << partition_schema.PartitionDebugString(partition, schema);
   VLOG(1) << "Full request: " << req->DebugString();
 
-  // todo(GH29982): The request includes namespace_id. We should pass it to the TableInfo
-  // constructor.
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
-      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
+      tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->namespace_id(),
+      req->table_name(),
       req->table_type(), schema, qlexpr::IndexMap(),
       req->has_index_info() ? std::optional<qlexpr::IndexInfo>(req->index_info()) : std::nullopt,
       0 /* schema_version */, partition_schema, OpId{}, HybridTime{}, req->pg_table_id(),
@@ -2427,6 +2450,9 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
     return;
   }
 
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_1);
+  TEST_PAUSE_IF_FLAG(TEST_pause_wait_for_ysql_backends_catalog_version_2);
+
   const PgOid database_oid = req->database_oid();
   const uint64_t catalog_version = req->catalog_version();
   const int prev_num_lagging_backends = req->prev_num_lagging_backends();
@@ -2685,7 +2711,7 @@ Status TabletServiceImpl::PerformWrite(
       context_ptr.get(), resp);
   query->set_client_request(*req);
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_failed_probability))) {
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_failed_probability)) {
     LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
     tablet.peer->WriteAsync(std::move(query));
     auto status = STATUS(LeaderHasNoLease, "TEST: Random failure");
@@ -2693,7 +2719,7 @@ Status TabletServiceImpl::PerformWrite(
     return Status::OK();
   }
 
-  if (RandomActWithProbability(GetAtomicFlag(&FLAGS_TEST_respond_write_with_abort_probability))) {
+  if (RandomActWithProbability(FLAGS_TEST_respond_write_with_abort_probability)) {
     LOG(INFO) << "Responding with transaction aborted failure to " << req->ShortDebugString();
     SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
         Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),

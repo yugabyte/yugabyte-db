@@ -77,6 +77,7 @@ namespace cdc {
 
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
+constexpr int kNumberOfCatalogTablesBeingPolledByCDC = 2;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kEnumTypeName = "coupon_discount_type";
@@ -143,9 +144,6 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = true;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
-
-    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
 
@@ -268,5 +266,5 @@ class CDCSDKTestBase : public YBTest {
 
   PostgresMiniCluster test_cluster_;
 };
-} // namespace cdc
-} // namespace yb
+}  // namespace cdc
+}  // namespace yb

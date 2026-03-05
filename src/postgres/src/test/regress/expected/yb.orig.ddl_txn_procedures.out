@@ -1,0 +1,88 @@
+-- Test transactional behavior and metadata consistency within Stored Procedures.
+-- Verifies that data modifications and schema changes are correctly handled
+-- when performed on tables created within the same uncommitted transaction.
+-- 1. Simple Procedure DML on a new table
+-- Verifies that a procedure can modify a table created in the current transaction.
+BEGIN;
+CREATE TABLE proc_test (id INT PRIMARY KEY, val TEXT);
+CREATE OR REPLACE PROCEDURE insert_data(p_id INT, p_val TEXT) AS $$
+BEGIN
+    INSERT INTO proc_test VALUES (p_id, p_val);
+END;
+$$ LANGUAGE plpgsql;
+CALL insert_data(1, 'from procedure');
+SELECT * FROM proc_test;
+ id |      val       
+----+----------------
+  1 | from procedure
+(1 row)
+
+ROLLBACK;
+-- 2. Nested Procedure Calls
+-- Verifies that transactional context and data visibility propagate
+-- through multiple levels of the procedure call stack.
+BEGIN;
+CREATE TABLE nested_proc_test (id INT PRIMARY KEY, val INT);
+CREATE OR REPLACE PROCEDURE inner_proc(p_id INT) AS $$
+BEGIN
+    UPDATE nested_proc_test SET val = val * 2 WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql;
+CREATE OR REPLACE PROCEDURE outer_proc(p_id INT) AS $$
+BEGIN
+    INSERT INTO nested_proc_test VALUES (p_id, 10);
+    CALL inner_proc(p_id);
+END;
+$$ LANGUAGE plpgsql;
+CALL outer_proc(100);
+SELECT * FROM nested_proc_test; -- Expected: (100, 20)
+ id  | val 
+-----+-----
+ 100 |  20
+(1 row)
+
+ROLLBACK;
+-- 3. Procedure with multiple DML types
+-- Verifies that different types of data modifications (Insert, Update, Delete)
+-- all maintain consistency when targeting a table new to the transaction.
+BEGIN;
+CREATE TABLE proc_multi_test (id INT PRIMARY KEY, val INT);
+CREATE OR REPLACE PROCEDURE complex_logic(p_id INT) AS $$
+BEGIN
+    INSERT INTO proc_multi_test VALUES (p_id, 1);
+    UPDATE proc_multi_test SET val = val + 9 WHERE id = p_id;
+    DELETE FROM proc_multi_test WHERE id = p_id AND val < 5;
+END;
+$$ LANGUAGE plpgsql;
+CALL complex_logic(1);
+SELECT * FROM proc_multi_test; -- Expected: (1, 10)
+ id | val 
+----+-----
+  1 |  10
+(1 row)
+
+ROLLBACK;
+-- 4. Procedure with Schema Evolution (ALTER TABLE)
+-- Verifies that data modifications correctly adapt to schema changes
+-- that occur within a procedure for a table created in the same transaction.
+BEGIN;
+CREATE TABLE proc_schema_test (id INT PRIMARY KEY);
+CREATE OR REPLACE PROCEDURE alter_and_load(p_id INT, p_new_val TEXT) AS $$
+BEGIN
+    -- Alter the table created in this same transaction.
+    -- This tests local catalog versioning and metadata resolution.
+    ALTER TABLE proc_schema_test ADD COLUMN extra_info TEXT;
+
+    -- Insert into the table using the updated schema.
+    INSERT INTO proc_schema_test VALUES (p_id, p_new_val);
+END;
+$$ LANGUAGE plpgsql;
+CALL alter_and_load(1, 'Snapshot A');
+-- Verify the column exists and the data is correctly mapped to the new schema.
+SELECT * FROM proc_schema_test;
+ id | extra_info 
+----+------------
+  1 | Snapshot A
+(1 row)
+
+ROLLBACK;

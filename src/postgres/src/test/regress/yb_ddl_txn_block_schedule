@@ -4,3 +4,12 @@
 # This testsuite contains testcases related to DDL Transaction Blocks.
 ###############################################################################
 test: yb.orig.ddl_txn_block
+test: yb.orig.ddl_txn_isolation
+test: yb.orig.ddl_txn_triggers
+test: yb.orig.ddl_txn_event_triggers
+test: yb.orig.ddl_txn_recursive_functions
+test: yb.orig.ddl_txn_procedures
+test: yb.orig.ddl_txn_visibility
+test: yb.orig.ddl_txn_fk
+test: yb.orig.ddl_txn_copy
+test: yb.orig.ddl_txn_indices

@@ -596,6 +596,9 @@ retry:
 		s->data.yb_allow_tables_without_primary_key =
 			yb_replication_slot->allow_tables_without_primary_key;
 
+		s->data.yb_detect_publication_changes_implicitly =
+			yb_replication_slot->detect_publication_changes_implicitly;
+
 		MyReplicationSlot = s;
 
 		/* Setup the per-table replica identity table. */

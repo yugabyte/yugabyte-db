@@ -352,6 +352,8 @@ static void insert_batch_in_temp_table(batch_insert_state *batch_state,
     /* Open the indices */
     ExecOpenIndices(resultRelInfo, false);
 
+    // ToDo: Does not work with YugabyteDB
+    // Fix this later.
     /* Insert the batch into the temporary table */
     heap_multi_insert(rel, batch_state->temp_id_slots, batch_state->num_tuples,
                       GetCurrentCommandId(true), 0, NULL);

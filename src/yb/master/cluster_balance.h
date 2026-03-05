@@ -284,6 +284,12 @@ class ClusterLoadBalancer {
   Status RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid, const std::string& reason);
 
+  // Select the best leader from the tablet's replicas based on leader affinity / preferred zones.
+  // Returns the TabletServerId of the preferred leader, or empty string if no preferred leader
+  // could be determined.
+  TabletServerId SelectBestLeaderAfterStepdown(
+      const TabletId& tablet_id, const TabletServerId& ts_to_exclude);
+
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
   Status MoveLeader(const LeaderMoveDetails& move_details);

@@ -37,6 +37,9 @@ Currently, you can export data to the following tools.
 | [Prometheus](#prometheus) | | Yes |
 | [VictoriaMetrics](#victoriametrics) | | Yes |
 | [Google Cloud Logging](#google-cloud-logging) | Database audit logs | |
+| [New Relic](#new-relic) | | Yes |
+| [Amazon S3](#amazon-s3) | Database query logs | |
+
 <!--| [Dynatrace](#dynatrace) | | Yes |-->
 
 ## Manage integrations
@@ -221,11 +224,53 @@ The [Google Cloud Logging](https://docs.cloud.google.com/logging/docs) integrati
 
 To create an export configuration for Google Cloud Logging, do the following:
 
-1. On the **Integrations** page, click **Configure** for the **Google Cloud Storage** integration or, if a configuration is already available, **Add Configuration**.
+1. On the **Integrations** page, click **Configure** for the **Google Cloud Logging** integration or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Upload the JSON key file.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
+
+### New Relic
+
+The [New Relic](https://docs.newrelic.com/) integration requires the following:
+
+- New Relic [account](https://newrelic.com/signup)
+- New Relic [license key](https://docs.newrelic.com/docs/apis/intro-apis/new-relic-api-keys/)
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **New Relic** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the URL for the [New Relic OTLP endpoint](https://docs.newrelic.com/docs/opentelemetry/best-practices/opentelemetry-otlp/) where you want to send your data (US or EU):
+    - US Endpoint: `https://otlp.nr-data.net`
+    - EU Endpoint: `https://otlp.eu01.nr-data.net`
+1. Enter the license key for the New Relic account you want to use for data ingest. Keys are available under **User menu > API Keys** in the New Relic platform.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+### Amazon S3
+
+The [Amazon S3](https://aws.amazon.com/s3/) integration requires the following:
+
+- [AWS account](https://aws.amazon.com/console/)
+- [S3 bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/GetStartedWithS3.html#creating-bucket). Ensure the bucket is accessible from the cluster regions.
+  - The S3 bucket must not have IP address filtering that excludes the cluster region.
+  - If VPC restrictions or NAT gateways are in place, they must allow traffic from the cluster regions; otherwise, log export will fail silently.
+- Access Key ID and Secret Access Key of an IAM user with `s3:PutObject` permission for the S3 bucket. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the **Amazon S3** integration or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the bucket name.
+1. Enter the bucket region. You can find your S3 bucket's region under **Properties > Bucket overview** in the AWS console.
+1. Provide the access key and secret.
+1. Enter a path to the location where you want to store your logs. The path must end in `/`; enter `/` alone to store logs at the root.
+1. Optionally, provide a prefix to add to all files exported to the bucket.
+1. Choose a partition strategy to determine how frequently logs are collected into a file. Minute partitioning creates more granular files suitable for high-volume scenarios, while hour partitioning (the default) reduces file count and is more cost-effective for lower volumes.
+1. Click **Create Configuration**.
+
+Note that YugabyteDB Aeon _cannot detect errors_ in configuration. To verify your settings are correct, after creating the configuration, monitor your bucket to ensure logs are being written.
 
 <!--### Dynatrace
 

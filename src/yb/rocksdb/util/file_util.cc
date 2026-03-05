@@ -38,7 +38,7 @@ using std::unique_ptr;
 
 // Utility function to copy a file up to a specified length
 Status CopyFile(Env* env, const string& source,
-                const string& destination, uint64_t size) {
+                const string& destination, uint64_t size, CopyFileSync sync) {
   const EnvOptions soptions;
   Status s;
   unique_ptr<SequentialFileReader> src_reader;
@@ -83,6 +83,9 @@ Status CopyFile(Env* env, const string& source,
       return s;
     }
     size -= slice.size();
+  }
+  if (sync) {
+    RETURN_NOT_OK(dest_writer->Sync(/* use_fsync= */ true));
   }
   return Status::OK();
 }

@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -140,11 +141,17 @@ public class AppInit {
       JobScheduler jobScheduler,
       NodeAgentEnabler nodeAgentEnabler,
       RoleBindingUtil roleBindingUtil,
-      SlowQueriesAggregator slowQueriesAggregator)
+      SlowQueriesAggregator slowQueriesAggregator,
+      EmbeddedCollectorInitializer embeddedCollectorInitializer)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
       setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+      String displayVersion = Util.getYbaVersion();
+      if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+        displayVersion = displayVersion + " (FIPS)";
+      }
+      log.info("YBA version: {}", displayVersion);
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
@@ -354,6 +361,8 @@ public class AppInit {
 
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
+
+        embeddedCollectorInitializer.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

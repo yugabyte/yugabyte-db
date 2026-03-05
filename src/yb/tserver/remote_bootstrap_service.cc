@@ -614,7 +614,12 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       Substitute("Tablet is not running yet: $0", req->tablet_id()));
 
   const auto requested_log_index = req->op_id().index();
-  int64_t min_available_log_index = tablet_peer->log()->GetLogReader()->GetMinReplicateIndex();
+  auto log_reader_result = tablet_peer->log()->GetLogReader();
+  RPC_RETURN_NOT_OK(
+      log_reader_result,
+      RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
+      Substitute("LogReader not available for tablet: $0", req->tablet_id()));
+  int64_t min_available_log_index = (*log_reader_result)->GetMinReplicateIndex();
   if (min_available_log_index == -1) {
     min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
   }

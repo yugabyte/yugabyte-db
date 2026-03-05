@@ -73,9 +73,10 @@ public class PlatformReplicationController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result startPeriodicBackup(UUID configUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     JsonNode result =
         HighAvailabilityConfig.doWithLock(
-            configUUID,
+            haConfig.getClusterKey(),
             config -> {
               PlatformBackupFrequencyFormData formData =
                   parseJsonAndValidate(request, PlatformBackupFrequencyFormData.class);
@@ -106,9 +107,10 @@ public class PlatformReplicationController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result stopPeriodicBackup(UUID configUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     JsonNode result =
         HighAvailabilityConfig.doWithLock(
-            configUUID, config -> replicationManager.stopAndDisable());
+            haConfig.getClusterKey(), config -> replicationManager.stopAndDisable());
     auditService()
         .createAuditEntry(
             request,

@@ -208,6 +208,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     "10, Standard_DS2_v2, Standard_E2as_v5, StandardSSD_LRS, false", // local to no local
     "10, Standard_E2as_v5, Standard_D32as_v5, StandardSSD_LRS, true", // no local to no local
     "10, Standard_D32as_v5, Standard_DS2_v5, StandardSSD_LRS, false", // no local to local
+    "0, Standard_DS3_v2, Standard_D8ls_v5, StandardSSD_LRS, false", // DS3_v2 to D8ls_v5 not allowed
     "5000, Standard_DS2_v2, Standard_DS2_v2, StandardSSD_LRS, false",
   })
   @Test

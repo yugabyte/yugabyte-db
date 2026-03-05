@@ -440,6 +440,7 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     expected_req.set_target_snapshot_id(kTargetSnapshotId.data(), kTargetSnapshotId.size());
     expected_req.set_target_table_id(kTargetTableId);
     expected_req.set_target_namespace_name(kTargetNamespaceName);
+    expected_req.set_target_namespace_id(kTargetNamespaceId);
     expected_req.set_clone_request_seq_no(1);
     expected_req.set_target_pg_table_id(target_table_->pg_table_id());
     *expected_req.mutable_target_schema() = target_table_->LockForRead()->schema();

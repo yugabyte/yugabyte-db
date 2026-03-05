@@ -703,6 +703,15 @@ class ClusterOptions:
                 parser_arg = None
             setattr(self, arg, self.parse_flag_args(parser_arg))
 
+        # Reflect webserver_port overrides from --master_flags / --tserver_flags
+        # so the status output shows the actual port the daemon will bind to.
+        for flag in self.master_flags:
+            if flag.startswith("webserver_port="):
+                self.base_ports[DAEMON_TYPE_MASTER]["http"] = int(flag.split("=", 1)[1])
+        for flag in self.tserver_flags:
+            if flag.startswith("webserver_port="):
+                self.base_ports[DAEMON_TYPE_TSERVER]["http"] = int(flag.split("=", 1)[1])
+
         try:
             self.placement_info_raw = getattr(args, "placement_info")
             placement_list = self.placement_info_raw.split(",")

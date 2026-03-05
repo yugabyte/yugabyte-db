@@ -52,6 +52,7 @@ is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(false) }}
 
+{%- if is_noroot_mode is false %}
 {%- if ynp_config['extra'].is_cloud is true %}
 [UpdateOS]
 {%- endif %}
@@ -103,9 +104,6 @@ cpu = unlimited
 nproc = 12000
 locks = unlimited
 
-[ConfigureSystemd]
-use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
-service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
 
 {%- if ynp_config['extra'].custom_ssh_port is defined and ynp_config['extra'].custom_ssh_port %}
 [ConfigureSshD]
@@ -117,10 +115,16 @@ ip_address={{ ynp_config['ynp'].node_ip }}
 sudoers_commands = {{ynp_config['ynp'].sudoers_commands | join(',')}}
 {% endif %}
 
-[BackupUtils]
-
 [ConfigureNodeExporter]
 prometheus_user = prometheus
+
+[BackupUtils]
+{%- endif %}
+
+{%- if is_root_mode is false %}
+[ConfigureSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
 
 [ConfigureNetwork]
 ip_address={{ ynp_config['ynp'].node_ip }}
@@ -132,7 +136,6 @@ node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
 node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
 
-
 {%- if 'earlyoom' in ynp_config['ynp'] %}
 [InstallConfigureEarlyoom]
 earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
@@ -141,4 +144,5 @@ earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 
 {%- if ynp_config['extra'].is_ybm is true %}
 [ConfigureYBMAMI]
+{%- endif %}
 {%- endif %}

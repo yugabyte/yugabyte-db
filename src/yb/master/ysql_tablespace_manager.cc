@@ -36,7 +36,7 @@ std::shared_ptr<YsqlTablespaceManager> YsqlTablespaceManager::CreateCloneWithTab
 
 Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceReplicationInfo(
     const TablespaceId& tablespace_id) {
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement)) {
+  if (!FLAGS_enable_ysql_tablespaces_for_placement) {
     // Tablespaces feature has been disabled.
     return std::nullopt;
   }
@@ -59,7 +59,7 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTablespaceRep
 
 Result<std::optional<TablespaceId>> YsqlTablespaceManager::GetTablespaceForTable(
     const scoped_refptr<const TableInfo>& table) const {
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
+  if (!FLAGS_enable_ysql_tablespaces_for_placement ||
       !table->TableTypeUsesTablespacesForPlacement()) {
     // At this point we know that table is not a type of table that will use tablespaces for
     // placement.
@@ -123,7 +123,7 @@ Result<std::optional<ReplicationInfoPB>> YsqlTablespaceManager::GetTableReplicat
 bool YsqlTablespaceManager::NeedsRefreshToFindTablePlacement(
     const scoped_refptr<TableInfo>& table) {
 
-  if (!GetAtomicFlag(&FLAGS_enable_ysql_tablespaces_for_placement) ||
+  if (!FLAGS_enable_ysql_tablespaces_for_placement ||
       !table->TableTypeUsesTablespacesForPlacement()) {
     return false;
   }

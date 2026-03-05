@@ -358,10 +358,10 @@ ALTER TABLE int4_table ALTER c1 TYPE int4; -- should fail.
 
 -- #30109: duplicate key value violates unique constraint
 \c
--- The bug only exists when yb_fallback_to_legacy_catalog_read_time = false
--- We also test yb_fallback_to_legacy_catalog_read_time = true to ensure
+-- The bug only exists when yb_enable_concurrent_ddl = true
+-- We also test yb_enable_concurrent_ddl = false to ensure
 -- correctness in both cases.
-SET yb_fallback_to_legacy_catalog_read_time = false;
+SET yb_enable_concurrent_ddl = true;
 
 CREATE TABLE test_table1();
 CREATE OR REPLACE PROCEDURE test_alter1()
@@ -376,7 +376,7 @@ END;
 $$;
 CALL test_alter1();
 \c
-SET yb_fallback_to_legacy_catalog_read_time = true;
+SET yb_enable_concurrent_ddl = false;
 
 CREATE TABLE test_table2();
 CREATE OR REPLACE PROCEDURE test_alter2()

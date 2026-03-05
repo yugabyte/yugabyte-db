@@ -128,8 +128,8 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;
@@ -232,8 +232,8 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;

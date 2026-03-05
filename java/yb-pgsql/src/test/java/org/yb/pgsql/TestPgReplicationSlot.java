@@ -80,20 +80,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
-        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG2");
-    flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
+    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
     return flagMap;
   }
 
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put(
-      "vmodule", "cdc_service=4,cdcsdk_producer=4");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
@@ -967,24 +964,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-    tserverFlags.put("cdcsdk_enable_dynamic_table_support", "" + usePubRefresh);
     tserverFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    tserverFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    tserverFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    tserverFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     masterFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    masterFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    masterFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    masterFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
     restartClusterWithFlags(masterFlags, tserverFlags);
   }
@@ -3903,6 +3907,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidAndWalStatusPopulationOnStreamRestart() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");
@@ -3990,6 +3998,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidPopulationFromDifferentTServers() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");

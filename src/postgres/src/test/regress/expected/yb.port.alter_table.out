@@ -2126,6 +2126,9 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 (3 rows)
 
 alter table at_partitioned alter column name type varchar(127);
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Note: these tests currently show the wrong behavior for comments :-(
 select relname,
   c.oid = oldoid as orig_oid,
@@ -2969,6 +2972,9 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 -- one. Check do a dummy ALTER TABLE that doesn't change the datatype
 -- first, to test that no-op codepath, and another one that does.
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE int;
+NOTICE:  index rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new index.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE text;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.

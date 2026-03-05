@@ -71,6 +71,7 @@ import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
 import io.grpc.ConnectivityState;
+import io.grpc.Context;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -1146,13 +1147,19 @@ public class NodeAgentClient {
             .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
-        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+        if (e.getStatus().getCode() == Code.DEADLINE_EXCEEDED) {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
+        } else if (e.getStatus().getCode() == Code.CANCELLED && !Context.current().isCancelled()) {
+          // Client side did not cancel it.
+          log.info(
+              "Cancelled by server. Reconnecting to node agent {} to describe task {}",
+              nodeAgent,
+              taskId);
+        } else {
           // Best effort to abort.
           abortTask(nodeAgent, taskId);
           log.error("Error in describing task for node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
-        } else {
-          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
         }
       }
     }

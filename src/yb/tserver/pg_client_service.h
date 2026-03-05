@@ -79,6 +79,7 @@ class TserverXClusterContextIf;
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListClones) \
+    (QueryAutoAnalyze) \
     (ListLiveTabletServers) \
     (ListSlotEntries) \
     (ListReplicationSlots) \
@@ -88,6 +89,7 @@ class TserverXClusterContextIf;
     (RollbackToSubTransaction) \
     (ServersMetrics) \
     (TabletsMetadata) \
+    (GetTabletForKey) \
     (TabletServerCount) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
@@ -102,6 +104,7 @@ class TserverXClusterContextIf;
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     (GetYbSystemTableInfo) \
+    (ReleaseSessionObjectLock) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \

@@ -71,8 +71,8 @@ TEST_F(PggateTestDelete, TestDelete) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -126,7 +126,7 @@ TEST_F(PggateTestDelete, TestDelete) {
   // DELETE ----------------------------------------------------------------------------------------
   // Allocate new delete.
   CHECK_YBC_STATUS(YBCPgNewDelete(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt, YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.

@@ -363,6 +363,8 @@ class PgApiImpl {
 
   Result<tserver::PgListClonesResponsePB> GetDatabaseClones();
 
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
+
   Result<YbcPgColumnInfo> GetColumnInfo(YbcPgTableDesc table_desc,
                                         int16_t attr_number);
 
@@ -554,9 +556,8 @@ class PgApiImpl {
 
   Status NewInsert(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -570,9 +571,8 @@ class PgApiImpl {
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecUpdate(PgStatement *handle);
 
@@ -580,9 +580,8 @@ class PgApiImpl {
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
                    const YbcPgTableLocalityInfo& locality_info,
-                   PgStatement **handle,
-                   YbcPgTransactionSetting transaction_setting =
-                       YbcPgTransactionSetting::YB_TRANSACTIONAL);
+                   YbcPgTransactionSetting transaction_setting,
+                   PgStatement **handle);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -871,6 +870,10 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+      size_t num_values);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
@@ -898,7 +901,9 @@ class PgApiImpl {
   //----------------------------------------------------------------------------------------------
   // Table Locks.
   //----------------------------------------------------------------------------------------------
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status AcquireObjectLock(
+      const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();

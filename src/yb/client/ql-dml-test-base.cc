@@ -87,7 +87,7 @@ QLDmlTestBase<ExternalMiniCluster>::QLDmlTestBase() {
 
 template<>
 void QLDmlTestBase<MiniCluster>::SetFlags() {
-  SetAtomicFlag(false, &FLAGS_enable_ysql);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 }
 
 template<>

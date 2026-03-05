@@ -156,6 +156,7 @@ public class RefetchOIDCAccessToken {
   }
 
   private ApiHelper retApiHelper() {
-    return new ApiHelper(wsClientRefresher.getClient(YB_PLAY_WS_CONFIG_KEY));
+    return new ApiHelper(
+        wsClientRefresher.getClient(YB_PLAY_WS_CONFIG_KEY), wsClientRefresher.getMaterializer());
   }
 }

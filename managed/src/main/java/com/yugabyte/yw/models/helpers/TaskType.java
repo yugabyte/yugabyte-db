@@ -818,6 +818,12 @@ public enum TaskType {
   UniverseUpdateSucceeded(
       com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded.class),
 
+  RegisterUniverseWithPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector.class),
+
+  UnregisterUniverseFromPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UnregisterUniverseFromPaCollector.class),
+
   UpdateAndPersistGFlags(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags.class),
 
   UpdateAndPersistKubernetesOverrides(

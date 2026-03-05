@@ -56,7 +56,7 @@ export const RuntimeConfigKey = {
   GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',
   ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
   GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled',
-  ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting',
+  ENABLE_PA_COLLECTOR: 'yb.ui.feature_flags.enable_pa_collector',
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
   BATCH_ROLLING_UPGRADE_FEATURE_FLAG: 'yb.task.upgrade.batch_roll_enabled',
@@ -228,3 +228,9 @@ export const DEFAULT_TIMEZONE = { value: 'Default', label: `${getBrowserTimezone
 export const I18N_DURATION_KEY_PREFIX = 'common.duration';
 export const I18N_ACCESSABILITY_ALT_TEXT_KEY_PREFIX = 'iconAltText';
 export const PERF_ADVISOR_PATH = 'perfAdvisor';
+
+export const PerfAdvisorModalIntention = {
+  ENABLE_OR_DISABLE_PA_COLLECTOR: 'enableOrDisablePACollector',
+  ENABLE_ADVANCED_OBSERVABILITY_ONLY: 'enableAdvancedObservabilityOnly',
+  DISABLE_ADVANCED_OBSERVABILITY_ONLY: 'disableAdvancedObservabilityOnly'
+};

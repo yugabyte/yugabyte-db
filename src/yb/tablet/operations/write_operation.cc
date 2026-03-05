@@ -102,7 +102,7 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
-  auto injected_latency = GetAtomicFlag(&FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms);
+  auto injected_latency = FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms;
   if (PREDICT_FALSE(injected_latency) > 0) {
       TRACE("Injecting $0ms of latency due to --TEST_tablet_inject_latency_on_apply_write_txn_ms",
             injected_latency);

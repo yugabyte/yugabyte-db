@@ -22,6 +22,10 @@
 DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
                     "Disable connections to the cloned database during the clone process.");
 
+DEFINE_RUNTIME_bool(ysql_clone_copy_pg_statistics, true,
+                    "When true, clone operations include pg_statistic data by passing "
+                    "--with-statistics to ysql_dump.");
+
 namespace yb {
 
 // ============================================================================
@@ -56,6 +60,9 @@ Result<std::string> YsqlDumpRunner::DumpSchemaAsOfTime(
     std::string read_time_flag =
         "--read-time=" + std::to_string(read_time->GetPhysicalValueMicros());
     args.push_back(read_time_flag);
+  }
+  if (FLAGS_ysql_clone_copy_pg_statistics) {
+    args.push_back("--with-statistics");
   }
   return Run(args);
 }

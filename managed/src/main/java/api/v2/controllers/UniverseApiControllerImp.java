@@ -8,8 +8,12 @@ import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.CollectFilesRequest;
+import api.v2.models.CollectFilesResponse;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.RunScriptRequest;
+import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
@@ -238,5 +242,19 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public void operatorImportUniversePrecheck(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     universeHandler.precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public RunScriptResponse runScript(
+      Request request, UUID cUUID, UUID uniUUID, RunScriptRequest runScriptRequest)
+      throws Exception {
+    return universeHandler.runScript(request, cUUID, uniUUID, runScriptRequest);
+  }
+
+  @Override
+  public CollectFilesResponse collectFiles(
+      Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest)
+      throws Exception {
+    return universeHandler.collectFiles(request, cUUID, uniUUID, collectFilesRequest);
   }
 }

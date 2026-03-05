@@ -30,6 +30,7 @@
 
 #include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -1601,10 +1602,10 @@ YbcStatus YBCPgNewInsertBlock(
 YbcStatus YBCPgNewInsert(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewInsert(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecInsert(YbcPgStatement handle) {
@@ -1633,10 +1634,10 @@ YbcStatus YBCPgInsertStmtSetIsBackfill(YbcPgStatement handle, const bool is_back
 YbcStatus YBCPgNewUpdate(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewUpdate(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
@@ -1647,10 +1648,10 @@ YbcStatus YBCPgExecUpdate(YbcPgStatement handle) {
 YbcStatus YBCPgNewDelete(const YbcPgOid database_oid,
                          const YbcPgOid table_relfilenode_oid,
                          YbcPgTableLocalityInfo locality_info,
-                         YbcPgStatement *handle,
-                         YbcPgTransactionSetting transaction_setting) {
+                         YbcPgTransactionSetting transaction_setting,
+                         YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, handle, transaction_setting));
+  return ToYBCStatus(pgapi->NewDelete(table_id, locality_info, transaction_setting, handle));
 }
 
 YbcStatus YBCPgExecDelete(YbcPgStatement handle) {
@@ -1665,8 +1666,8 @@ YbcStatus YBCPgDeleteStmtSetIsPersistNeeded(YbcPgStatement handle, const bool is
 YbcStatus YBCPgNewTruncateColocated(const YbcPgOid database_oid,
                                     const YbcPgOid table_relfilenode_oid,
                                     YbcPgTableLocalityInfo locality_info,
-                                    YbcPgStatement *handle,
-                                    YbcPgTransactionSetting transaction_setting) {
+                                    YbcPgTransactionSetting transaction_setting,
+                                    YbcPgStatement *handle) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->NewTruncateColocated(
       table_id, locality_info, handle, transaction_setting));
@@ -2144,8 +2145,7 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 //--------------------------------------------------------------------------------------------------
 
 void YBCInitFlags() {
-  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
-                &FLAGS_num_connections_to_server);
+  FLAGS_num_connections_to_server = FLAGS_pggate_num_connections_to_server;
 
   // TODO(neil) Init a gflag for "YB_PG_TRANSACTIONS_ENABLED" here also.
   // Mikhail agreed that this flag should just be initialized once at the beginning here.
@@ -2594,6 +2594,7 @@ YbcStatus YBCPgListReplicationSlots(
           .active_pid = info.active_pid(),
           .expired = info.expired(),
           .allow_tables_without_primary_key = info.allow_tables_without_primary_key(),
+          .detect_publication_changes_implicitly = info.detect_publication_changes_implicitly(),
       };
       ++dest;
     }
@@ -2651,6 +2652,7 @@ YbcStatus YBCPgGetReplicationSlot(
       .active_pid = slot_info.active_pid(),
       .expired = slot_info.expired(),
       .allow_tables_without_primary_key = slot_info.allow_tables_without_primary_key(),
+      .detect_publication_changes_implicitly = slot_info.detect_publication_changes_implicitly(),
   };
 
   return YBCStatusOK();
@@ -3054,6 +3056,17 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
   return YBCStatusOK();
 }
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+    size_t num_values, const char** tablet_id) {
+  auto result = pgapi->GetTabletForKey(database_oid, table_oid, key_values, num_values);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *tablet_id = YBCPAllocStdString(*result);
+  return YBCStatusOK();
+}
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** servers_metrics_info, size_t* count) {
   const auto result = pgapi->ServersMetrics();
   if (!result.ok()) {
@@ -3115,6 +3128,39 @@ YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** database_clones, size_t* co
       ++cur_clone;
     }
   }
+  return YBCStatusOK();
+}
+
+YbcStatus YBCQueryAutoAnalyze(
+    YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count) {
+  const auto result = pgapi->QueryAutoAnalyze(db_oid);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  const auto& auto_analyze_rows = result.get().rows();
+  *count = auto_analyze_rows.size();
+  if (!auto_analyze_rows.empty()) {
+    *analyze_info = static_cast<YbcAutoAnalyzeInfo*>(
+        YBCPAlloc(sizeof(YbcAutoAnalyzeInfo) * auto_analyze_rows.size()));
+
+    YbcAutoAnalyzeInfo* cur_info = *analyze_info;
+    for (const auto& row : auto_analyze_rows) {
+      std::string last_analyze_info;
+      if (!row.last_analyze_info().empty()) {
+        common::Jsonb jsonb(row.last_analyze_info());
+        auto status = jsonb.ToJsonString(&last_analyze_info);
+        if (!status.ok())
+            return ToYBCStatus(status);
+      }
+      new (cur_info) YbcAutoAnalyzeInfo {
+          .table_oid = row.table_oid(),
+          .mutations = static_cast<uint64_t>(row.mutations()),
+          .last_analyze_info = YBCPAllocStdString(last_analyze_info)
+      };
+      ++cur_info;
+    }
+  }
+
   return YBCStatusOK();
 }
 
@@ -3207,8 +3253,13 @@ bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
 
 void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) {
-  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode, is_session_lock));
+}
+
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
+  return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }
 
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {

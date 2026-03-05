@@ -28,6 +28,7 @@ export const RegisterYBAToPerfAdvisor = ({
   timezone
 }: RegisterYBAToPerfAdvisorProps) => {
   const helperClasses = useStyles();
+
   const {
     data: perfAdvisorListData,
     isLoading: isPaListFetchLoading,
@@ -66,8 +67,8 @@ export const RegisterYBAToPerfAdvisor = ({
       universeUuid={universeUuid}
       appName={appName}
       timezone={timezone}
-      apiUrl={`${perfAdvisorListData?.[0]?.tpUrl}/api`}
-      tpUuid={perfAdvisorListData?.[0]?.uuid}
+      apiUrl={`${perfAdvisorListData?.[0]?.paUrl}/api`}
+      paUuid={perfAdvisorListData?.[0]?.uuid}
     />
   );
 };

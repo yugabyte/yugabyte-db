@@ -7,13 +7,14 @@ replace golang.org/x/crypto => golang.org/x/crypto v0.18.0
 require (
 	github.com/apex/log v1.9.0
 	github.com/creack/pty v1.1.18
+	github.com/go-logfmt/logfmt v0.5.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/nikolalohinski/gonja/v2 v2.4.1
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/client_golang v1.15.1
-	github.com/spf13/cobra v1.4.0
+	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.12.0
 	github.com/thoas/go-funk v0.9.2
 	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82
@@ -30,7 +31,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
-	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect

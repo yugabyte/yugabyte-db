@@ -43,7 +43,6 @@ for header in "${headers[@]}"; do
     header_options+=(-H "$header")
 done
 
-
 # Get the status of yb-node-agent Service
 if [ "$(id -u)" -eq 0 ]; then
     status=$(su - {{ yb_user }} -c \

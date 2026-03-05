@@ -3347,7 +3347,8 @@ ybcBeginScan(Relation relation,
 	 */
 	if (!(is_internal_scan && IsSystemRelation(relation)) &&
 		!IsBootstrapProcessingMode() &&
-		MyBackendType != B_WAL_SENDER)
+		MyBackendType != B_WAL_SENDER &&
+		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 

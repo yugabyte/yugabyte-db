@@ -165,8 +165,9 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
+  void set_has_tablet_report_unlocked(bool has_report) REQUIRES(mutex_);
 
-  int32_t receiving_full_report_seq_no() const;
+  std::optional<int32_t> receiving_full_report_seq_no() const;
   void set_receiving_full_report_seq_no(int32_t value);
 
   bool has_faulty_drive() const;
@@ -433,7 +434,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_ GUARDED_BY(mutex_) = false;
 
-  int32_t receiving_full_report_seq_no_ GUARDED_BY(mutex_) = 0;
+  std::optional<int32_t> receiving_full_report_seq_no_ GUARDED_BY(mutex_);
 
   // Tablet server has at least one faulty drive.
   bool has_faulty_drive_ GUARDED_BY(mutex_);

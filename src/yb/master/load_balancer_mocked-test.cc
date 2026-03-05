@@ -385,7 +385,7 @@ TEST_P(LoadBalancerMockedCloudInfoSimilarityTest, TestChooseTabletInSameZone) {
   LOG(INFO) << Format("Testing that (if possible) we move a tablet whose leader is in the same "
                       "zone/region as the new tserver with "
                       "FLAGS_load_balancer_ignore_cloud_info_similarity=$0.",
-                      GetAtomicFlag(&FLAGS_load_balancer_ignore_cloud_info_similarity));
+                      FLAGS_load_balancer_ignore_cloud_info_similarity);
   PrepareTestStateMultiAz();
   // Setup cluster config. Do not set placement info for the table, so its tablets can be moved
   // freely from ts0 to the new tserver.
@@ -422,7 +422,7 @@ TEST_P(LoadBalancerMockedCloudInfoSimilarityTest, TestChooseTabletInSameZone) {
   // If ignoring cloud info, we should move a tablet whose leader is not in zone c (by the order
   // of the tablets, the first non-leader tablet we encounter is tablet 1 and we do not expect
   // to replace it). Otherwise, we should pick the tablet whose leader IS in zone c.
-  if (GetAtomicFlag(&FLAGS_load_balancer_ignore_cloud_info_similarity)) {
+  if (FLAGS_load_balancer_ignore_cloud_info_similarity) {
     ASSERT_NE(moved_tablet_leader->GetCloudInfo().placement_zone(), "c");
   } else {
     ASSERT_EQ(moved_tablet_leader->GetCloudInfo().placement_zone(), "c");

@@ -169,3 +169,6 @@ const getCertificateType = (certificate: Certificate) => certificate.certType;
 
 export const isSelfSignedCert = (certificate: Certificate) =>
   getCertificateType(certificate) === 'SelfSigned';
+
+export const isCertManagerCert = (certificate: Certificate) =>
+  getCertificateType(certificate) === 'K8SCertManager';

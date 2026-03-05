@@ -337,9 +337,17 @@
         "disableTitle": "Disable Performance Monitoring",
         "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
         "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
-        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
-        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
-        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
+        "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
+        "enableAdvancedObservability": "Enable Advanced Observability",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilitySuccess": "Successfully enabled Advanced Observability for the universe",
+        "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
+        "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilitySuccess": "Successfully disabled Advanced Observability for the universe",
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -573,11 +581,13 @@
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
         "identConfLocal": "map-name idp-user/group/role database-username",
+        "ycqlIdentConfLocal": "idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
         "pgConfDescription": "CSV formatted line represented list of postgres setting assignments.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
-        "identConfPostgreSQL": "PostgreSQL. ",
-        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfPostgreSQL": "PostgreSQL",
+        "identConfDescriptionSecond": ". Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "ycqlIdentConfDescriptionSecond": " except the omission of the map-name. Enter each mapping as a new row, comprising the external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
         "readLess": "Read Less",
@@ -780,6 +790,8 @@
         "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "ybPlatformMetricsUsernameLabel": "Yugabyte Platform Metrics Username",
+        "ybPlatformMetricsPasswordLabel": "Yugabyte Platform Metrics Password",
         "apiTokenLabel": "YBA API Token",
         "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
@@ -2902,6 +2914,9 @@
       "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
+      "splunkTokenTooltip": "Indicate this is the Splunk HEC token and where to generate it",
+      "splunkURLTooltip": "Clarify required format (include protocol and port, e.g., https://<host>:8088)",
+      "splunkURLPlaceholder": "https://<host>:8088/services/collector/event",
       "endpointURL": "Endpoint URL",
       "source": "Source (Optional)",
       "sourceType": "Source Type (Optional)",
@@ -3701,7 +3716,15 @@
         },
         "accessKeyLabel": "Access Key",
         "accessKeyRequired": "Access Key is required",
-        "arnField": "Instance Profile ARN"
+        "arnField": "Instance Profile ARN",
+        "ipv6Field": {
+          "label": "Enable IPV6",
+          "subText": "Use IPV6 networking for connections between the DB servers."
+        },
+        "networkAccessField": {
+          "label": "Enable Public Network Access",
+          "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",

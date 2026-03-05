@@ -1,0 +1,6 @@
+x-yba-api-visibility: internal
+required: true
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/RunScriptRequest.yaml"

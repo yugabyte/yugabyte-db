@@ -192,12 +192,12 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enable IMDSv2 support for AWS providers",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> enableTroubleshooting =
+  public static final ConfKeyInfo<Boolean> enablePACollector =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.enable_troubleshooting",
+          "yb.ui.feature_flags.enable_pa_collector",
           ScopeType.CUSTOMER,
-          "Enables Troubleshooting for the Universe",
-          "Enables Troubleshooting for the Universe",
+          "Enables PA Collector configuration",
+          "Enables PA Collector configuration",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Integer> backupGcNumberOfRetries =
@@ -256,6 +256,26 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ScopeType.CUSTOMER,
           "Enables Earlyoom Installation on Nodes",
           "Enables Earlyoom Installation on Nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.enabled",
+          ScopeType.CUSTOMER,
+          "Enable PA Collector auto-registration on universe creation",
+          "When enabled, newly created universes are automatically registered with the "
+              + "first PA Collector for the customer.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.advanced_observability",
+          ScopeType.CUSTOMER,
+          "Enable advanced observability for PA auto-registration",
+          "When PA auto-registration is enabled, also enable advanced observability "
+              + "(metrics export to Prometheus) for the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -38,6 +38,8 @@ services:
       pa.prometheus.url=http://{{ index (splitInput (yamlPath "host")) 0 }}:
       {{- yamlPath "prometheus.port" }}
       {{ end }}
+      pa.prometheus.username={{ yamlPath "prometheus.authUsername" }}
+      pa.prometheus.password={{ yamlPath "prometheus.authPassword" }}
 
       # Perf Advisor Web Port
       server.port={{ yamlPath "perfAdvisor.port" }}
@@ -53,6 +55,9 @@ services:
       {{ end }}
       pa.web.hsts.enabled={{ yamlPath "perfAdvisor.tls.hsts" }}
       {{ end }}
+
+      pa.metrics.export.jsonl.directory="{{ .DataDir }}/perf-advisor/collected/metrics"
+      pa.support-bundle.path="{{ .DataDir }}/perf-advisor/support-bundle"
 
   - name: perfAdvisorMetricsExportTopology
     fileName: "{{ baseInstall }}/perf-advisor/config/metrics-export.yml"

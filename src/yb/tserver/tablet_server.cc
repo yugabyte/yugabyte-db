@@ -507,7 +507,7 @@ Status TabletServer::Init() {
   connectivity_poller_.emplace(*this, permanent_uuid());
   DoUpdateMasterAddresses();
 
-  if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
+  if (FLAGS_allow_encryption_at_rest) {
     // Create the encrypted environment that will allow users to enable encryption.
     std::vector<std::string> master_addresses;
     for (const auto& list : *opts_.GetMasterAddresses()) {
@@ -799,7 +799,7 @@ void TabletServer::Shutdown() {
   // Fix them and ensure PG is stopped here.
   ysql_lease_manager_->Shutdown();
   auto relinquish_lease_future = ysql_lease_manager_->RelinquishLease(
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms)));
+      MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms));
 
   connectivity_poller_->Shutdown();
 
