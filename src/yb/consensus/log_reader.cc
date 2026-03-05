@@ -510,7 +510,7 @@ Status LogReader::TrimSegmentsUpToAndIncluding(const int64_t segment_sequence_nu
     RETURN_NOT_OK(segments_.pop_front());
     deleted_segments.push_back(current_seq_no);
   }
-  LOG_WITH_PREFIX(INFO) << "Removed log segment sequence numbers from log reader: "
+  LOG_WITH_PREFIX_DETAIL << "Removed log segment sequence numbers from log reader: "
                         << yb::ToString(deleted_segments);
   return Status::OK();
 }

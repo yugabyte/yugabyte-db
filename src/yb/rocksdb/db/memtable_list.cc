@@ -406,8 +406,8 @@ Status MemTableList::InstallMemtableFlushResults(
       break;
     }
 
-    LOG_TO_BUFFER(log_buffer, "[%s] Level-0 commit table #%" PRIu64 " started",
-                cfd->GetName().c_str(), m->file_number_);
+    LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Level-0 commit table #%" PRIu64 " started",
+                         cfd->GetName().c_str(), m->file_number_);
 
     // this can release and reacquire the mutex.
     s = vset->LogAndApply(cfd, mutable_cf_options, &m->edit_, mu, db_directory);
@@ -421,9 +421,9 @@ Status MemTableList::InstallMemtableFlushResults(
     uint64_t mem_id = 1;  // how many memtables have been flushed.
     do {
       if (s.ok()) { // commit new state
-        LOG_TO_BUFFER(log_buffer, "[%s] Level-0 commit table #%" PRIu64
-                                ": memtable #%" PRIu64 " done",
-                    cfd->GetName().c_str(), m->file_number_, mem_id);
+        LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Level-0 commit table #%" PRIu64
+                                         ": memtable #%" PRIu64 " done",
+                             cfd->GetName().c_str(), m->file_number_, mem_id);
         assert(m->file_number_ > 0);
         current_->Remove(m, to_delete);
       } else {

@@ -209,7 +209,7 @@ HistoryCutoff TabletRetentionPolicy::SanitizeHistoryCutoff(
   docdb::HistoryCutoff provided_allowed_cutoff;
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
-    LOG_WITH_PREFIX(INFO) << __func__ << ", cutoff from the provider " << provided_allowed_cutoff;
+    LOG_WITH_PREFIX_AND_FUNC_DETAIL << ", cutoff from the provider " << provided_allowed_cutoff;
   }
   docdb::HistoryCutoff allowed_cutoff = provided_allowed_cutoff;
   allowed_cutoff = ConstructMinCutoff(allowed_cutoff, proposed_cutoff);
