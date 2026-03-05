@@ -1179,14 +1179,20 @@ string GetOnDiskSizeInHtml(const TabletReplicaDriveInfo &info) {
   std::ostringstream disk_size_html;
   disk_size_html << "<ul>"
                  << "<li>" << "Total: "
-                 << HumanReadableNumBytes::ToString(info.sst_files_size + info.wal_files_size)
+                 << HumanReadableNumBytes::ToString(
+                        info.sst_files_size + info.wal_files_size +
+                        info.vector_index_disk_size)
                  << "<li>" << "WAL Files: "
                  << HumanReadableNumBytes::ToString(info.wal_files_size)
                  << "<li>" << "SST Files: "
                  << HumanReadableNumBytes::ToString(info.sst_files_size)
                  << "<li>" << "SST Files Uncompressed: "
-                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size)
-                 << "</ul>";
+                 << HumanReadableNumBytes::ToString(info.uncompressed_sst_file_size);
+  if (info.vector_index_disk_size > 0) {
+    disk_size_html << "<li>" << "Vector Index: "
+                   << HumanReadableNumBytes::ToString(info.vector_index_disk_size);
+  }
+  disk_size_html << "</ul>";
 
   return disk_size_html.str();
 }
@@ -1274,7 +1280,9 @@ void MasterPathHandlers::HandleAllTables(
       table_uuid = table_uuid.insert(32, "\n");
     }
 
-    // System tables and colocated user tables do not have size info
+    // System tables and colocated user tables do not have size info.
+    // Vector index tables are secondary tables but have their own size data stored in the
+    // indexed table's tablets, so we show size for them too.
     if (table_cat != kSystemTable && !table->IsSecondaryTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
       auto tablets_result = table->GetTablets();
@@ -1287,6 +1295,8 @@ void MasterPathHandlers::HandleAllTables(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_disk_size +=
+              drive_info.get().vector_index_disk_size;
         } else {
           show_missing_size_footer[table_cat] = true;
           table_has_missing_size = true;
@@ -1472,6 +1482,8 @@ void MasterPathHandlers::HandleAllTablesJSON(
           aggregated_drive_info.sst_files_size += drive_info.get().sst_files_size;
           aggregated_drive_info.uncompressed_sst_file_size +=
               drive_info.get().uncompressed_sst_file_size;
+          aggregated_drive_info.vector_index_disk_size +=
+              drive_info.get().vector_index_disk_size;
         } else {
           table_has_missing_size = true;
         }
@@ -1541,6 +1553,11 @@ void MasterPathHandlers::HandleAllTablesJSON(
             HumanReadableNumBytes::ToString(table.second.on_disk_size.uncompressed_sst_file_size));
         jw.String("uncompressed_sst_file_size_bytes");
         jw.Uint64(table.second.on_disk_size.uncompressed_sst_file_size);
+        jw.String("vector_index_disk_size");
+        jw.String(
+            HumanReadableNumBytes::ToString(table.second.on_disk_size.vector_index_disk_size));
+        jw.String("vector_index_disk_size_bytes");
+        jw.Uint64(table.second.on_disk_size.vector_index_disk_size);
         jw.String("has_missing_size");
         jw.Bool(table.second.has_missing_size);
         jw.EndObject();
@@ -3512,7 +3529,13 @@ string MasterPathHandlers::ReplicaInfoToHtml(
         "Active SSTs size: $0<br/>",
         HumanReadableNumBytes::ToString(replica.drive_info.sst_files_size));
     html << Format(
-        "WALs size: $0\n", HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
+        "WALs size: $0<br/>",
+        HumanReadableNumBytes::ToString(replica.drive_info.wal_files_size));
+    if (replica.drive_info.vector_index_disk_size > 0) {
+      html << Format(
+          "Vector Index size: $0\n",
+          HumanReadableNumBytes::ToString(replica.drive_info.vector_index_disk_size));
+    }
   }
   html << "</ul>\n";
   return html.str();

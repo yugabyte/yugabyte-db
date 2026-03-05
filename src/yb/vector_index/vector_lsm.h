@@ -140,6 +140,9 @@ class VectorLSM {
   size_t NumImmutableChunks() const EXCLUDES(mutex_);
   size_t NumSavedImmutableChunks() const EXCLUDES(mutex_);
 
+  // Returns the total on-disk size of all immutable chunks in bytes.
+  uint64_t OnDiskSize() const EXCLUDES(mutex_);
+
   Env* TEST_GetEnv() const;
   bool TEST_HasBackgroundInserts() const;
   bool TEST_HasCompactions() const EXCLUDES(mutex_);

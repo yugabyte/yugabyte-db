@@ -99,6 +99,9 @@ class TabletVectorIndexes :
   void FillMaxPersistentOpIds(
       boost::container::small_vector_base<OpId>& out, bool invalid_if_no_new_data);
 
+  // Returns the total on-disk size of all vector indexes in bytes.
+  uint64_t OnDiskSize() const EXCLUDES(vector_indexes_mutex_);
+
   bool TEST_HasIndexes() const {
     return has_vector_indexes_.load();
   }

@@ -91,6 +91,7 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
           storage_metadata->set_may_have_orphaned_post_split_data(
                 tablet->MayHaveOrphanedPostSplitData());
           storage_metadata->set_total_size(on_disk_size_info.total_on_disk_size);
+          storage_metadata->set_vector_index_disk_size(on_disk_size_info.vector_index_disk_size);
           if (FLAGS_tserver_heartbeat_metrics_add_leader_info) {
             auto consensus_result = tablet_peer->GetRaftConsensus();
             if (consensus_result) {

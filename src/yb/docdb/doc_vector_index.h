@@ -141,6 +141,7 @@ class DocVectorIndex {
   virtual Result<bool> HasVectorId(const vector_index::VectorId& vector_id) const = 0;
   virtual Status Destroy() = 0;
   virtual Result<size_t> TotalEntries() const = 0;
+  virtual uint64_t OnDiskSize() const = 0;
 
   virtual void StartShutdown() = 0;
   virtual void CompleteShutdown() = 0;
