@@ -20,12 +20,13 @@ To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. This flag is an alias for the `enable_parallel_append` PostgreSQL parameter. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | false |
-| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | false |
-| yb_enable_parallel_scan_hash | Enables the planner's use of parallel queries for hash-sharded tables. | false |
-| yb_enable_parallel_scan_range | Enables the planner's use of parallel queries for range-sharded tables. | false |
-| yb_parallel_range_rows | The number of rows to plan per parallel worker. | 0 |
-| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. Numeric with memory unit (B, kB, MB, or GB). | 1MB |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans in YugabyteDB. | `false` |
+| enable_parallel_append | PostgreSQL parameter for enabling the planner's use of parallel append plans. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | `true` |
+| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | `false` |
+| yb_enable_parallel_scan_hash | Enables the planner's use of parallel queries for hash-sharded tables. | `false` |
+| yb_enable_parallel_scan_range | Enables the planner's use of parallel queries for range-sharded tables. | `false` |
+| yb_parallel_range_rows | The number of rows to plan per parallel worker. | `0` |
+| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. Numeric with memory unit (B, kB, MB, or GB). | `1MB` |
 
 In addition, you can use the following PostgreSQL configuration parameters to configure parallel queries:
 
