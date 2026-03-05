@@ -12,7 +12,7 @@ type: docs
 ---
 
 {{< note title="Not compatible with v2025.1.0.0" >}}
-The postgres_fdw extension (supported in v2024.2 and earlier) is only available in v2025.1.1.0 and later.
+The postgres_fdw extension (supported in v2024.2 and earlier) is only available in v2025.1.1.1 and later.
 {{< /note >}}
 
 The [postgres_fdw](https://www.postgresql.org/docs/15/postgres-fdw.html) module provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers.
