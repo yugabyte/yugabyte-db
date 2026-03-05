@@ -90,10 +90,13 @@
 // Yugabyte DETAIL logging
 ////////////////////////////////////////////////////////////////////////////////
 
+// Prefix string for DETAIL level logs, shared across YB and RocksDB logging.
+#define YB_DETAIL_LOG_PREFIX "DETAIL: "
+
 // DETAIL logs show up as regular INFO messages with a "DETAIL: " prefix.
 // This allows you to use LOG_DETAIL syntax while still using glog's INFO level.
 // Ex: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: Some DETAIL message
-#define ADD_DETAIL(log_expr) log_expr << "DETAIL: "
+#define ADD_DETAIL(log_expr) log_expr << YB_DETAIL_LOG_PREFIX
 
 #define LOG_DETAIL ADD_DETAIL(LOG(INFO))
 #define LOG_DETAIL_IF(condition) ADD_DETAIL(LOG_IF(INFO, condition))
@@ -362,7 +365,7 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define LOG_WITH_PREFIX_DETAIL ADD_DETAIL(LOG(INFO)) << LogPrefix()
 #define LOG_WITH_FUNC_DETAIL ADD_DETAIL(LOG(INFO)) << __func__ << ": "
 #define LOG_WITH_PREFIX_AND_FUNC_DETAIL \
-  ADD_DETAIL(LOG(severity)) << LogPrefix() << __func__ << ": "
+  ADD_DETAIL(LOG(INFO)) << LogPrefix() << __func__ << ": "
 
 #define VLOG_WITH_PREFIX(verboselevel) VLOG(verboselevel) << LogPrefix()
 #define VLOG_WITH_FUNC(verboselevel) VLOG(verboselevel) << __func__ << ": "

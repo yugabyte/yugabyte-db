@@ -1053,7 +1053,7 @@ Status CompactionJob::InstallCompactionResults(
 
   {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacted %s => %" PRIu64 " bytes",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary), compact_->total_bytes);
@@ -1068,7 +1068,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX_DETAIL << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1314,14 +1314,14 @@ void CompactionJob::LogCompaction() {
   // we're not logging
   if (db_options_.info_log_level <= InfoLogLevel::INFO_LEVEL) {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacting %s, score %.2f", cfd->GetName().c_str(),
         job_id_, compaction->InputLevelSummary(&inputs_summary),
         compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
     RLOG(
-        InfoLogLevel::INFO_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
+        InfoLogLevel::DETAIL_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
         cfd->GetName().c_str(), scratch,
         compaction->skip_corrupt_data_blocks_unsafe()
             ? " WILL DELETE ANY CORRUPT DATA BLOCKS IF FOUND"
