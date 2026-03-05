@@ -1179,6 +1179,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
       userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
       userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
+      userIntent.enableYEDIS = false; // Always disable YEDIS
       userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
       userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
       userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
