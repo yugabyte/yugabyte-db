@@ -209,7 +209,7 @@ Because xCluster does not replicate sequence data, you need to manually adjust t
 
 For example, if you have a SERIAL column in a table and the highest value in that column after failover is 500, you need to set the sequence associated with that column to a value higher than 500, such as 501. This ensures that new writes on universe B do not conflict with existing data.
 
-Use the [nextval](../../../../api/ysql/exprs/func_nextval/) function to set the sequence next values appropriately.
+Use the [nextval](../../../../api/ysql/exprs/sequence_functions/func_nextval/) function to set the sequence next values appropriately.
 
 ### Switch applications to B
 

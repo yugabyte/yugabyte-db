@@ -6,7 +6,7 @@ description: Set and return the value for the specified sequence.
 menu:
   v2024.1_api:
     identifier: api-ysql-exprs-setval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 type: docs
 ---
 
@@ -44,11 +44,12 @@ Set `is_called` to `true` or `false`.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
 Use `setval` with `is_called` set to `true`:
+
 ```sql
 yugabyte=# SELECT setval('s', 21);
 yugabyte=# SELECT setval('s', 21, true);  -- the same command as above
@@ -63,6 +64,7 @@ yugabyte=# SELECT nextval('s');
 ```
 
 Use `setval` with `is_called` set to `false`:
+
 ```sql
 yugabyte=# SELECT setval('s', 21, false);
 yugabyte=# SELECT nextval('s');
@@ -75,16 +77,11 @@ yugabyte=# SELECT nextval('s');
 (1 row)
 ```
 
-
 {{< note title="Note" >}}
 `setval` changes are immediately visible in other transactions and are not rolled back if the transaction is rolled back.
 {{< /note >}}
 
-
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence)
-- [`currval()`](../func_currval)
-- [`nextval()`](../func_nextval)
-- [`lastval()`](../func_lastval)
+- [CREATE SEQUENCE](../../../the-sql-language/statements/ddl_create_sequence)
+- [DROP SEQUENCE](../../../the-sql-language/statements/ddl_drop_sequence/)
