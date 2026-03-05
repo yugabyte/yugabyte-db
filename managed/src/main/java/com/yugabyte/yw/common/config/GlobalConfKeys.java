@@ -1670,6 +1670,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max Number of Parallel cluster consistency checks",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> connectivityCheckParallelism =
+      new ConfKeyInfo<>(
+          "yb.health.connectivity_check_parallelism",
+          ScopeType.GLOBAL,
+          "Max Number of Parallel connectivity checks",
+          "Max Number of Parallel connectivity checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcGroupClaim =
       new ConfKeyInfo<>(
           "yb.security.oidc_group_claim",
@@ -2061,4 +2069,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum time to wait for cleaning up collected files from DB nodes",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConnectivityMetricCollection =
+      new ConfKeyInfo<>(
+          "yb.metrics.enable_connectivity_metric_collection",
+          ScopeType.GLOBAL,
+          "Enable Connectivity Metric Collection",
+          "Enable connectivity metric collection for all universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

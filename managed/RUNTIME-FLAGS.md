@@ -197,6 +197,7 @@
 | "Allow Local Login with SSO" | "yb.security.allow_local_login_with_sso" | "GLOBAL" | "Allow local user login with SSO enabled. when disabled, only superAdmin can login using local credentials." | "Boolean" |
 | "Node Agent Server Log Level Per Request" | "yb.node_agent.server.request_log_level" | "GLOBAL" | "Log level for Node Agent server per request (0 for debug, -1 for default)" | "Integer" |
 | "Disable Platform HA Restore Transaction" | "yb.ha.disable_platform_ha_restore_transaction" | "GLOBAL" | "Disable running platform HA restore operations in a transaction" | "Boolean" |
+| "Enable Connectivity Metric Collection" | "yb.metrics.enable_connectivity_metric_collection" | "GLOBAL" | "Enable connectivity metric collection for all universes" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

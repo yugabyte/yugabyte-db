@@ -695,6 +695,29 @@ templates:
       summary: >-
         Validation of KMS Config '{{ $labels.kms_config_name }}' failed for universe '{{ $labels.source_name }}'
 
+  UNIVERSE_TSERVER_CONNECTIVITY_ERROR:
+    name: Universe TServer Connectivity Error
+    description: TServer connectivity check reported one or more nodes unreachable
+    queryTemplate: count by (universe_uuid) (min_over_time(ybp_universe_node_connectivity_status{universe_uuid = "__universeUuid__"}[1h])
+      < 1) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "min_over_time(ybp_universe_node_connectivity_status{universe_uuid='{{ $labels.universe_uuid }}'}[1h]) < 1"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} node(s) are unreachable in connectivity check for universe '{{ $labels.source_name }}'.  Affected nodes: {{ $labels.affected_node_names }}
+
   HEALTH_CHECK_ERROR:
     name: Health Check Error
     description: Failed to perform health check

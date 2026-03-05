@@ -171,6 +171,8 @@ public class HealthChecker {
 
   private final ClusterConsistencyChecker clusterConsistencyChecker;
 
+  private final ConnectivityChecker connectivityChecker;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -201,6 +203,7 @@ public class HealthChecker {
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createConsistencyCheckExecutor(platformExecutorFactory, confGetter),
+        createConnectivityCheckExecutor(platformExecutorFactory, confGetter),
         fileHelperService,
         maintenanceService,
         ybClientService);
@@ -220,6 +223,7 @@ public class HealthChecker {
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
       ExecutorService consistencyCheckExecutor,
+      ExecutorService connectivityCheckExecutor,
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
       YBClientService ybClientService) {
@@ -239,6 +243,9 @@ public class HealthChecker {
     this.maintenanceService = maintenanceService;
     this.clusterConsistencyChecker =
         new ClusterConsistencyChecker(consistencyCheckExecutor, confGetter, ybClientService);
+    this.connectivityChecker =
+        new ConnectivityChecker(
+            connectivityCheckExecutor, confGetter, ybClientService, metricService);
   }
 
   public void initialize() {
@@ -253,6 +260,11 @@ public class HealthChecker {
         Duration.ZERO /* initialDelay */,
         Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
         clusterConsistencyChecker::processAll);
+    platformScheduler.schedule(
+        connectivityChecker.getClass().getSimpleName(),
+        Duration.ZERO /* initialDelay */,
+        Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
+        connectivityChecker::processAll);
   }
 
   // The interval at which the checker will run.
@@ -587,6 +599,17 @@ public class HealthChecker {
 
     return executorFactory.createFixedExecutor(
         "Health-Check-Cluster-Consistency-Pool", numParallelism, namedThreadFactory);
+  }
+
+  private static ExecutorService createConnectivityCheckExecutor(
+      PlatformExecutorFactory executorFactory, RuntimeConfGetter confGetter) {
+    int numParallelism = confGetter.getGlobalConf(GlobalConfKeys.connectivityCheckParallelism);
+
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Health-Check-Connectivity-Pool-%d").build();
+
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Connectivity-Pool", numParallelism, namedThreadFactory);
   }
 
   public CompletableFuture<Void> runHealthCheck(

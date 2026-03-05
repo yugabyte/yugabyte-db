@@ -119,6 +119,10 @@ public enum PlatformMetrics {
       "More recent OS version is recommended for this universe", Unit.STATUS, false),
   UNIVERSE_RELEASE_FILES_STATUS(
       "Local filepath for universe DB version is missing", Unit.STATUS, false),
+  UNIVERSE_NODE_CONNECTIVITY_STATUS(
+      "TServer connectivity check status for a node (1 = reachable, 0 = unreachable)", Unit.STATUS),
+  UNIVERSE_CONNECTIVITY_METRIC_PROCESSOR_STATUS(
+      "Connectivity metric processor status", Unit.STATUS),
   // XCluster
   XCLUSTER_METRIC_PROCESSOR_STATUS("xCluster metrics processor status", Unit.STATUS),
   XCLUSTER_TABLE_STATUS("XCluster table status", Unit.STATUS),
