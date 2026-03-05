@@ -600,10 +600,8 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     status = PQstatus(result.get());
     if (status == CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG ("
-                << conn_str_for_log
-                << "), time taken: "
-                << MonoDelta(CoarseMonoClock::Now() - start);
+      VLOG(1) << "Connected to PG (" << conn_str_for_log
+              << "), time taken: " << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
     if (status == CONNECTION_BAD) {
