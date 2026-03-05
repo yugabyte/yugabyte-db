@@ -109,6 +109,3 @@ nextval
 
 - [CREATE SEQUENCE](../../../the-sql-language/statements/ddl_create_sequence)
 - [DROP SEQUENCE](../../../the-sql-language/statements/ddl_drop_sequence/)
-- [lastval()](../func_lastval)
-- [nextval()](../func_nextval)
-- [setval()](../func_setval)
