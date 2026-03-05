@@ -4,9 +4,9 @@ headerTitle: currval()
 linkTitle: currval()
 description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
 menu:
-  v2024.1_api:
+  v2024.2_api:
     identifier: api-ysql-exprs-currval
-    parent: api-ysql-exprs
+    parent: sequence-functions
 type: docs
 ---
 
@@ -30,7 +30,7 @@ Specify the name of the sequence.
 yugabyte=# CREATE SEQUENCE s;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
@@ -40,7 +40,7 @@ Call `nextval()`.
 yugabyte=# SELECT nextval('s');
 ```
 
-```
+```output
  nextval
 ---------
        1
@@ -51,7 +51,7 @@ yugabyte=# SELECT nextval('s');
 yugabyte=# SELECT currval('s');
 ```
 
-```
+```output
  currval
 ---------
        1
@@ -64,7 +64,7 @@ Call `currval()` before `nextval()` is called.
 yugabyte=# CREATE SEQUENCE s2;
 ```
 
-```
+```output
 CREATE SEQUENCE
 ```
 
@@ -72,14 +72,11 @@ CREATE SEQUENCE
 SELECT currval('s2');
 ```
 
-```
+```output
 ERROR:  currval of sequence "s2" is not yet defined in this session
 ```
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence/)
-- [`lastval()`](../func_lastval)
-- [`nextval()`](../func_nextval)
-- [`setval()`](../func_setval)
+- [CREATE SEQUENCE](../../../the-sql-language/statements/ddl_create_sequence)
+- [DROP SEQUENCE](../../../the-sql-language/statements/ddl_drop_sequence/)
