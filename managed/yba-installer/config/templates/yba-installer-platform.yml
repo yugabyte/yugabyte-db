@@ -273,6 +273,7 @@ services:
     fileName: "{{ .UpgradePrecheckScriptPath }}"
     fileMode: "755"
     contents: |
+      #!/bin/bash
       export JAVA_HOME="{{ installVersionDir }}/jdk-17.0.7+7-jre/"
       export YB_OIDC_SECRET="{{ yamlPath "platform.ybOidcSecret" }}"
       export PLATFORM_APP_SECRET="{{ yamlPath "platform.appSecret" }}"
