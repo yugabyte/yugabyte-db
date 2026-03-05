@@ -12,11 +12,11 @@ import (
 type Executor struct {
 	ctx       context.Context
 	iniConfig *config.INIConfig
-	args      config.Args
+	args      *config.Args
 	commands  map[string]config.CommandFactory
 }
 
-func NewExecutor(iniConfig *config.INIConfig, args config.Args) *Executor {
+func NewExecutor(iniConfig *config.INIConfig, args *config.Args) *Executor {
 	return &Executor{
 		iniConfig: iniConfig,
 		args:      args,
