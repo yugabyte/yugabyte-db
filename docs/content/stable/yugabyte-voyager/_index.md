@@ -26,7 +26,7 @@ Use YugabyteDB Voyager to manage end-to-end database migration, including cluste
   title="Get Started"
   description="Install YugabyteDB Voyager and perform an end-to-end offline migration with our quick start guide."
   imageTransparent=true
-  buttonText="Quick start"
+  buttonText="Quick Start"
   buttonUrl="quickstart/"
   imageTransparent=true
   imageAlt="YugabyteDB Voyager" imageUrl="/images/homepage/voyager-transparent.svg"

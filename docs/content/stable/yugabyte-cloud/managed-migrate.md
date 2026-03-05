@@ -42,7 +42,7 @@ When running Voyager commands, replace `<migration-config.yaml>` with the full p
 
 ### Assess
 
-After your source and target databases are configured, run a migration assessment using the command provided on the **Assess** page.
+After installing Voyager and configuring your source and target databases, run a migration assessment using the Voyager command provided on the **Assess** page.
 
 The `assess-migration` command generates a detailed assessment report with:
 
@@ -65,16 +65,22 @@ Address the recommendations in the report:
 
 Schema migration is performed in three steps:
 
-1. Export the schema from the source database using the command provided under **Export Schema** on the **Migrate Schema** page.
+1. **Export Schema**.
 
-1. Analyze the exported schema using the command provided under **Analyze Schema** on the **Migrate Schema** page.
+    Export the schema from the source database using the Voyager command provided under **Export Schema** on the **Migrate Schema** page.
+
+1. **Analyze Schema**.
+
+    Analyze the exported schema using the Voyager command provided under **Analyze Schema** on the **Migrate Schema** page.
 
     When the analysis is complete, review schema analysis report:
 
     - Review any manual changes recommended
     - Modify to the exported schema files if needed
 
-1. Import the exported schema using the command provided under **Import Schema** on the **Migrate Schema** page.
+1. **Import Schema**.
+
+    Import the exported schema using the Voyager command provided under **Import Schema** on the **Migrate Schema** page.
 
 ![Migrate Schema](/images/yb-cloud/migrate-hub-schema.png)
 
@@ -82,9 +88,13 @@ Schema migration is performed in three steps:
 
 Data migration is performed in two steps:
 
-1. Export the data from the source database using the command provided under **Export Data** on the **Migrate Schema** page.
+1. **Data Export**.
 
-1. Import the exported data using the command provided under **Import Data** on the **Migrate Schema** page.
+    Export the data from the source database using the Voyager command provided under **Data Export** on the **Migrate Schema** page.
+
+1. **Data Import**.
+
+    Import the exported data using the Voyager command provided under **Data Import** on the **Migrate Schema** page.
 
 ![Migrate Data](/images/yb-cloud/migrate-hub-data.png)
 

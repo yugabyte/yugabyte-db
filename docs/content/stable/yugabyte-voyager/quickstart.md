@@ -148,7 +148,7 @@ Do the following:
 
 1. In YugabyteDB Aeon, navigate to your cluster.
 
-1. Click **Connect** and connect to your cluster using [cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-a-yugabytedb-aeon-cluster) when you created your cluster.
+1. Click **Connect** and connect to your cluster using [cloud shell](/stable/yugabyte-cloud/cloud-connect/connect-client-shell/#connect-using-a-client-shell) (YSQL API). Use the credentials [you downloaded](#create-yugabytedb-aeon-cluster) when you created your cluster.
 
     The ysqlsh prompt appears and is ready to use.
 
