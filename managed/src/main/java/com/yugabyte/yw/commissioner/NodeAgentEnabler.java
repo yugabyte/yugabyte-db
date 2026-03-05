@@ -490,16 +490,18 @@ public class NodeAgentEnabler {
               // Go to the next universe.
             } catch (CancellationException e) {
               log.warn(
-                  "Installer cancelled for universe {}({})",
+                  "Installer cancelled for universe {}({}) - {}",
                   installer.getUniverseName(),
-                  installer.getUniverseUuid());
+                  installer.getUniverseUuid(),
+                  e.getMessage());
               installer.cancelAll();
               // Go to the next universe.
             } catch (InterruptedException e) {
               log.warn(
-                  "Wait interrupted for installer for universe {}({})",
+                  "Wait interrupted for installer for universe {}({}) - {}",
                   installer.getUniverseName(),
-                  installer.getUniverseUuid());
+                  installer.getUniverseUuid(),
+                  e.getMessage());
               installer.cancelAll();
               // Go to the next universe.
             } catch (TimeoutException e) {
@@ -513,10 +515,11 @@ public class NodeAgentEnabler {
                 continue;
               }
               log.error(
-                  "Installation timed out for universe {}({}) after {} secs",
+                  "Installation timed out for universe {}({}) after {} secs - {}",
                   installer.getUniverseName(),
                   installer.getUniverseUuid(),
-                  timeout.getSeconds());
+                  timeout.getSeconds(),
+                  e.getMessage());
               // Cancel expired installer and go to next customer.
               installer.cancelAll();
               // Go to next universe.
@@ -900,6 +903,13 @@ public class NodeAgentEnabler {
                         },
                         nodeInstallerExecutor);
               } catch (RejectedExecutionException e) {
+                log.warn(
+                    "Failed to submit installer for {}({}) in universe {}({}) - {}",
+                    n.getNodeName(),
+                    nodeIp,
+                    universe.getName(),
+                    universe.getUniverseUUID(),
+                    e.getMessage());
                 // Installer not submitted, create a failed future.
                 future = CompletableFuture.completedFuture(false);
                 latch.countDown();
