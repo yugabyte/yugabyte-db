@@ -78,13 +78,11 @@ class PosixLogger : public Logger {
   }
   virtual void Flush() override {
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
-    {
-      bool expected_flush_pending = true;
-      // TODO: use a weaker memory order?
-      if (flush_pending_.compare_exchange_strong(expected_flush_pending, false)) {
-        fsync(fd_);
-      }
-    }
+    // With raw write() syscalls, data goes directly to OS kernel buffers — there is no user-space
+    // stdio buffer to flush. We intentionally avoid fsync() here to prevent forcing data to disk
+    // every 5 seconds per logger, which would be a significant perf regression in high-fd-count
+    // scenarios (see also win_logger.cc which documents this same reasoning).
+    flush_pending_.store(false);
     last_flush_micros_ = env_->NowMicros();
   }
 
