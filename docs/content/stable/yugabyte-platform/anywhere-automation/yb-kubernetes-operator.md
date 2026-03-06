@@ -30,12 +30,12 @@ The following additional CRDs support day 2 operations.
 
 | CRD | Description |
 | :--- | :--- |
+| [Provider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
 | [Release](#add-a-different-software-release-of-yugabytedb) | Run multiple releases of YugabyteDB and upgrade the software in a YBA universe. |
 | [SupportBundle](#support-bundle) | Collect logs when a universe fails. |
 | [StorageConfig](#backup-and-restore) | Configure backup destinations. |
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
-| [Provider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
 
 For details of each CRD, run `kubectl explain` on the CR.
 
@@ -261,6 +261,84 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 
 ## Example workflows
 
+### Create a provider
+
+Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
+
+```sh
+kubectl apply provider-demo.yaml -n yb-platform
+```
+
+```yaml
+# provider-demo.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBProvider
+metadata:
+  name: test-provider
+spec:
+  cloudInfo:
+    kubernetesProvider: gke
+    kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+  regions:
+    - code: us-west1
+      zones:
+        - code: us-west1-a
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-b
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-c
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+```
+
+You can then reference this provider in a [Universe CR with placement information](#create-a-universe-with-placement-information) by setting `spec.providerName` to the provider's `metadata.name` (for example, `test-provider`).
+
+#### Using a custom kubeconfig
+
+To use a custom kubeconfig for the provider, specify it in either top-level `spec.cloudInfo` or in zone-level `cloudInfo`. The kubeconfig content must be stored in a Kubernetes secret with the key `kubeconfig`.
+
+1. Create the secret:
+
+    ```sh
+    kubectl create secret generic test-kubeconfig -n yb-operator --from-file=kubeconfig=/tmp/kubeconfig.conf
+    ```
+
+1. Reference the secret in the YBProvider manifest via `kubeConfigSecret`:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBProvider
+    metadata:
+      name: test-provider
+    spec:
+      cloudInfo:
+        kubernetesProvider: gke
+        kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+        kubeConfigSecret:
+          name: test-kubeconfig
+          namespace: yb-operator
+      regions:
+        - code: us-west1
+          zones:
+            - code: us-west1-a
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-b
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-c
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+    ```
+
 ### Create a universe
 
 Use the YBUniverse CRD to create a universe using the `kubectl apply` command:
@@ -371,84 +449,6 @@ spec:
           cpu: 3
           memory: 8Gi
 ```
-
-### Create a provider
-
-Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
-
-```sh
-kubectl apply provider-demo.yaml -n yb-platform
-```
-
-```yaml
-# provider-demo.yaml
-apiVersion: operator.yugabyte.io/v1alpha1
-kind: YBProvider
-metadata:
-  name: test-provider
-spec:
-  cloudInfo:
-    kubernetesProvider: gke
-    kubernetesImageRegistry: quay.io/yugabyte/yugabyte
-  regions:
-    - code: us-west1
-      zones:
-        - code: us-west1-a
-          cloudInfo:
-            kubernetesStorageClass: yb-standard
-            kubeNamespace: anabaria-devspace
-        - code: us-west1-b
-          cloudInfo:
-            kubernetesStorageClass: yb-standard
-            kubeNamespace: anabaria-devspace
-        - code: us-west1-c
-          cloudInfo:
-            kubernetesStorageClass: yb-standard
-            kubeNamespace: anabaria-devspace
-```
-
-You can then reference this provider in a [Universe CR with placement information](#create-a-universe-with-placement-information) by setting `spec.providerName` to the provider's `metadata.name` (for example, `test-provider`).
-
-#### Using a custom kubeconfig
-
-To use a custom kubeconfig for the provider, specify it in either top-level `spec.cloudInfo` or in zone-level `cloudInfo`. The kubeconfig content must be stored in a Kubernetes secret with the key `kubeconfig`.
-
-1. Create the secret:
-
-    ```sh
-    kubectl create secret generic test-kubeconfig -n yb-operator --from-file=kubeconfig=/tmp/kubeconfig.conf
-    ```
-
-1. Reference the secret in the YBProvider manifest via `kubeConfigSecret`:
-
-    ```yaml
-    apiVersion: operator.yugabyte.io/v1alpha1
-    kind: YBProvider
-    metadata:
-      name: test-provider
-    spec:
-      cloudInfo:
-        kubernetesProvider: gke
-        kubernetesImageRegistry: quay.io/yugabyte/yugabyte
-        kubeConfigSecret:
-          name: test-kubeconfig
-          namespace: yb-operator
-      regions:
-        - code: us-west1
-          zones:
-            - code: us-west1-a
-              cloudInfo:
-                kubernetesStorageClass: yb-standard
-                kubeNamespace: anabaria-devspace
-            - code: us-west1-b
-              cloudInfo:
-                kubernetesStorageClass: yb-standard
-                kubeNamespace: anabaria-devspace
-            - code: us-west1-c
-              cloudInfo:
-                kubernetesStorageClass: yb-standard
-                kubeNamespace: anabaria-devspace
-    ```
 
 ### Add a different software release of YugabyteDB
 

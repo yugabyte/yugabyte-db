@@ -22,7 +22,7 @@ YugabyteDB Anywhere supports both horizontal and vertical scaling of your univer
 
 -> For information on changing Kubernetes overrides, refer to [Edit Kubernetes overrides](../edit-helm-overrides/).
 
--> For information on managing Kubernetes universes using the YugabyteDB Anywhere Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
+-> For information on managing Kubernetes universes using the YugabyteDB Kubernetes Operator, refer to [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/).
 
 ## Edit a universe
 
