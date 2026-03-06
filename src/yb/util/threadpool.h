@@ -89,7 +89,7 @@ class Runnable {
         label " - run time event stats, microseconds.")
 
 #define THREAD_POOL_METRICS_INSTANCE(entity, name) { \
-      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity), \
+      BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_length)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _queue_time_us)).Instantiate(entity), \
       BOOST_PP_CAT(METRIC_, BOOST_PP_CAT(name, _run_time_us)).Instantiate(entity) \
     }
