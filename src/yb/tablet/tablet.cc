@@ -1878,7 +1878,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
@@ -3310,10 +3310,10 @@ void SleepToThrottleRate(
 
 }  // namespace
 
-Result<RequestScope> Tablet::CreateRequestScope() {
+Result<RequestScope> Tablet::CreateRequestScope(bool allow_when_closing) {
   RequestScope scope;
   if (transaction_participant_) {
-    return RequestScope::Create(transaction_participant_.get());
+    return RequestScope::Create(transaction_participant_.get(), allow_when_closing);
   }
   return scope;
 }

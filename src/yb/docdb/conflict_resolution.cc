@@ -365,7 +365,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
  protected:
   Status SetRequestScope() {
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(&status_manager()));
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(&status_manager(), false));
     return Status::OK();
   }
 

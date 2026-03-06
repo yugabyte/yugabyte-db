@@ -25,8 +25,10 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -37,6 +39,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/server_main_util.h"
@@ -49,6 +52,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
@@ -1957,6 +1961,90 @@ TEST_F_EX(QLTransactionTest, TransactionsEarlyLoadedTest, QLTransactionTestSingl
   ASSERT_OK(cluster_->Start());
   CheckAllTabletsRunning();
   AssertNoRunningTransactions();
+}
+
+TEST_F_EX(QLTransactionTest, WriteBatchDuringShutdown, QLTransactionTestSingleTablet) {
+  tablet::TabletPeer* follower;
+  {
+    auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), table_->name().table_name(), ListPeersFilter::kNonLeaders));
+    ASSERT_GE(peers.size(), 1);
+    follower = peers.front().get();
+  }
+  ASSERT_NE(follower, nullptr);
+  auto follower_uuid = follower->permanent_uuid();
+  auto tablet_id = follower->tablet_id();
+
+  auto& sync_point = *SyncPoint::GetInstance();
+  CountDownLatch start_shutdown_latch(1);
+  CountDownLatch write_batch_latch(1);
+  sync_point.SetCallBack(
+      "TransactionParticipant::Impl::StartShutdown",
+      [follower, &start_shutdown_latch](void* arg) {
+    auto* context = static_cast<tablet::TransactionParticipantContext*>(arg);
+    if (implicit_cast<tablet::TransactionParticipantContext*>(follower) == context) {
+      LOG(INFO) << "TransactionParticipant::Impl::StartShutdown";
+      start_shutdown_latch.CountDown();
+    }
+  });
+  OpId apply_op_id;
+  sync_point.SetCallBack(
+      "RaftConsensus::UpdateReplica",
+      [follower, &write_batch_latch, &start_shutdown_latch, &apply_op_id](void* arg) {
+    auto* request = static_cast<consensus::LWConsensusRequestPB*>(arg);
+    if (request->dest_uuid() != follower->permanent_uuid() ||
+        request->tablet_id() != follower->tablet_id()) {
+      return;
+    }
+    LOG(INFO) << "RaftConsensus::UpdateReplica: " << request->ShortDebugString();
+    for (const auto& op : request->ops()) {
+      if (op.op_type() == consensus::UPDATE_TRANSACTION_OP &&
+          op.transaction_state().status() == TransactionStatus::APPLYING) {
+        apply_op_id = OpId::FromPB(op.id());
+      }
+    }
+    if (!apply_op_id.empty() && request->committed_op_id().index() == apply_op_id.index) {
+      write_batch_latch.CountDown();
+      LOG(INFO) << "RaftConsensus::UpdateReplica: " << request->ShortDebugString();
+      start_shutdown_latch.Wait();
+      LOG(INFO) << "RaftConsensus::UpdateReplica: done";
+    } else if (request->committed_op_id().index() > 4) {
+      request->mutable_committed_op_id()->set_index(4);
+    }
+  });
+
+  sync_point.EnableProcessing();
+
+  TestThreadHolder thread_holder;
+
+  CountDownLatch latch(1);
+  thread_holder.AddThread([this, &latch] {
+    auto txn = CreateTransaction();
+    ASSERT_OK(WriteRows(CreateSession(txn)));
+    ASSERT_OK(txn->CommitFuture().get());
+    latch.CountDown();
+  });
+  write_batch_latch.Wait();
+
+  LOG(INFO) << "RESTART BEGIN";
+  auto mini_tserver = cluster_->find_tablet_server(follower_uuid);
+  mini_tserver->Shutdown();
+  LOG(INFO) << "RESTART MID";
+  sync_point.DisableProcessing();
+  follower = nullptr;
+  ASSERT_OK(mini_tserver->Start());
+  LOG(INFO) << "RESTART END";
+  latch.Wait();
+  {
+    auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), table_->name().table_name(), ListPeersFilter::kLeaders));
+    ASSERT_EQ(peers.size(), 1);
+    LOG(INFO) << "STEP DOWN";
+    ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, follower_uuid));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  LOG(INFO) << "VERIFY";
+  ASSERT_NO_FATALS(VerifyRows(CreateSession()));
 }
 
 TEST_F(QLTransactionTest, DeleteTableDuringWrite) {

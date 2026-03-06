@@ -1331,6 +1331,33 @@ Status StepDown(
   return Status::OK();
 }
 
+Status TransferLeadership(
+    MiniCluster* cluster, const TabletId& tablet_id, const TabletServerId& new_leader_uuid,
+    MonoDelta timeout) {
+  auto deadline = MonoTime::Now() + timeout;
+  while (MonoTime::Now() < deadline) {
+    auto peers = VERIFY_RESULT(ListTabletPeers(cluster, tablet_id));
+    tablet::TabletPeerPtr leader;
+    for (const auto& peer : peers) {
+      if (VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+              consensus::LeaderStatus::LEADER_AND_READY) {
+        leader = peer;
+      }
+    }
+    if (!leader) {
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+    if (leader->permanent_uuid() == new_leader_uuid) {
+      return Status::OK();
+    }
+    WARN_NOT_OK(StepDown(leader, new_leader_uuid, ForceStepDown::kTrue, deadline - MonoTime::Now()),
+                "Step down failed");
+  }
+  return STATUS_FORMAT(
+      TimedOut, "Timed out to transfer leaders of $0 to $1", tablet_id, new_leader_uuid);
+}
+
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
   return std::thread([cluster, interval, stop_flag] {
