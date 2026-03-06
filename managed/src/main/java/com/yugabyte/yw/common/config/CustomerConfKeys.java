@@ -258,4 +258,24 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables Earlyoom Installation on Nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.enabled",
+          ScopeType.CUSTOMER,
+          "Enable PA Collector auto-registration on universe creation",
+          "When enabled, newly created universes are automatically registered with the "
+              + "first PA Collector for the customer.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.advanced_observability",
+          ScopeType.CUSTOMER,
+          "Enable advanced observability for PA auto-registration",
+          "When PA auto-registration is enabled, also enable advanced observability "
+              + "(metrics export to Prometheus) for the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

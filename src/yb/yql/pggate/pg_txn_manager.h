@@ -144,7 +144,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status AcquireObjectLock(
       SetupPerformOptionsAccessorTag tag, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
   struct DdlState {
     bool has_docdb_schema_changes = false;
     bool force_catalog_modification = false;

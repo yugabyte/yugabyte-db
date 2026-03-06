@@ -362,7 +362,7 @@ public class AppInit {
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
 
-        embeddedCollectorInitializer.initialize();
+        embeddedCollectorInitializer.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

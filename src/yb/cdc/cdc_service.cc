@@ -258,7 +258,7 @@ DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 METRIC_DEFINE_entity(xcluster);
 
@@ -5204,7 +5204,7 @@ void CDCServiceImpl::InitVirtualWALForCDC(
   }
 
   std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode;
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     for (const auto& e : req->oid_to_relfilenode()) {
       oid_to_relfilenode.emplace(e.first, e.second);
     }
@@ -5480,7 +5480,7 @@ void CDCServiceImpl::UpdatePublicationTableList(
   }
 
   std::unordered_map<uint32_t, uint32_t> new_oid_to_relfilenode;
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     for (const auto& e : req->oid_to_relfilenode()) {
       new_oid_to_relfilenode.emplace(e.first, e.second);
     }

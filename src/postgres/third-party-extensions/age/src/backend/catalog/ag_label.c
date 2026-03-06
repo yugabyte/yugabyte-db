@@ -126,7 +126,8 @@ void delete_label(Oid relation)
                  errmsg("label (relation=%u) does not exist", relation)));
     }
 
-    CatalogTupleDelete(ag_label, &tuple->t_self);
+    /* YB: pass full tuple instead of &tuple->t_self for YB catalog delete */
+    CatalogTupleDelete(ag_label, tuple);
 
     systable_endscan(scan_desc);
     table_close(ag_label, RowExclusiveLock);

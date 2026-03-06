@@ -2098,7 +2098,7 @@ public class NodeManager extends DevopsBase {
           }
 
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (!taskParam.remotePackagePath.isEmpty()) {
+            if (!StringUtils.isEmpty(taskParam.remotePackagePath)) {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }

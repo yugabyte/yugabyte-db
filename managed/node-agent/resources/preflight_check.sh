@@ -22,6 +22,7 @@ ssh_port=""
 package_manager_cmd=""
 is_aarch64=false
 is_debian=false
+is_sles=false
 master_http_port="7000"
 master_rpc_port="7100"
 tserver_http_port="9000"
@@ -225,7 +226,9 @@ check_yugabyte_user_home_if_exists() {
 check_packages_installed() {
 
   check_package_installed "openssl" # Required.
-  check_package_installed "policycoreutils" # Required.
+  if [[ "$is_sles" = false ]]; then
+    check_package_installed "policycoreutils" # Required (not available on SLES).
+  fi
   check_package_installed "rsync" # Optional.
   check_package_installed "xxhash" # Optional.
 
@@ -446,8 +449,10 @@ setup() {
     package_manager_cmd="yum list installed"
   elif [ -n "$(command -v apt-get)" ]; then
     package_manager_cmd="apt list --installed"
+  elif [ -n "$(command -v zypper)" ]; then
+    package_manager_cmd="zypper search --installed-only"
   else
-    err_msg "Yum and Apt do not exist"
+    err_msg "Yum, Apt, and Zypper do not exist"
     exit 1
   fi
 
@@ -457,10 +462,16 @@ setup() {
     is_aarch64=true
   fi
 
+  os_id=$(grep '^ID=' /etc/os-release | cut -d= -f2 \
+        | sed -e 's/^"//' -e 's/"$//' | tr '[:upper:]' '[:lower:]')
   # Determine whether we are using Debian linux distribution.
-  if [[ $(grep '^ID=' /etc/os-release |  cut -d= -f2 |
-        sed -e 's/^"//' -e 's/"$//') = 'debian' ]]; then
+  if [[ "$os_id" = 'debian' ]]; then
     is_debian=true
+  fi
+
+  # Determine whether we are using SLES/SUSE linux distribution.
+  if [[ "$os_id" = 'sles' || "$os_id" = 'suse' || "$os_id" = 'opensuse' ]]; then
+    is_sles=true
   fi
 }
 

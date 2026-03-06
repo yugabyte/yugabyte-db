@@ -171,7 +171,7 @@ DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_cdcsdk_stream_tables_without_primary_key);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -372,7 +372,7 @@ Status CatalogManager::LoadXReplStream() {
   for (const auto& tablet : hidden_tablets_) {
     TabletDeleteRetainerInfo delete_retainer;
     CDCSDKPopulateDeleteRetainerInfoForTabletDrop(*tablet, delete_retainer);
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
       CDCSDKPopulateDeleteRetainerInfoForTableDrop(*tablet->table(), delete_retainer);
     }
     RecordCDCSDKHiddenTablets({tablet}, delete_retainer);
@@ -4789,6 +4789,30 @@ bool CatalogManager::IsTablePartOfCDCSDK(
   return false;
 }
 
+bool CatalogManager::IsTablePartOfCDCStreamUsingPubRefresh(const TableId& table_id) const {
+  DCHECK(xrepl_maps_loaded_);
+  auto* stream_ids = FindOrNull(cdcsdk_tables_to_stream_map_, table_id);
+  if (stream_ids) {
+    for (const auto& stream_id : *stream_ids) {
+      auto stream_info = FindPtrOrNull(cdc_stream_map_, stream_id);
+      if (stream_info) {
+        auto s = stream_info->LockForRead();
+
+        // This function should only be called for tables with logical replication streams.
+        DCHECK(s->pb.has_cdcsdk_ysql_replication_slot_name());
+
+        if (!s->is_deleting() && (!s->pb.has_detect_publication_changes_implicitly() ||
+                                  !s->pb.detect_publication_changes_implicitly())) {
+          VLOG(1) << "Found a CDC stream: " << stream_id << " for table: " << table_id
+                  << " which uses pub refresh mechanism";
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 std::unordered_set<xrepl::StreamId> CatalogManager::GetCDCSDKStreamsForTable(
     const TableId& table_id) const {
   DCHECK(xrepl_maps_loaded_);
@@ -5687,33 +5711,65 @@ void CatalogManager::RemoveUniverseReplicationFromMap(
   }
 }
 
-bool CatalogManager::CDCSDKAllowTableRewrite(
+Status CatalogManager::CDCSDKAllowTableRewrite(
     const TableId& table_id, bool is_truncate_request) const {
-  // Allow rewrites on tables when:
-  // - the request is truncate and FLAGS_enable_truncate_cdcsdk_table is enabled, or
-  // - the FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is enabled and the table is part of a
-  // CDC logical replication stream.
   // TODO(#29877): Remove FLAGS_enable_truncate_cdcsdk_table once the
-  // TEST_enable_table_rewrite_for_cdcsdk_table flag becomes a normal flag and default to true.
-  return (is_truncate_request && FLAGS_enable_truncate_cdcsdk_table) ||
-         (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table &&
-          IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true));
+  // enable_table_rewrite_for_cdcsdk_table flag becomes a normal flag and default to true.
+  if (is_truncate_request && FLAGS_enable_truncate_cdcsdk_table) {
+    return Status::OK();
+  }
+
+  if (IsTablePartOfCDCSDK(table_id, /*require_replication_slot=*/true)) {
+    if (IsTablePartOfCDCStreamUsingPubRefresh(table_id)) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not allowed for table $0 when there exists a logical replication "
+          "stream which uses pub refresh mechanism. Inorder to proceed use list CDC streams to "
+          "find out the streams which do not have the field "
+          "detect_publication_changes_implicitly set to true. Drop all such streams to proceed "
+          "with table rewrite when CDC is enabled with logical replication streams.",
+          table_id);
+    }
+
+    if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not allowed for table $0 with CDC logical replication streams, when "
+          "the flag enable_table_rewrite_for_cdcsdk_table is disabled.",
+          table_id);
+    }
+
+    if (!FLAGS_cdc_enable_dynamic_schema_changes) {
+      return STATUS_FORMAT(
+          NotSupported,
+          "Table rewrite is not allowed for table $0 with CDC logical replication streams, when "
+          "upgrade is in progress.",
+          table_id);
+    }
+
+    // DDLs causing table rewrites are allowed only for logical replication streams,
+    // when there does not exist any stream on the table using pub refresh mechanism
+    // and the flags enable_table_rewrite_for_cdcsdk_table and
+    // cdc_enable_dynamic_schema_changes are enabled.
+    return Status::OK();
+  }
+
+  return STATUS_FORMAT(
+      NotSupported, "Table rewrite is not allowed for table $0 when CDC is enabled with gRPC "
+      "streams", table_id);
 }
 
 Status CatalogManager::CDCSDKValidateCreateTableRequest(const CreateTableRequestPB& req) {
   // Fail rewrites on tables and nonconcurrent index backfills, that are part of CDC, except when
-  // CDCSDKAllowTableRewrite() returns true.
+  // CDCSDKAllowTableRewrite() returns an OK status.
   SharedLock lock(mutex_);
   const auto table_id = req.old_rewrite_table_id();
-  if (table_id.empty() || !IsTablePartOfCDCSDK(table_id) ||
-      CDCSDKAllowTableRewrite(table_id, req.is_truncate())) {
+  if (table_id.empty() || !IsTablePartOfCDCSDK(table_id)) {
     return Status::OK();
   }
+  RETURN_NOT_OK(CDCSDKAllowTableRewrite(table_id, req.is_truncate()));
 
-  return STATUS(
-      NotSupported,
-      "Table rewrite is disallowed with CDC gRPC streams, and with logical replication streams "
-      "when FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table is false.");
+  return Status::OK();
 }
 
 }  // namespace master

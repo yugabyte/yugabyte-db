@@ -14,19 +14,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import play.mvc.Http;
 
 /**
  * Service for running scripts on multiple nodes in a universe synchronously and collecting the
@@ -107,15 +99,7 @@ public class NodeScriptRunner {
   public ExecutionResult runScript(
       Universe universe, ScriptParams scriptParams, NodeFilter nodeFilter) {
     // Validate linux_user for manual on-prem providers
-    // Manual on-prem node agents run as yugabyte user and cannot switch to other users
-    if (StringUtils.isNotBlank(scriptParams.getLinuxUser())
-        && !NodeManager.YUGABYTE_USER.equals(scriptParams.getLinuxUser())
-        && Util.isOnPremManualProvisioning(universe)) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST,
-          "Cannot specify custom linux_user for manual on-prem provisioned universes. "
-              + "Node agent runs as yugabyte user and cannot switch users.");
-    }
+    Util.validateLinuxUserForOnPrem(scriptParams.getLinuxUser(), universe);
 
     List<NodeDetails> targetNodes = getTargetNodes(universe, nodeFilter);
 
@@ -130,89 +114,54 @@ public class NodeScriptRunner {
     }
 
     long startTime = System.currentTimeMillis();
-    Map<String, NodeResult> results = new LinkedHashMap<>();
-    int successCount = 0;
-    int failCount = 0;
 
-    // Run all target nodes in parallel (capped to prevent OOM/thrashing)
+    // Run script on all target nodes in parallel using shared executor utility
     int maxParallelNodes =
         (nodeFilter != null && nodeFilter.getMaxParallelNodes() > 0)
             ? nodeFilter.getMaxParallelNodes()
             : MAX_PARALLEL_THREADS;
-    int poolSize = Math.min(targetNodes.size(), maxParallelNodes);
-    ThreadPoolExecutor executor =
-        executorFactory.createFixedExecutor(
-            "run-script", poolSize, Executors.defaultThreadFactory());
+    long waitTimeoutSecs = scriptParams.getTimeoutSecs() + 30;
 
-    try {
-      // Submit all tasks and track node -> future mapping
-      Map<NodeDetails, Future<NodeResult>> futureMap = new LinkedHashMap<>();
-      for (NodeDetails node : targetNodes) {
-        try {
-          futureMap.put(node, executor.submit(() -> executeOnNode(universe, node, scriptParams)));
-        } catch (RejectedExecutionException e) {
-          log.error("Failed to submit script execution task for node {}", node.nodeName, e);
-          results.put(
-              node.nodeName,
-              NodeResult.builder()
-                  .nodeName(node.nodeName)
-                  .nodeAddress(node.cloudInfo.private_ip)
-                  .exitCode(-1)
-                  .stdout("")
-                  .errorMessage("Failed to submit execution task: " + e.getMessage())
-                  .executionTimeMs(0)
-                  .success(false)
-                  .build());
+    Map<String, ParallelNodeExecutor.TaskOutcome<NodeResult>> outcomes =
+        ParallelNodeExecutor.execute(
+            targetNodes,
+            node -> executeOnNode(universe, node, scriptParams),
+            maxParallelNodes,
+            waitTimeoutSecs,
+            executorFactory,
+            "run-script");
+
+    // Convert task outcomes to NodeResults
+    Map<String, NodeResult> results = new LinkedHashMap<>();
+    int successCount = 0;
+    int failCount = 0;
+
+    for (var entry : outcomes.entrySet()) {
+      String nodeName = entry.getKey();
+      ParallelNodeExecutor.TaskOutcome<NodeResult> outcome = entry.getValue();
+
+      if (outcome.getStatus() == ParallelNodeExecutor.TaskStatus.SUCCESS) {
+        results.put(nodeName, outcome.getResult());
+        if (outcome.getResult().isSuccess()) {
+          successCount++;
+        } else {
           failCount++;
         }
+      } else {
+        // Build error result for non-success outcomes
+        results.put(
+            nodeName,
+            NodeResult.builder()
+                .nodeName(nodeName)
+                .nodeAddress(outcome.getNode().cloudInfo.private_ip)
+                .exitCode(-1)
+                .stdout("")
+                .errorMessage(outcome.getErrorMessage())
+                .executionTimeMs(outcome.getExecutionTimeMs())
+                .success(false)
+                .build());
+        failCount++;
       }
-
-      // Wait for results with timeout (script timeout + 30s buffer for overhead)
-      long waitTimeoutSecs = scriptParams.getTimeoutSecs() + 30;
-      for (Map.Entry<NodeDetails, Future<NodeResult>> entry : futureMap.entrySet()) {
-        NodeDetails node = entry.getKey();
-        Future<NodeResult> future = entry.getValue();
-        try {
-          NodeResult result = future.get(waitTimeoutSecs, TimeUnit.SECONDS);
-          results.put(result.getNodeName(), result);
-          if (result.isSuccess()) {
-            successCount++;
-          } else {
-            failCount++;
-          }
-        } catch (TimeoutException e) {
-          log.error("Timeout waiting for script execution on node {}", node.nodeName);
-          future.cancel(true);
-          results.put(
-              node.nodeName,
-              NodeResult.builder()
-                  .nodeName(node.nodeName)
-                  .nodeAddress(node.cloudInfo.private_ip)
-                  .exitCode(-1)
-                  .stdout("")
-                  .errorMessage("Timed out waiting for script execution")
-                  .executionTimeMs(waitTimeoutSecs * 1000)
-                  .success(false)
-                  .build());
-          failCount++;
-        } catch (InterruptedException | ExecutionException e) {
-          log.error("Error collecting script execution result for node {}", node.nodeName, e);
-          results.put(
-              node.nodeName,
-              NodeResult.builder()
-                  .nodeName(node.nodeName)
-                  .nodeAddress(node.cloudInfo.private_ip)
-                  .exitCode(-1)
-                  .stdout("")
-                  .errorMessage("Error executing script: " + e.getMessage())
-                  .executionTimeMs(0)
-                  .success(false)
-                  .build());
-          failCount++;
-        }
-      }
-    } finally {
-      executor.shutdownNow();
     }
 
     long totalTime = System.currentTimeMillis() - startTime;
@@ -287,7 +236,15 @@ public class NodeScriptRunner {
     }
   }
 
-  private List<NodeDetails> getTargetNodes(Universe universe, NodeFilter nodeFilter) {
+  /**
+   * Get target nodes from a universe based on filter criteria. This method is shared across
+   * multiple node operation services (runScript, collectFiles, etc.).
+   *
+   * @param universe The universe to get nodes from
+   * @param nodeFilter Optional filter criteria (null returns all live nodes)
+   * @return List of matching live nodes
+   */
+  public static List<NodeDetails> getTargetNodes(Universe universe, NodeFilter nodeFilter) {
     List<NodeDetails> nodes =
         universe.getUniverseDetails().nodeDetailsSet.stream()
             .filter(n -> n.state == NodeDetails.NodeState.Live)

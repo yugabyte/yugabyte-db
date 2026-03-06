@@ -11,6 +11,8 @@ menu:
     identifier: faq-api-compatibility
     parent: faq
     weight: 60
+    params:
+      classes: separator
 type: docs
 unversioned: true
 rightNav:

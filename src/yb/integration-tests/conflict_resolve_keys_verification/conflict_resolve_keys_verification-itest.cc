@@ -19,7 +19,6 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 
-#include "yb/util/debug.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/faststring.h"
@@ -56,26 +55,21 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
   }
 
   void SetUp() override {
-    // The output are different in sanitizer modes, mac and debug modes, so skip the tests in those
-    // modes for now.
-    // TODO (GH 28660): handle asan/tsan, debug, mac.
-    if (IsSanitizer() || kIsDebug || kIsMac) {
-      GTEST_SKIP() << "Skipping the tests in non-release builds or sanitizers or mac";
-    }
-
     const char* val = std::getenv("CONFLICT_RESOLVE_KEYS_OUTPUT_PATH");
     generate_output_path = val ? std::string(val) : std::string();
 
     const auto sub_dir = "test_conflict_resolve_keys_verification_sql";
     test_sql_dir_ = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir, "sql");
     std::vector<std::string> extra_tserver_flags = {
+      "--TEST_docdb_sort_weak_intents=true",
       "--ysql_enable_packed_row=true",
       "--TEST_docdb_log_write_batches=true",
       "--TEST_no_schedule_remove_intents=true",
       "--ysql_enable_auto_analyze=false",
       "--ysql_yb_ddl_transaction_block_enabled=true",
       "--enable_object_locking_for_table_locks=true",
-      "--allowed_preview_flags_csv=skip_prefix_locks"
+      "--allowed_preview_flags_csv=skip_prefix_locks",
+      "--yb_enable_read_committed_isolation"
     };
     // Start cluster with the specified flags
     StartCluster(extra_tserver_flags);
@@ -152,13 +146,14 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
   void RunTestForFile(const string& sql_path, bool skip_prefix_locks,
                       const std::string& isolation) {
     LOG(INFO) << "RunTestForFile. sql_path=" << sql_path
-              << ", skip_prefix_locks=" << skip_prefix_locks << ", isolation=" << isolation;
-    ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0), "skip_prefix_locks",
-                                skip_prefix_locks ? "true" : "false"));
+              << ", skip_prefix_locks=" << skip_prefix_locks << ", isolation=" << isolation
+              << ", first column ID= " << kFirstColumnId;
+    ASSERT_OK(cluster_->SetFlag(
+        cluster_->tablet_server(0), "skip_prefix_locks", skip_prefix_locks ? "true" : "false"));
 
     const string tmp_sql_path = "/tmp/conflict_resolve_keys_verification.tmp.sql";
 
-    // Generate a tmp sql file based on 'sql_path' and isolation
+    // Generate a tmp sql file based on 'sql_path', isolation, and first column.
     Env* env = Env::Default();
     faststring content;
     ASSERT_OK(ReadFileToString(env, sql_path, &content));
@@ -167,22 +162,22 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
     const std::string isolation_pattern = "xxx";
     size_t pos = content_str.find(isolation_pattern);
     if (pos != std::string::npos) {
-      LOG(INFO) << "Pattern " << isolation_pattern << "found in SQL file: " << sql_path;
+      LOG(INFO) << "Pattern " << isolation_pattern << " found in SQL file: " << sql_path;
       content_str.replace(pos, isolation_pattern.size(), isolation);
     } else {
       // includes: truncate colocate table, advisory lock, single row txn
       isolation_folder = "others";
     }
-
     // Make the output more consistent for the table with index
     content_str =
       "set ysql_max_in_flight_ops=1; set ysql_session_max_batch_size=1;\n" + content_str;
     ASSERT_OK(WriteStringToFile(env, content_str, tmp_sql_path));
 
+    std::string first_column_suffix = kFirstColumnId == 0 ? "" : Format("-$0", kFirstColumnId);
     std::string target_output_file = Format(
-       "$0/expected/$1/$2/target.out", test_sql_dir_,
-       skip_prefix_locks ? "skip_prefix_locks_enabled" : "skip_prefix_locks_disabled",
-       isolation_folder);
+        "$0/expected/$1/$2$3/target.out", test_sql_dir_,
+        skip_prefix_locks ? "skip_prefix_locks_enabled" : "skip_prefix_locks_disabled",
+        isolation_folder, first_column_suffix);
     std::vector<std::string> files;
     files.reserve(dump_gflag_values.size());
     for (const auto& pair : dump_gflag_values) {
@@ -200,10 +195,10 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
     ASSERT_TRUE(env->FileExists(target_output_file));
 
     const std::string expected_output_file = Format(
-      "$0/expected/$1/$2/$3.out",
-      generate_output_path.empty() ? test_sql_dir_ : generate_output_path,
-      skip_prefix_locks ? "skip_prefix_locks_enabled" : "skip_prefix_locks_disabled",
-      isolation_folder, BaseName(sql_path));
+        "$0/expected/$1/$2$3/$4.out",
+        generate_output_path.empty() ? test_sql_dir_ : generate_output_path,
+        skip_prefix_locks ? "skip_prefix_locks_enabled" : "skip_prefix_locks_disabled",
+        isolation_folder, first_column_suffix, BaseName(sql_path));
     if (!generate_output_path.empty()) {
       LOG(INFO) << "Writing to file: " << expected_output_file;
       ASSERT_OK(env->RenameFile(target_output_file, expected_output_file));
@@ -233,13 +228,14 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
     std::regex uuid_pattern(R"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
     result = std::regex_replace(result, uuid_pattern, "********-****-****-****-************");
 
-    // Replace '{ physical: <number> }' with '{ physical: 0 }'
-    std::regex physical_pattern(R"(\{\s*physical:\s*\d+(?:\s+logical:\s*\d+)?\s*\})");
-    result = std::regex_replace(result, physical_pattern, "{ physical: 0 }");
+    // Replace '{ physical: <number> [logical: <number> ][w: <number> ]}' with '{ days: 0 time: 0 }'
+    std::regex physical_pattern(
+        R"(\{\s*physical:\s*\d+(?:\s+logical:\s*\d+)?(?:\s+w:\s*\d+)?\s*\})");
+    result = std::regex_replace(result, physical_pattern, "{ days: 0 time: 0 }");
 
-    // replace [HT{ days: 20323 time: 00:36:36.771470 }] to [HT{ days: 0 time: 0 }]
-    std::regex ht_pattern(R"(HT\{[^\}]*\})");
-    result = std::regex_replace(result, ht_pattern, "HT{ days: 0 time: 0 }");
+    // replace { days: 20323 time: 00:36:36.771470 } to { days: 0 time: 0 }
+    std::regex ht_pattern(R"(\{ days: [^\}]*\})");
+    result = std::regex_replace(result, ht_pattern, "{ days: 0 time: 0 }");
 
     // Replace 'status_tablet: <hex_string>' with 'status_tablet: 0'
     std::regex status_tablet_pattern(R"(status_tablet:\s*[0-9a-f]+)");
@@ -347,8 +343,10 @@ class ConflictResolveKeysVerificationITest : public ExternalMiniClusterITestBase
     std::string str_expected = SortFileByGroups(content_expected.ToString());
 
     if (str_actual != str_expected) {
-      LOG(ERROR) << "actual: " << content_actual << ". expected: " << content_expected;
-      LOG(ERROR) << "After sorted. actual: " << str_actual << ". expected: " << str_expected;
+      LOG(ERROR) << "Before sorted. actual: " << content_actual;
+      LOG(ERROR) << "Before sorted. expected: " << content_expected;
+      LOG(ERROR) << "After sorted. actual:\n" << str_actual;
+      LOG(ERROR) << "After sorted. expected:\n" << str_expected;
     }
 
     // Compare content

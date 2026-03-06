@@ -2086,6 +2086,232 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: createFileCollection
+    summary: Collect files from database nodes
+    description: |
+      Collect specified files from one or more nodes in the universe. Files can be collected
+      by specifying individual file paths or directory paths. The files are packaged into a
+      tar.gz archive on each database node.
+
+      This API requires the runtime configuration `yb.node_script.enabled` to be set to true
+      for the universe.
+
+      **Important**: The response includes `collection_uuid` which can be used with the
+      download and cleanup endpoints. The tar files are stored on the database nodes and
+      can be downloaded using GET /file-collections/{collectionUUID}/download.
+
+      **Security**: This API is restricted to localhost access only. It can only be called from
+      the same machine where YugabyteDB Anywhere is running.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/CollectFilesReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/CollectFilesResp.yaml"
+      '400':
+        description: Invalid input or feature not enabled
+      '403':
+        description: Feature not enabled for this universe or not accessed from localhost
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: CreateFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}/download':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: collectionUUID
+      in: path
+      description: Collection UUID returned by create file collection API
+      schema:
+        type: string
+        format: uuid
+      required: true
+  get:
+    operationId: downloadFileCollection
+    summary: Download collected files
+    description: |
+      Download previously collected files from database nodes. Use the collection_uuid 
+      returned by the create file collection API (POST /file-collections) to identify 
+      which files to download.
+
+      This API downloads the tar.gz archives from each database node and streams them
+      back to the client as a combined archive.
+
+      **Note**: By default, this API does NOT have localhost restriction and can be
+      called from any authorized client. However, if cleanup_db_nodes_after=true is specified,
+      localhost restriction applies since it modifies files on database nodes.
+    tags:
+      - Universe
+    parameters:
+      - name: cleanup_db_nodes_after
+        in: query
+        description: |
+          If true, automatically delete the collected files from DB nodes after successful download.
+          This is equivalent to calling DELETE /file-collections/{collectionUUID} with 
+          delete_from_db_nodes=true after the download completes.
+          Default is false (files remain on DB nodes until explicitly deleted).
+          **Security**: When this is set to true, localhost restriction applies.
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        description: Binary tar.gz archive containing all collected files
+        content:
+          application/gzip:
+            schema:
+              type: string
+              format: binary
+      '400':
+        description: Collection not found or already cleaned up
+      '403':
+        description: 'Feature not enabled for this universe, or cleanup_db_nodes_after=true but not accessed from localhost'
+      '404':
+        description: Collection not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DownloadFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: DEBUG
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/file-collections/{collectionUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: collectionUUID
+      in: path
+      description: Collection UUID returned by create file collection API
+      schema:
+        type: string
+        format: uuid
+      required: true
+  delete:
+    operationId: deleteFileCollection
+    summary: Delete collected files from database nodes and/or YBA
+    description: |
+      Delete tar archives created by the create file collection API. By default, this only
+      deletes files from DB nodes. Use `delete_from_yba=true` to also remove downloaded
+      files from YBA local storage.
+
+      Use this API when you are done downloading the collected files and want to free up
+      disk space on the database nodes and/or YBA server.
+
+      **Security**: This API can only be called from localhost (the YBA server itself).
+      This restriction exists because it modifies files on database nodes.
+    tags:
+      - Universe
+    parameters:
+      - name: delete_from_db_nodes
+        in: query
+        description: Whether to delete tar files from database nodes
+        schema:
+          type: boolean
+          default: true
+        required: false
+      - name: delete_from_yba
+        in: query
+        description: Whether to delete downloaded files from YBA local storage
+        schema:
+          type: boolean
+          default: false
+        required: false
+    responses:
+      '200':
+        $ref: "../components/responses/CleanupCollectionResp.yaml"
+      '400':
+        description: Collection not found or already cleaned up
+      '403':
+        description: API not called from localhost or feature not enabled
+      '404':
+        description: Collection not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: DeleteFileCollection
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: TROUBLESHOOT
+        resourceLocation:
+          path: UNIVERSES
+          sourceType: ENDPOINT
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.0.0
+    x-yba-api-visibility: internal
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

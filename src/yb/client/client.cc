@@ -647,8 +647,15 @@ Status YBClient::GetIndexBackfillProgress(
   return Status::OK();
 }
 
-Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> YBClient::GetTabletsMetadata() {
+Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> YBClient::GetTabletsMetadata(
+    std::optional<std::string> table_id, std::optional<std::string> partition_key) {
   master::GetTabletsMetadataRequestPB req;
+  if (table_id) {
+    req.set_table_id(*table_id);
+  }
+  if (partition_key) {
+    req.set_partition_key(*partition_key);
+  }
   master::GetTabletsMetadataResponsePB resp;
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetTabletsMetadata);

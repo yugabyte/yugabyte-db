@@ -114,7 +114,7 @@ DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb::cdc {
 
@@ -253,7 +253,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
                            "to the polling list.";
   }
 
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     oid_to_relfilenode_ = std::move(oid_to_relfilenode);
   }
 
@@ -1785,7 +1785,7 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
   if (table_id.empty()) {
     return false;
   } else if (table_id == pg_class_table_id_) {
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
       LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       return true;
     }

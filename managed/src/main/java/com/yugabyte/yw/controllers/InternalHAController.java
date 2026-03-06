@@ -97,7 +97,7 @@ public class InternalHAController extends Controller {
     List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
     Set<PlatformInstance> processedInstances =
         HighAvailabilityConfig.doWithTryLock(
-                config.getUuid(),
+                config.getClusterKey(),
                 c -> {
                   Optional<PlatformInstance> localInstance = c.getLocal();
                   if (!localInstance.isPresent()) {
@@ -156,7 +156,7 @@ public class InternalHAController extends Controller {
                 () -> new PlatformServiceException(BAD_REQUEST, "Could not find HA Config"));
     // Use non-blocking lock-acquire for syncs to avoid deadlock.
     return HighAvailabilityConfig.doWithTryLock(
-            config.getUuid(),
+            config.getClusterKey(),
             c -> {
               Optional<PlatformInstance> localInstance = c.getLocal();
               if (localInstance.isPresent() && leader.equals(localInstance.get().getAddress())) {
@@ -222,8 +222,8 @@ public class InternalHAController extends Controller {
     // Use non-blocking lock-acquire for background syncs to avoid deadlock.
     PlatformInstance localInstance =
         promote
-            ? HighAvailabilityConfig.doWithLock(config.getUuid(), func)
-            : HighAvailabilityConfig.doWithTryLock(config.getUuid(), func).orElse(null);
+            ? HighAvailabilityConfig.doWithLock(config.getClusterKey(), func)
+            : HighAvailabilityConfig.doWithTryLock(config.getClusterKey(), func).orElse(null);
     if (localInstance == null) {
       log.warn("Local leader was not demoted possibly due to an ongoining promotion");
     }

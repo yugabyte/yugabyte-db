@@ -649,7 +649,7 @@ public class UniverseCRUDHandler {
       }
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
@@ -1568,7 +1568,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    addOnCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    addOnCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1652,7 +1653,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    readOnlyCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {

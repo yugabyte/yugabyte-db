@@ -93,7 +93,7 @@ public class PitrControllerTest extends FakeDBApplication {
     defaultUniverse.save();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
     auditService = new AuditService();
-    pitrConfigHelper = new PitrConfigHelper(commissioner);
+    pitrConfigHelper = new PitrConfigHelper(commissioner, mockService);
     pitrController = new PitrController(commissioner, mockService, pitrConfigHelper);
     pitrController.setAuditService(auditService);
   }

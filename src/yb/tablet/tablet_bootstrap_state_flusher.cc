@@ -35,6 +35,7 @@
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
 DEFINE_RUNTIME_AUTO_bool(enable_flush_retryable_requests, kLocalPersisted, false, true,
@@ -149,7 +150,7 @@ Status TabletBootstrapStateFlusher::SubmitFlushBootstrapStateTask() {
     // If there's no ongoing flush but there's read event, wait until it's done and retry.
     WaitForFlushIdleOrShutdown();
   }
-  LOG(INFO) << "Tablet " << tablet_id_ << " is submitting flush bootstrap state task...";
+  LOG_DETAIL << "Tablet " << tablet_id_ << " is submitting flush bootstrap state task...";
   TEST_PAUSE_IF_FLAG(TEST_pause_before_submitting_flush_bootstrap_state);
   Status s = flush_bootstrap_state_pool_token_->SubmitFunc(
       std::bind(&TabletBootstrapStateFlusher::FlushBootstrapState,

@@ -1344,6 +1344,14 @@
     showSection = true
 
 [["v2024.2_api"]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
+  ["v2024.2_api".params]
+    showSection = true
+
+[["v2024.2_api"]]
   name = "YCQL"
   weight = 11
   identifier = "api-cassandra"
@@ -1499,6 +1507,14 @@
     showSection = true
 
 [["v2024.1_api"]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
+  ["v2024.1_api".params]
+    showSection = true
+
+[["v2024.1_api"]]
   name = "YCQL"
   weight = 11
   identifier = "api-cassandra"
@@ -1649,6 +1665,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/v2025.1/api/ysql/"
+  ["v2025.1_api".params]
+    showSection = true
+
+[["v2025.1_api"]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   ["v2025.1_api".params]
     showSection = true
 
@@ -1823,6 +1847,14 @@
   weight = 10
   identifier = "api-ysql"
   url = "/v2.20/api/ysql/"
+  ["v2.20_api".params]
+    showSection = true
+
+[["v2.20_api"]]
+  name = "Supporting language elements"
+  weight = 50
+  identifier = "ysql-language-elements"
+  parent = "api-ysql"
   ["v2.20_api".params]
     showSection = true
 

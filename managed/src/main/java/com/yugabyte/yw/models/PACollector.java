@@ -52,12 +52,10 @@ public class PACollector extends Model {
   @URL
   private String metricsUrl;
 
-  @NotNull
   @ApiModelProperty(value = "Metrics API Username", accessMode = READ_WRITE)
   @Encrypted
   private String metricsUsername;
 
-  @NotNull
   @ApiModelProperty(value = "Metrics API Password", accessMode = READ_WRITE)
   @Encrypted
   private String metricsPassword;

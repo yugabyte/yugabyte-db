@@ -369,6 +369,7 @@ Lefthook
 Leiningen
 libFuzzer
 Libravatar
+Liquibase
 liveness
 Lodash
 Lograge
@@ -712,6 +713,7 @@ subtrees
 sudo
 supercookie
 supercookies
+Superset
 supertype
 supertypes
 swappiness

@@ -9,6 +9,9 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.SwamperHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.helpers.BundleDetails;
@@ -128,7 +131,8 @@ public class SupportBundle extends Model {
     this.path = path.toString();
   }
 
-  public static SupportBundle create(SupportBundleFormData bundleData, Universe universe) {
+  public static SupportBundle create(
+      SupportBundleFormData bundleData, Universe universe, RuntimeConfGetter confGetter) {
     SupportBundle supportBundle = new SupportBundle();
     supportBundle.bundleUUID = UUID.randomUUID();
     supportBundle.scopeUUID = universe.getUniverseUUID();
@@ -143,6 +147,12 @@ public class SupportBundle extends Model {
               bundleData.maxCoreFileSize,
               bundleData.promDumpStartDate,
               bundleData.promDumpEndDate,
+              bundleData.promMetricsFormat,
+              bundleData.promDumpDownSample
+                  ? (bundleData.stepPromDumpSecs != null
+                      ? bundleData.stepPromDumpSecs
+                      : confGetter.getGlobalConf(GlobalConfKeys.supportBundlePromDumpStepInSecs))
+                  : (int) SwamperHelper.getScrapeIntervalSeconds(confGetter.getStaticConf()),
               bundleData.prometheusMetricsTypes,
               bundleData.paDumpStartDate,
               bundleData.paDumpEndDate,

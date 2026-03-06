@@ -870,6 +870,10 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+      size_t num_values);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
@@ -897,7 +901,9 @@ class PgApiImpl {
   //----------------------------------------------------------------------------------------------
   // Table Locks.
   //----------------------------------------------------------------------------------------------
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status AcquireObjectLock(
+      const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();

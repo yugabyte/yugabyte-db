@@ -637,6 +637,15 @@ public class Audit extends Model {
 
     @EnumValue("Run Script on Database Nodes")
     RunScript,
+
+    @EnumValue("Create File Collection from Database Nodes")
+    CreateFileCollection,
+
+    @EnumValue("Download File Collection to YBA")
+    DownloadFileCollection,
+
+    @EnumValue("Delete File Collection from Database Nodes")
+    DeleteFileCollection,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

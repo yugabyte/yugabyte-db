@@ -15,8 +15,14 @@ import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
+import api.v2.models.CollectFilesRequest;
+import api.v2.models.CollectFilesResponse;
+import api.v2.models.CollectedFileResult;
 import api.v2.models.DetachUniverseSpec;
 import api.v2.models.ExecutionSummary;
+import api.v2.models.FileCollectionOptions;
+import api.v2.models.FileCollectionSummary;
+import api.v2.models.NodeFileCollectionResult;
 import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
 import api.v2.models.RunScriptRequest;
@@ -39,7 +45,9 @@ import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.FileCollectionDownloader;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
+import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -97,6 +105,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Http.Request;
@@ -112,12 +121,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private Commissioner commissioner;
   @Inject private YsqlQueryExecutor ysqlQueryExecutor;
   @Inject private NodeScriptRunner nodeScriptRunner;
+  @Inject private NodeFileCollector nodeFileCollector;
+  @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
   /** Default max script file size for audit logging (1 MB) */
   private static final long DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES = 1024 * 1024;
+
+  private static final int DEFAULT_MAX_PARALLEL_NODES = 50;
 
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
@@ -965,20 +978,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             .build();
 
     // Build node filter
-    NodeScriptRunner.NodeFilter nodeFilter = null;
-    NodeSelection nodeSelection = runScriptRequest.getNodes();
-    if (nodeSelection != null) {
-      int maxParallelNodes =
-          nodeSelection.getMaxParallelNodes() != null ? nodeSelection.getMaxParallelNodes() : 50;
-      nodeFilter =
-          NodeScriptRunner.NodeFilter.builder()
-              .nodeNames(nodeSelection.getNodeNames())
-              .clusterUuid(nodeSelection.getClusterUuid())
-              .mastersOnly(nodeSelection.getMastersOnly())
-              .tserversOnly(nodeSelection.getTserversOnly())
-              .maxParallelNodes(maxParallelNodes)
-              .build();
-    }
+    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(runScriptRequest.getNodes());
 
     // Execute via service
     NodeScriptRunner.ExecutionResult result =
@@ -1030,5 +1030,235 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             additionalDetails);
 
     return new RunScriptResponse().summary(summary).results(nodeResults);
+  }
+
+  /**
+   * Create a file collection from database nodes in a universe.
+   *
+   * <p>This API is restricted to localhost access only for security.
+   */
+  public CollectFilesResponse createFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest) {
+    localhostChecker.checkLocalhost(request);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    FileCollectionOptions collectionOptions = collectFilesRequest.getCollectionOptions();
+    if (collectionOptions == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "collection_options is required");
+    }
+
+    // Validate that at least file_paths or directory_paths is provided
+    boolean hasFilePaths = CollectionUtils.isNotEmpty(collectionOptions.getFilePaths());
+    boolean hasDirPaths = CollectionUtils.isNotEmpty(collectionOptions.getDirectoryPaths());
+    if (!hasFilePaths && !hasDirPaths) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "At least one of file_paths or directory_paths must be provided");
+    }
+
+    // Build collection params
+    // Build collection params - use builder pattern with conditional setters
+    // Defaults are defined in CollectionParams via @Builder.Default
+    NodeFileCollector.CollectionParams.CollectionParamsBuilder paramsBuilder =
+        NodeFileCollector.CollectionParams.builder()
+            .filePaths(collectionOptions.getFilePaths())
+            .directoryPaths(collectionOptions.getDirectoryPaths())
+            .linuxUser(collectionOptions.getLinuxUser());
+
+    if (collectionOptions.getMaxDepth() != null) {
+      paramsBuilder.maxDepth(collectionOptions.getMaxDepth());
+    }
+    if (collectionOptions.getMaxFileSizeBytes() != null) {
+      paramsBuilder.maxFileSizeBytes(collectionOptions.getMaxFileSizeBytes());
+    }
+    if (collectionOptions.getMaxTotalSizeBytes() != null) {
+      paramsBuilder.maxTotalSizeBytes(collectionOptions.getMaxTotalSizeBytes());
+    }
+    if (collectionOptions.getTimeoutSecs() != null) {
+      paramsBuilder.timeoutSecs(collectionOptions.getTimeoutSecs());
+    }
+
+    NodeFileCollector.CollectionParams collectionParams = paramsBuilder.build();
+
+    // Build node filter (reuses same NodeFilter as runScript)
+    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(collectFilesRequest.getNodes());
+
+    log.info(
+        "Collecting files from universe {} with {} file paths, {} directory paths",
+        uniUUID,
+        hasFilePaths ? collectionOptions.getFilePaths().size() : 0,
+        hasDirPaths ? collectionOptions.getDirectoryPaths().size() : 0);
+
+    // Execute file collection - creates tar on remote nodes (no download to YBA)
+    NodeFileCollector.CollectionResult result =
+        nodeFileCollector.collectFiles(cUUID, universe, collectionParams, nodeFilter);
+
+    // Convert to API response
+    FileCollectionSummary summary =
+        new FileCollectionSummary()
+            .collectionUuid(result.getCollectionUuid())
+            .totalNodes(result.getTotalNodes())
+            .successfulNodes(result.getSuccessfulNodes())
+            .failedNodes(result.getFailedNodes())
+            .totalFilesCollected(result.getTotalFilesCollected())
+            .totalFilesSkipped(result.getTotalFilesSkipped())
+            .totalFilesFailed(result.getTotalFilesFailed())
+            .totalBytesCollected(result.getTotalBytesCollected())
+            .totalExecutionTimeMs(result.getTotalExecutionTimeMs())
+            .allSucceeded(result.isAllSucceeded());
+
+    Map<String, NodeFileCollectionResult> nodeResults = new LinkedHashMap<>();
+    for (Map.Entry<String, NodeFileCollector.NodeResult> entry :
+        result.getNodeResults().entrySet()) {
+      NodeFileCollector.NodeResult nr = entry.getValue();
+
+      List<CollectedFileResult> fileResults = new ArrayList<>();
+      if (nr.getFiles() != null) {
+        for (NodeFileCollector.FileResult fr : nr.getFiles()) {
+          fileResults.add(
+              new CollectedFileResult()
+                  .remotePath(fr.getRemotePath())
+                  .fileSizeBytes(fr.getFileSizeBytes())
+                  .success(fr.isSuccess())
+                  .errorMessage(fr.getErrorMessage())
+                  .skipped(fr.isSkipped())
+                  .skipReason(fr.getSkipReason()));
+        }
+      }
+
+      nodeResults.put(
+          entry.getKey(),
+          new NodeFileCollectionResult()
+              .nodeName(nr.getNodeName())
+              .nodeAddress(nr.getNodeAddress())
+              .success(nr.isSuccess())
+              .filesCollected(nr.getFilesCollected())
+              .filesSkipped(nr.getFilesSkipped())
+              .filesFailed(nr.getFilesFailed())
+              .totalBytesCollected(nr.getTotalBytesCollected())
+              .executionTimeMs(nr.getExecutionTimeMs())
+              .errorMessage(nr.getErrorMessage())
+              .remoteTarPath(nr.getRemoteTarPath())
+              .files(fileResults));
+    }
+
+    return new CollectFilesResponse().summary(summary).results(nodeResults);
+  }
+
+  /**
+   * Download a file collection from database nodes and stream to client.
+   *
+   * <p>This API does NOT have localhost restriction by default. However, if cleanupDbNodesAfter is
+   * true, localhost restriction applies since it modifies files on database nodes.
+   *
+   * @param cleanupDbNodesAfter If true, delete collected files from DB nodes after download
+   *     (requires localhost access)
+   */
+  public InputStream downloadFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUuid, Boolean cleanupDbNodesAfter) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // If cleanup is requested, enforce localhost restriction
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      localhostChecker.checkLocalhost(request);
+    }
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/download is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info("Downloading collection {} from universe {}", collectionUuid, uniUUID);
+
+    // Download files from nodes and stream to client
+    InputStream stream = fileCollectionDownloader.downloadAsStream(collectionUuid, universe);
+
+    // After successful download to YBA, cleanup DB nodes if requested
+    // (files are already downloaded to YBA at this point, so safe to delete from nodes)
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      log.info("Cleaning up DB node files for collection {} after download", collectionUuid);
+      fileCollectionDownloader.cleanupCollection(
+          collectionUuid, universe, true /* deleteFromDbNodes */, false /* deleteFromYba */);
+    }
+
+    return stream;
+  }
+
+  /** Get the filename for a file collection download. */
+  public String getFileCollectionFileName(UUID collectionUuid) {
+    return fileCollectionDownloader.getDownloadFileName(collectionUuid);
+  }
+
+  /**
+   * Delete a file collection from database nodes and/or YBA local storage.
+   *
+   * <p>This API has localhost restriction - can only be called from the YBA server itself.
+   *
+   * @param deleteFromDbNodes Whether to delete tar files from DB nodes (default: true)
+   * @param deleteFromYba Whether to delete downloaded files from YBA local storage (default: true)
+   */
+  public int deleteFileCollection(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UUID collectionUuid,
+      boolean deleteFromDbNodes,
+      boolean deleteFromYba) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Localhost restriction - same as collect-files
+    localhostChecker.checkLocalhost(request);
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/cleanup is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info(
+        "Deleting collection {} from universe {} (DB nodes: {}, YBA: {})",
+        collectionUuid,
+        uniUUID,
+        deleteFromDbNodes,
+        deleteFromYba);
+
+    return fileCollectionDownloader.cleanupCollection(
+        collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
+  }
+
+  /**
+   * Helper method to convert NodeSelection API model to NodeScriptRunner.NodeFilter. Reused by both
+   * runScript and collectFiles handlers.
+   */
+  private NodeScriptRunner.NodeFilter buildNodeFilter(NodeSelection nodeSelection) {
+    if (nodeSelection == null) {
+      return null;
+    }
+    int maxParallelNodes =
+        nodeSelection.getMaxParallelNodes() != null
+            ? nodeSelection.getMaxParallelNodes()
+            : DEFAULT_MAX_PARALLEL_NODES;
+    return NodeScriptRunner.NodeFilter.builder()
+        .nodeNames(nodeSelection.getNodeNames())
+        .clusterUuid(nodeSelection.getClusterUuid())
+        .mastersOnly(nodeSelection.getMastersOnly())
+        .tserversOnly(nodeSelection.getTserversOnly())
+        .maxParallelNodes(maxParallelNodes)
+        .build();
   }
 }

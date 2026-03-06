@@ -127,8 +127,10 @@ The following examples show how you can use the pg_locks view in YugabyteDB:
     SELECT * FROM pg_locks WHERE granted = false;
     ```
 
-- To cancel a transaction, run the following command:
+- To cancel a transaction, use the [yb_cancel_transaction()](../../../api/ysql/exprs/func_yb_cancel_transaction/) function as follows:
 
     ```sql
     SELECT yb_cancel_transaction('{yb_txn_id}');
     ```
+
+    You can run yb_cancel_transaction() from any node in the cluster.

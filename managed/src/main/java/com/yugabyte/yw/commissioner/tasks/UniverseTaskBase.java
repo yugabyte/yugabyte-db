@@ -1450,6 +1450,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Create a subtask to register the universe with the first PA Collector for the customer. Only
+   * runs when yb.pa.auto_registration.enabled is true; uses
+   * yb.pa.auto_registration.advanced_observability for the advanced observability flag.
+   */
+  public SubTaskGroup createRegisterUniverseWithPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RegisterUniverseWithPaCollector", SubTaskGroupType.ConfigureUniverse);
+    RegisterUniverseWithPaCollector.Params params = new RegisterUniverseWithPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    RegisterUniverseWithPaCollector task = createTask(RegisterUniverseWithPaCollector.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to unregister the universe from the PA Collector. No-op if the universe is not
+   * registered. Clears paCollectorUuid from universe details on success or on PA unregister failure
+   * so destroy can proceed.
+   */
+  public SubTaskGroup createUnregisterUniverseFromPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UnregisterUniverseFromPaCollector", SubTaskGroupType.RemovingUnusedServers);
+    UnregisterUniverseFromPaCollector.Params params =
+        new UnregisterUniverseFromPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    UnregisterUniverseFromPaCollector task = createTask(UnregisterUniverseFromPaCollector.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup createChangeAdminPasswordTask(
       Cluster primaryCluster,
       String ysqlPassword,

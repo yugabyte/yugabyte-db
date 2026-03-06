@@ -13,12 +13,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -34,6 +38,7 @@ import org.apache.pekko.stream.javadsl.Sink;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import play.libs.Json;
+import play.libs.ws.SourceBodyWritable;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
@@ -173,9 +178,78 @@ public class ApiHelper {
   public JsonNode postWithoutBody(
       String url, Map<String, String> headers, Map<String, String> params) {
     return handleHttpRequest(
-            requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */),
-            r -> r.post(""))
+            requestWithHeaders(url, headers, params, null /* timeout */), r -> r.post(""))
         .getBodyOrThrow();
+  }
+
+  /**
+   * POST binary body and stream response body to the consumer. Does not buffer the full response in
+   * memory. Throws on non-2xx or on failure. The consumer must read from the stream; the stream is
+   * closed after the consumer returns (or on exception).
+   */
+  public void postBinaryRequest(
+      String url,
+      byte[] body,
+      String contentType,
+      @Nullable Map<String, String> headers,
+      @Nullable Duration timeout,
+      Consumer<InputStream> bodyStreamConsumer) {
+    WSRequest request = requestWithHeaders(url, headers, null /* queryParams */, timeout);
+    request.setBody(new SourceBodyWritable(Source.single(ByteString.fromArray(body)), contentType));
+    try {
+      CompletionStage<WSResponse> futureResponse = request.setMethod("POST").stream();
+      WSResponse response = futureResponse.toCompletableFuture().get();
+      if (response.getStatus() < 200 || response.getStatus() >= 300) {
+        throw new PlatformServiceException(
+            response.getStatus(),
+            String.format(
+                "HTTP request to %s failed with status %d %s:\n%s",
+                url, response.getStatus(), response.getStatusText(), response.getBody()));
+      }
+      Source<ByteString, ?> responseBody = response.getBodyAsSource();
+      PipedInputStream pis = new PipedInputStream();
+      PipedOutputStream pos = new PipedOutputStream(pis);
+      responseBody
+          .runWith(
+              Sink.foreach(
+                  bs -> {
+                    try {
+                      pos.write(bs.toArray());
+                    } catch (IOException e) {
+                      throw new RuntimeException(e);
+                    }
+                  }),
+              materializer)
+          .whenComplete(
+              (v, e) -> {
+                try {
+                  pos.close();
+                } catch (IOException ignored) {
+                  // signal EOF to reader
+                }
+              });
+      try {
+        bodyStreamConsumer.accept(pis);
+      } finally {
+        try {
+          pis.close();
+        } catch (IOException ignored) {
+        }
+      }
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause;
+      }
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, cause.getMessage());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 
   public HttpResponse putHttpRequest(

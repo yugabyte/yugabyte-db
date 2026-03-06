@@ -12,6 +12,8 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.FORBIDDEN;
 
+import com.google.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http;
 
 /**
@@ -22,6 +24,8 @@ import play.mvc.Http;
  * Combined with API token authentication for user identity Combined with RBAC permission checking
  * for authorization
  */
+@Slf4j
+@Singleton
 public class LocalhostAccessChecker {
 
   private static final String[] LOCALHOST_ADDRESSES = {
@@ -36,12 +40,14 @@ public class LocalhostAccessChecker {
    * @throws PlatformServiceException if request is not from localhost
    */
   public void checkLocalhost(Http.Request request) {
-    if (!isLocalhost(request)) {
+    String remoteAddress = request.remoteAddress();
+    log.debug("Checking localhost access for remote address: {}", remoteAddress);
+    if (!isLocalhostAddress(remoteAddress)) {
+      log.warn("Localhost-only API accessed from non-localhost address: {}", remoteAddress);
       throw new PlatformServiceException(
           FORBIDDEN,
           String.format(
-              "This API is only accessible from localhost. Remote address: %s",
-              request.remoteAddress()));
+              "This API is only accessible from localhost. Remote address: %s", remoteAddress));
     }
   }
 

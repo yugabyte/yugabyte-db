@@ -14,19 +14,19 @@ type: docs
 
 YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the [query planner](../../architecture/query-layer/planner-optimizer/) can devise plans that leverage multiple CPUs to answer queries faster.
 
-Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for hash- and range-sharded tables is planned.
+YugabyteDB supports parallel queries for [colocated](../colocation/), [hash-, and range-sharded](../../architecture/docdb-sharding/sharding/) tables.
 
-To enable and configure parallel queries, set the following configuration parameters.
+To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | false |
-| yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. (Recommended: 10000) | 0 |
-| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. | 1MB |
-
-For new universes running v2025.2 or later, parallel append is enabled by default when you deploy using yugabyted, YugabyteDB Anywhere, or YugabyteDB Aeon.
-
-In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable parallel append.
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans in YugabyteDB. | `false` |
+| enable_parallel_append | PostgreSQL parameter for enabling the planner's use of parallel append plans. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | `true` |
+| yb_enable_parallel_scan_colocated | Enables the planner's use of parallel queries for colocated tables. | `false` |
+| yb_enable_parallel_scan_hash_sharded | Enables the planner's use of parallel queries for hash-sharded tables. | `false` |
+| yb_enable_parallel_scan_range_sharded | Enables the planner's use of parallel queries for range-sharded tables. | `false` |
+| yb_parallel_range_rows | The number of rows to plan per parallel worker. | `0` |
+| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. Numeric with memory unit (B, kB, MB, or GB). | `1MB` |
 
 In addition, you can use the following PostgreSQL configuration parameters to configure parallel queries:
 
@@ -41,3 +41,21 @@ In addition, you can use the following PostgreSQL configuration parameters to co
   - [enable_parallel_hash](https://www.postgresql.org/docs/15/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE)
 
 For more information, refer to [How Parallel Query Works](https://www.postgresql.org/docs/15/how-parallel-query-works.html) in the PostgreSQL documentation.
+
+## Enable parallel query
+
+To enable parallel query, set the following parameters:
+
+- yb_enable_parallel_append: `true`.
+- yb_enable_parallel_scan_colocated, yb_enable_parallel_scan_hash_sharded, and/or yb_enable_parallel_scan_range_sharded: `true`.
+- yb_parallel_range_rows: a value other than 0 (10000 recommended).
+
+Parallel append is also enabled with the [cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/) (CBO). When you set CBO to `on`, parallel append is enabled as follows:
+
+- yb_enable_parallel_append is set to `true`.
+- enable_parallel_append is set to `true` (the default).
+- yb_parallel_range_rows is set to `10000`.
+
+Note that when upgrading a deployment to v2025.2 or later, if the universe has CBO enabled (`on`), parallel append is automatically enabled.
+
+For information on CBO, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).

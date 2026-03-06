@@ -86,7 +86,7 @@ func (e *ScriptExitError) Unwrap() error {
 type ProvisionCommand struct {
 	ctx            context.Context
 	iniConfig      *config.INIConfig
-	args           config.Args
+	args           *config.Args
 	modules        map[string]config.Module
 	osVersion      string
 	osFamily       OSFamily
@@ -97,7 +97,7 @@ type ProvisionCommand struct {
 func NewProvisionCommand(
 	ctx context.Context,
 	iniConfig *config.INIConfig,
-	args config.Args,
+	args *config.Args,
 ) config.Command {
 	command := &ProvisionCommand{
 		ctx:       ctx,
@@ -110,9 +110,6 @@ func NewProvisionCommand(
 
 // Init initializes the ProvisionCommand.
 func (pc *ProvisionCommand) Init() error {
-	if err := pc.runPrechecks(); err != nil {
-		return err
-	}
 	err := pc.discoverOSInfo()
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to discover OS info: %v", err)
@@ -275,6 +272,9 @@ func (pc *ProvisionCommand) ListModules() error {
 }
 
 func (pc *ProvisionCommand) Execute() error {
+	if err := pc.runPrechecks(); err != nil {
+		return err
+	}
 	if err := pc.validateSpecificModules(); err != nil {
 		return err
 	}

@@ -8,8 +8,6 @@ menu:
     parent: configuration
     weight: 3500
 type: docs
-rightNav:
-  hideH3: true
 ---
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
@@ -105,7 +103,9 @@ Default ascending indexing provides feature compatibility and is the default in 
 
 Configuration parameter: `yb_enable_bitmapscan=true`
 
-Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity.
+
+For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
 ### Efficient communication between PostgreSQL and DocDB
 
@@ -115,7 +115,7 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 ## Planned features
 
-The following features are planned for EPCM in future releases.
+The following features are planned for future releases.
 
 ### Parallel query
 

@@ -17,6 +17,8 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include "postgres.h"			/* YB include */
+
 #include <assert.h>
 
 #if __STDC_VERSION__ >= 199901L
@@ -188,6 +190,7 @@ csv_fini(struct csv_parser *p, void (*cb1)(void *, size_t, void *), void (*cb2)(
       p->entry_pos -= p->spaces + 1;  /* get rid of spaces and original quote */
       entry_pos = p->entry_pos;
       /*lint -fallthrough */
+      yb_switch_fallthrough();
     case FIELD_NOT_BEGUN:
     case FIELD_BEGUN:
       /* Unnecessary:

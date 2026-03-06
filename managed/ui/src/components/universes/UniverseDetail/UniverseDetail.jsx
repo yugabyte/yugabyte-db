@@ -77,6 +77,7 @@ import { DrConfigList } from '../../xcluster/disasterRecovery/DrConfigList';
 import { InstallNodeAgentModal } from '../../../redesign/features/universe/universe-actions/install-node-agent/InstallNodeAgentModal';
 import { YBMenuItemLabel } from '../../../redesign/components/YBDropdownMenu/YBMenuItemLabel';
 import {
+  PerfAdvisorModalIntention,
   PERF_ADVISOR_PATH,
   RuntimeConfigKey,
   UNIVERSE_TASKS
@@ -261,6 +262,22 @@ class UniverseDetail extends Component {
         this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
       }
     }
+
+    // Redirect to Overview when on Performance tab but it should no longer be shown
+    // (perf advisor collector or advanced observability disabled for the universe)
+    const isOnPerfAdvisorTab = this.props.location?.pathname?.includes(PERF_ADVISOR_PATH);
+    const { universePaRegistrationStatus: paStatus } = this.props.universe;
+    const shouldShowPerformanceTab =
+      paStatus?.data?.success && paStatus?.data?.advancedObservability;
+    const hasRegistrationError = getPromiseState(paStatus).isError();
+    if (
+      isOnPerfAdvisorTab &&
+      (hasRegistrationError || (paStatus?.data !== undefined && !shouldShowPerformanceTab))
+    ) {
+      this.props.router.push(
+        `/universes/${this.props.params.uuid}/overview`
+      );
+    }
   }
 
   onResize(dimensions) {
@@ -377,6 +394,8 @@ class UniverseDetail extends Component {
       showDeleteUniverseModal,
       showForceDeleteUniverseModal,
       showEnablePerfAdvisorModal,
+      showEnableAdvancedObservabilityModal,
+      showDisableAdvancedObservabilityModal,
       showToggleUniverseStateModal,
       showToggleBackupModal,
       showEnableYSQLModal,
@@ -497,14 +516,14 @@ class UniverseDetail extends Component {
         (c) => c.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR
       )?.value === 'true';
 
-    // Performance Tab should be shown only if Perf Advisor is already enabled for the universe and that needs to be controlled by a separate runtime config as well
-    // This extra layerr of caution is to ensure we treat this as a second class citizen as it is in early BETA stage w.r.t to YBA
+    // Performance Tab should be shown only if Perf Advisor is enabled for the universe with advanced observability
     const isPerformanceTabEnabled =
       isPerfAdvisorServiceEnabled &&
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_NEW_PERF_ADVISOR_UI
       )?.value === 'true' &&
-      universePaRegistrationStatus?.data?.success;
+      universePaRegistrationStatus?.data?.success &&
+      universePaRegistrationStatus?.data?.advancedObservability;
 
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
@@ -1628,10 +1647,6 @@ class UniverseDetail extends Component {
                         >
                           <YBMenuItem
                             onClick={showEnablePerfAdvisorModal}
-                            availability={getFeatureState(
-                              currentCustomer.data.features,
-                              'universes.details.overview.editGFlags'
-                            )}
                           >
                             <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                               {universePaRegistrationStatus?.data?.success &&
@@ -1642,7 +1657,44 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-
+                        {!universePaused &&
+                          universePaRegistrationStatus?.data?.success &&
+                          !universePaRegistrationStatus?.data?.advancedObservability && (
+                            <RbacValidator
+                              isControl
+                              accessRequiredOn={{
+                                onResource: uuid,
+                                ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                              }}
+                            >
+                              <YBMenuItem
+                                onClick={showEnableAdvancedObservabilityModal}
+                              >
+                                <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
+                                  Enable Advanced Observability
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </RbacValidator>
+                          )}
+                        {!universePaused &&
+                          universePaRegistrationStatus?.data?.success &&
+                          universePaRegistrationStatus?.data?.advancedObservability && (
+                            <RbacValidator
+                              isControl
+                              accessRequiredOn={{
+                                onResource: uuid,
+                                ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                              }}
+                            >
+                              <YBMenuItem
+                                onClick={showDisableAdvancedObservabilityModal}
+                              >
+                                <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
+                                  Disable Advanced Observability
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </RbacValidator>
+                          )}
                     <RbacValidator
                       isControl
                       accessRequiredOn={{
@@ -1847,14 +1899,27 @@ class UniverseDetail extends Component {
           isItKubernetesUniverse={isKubernetesUniverse}
         />
         <EnablePerfAdvisorModal
-          open={showModal && visibleModal === 'enablePerfAdvisorModal'}
+          open={
+            showModal &&
+            ['enablePerfAdvisorModal', 'enableAdvancedObservabilityModal', 'disableAdvancedObservabilityModal'].includes(
+              visibleModal
+            )
+          }
+          paModalIntention={
+            visibleModal === 'enableAdvancedObservabilityModal'
+              ? PerfAdvisorModalIntention.ENABLE_ADVANCED_OBSERVABILITY_ONLY
+              : visibleModal === 'disableAdvancedObservabilityModal'
+                ? PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY
+                : PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
+          }
           onClose={() => {
             closeModal();
-            if (isNonEmptyArray(ybaToPaServiceDetails?.data)) {
+            if (
+                isNonEmptyArray(ybaToPaServiceDetails?.data)
+            ) {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}
-          perfAdvisorDetails={ybaToPaServiceDetails}
           paUuid={ybaToPaServiceDetails?.data?.[0]?.uuid}
           universeData={currentUniverse.data}
           perfAdvisorStatus={universePaRegistrationStatus}

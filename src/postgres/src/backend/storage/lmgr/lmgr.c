@@ -431,7 +431,22 @@ LockRelationIdForSession(LockRelId *relid, LOCKMODE lockmode)
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_RELATION(tag, relid->dbId, relid->relId);
-
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+	{
+		if (YbLockHeldOnObjectBySession(&tag))
+		{
+			elog(FATAL, "unexpected active session lock on relid %d, dbid: %d",
+				 relid->relId, relid->dbId);
+		}
+		if (!LockHeldByMe(&tag, lockmode))
+		{
+			elog(FATAL, "expected active txn lock on relid %d, dbid: %d",
+				 relid->relId, relid->dbId);
+		}
+		if (lockmode < ShareUpdateExclusiveLock)
+			elog(ERROR, "expected session lock on relid %d, dbid: %d to be a global object lock",
+				 relid->relId, relid->dbId);
+	}
 	(void) LockAcquire(&tag, lockmode, true, false);
 }
 

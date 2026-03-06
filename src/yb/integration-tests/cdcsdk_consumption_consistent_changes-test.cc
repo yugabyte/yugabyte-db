@@ -5250,7 +5250,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCWithSavePoint) {
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterCompletelyPolled) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
@@ -5332,10 +5332,12 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
 
   ASSERT_OK(SetUpWithParams(
       1 /* rf */, 1 /* num_masters */, false /* colocated */,
@@ -5343,7 +5345,6 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table"));
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
-  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
 
   vector<string> cmds = {
       // Adding a column with volatile default value
@@ -5359,18 +5360,9 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
       // Dropping the table
       "DROP TABLE $0"};
 
-  ASSERT_OK(WriteRowsHelper(0, 1, &test_cluster_, true, 2, table.table_name().c_str()));
-
-  // Consume the record just written and acknowledge it. This will set the restart time equal to its
-  // commit time.
-  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 3);  // BEGIN, INSERT, COMMIT
-  ASSERT_EQ(change_resp.cdc_sdk_proto_records().Get(2).row_message().op(), RowMessage_Op_COMMIT);
-  uint64_t commit_lsn = change_resp.cdc_sdk_proto_records().Get(2).row_message().pg_lsn();
-  ASSERT_OK(UpdateAndPersistLSN(stream_id, commit_lsn, commit_lsn));
 
   // In each iteration of this loop, we perform a DDL which will cause its tablet to be hidden (and
-  // conditionally create new tablet). We will no longer call GetConsistentChanges, meaning that the
+  // conditionally create new tablet). We will not call GetConsistentChanges, meaning that the
   // restart time will always be behind the hide time of this tablet (DDL's commit time). At the
   // end of the iteration we assert that the hidden tablet has been deleted due to expiry (We dont
   // keep a tablet hidden for more than FLAGS_cdc_intent_retention_ms). We will also assert that the
@@ -5416,7 +5408,10 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
         new_table.empty()
             ? std::unordered_set<TabletId>{kCDCSDKSlotEntryTabletId}
             : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
-    CheckTabletsInCDCStateTable(expected_tablets_in_cdc_state_table, test_client(), stream_id);
+    CheckTabletsInCDCStateTable(
+        expected_tablets_in_cdc_state_table, test_client(), stream_id,
+        "Timed out waiting for state table entries to get deleted",
+        true /* include_catalog_tables */);
 
     auto expected_tables_in_stream_metadata =
         new_table.empty() ? std::unordered_set<std::string>{}
@@ -5425,12 +5420,13 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
         stream_id, expected_tables_in_stream_metadata,
         Format(
             "Timed out waiting for hidden table $0 to be removed from stream metadata",
-            old_table.table_name()));
+            old_table.table_name()),
+        std::nullopt /* expected_unqualified_tables */, true /* include_catalog_tables */);
   }
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTables) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 5 * 1000;
@@ -5489,7 +5485,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenTableOnVWALRestart) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
@@ -5566,7 +5562,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenT
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDDLOnTableWithoutPrimaryKey) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   // ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
@@ -5633,7 +5629,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDDLOnTableWithoutPrimaryKey) 
 TEST_F(
     CDCSDKConsumptionConsistentChangesTest,
     TestSplitParentTabletAndHiddenTableGetsPolledAndDeleted) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
@@ -5705,7 +5701,7 @@ TEST_F(
 }
 
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOnlyReWriteCausingDDLsTriggerPubRefresh) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
       true;
 
@@ -5902,6 +5898,85 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestGetConsistentChangesWithManyT
     auto status = cdc_proxy_->GetConsistentChanges(change_req, &change_resp, &get_changes_rpc);
     ASSERT_TRUE(status.ok() && !change_resp.has_error());
   }
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDDLsInUpgradeScenarios) {
+  // Start with following flags set to false, simulating a pre-upgrade universe.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) = 0;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create a single tablet table and write some rows to it.
+  auto table =
+      ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets*/));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  ASSERT_OK(WriteRowsHelper(1, 100, &test_cluster_, true /* commit */));
+
+  // Create a slot in a pre-upgrade universe.
+  ASSERT_OK(CreateConsistentSnapshotStreamWithReplicationSlot("pre_upgrade_slot"));
+
+  // Enable the two flags and restart the cluster to simulate an upgrade.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ASSERT_OK(test_cluster_.mini_cluster_->RestartSync());
+
+  // Create a slot after upgrade.
+  ASSERT_OK(CreateConsistentSnapshotStreamWithReplicationSlot("post_upgrade_slot"));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN serial_col SERIAL", kTableName);
+  ASSERT_NOK(res);
+  std::string errstr = "Table rewrite is not allowed for table " + table.table_id() +
+                       " when there exists a logical replication stream which uses pub refresh "
+                       "mechanism";
+  ASSERT_STR_CONTAINS(res.ToString(), errstr);
+
+  // Drop the pre upgrade slot.
+  ASSERT_RESULT(conn.Fetch("select pg_drop_replication_slot('pre_upgrade_slot')"));
+
+  // Sleep to ensure that the master bg task deletes the stream metadata of pre_upgrade_slot.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN serial_col SERIAL", kTableName));
+}
+
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestSysCatalogEntriesNotCountedForActiveCalculation) {
+  // Set ysql_yb_enable_implicit_dynamic_tables_logical_replication to true so that sys catalog
+  // entries are added to state table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) = 300 * 1000;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create slot without any table in the DB.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_slot"));
+
+  // We should only have slot entry and an entry for the sys catalog tablet.
+  CheckTabletsInCDCStateTable(
+      {kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      "Timed out while verifying the state table entries", true /* include_catalog_tables */);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Verify that the active field is false in pg_replication_slots for the stream.
+  auto is_active = ASSERT_RESULT(conn.FetchRow<bool>(
+      Format("SELECT active FROM pg_replication_slots WHERE yb_stream_id = '$0'", stream_id)));
+  ASSERT_FALSE(is_active);
+
+  // Drop slot should proceed successfully since the slot is inactive.
+  ASSERT_OK(conn.Fetch("select pg_drop_replication_slot('test_slot')"));
 }
 
 }  // namespace cdc

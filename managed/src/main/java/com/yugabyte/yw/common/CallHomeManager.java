@@ -9,23 +9,31 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.slf4j.Logger;
@@ -37,6 +45,7 @@ public class CallHomeManager {
   ConfigHelper configHelper;
 
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private RuntimeConfService runtimeConfService;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
@@ -126,11 +135,16 @@ public class CallHomeManager {
     // Build universe details json
     List<UniverseResp> universes =
         c.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
+    Set<UUID> universeUuids =
+        universes.stream().map(u -> u.universeUUID).collect(Collectors.toSet());
 
     payload.set("universes", Json.toJson(universes));
     // Build provider details json
     ArrayNode providers = Json.newArray();
+    Set<UUID> providerUuids = new HashSet<>();
     for (Provider p : Provider.getAll(c.getUuid())) {
+      providerUuids.add(p.getUuid());
+
       ObjectNode provider = Json.newObject();
       provider.put("provider_uuid", p.getUuid().toString());
       provider.put("code", p.getCode());
@@ -146,6 +160,9 @@ public class CallHomeManager {
       providers.add(provider);
     }
     payload.set("providers", providers);
+
+    // runtime_config json
+    payload.set("runtime_config", buildRuntimeConfigPayload(c, providerUuids, universeUuids));
 
     ArrayNode tasks = Json.newArray();
     List<CustomerTask> customerTasks = CustomerTask.findNewerThan(c, CALLHOME_TASK_PERIOD);
@@ -243,5 +260,51 @@ public class CallHomeManager {
         provider.put("public_cloud_credential_type", type.toString());
       }
     }
+  }
+
+  private ArrayNode buildRuntimeConfigPayload(
+      Customer c, Set<UUID> providerUuids, Set<UUID> universeUuids) {
+    List<RuntimeConfigEntry> allEntries = new ArrayList<>();
+
+    List<RuntimeConfigEntry> customerEntries =
+        runtimeConfService.getRuntimeConfigEntries(c.getUuid());
+    Set<String> customerOverriddenPaths =
+        customerEntries.stream().map(RuntimeConfigEntry::getPath).collect(Collectors.toSet());
+    allEntries.addAll(customerEntries);
+
+    Set<UUID> scopeUuids = new HashSet<>(providerUuids);
+    scopeUuids.addAll(universeUuids);
+    allEntries.addAll(runtimeConfService.getRuntimeConfigEntries(scopeUuids));
+
+    runtimeConfService.getRuntimeConfigEntries(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID).stream()
+        .filter(e -> !customerOverriddenPaths.contains(e.getPath()))
+        .forEach(allEntries::add);
+
+    ArrayNode runtimeConfigEntries = (ArrayNode) Json.toJson(allEntries);
+
+    for (int i = 0; i < runtimeConfigEntries.size(); i++) {
+      ObjectNode obj = (ObjectNode) runtimeConfigEntries.get(i);
+
+      UUID scopeUuid = UUID.fromString(obj.path("scopeUUID").asText());
+
+      String scopeType;
+      if (ScopedRuntimeConfig.GLOBAL_SCOPE_UUID.equals(scopeUuid)) {
+        scopeType = "GLOBAL";
+      } else if (c.getUuid().equals(scopeUuid)) {
+        scopeType = "CUSTOMER";
+      } else if (providerUuids.contains(scopeUuid)) {
+        scopeType = "PROVIDER";
+      } else {
+        scopeType = "UNIVERSE";
+      }
+      obj.put("scope_type", scopeType);
+
+      String path = obj.path("path").asText();
+      if (CommonUtils.isSensitiveField(path)) {
+        obj.put("value", RedactingService.SECRET_REPLACEMENT);
+      }
+    }
+
+    return runtimeConfigEntries;
   }
 }

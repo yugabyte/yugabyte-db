@@ -147,7 +147,7 @@ DEFINE_RUNTIME_AUTO_bool(
 
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb {
 
@@ -1586,7 +1586,7 @@ Status CatalogManager::IsEncryptionEnabled(const IsEncryptionEnabledRequestPB* r
 Status CatalogManager::ImportNamespaceEntry(
     const SysRowEntry& entry,
     const LeaderEpoch& epoch,
-    const std::optional<string>& clone_target_namespace_name,
+    const std::optional<std::string>& clone_target_namespace_name,
     NamespaceMap* namespace_map) {
   LOG_IF(DFATAL, entry.type() != SysRowEntryType::NAMESPACE)
       << "Unexpected entry type: " << entry.type();
@@ -1596,55 +1596,48 @@ Status CatalogManager::ImportNamespaceEntry(
   ns_data.db_type = GetDatabaseType(meta);
 
   TRACE("Looking up namespace");
-  // First of all try to find the namespace by ID. It will work if we are restoring the backup
-  // on the original cluster where the backup was created.
+  // For backup/restore, we first try to find the namespace by ID. This will succeed if we are
+  // restoring the backup in-place on the original cluster where the backup was created. This is
+  // actually deprecated behaviour as of 2026/02/24.
+  //
+  // For clones, we must find the clone source namespace by ID.
   auto ns_result = FindNamespaceById(entry.id());
   bool is_clone = clone_target_namespace_name.has_value();
-  bool found_matching_ns_by_id = (ns_result.ok()) && (*ns_result)->name() == meta.name() &&
-                                 (*ns_result)->state() == SysNamespaceEntryPB::RUNNING;
-  if (found_matching_ns_by_id && !is_clone) {
+  bool found_running_ns_by_id =
+      ns_result.ok() && (*ns_result)->state() == SysNamespaceEntryPB::RUNNING;
+  if (!is_clone && found_running_ns_by_id && (*ns_result)->name() == meta.name()) {
     ns_data.new_namespace_id = entry.id();
     return Status::OK();
   }
 
-  if (is_clone && !found_matching_ns_by_id) {
+  if (is_clone && !found_running_ns_by_id) {
+    // We cannot clone successfully if we didn't find the source namespace.
     return STATUS_FORMAT(
         IllegalState, "Could not find running namespace $0 to clone from.", meta.name());
   }
 
-  // If the namespace was not found by ID, it's ok on a new cluster OR if the namespace was
-  // deleted and created again. In both cases the namespace can be found by NAME.
+  // For backup/restore, at this point we haven't found the namespace. We need to find it by name
+  // (YSQL) / create it (YCQL).
+  //
+  // For clone, we've found the source namespace of the clone and now we need to find (YSQL) /
+  // create (YCQL) the target namespace.
+  const std::string& new_namespace_name = is_clone ? *clone_target_namespace_name : meta.name();
   if (ns_data.db_type == YQL_DATABASE_PGSQL) {
     // YSQL database must be created via external call. Find it by name.
-    std::string new_namespace_name;
-    if (is_clone) {
-      new_namespace_name = *clone_target_namespace_name;
-    } else {
-      new_namespace_name = meta.name();
-    }
     ns_result = FindNamespaceByName(ns_data.db_type, new_namespace_name);
-    if (!ns_result.ok()) {
-      const string msg = Format("YSQL database must exist: $0", new_namespace_name);
+    if (!ns_result.ok() || (*ns_result)->state() != SysNamespaceEntryPB::RUNNING) {
+      const std::string msg =
+          !ns_result.ok() ? Format("YSQL database must exist: $0", new_namespace_name)
+                          : Format("Found YSQL database must be running: $0", new_namespace_name);
       LOG_WITH_FUNC(WARNING) << msg;
       return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
     }
-    const auto& ns = *ns_result;
-    if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-      const string msg = Format("Found YSQL database must be running: $0", new_namespace_name);
-      LOG_WITH_FUNC(WARNING) << msg;
-      return STATUS(InvalidArgument, msg, MasterError(MasterErrorPB::NAMESPACE_NOT_FOUND));
-    }
-    ns_data.new_namespace_id = ns->id();
+    ns_data.new_namespace_id = (*ns_result)->id();
   } else {
     CreateNamespaceRequestPB req;
     CreateNamespaceResponsePB resp;
-    if (is_clone) {
-      req.set_name(*clone_target_namespace_name);
-    } else {
-      req.set_name(meta.name());
-    }
+    req.set_name(new_namespace_name);
     const Status s = CreateNamespace(&req, &resp, nullptr, epoch);
-
     if (s.ok()) {
       // The namespace was successfully re-created.
       ns_data.just_created = true;
@@ -2406,36 +2399,31 @@ Status CatalogManager::ImportTableEntry(
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the current schema version of the target table as follows:
-    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
-    // current schema version is greater than all schema versions that might exist in the snapshot
-    // used for clone.
-    // 2- Restoring a backup case: bump the schema version to 1 + the schema version of
-    // SysTableEntryPB found in the SnapshotInfoPB if the latter is greater. This is because it is
-    // guaranteed that the schema version found in snapshotInfo is the maximum schema version that
-    // can be found in the snapshot at backup creation time. The one extra schema version bump is
-    // used to avoid any conflict with the snapshot's older schema packings at tserver side.
-    // The last version is used for the committed schema on the master of the restore side
-    // The semantics are as follows: At tserver, all schema packings coming from the snapshot
-    // will be used in tablet-meta and the last schema will have the correct committed schema
-    // created at restore side as part of executing the SQL dump. The last schema is send from the
-    // master to the tservers during ImportSnapshot.
-    if (is_clone) {
-      // The Source table should be found as we are cloning from it.
+    // Bump up the current schema version of the target table
+    // CQL index tables always have schema version 0 because we do not support dropping or
+    // renaming columns on CQL indexes. CQL index writes depend on this because they implicitly
+    // use a schema_version of 0 (by not setting the field in the protobuf write request). This is
+    // checked against the table schema_version when applying the write. Therefore we must never
+    // bump the schema version for CQL index tables.
+    if (meta.table_type() == TableType::YQL_TABLE_TYPE && table_data->is_index()) {
+      SCHECK_EQ(meta.version(), 0, IllegalState, "CQL index table should have version 0");
+    } else if (is_clone) {
+      // Bump the schema version to 1 + the current schema version of source table. This ensures
+      // that the current schema version is greater than all schema versions that might exist in the
+      //  snapshot used for clone.
       TRACE("Looking up source table");
       TableInfoPtr source_table = VERIFY_RESULT(FindTableById(table_data->old_table_id));
       auto source_table_lock = source_table->LockForRead();
-      if (source_table_lock->table_type() == TableType::YQL_TABLE_TYPE &&
-          source_table_lock->is_index()) {
-        // CQL index tables as of November 2024 always have schema version 0 because we do not
-        // support dropping or renaming columns yet. CQL index deletes depend on this because they
-        // implicitly use a schema_version of 0 (by not setting the field in the protobuf write
-        // request). This is checked against the table schema_version when applying the write.
-        SCHECK_EQ(meta.version() == 0, true, IllegalState, "CQL index table should have version 0");
-      } else {
-        schema_version = source_table_lock->pb.version() + 1;
-      }
+      schema_version = source_table_lock->pb.version() + 1;
     } else if (meta.version() >= table->LockForRead()->pb.version()) {
+      // Restoring a backup: bump the schema version to 1 + the schema version of SysTableEntryPB
+      // found in the SnapshotInfoPB if the latter is >= the current version. It is guaranteed that
+      // the schema version in snapshotInfo is the maximum version that can be found in the snapshot
+      // at backup time. The extra bump avoids conflicts with the snapshot's older schema packings
+      // at tserver side. At the tserver, all schema packings from the snapshot will be used in
+      // tablet-meta and the last schema will have the correct committed schema created at restore
+      // side as part of executing the SQL dump. The last schema is sent from master to tservers
+      // during ImportSnapshot.
       schema_version = meta.version() + 1;
     }
 
@@ -3215,7 +3203,7 @@ void CatalogManager::CleanupHiddenTables(
     lock.Commit();
   }
 
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     // A hidden table, with all the tablets deleted can be removed from the stream metadata of
     // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
     // task will remove the tables from such streams' metadata.

@@ -449,7 +449,7 @@ string FormatPgGFlagValue(const string& value, const string& type) {
   if (type == "string") {
     auto trimmed = boost::algorithm::trim_copy(value);
     if (trimmed.size() >= 2 && trimmed.front() == '\'' && trimmed.back() == '\'') {
-      // Already single-quoted — pass through unchanged.
+      // Already single-quoted: pass through unchanged.
       return value;
     }
     // Add single quotes and escape internal single quotes.

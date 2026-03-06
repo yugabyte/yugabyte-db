@@ -293,6 +293,8 @@ public class PerfAdvisorClient {
     private UUID customerId;
     List<String> dataMountPoints;
     List<String> otherMountPoints;
+    private boolean metricsExportToPrometheusEnabled = false;
+    private boolean metricsExportJsonlEnabled = true;
   }
 
   @Data

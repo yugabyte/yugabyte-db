@@ -23,13 +23,21 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "node-agent-provision ...",
 		Short: "Command for node agent provisioner",
-		Run: func(cmd *cobra.Command, args []string) {
-			handleCommand(cmd, args, map[string]config.CommandFactory{
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Propagate the error up to the main method for consistent error handling and testability.
+			return handleCommand(cmd, args, map[string]config.CommandFactory{
 				"provision": command.NewProvisionCommand,
 			})
 		},
 	}
 )
+
+// Placeholder for parsed arguments.
+type parsedArgs struct {
+	config.Args
+	// Additional local fields which are not passed down.
+	extraVars string
+}
 
 func setupCommand(cmd *cobra.Command) {
 	cmd.Flags().String("command", "provision", "Command to execute")
@@ -77,79 +85,90 @@ func setupCommand(cmd *cobra.Command) {
 	cmd.MarkFlagRequired("ynp_base_path")
 }
 
-func parseArguments(cmd *cobra.Command) config.Args {
+func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 	command, err := cmd.Flags().GetString("command")
 	if err != nil {
-		log.Fatalf("Error parsing command flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing command flag: %v\n", err)
 	}
 	ynpBasePath, err := cmd.Flags().GetString("ynp_base_path")
 	if err != nil {
-		log.Fatalf("Error parsing ynp_base_path flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing ynp_base_path flag: %v\n", err)
 	}
 	specificModules, err := cmd.Flags().GetStringSlice("specific_module")
 	if err != nil {
-		log.Fatalf("Error parsing specific_module flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing specific_module flag: %v\n", err)
 	}
 	skipModules, err := cmd.Flags().GetStringSlice("skip_module")
 	if err != nil {
-		log.Fatalf("Error parsing skip_module flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing skip_module flag: %v\n", err)
 	}
 	configFile, err := cmd.Flags().GetString("config_file")
 	if err != nil {
-		log.Fatalf("Error parsing config_file flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing config_file flag: %v\n", err)
 	}
 	preflightCheck, err := cmd.Flags().GetBool("preflight_check")
 	if err != nil {
-		log.Fatalf("Error parsing preflight_check flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing preflight_check flag: %v\n", err)
 	}
 	listModules, err := cmd.Flags().GetBool("list_modules")
 	if err != nil {
-		log.Fatalf("Error parsing list_modules flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing list_modules flag: %v\n", err)
 	}
 	extraVars, err := cmd.Flags().GetString("extra_vars")
 	if err != nil {
-		log.Fatalf("Error parsing extra_vars flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing extra_vars flag: %v\n", err)
 	}
 	dryRun, err := cmd.Flags().GetBool("dry_run")
 	if err != nil {
-		log.Fatalf("Error parsing dry_run flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing dry_run flag: %v\n", err)
 	}
 	noRoot, err := cmd.Flags().GetBool("noroot")
 	if err != nil {
-		log.Fatalf("Error parsing noroot flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing noroot flag: %v\n", err)
 	}
 	root, err := cmd.Flags().GetBool("root")
 	if err != nil {
-		log.Fatalf("Error parsing root flag: %v\n", err)
+		return nil, fmt.Errorf("Error parsing root flag: %v\n", err)
 	}
+	return &parsedArgs{
+		Args: config.Args{
+			Command:         command,
+			YnpBasePath:     ynpBasePath,
+			SpecificModules: specificModules,
+			SkipModules:     skipModules,
+			ConfigFile:      configFile,
+			PreflightCheck:  preflightCheck,
+			ListModules:     listModules,
+			DryRun:          dryRun,
+			NoRoot:          noRoot,
+			Root:            root,
+		},
+		extraVars: extraVars,
+	}, nil
+}
+
+// Process the parsed arguments, read and merge the configuration, and setup the logger etc.
+func processArguments(ctx context.Context, pArgs *parsedArgs) error {
+	var err error
 	var exVars map[string]map[string]any
-	if extraVars != "" {
-		exVars, err = loadJSONOrFile(extraVars)
+	if pArgs.extraVars != "" {
+		exVars, err = loadJSONOrFile(pArgs.extraVars)
 		if err != nil {
-			log.Fatalf("Error loading extra_vars: %v\n", err)
+			return fmt.Errorf("Error loading extra_vars: %v\n", err)
 		}
 	}
-	ynpConfig, err := loadYAMLConfig(configFile)
+	ynpConfig, err := loadYAMLConfig(pArgs.ConfigFile)
 	if err != nil {
-		log.Fatalf("Error loading YAML config: %v\n", err)
+		return fmt.Errorf("Error loading YAML config: %v\n", err)
 	}
 	setDefaultConfigs(ynpConfig)
 	mergeConfigs(ynpConfig, exVars)
+	// Setup logger first to use the custom logger.
+	config.SetupLogger(ctx, pArgs.YnpConfig)
 	// Fix the types in the parsed config after merging the extra_vars.
 	ynpConfig = config.FixParsedConfigMap(ynpConfig)
-	return config.Args{
-		Command:         command,
-		YnpBasePath:     ynpBasePath,
-		SpecificModules: specificModules,
-		SkipModules:     skipModules,
-		ConfigFile:      configFile,
-		PreflightCheck:  preflightCheck,
-		ListModules:     listModules,
-		YnpConfig:       ynpConfig,
-		DryRun:          dryRun,
-		NoRoot:          noRoot,
-		Root:            root,
-	}
+	pArgs.YnpConfig = ynpConfig
+	return nil
 }
 
 func loadJSONOrFile(jsonOrPath string) (map[string]map[string]any, error) {
@@ -230,40 +249,55 @@ func handleCommand(
 	cmd *cobra.Command,
 	args []string,
 	commandFactories map[string]config.CommandFactory,
-) {
+) error {
 	if len(args) > 0 {
 		cmd.Help()
-		log.Fatalf("Unknown non-flag args: %v", args)
+		return fmt.Errorf("Unknown non-flag args: %v", args)
 	}
 	ctx := context.Background()
-	cmdArgs := parseArguments(cmd)
-	// Setup logger first to use the custom logger.
-	config.SetupLogger(ctx, cmdArgs.YnpConfig)
-	iniConfig, err := config.GenerateConfigINI(ctx, cmdArgs)
+	// Parse the arguments into a structured format.
+	pArgs, err := parseArguments(cmd)
 	if err != nil {
-		util.FileLogger().Fatalf(ctx, "Failed to generate config.ini: %v", err)
+		util.ConsoleLogger().Errorf(ctx, "Failed to parse the command arguments: %v", err)
+		return err
+	}
+	// Don't show usage afterwards on error after the parsing is successful.
+	cmd.SilenceUsage = true
+	// Read and process the arguments.
+	err = processArguments(ctx, pArgs)
+	if err != nil {
+		util.ConsoleLogger().Errorf(ctx, "Failed to process the command arguments: %v", err)
+		return err
+	}
+	iniConfig, err := config.GenerateConfigINI(ctx, &pArgs.Args)
+	if err != nil {
+		util.ConsoleLogger().Errorf(ctx, "Failed to generate INI config: %v", err)
+		return err
 	}
 	jsonConfig, _ := json.MarshalIndent(iniConfig.SectionValues(), "", "  ")
 	util.ConsoleLogger().Debugf(ctx, "INI config here: %s", string(jsonConfig))
-	executor := ynp.NewExecutor(iniConfig, cmdArgs)
+	executor := ynp.NewExecutor(iniConfig, &pArgs.Args)
 	for name, factory := range commandFactories {
 		executor.RegisterCommandFactory(name, factory)
 	}
 	err = executor.Exec(ctx)
 	if err != nil {
-		exitCode := 1
-		var scriptErr *command.ScriptExitError
-		if errors.As(err, &scriptErr) {
-			exitCode = scriptErr.ExitCode
-		}
 		util.ConsoleLogger().Errorf(ctx, "Failed to execute provision command: %v", err)
-		os.Exit(exitCode)
+		return err
 	}
+	return nil
 }
 
 func main() {
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatalf("Error executing command: %v\n", err)
+		// Errors are propagated up to main, log the error and exit with non-zero code.
+		log.Printf("Error executing command: %v\n", err)
+		exitCode := 1
+		var scriptErr *command.ScriptExitError
+		if errors.As(err, &scriptErr) {
+			exitCode = scriptErr.ExitCode
+		}
+		os.Exit(exitCode)
 	}
 }

@@ -1571,7 +1571,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
         cf_name, mutable_cf_options, vstorage, score, sorted_runs, log_buffer);
   }
   if (c) {
-    LOG_TO_BUFFER(log_buffer, "[%s] Universal: compacting for direct deletion\n",
+    LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Universal: compacting for direct deletion\n",
                   cf_name.c_str());
   } else {
     // Check if the number of files to compact is greater than or equal to
@@ -1587,7 +1587,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
     c = PickCompactionUniversalSizeAmp(cf_name, mutable_cf_options, vstorage,
                                             score, sorted_runs, log_buffer);
     if (c) {
-      LOG_TO_BUFFER(log_buffer, "[%s] Universal: compacting for size amp\n",
+      LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Universal: compacting for size amp\n",
                   cf_name.c_str());
     } else {
       // Size amplification is within limits. Try reducing read
@@ -1599,7 +1599,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
           ioptions_.compaction_options_universal.always_include_size_threshold,
           sorted_runs, log_buffer);
       if (c) {
-        LOG_TO_BUFFER(log_buffer, "[%s] Universal: compacting for size ratio\n",
+        LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Universal: compacting for size ratio\n",
                     cf_name.c_str());
       } else {
         // ENG-1401: We trigger compaction logic when num files exceeds
@@ -1628,7 +1628,7 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
                       cf_name, mutable_cf_options, vstorage, score, UINT_MAX, num_files,
                       ioptions_.compaction_options_universal.always_include_size_threshold,
                       sorted_runs, log_buffer)) != nullptr) {
-            LOG_TO_BUFFER(log_buffer,
+            LOG_TO_BUFFER_DETAIL(log_buffer,
                           "[%s] Universal: compacting for file num -- %u\n",
                           cf_name.c_str(), num_files);
           }
@@ -1896,8 +1896,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
     }
     char file_num_buf[kFormatFileSizeInfoBufSize];
     picking_sr.DumpSizeInfo(file_num_buf, sizeof(file_num_buf), i);
-    LOG_TO_BUFFER(log_buffer, "[%s] Universal: Picking %s", cf_name.c_str(),
-                file_num_buf);
+    LOG_TO_BUFFER_DETAIL(
+        log_buffer, "[%s] Universal: Picking %s", cf_name.c_str(), file_num_buf);
   }
 
   CompactionReason compaction_reason;

@@ -704,9 +704,6 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
 class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    // (Auto-Analyze #28390)
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     PgCloneInitiallyEmptyDBTest::SetUp();
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
@@ -862,6 +859,29 @@ TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {
       R"(ALTER DATABASE $0 SET "TimeZone" TO 'US/Central')", kSourceNamespaceName));
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
+TEST_F(PgCloneTest, CloneWithPgStatistics) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE my_table (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(source_conn_->Execute(
+      "INSERT INTO my_table SELECT i, i % 3 FROM generate_series(1, 1000) AS i"));
+  ASSERT_OK(source_conn_->Execute("ANALYZE my_table"));
+
+  const auto stats_query =
+      "SELECT null_frac, avg_width, n_distinct "
+      "FROM pg_stats WHERE tablename = 'my_table' ORDER BY attname";
+  auto source_stats = ASSERT_RESULT(source_conn_->FetchAllAsString(stats_query));
+  LOG(INFO) << "Source stats: " << source_stats;
+  ASSERT_FALSE(source_stats.empty());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto target_stats = ASSERT_RESULT(target_conn.FetchAllAsString(stats_query));
+  LOG(INFO) << "Target stats: " << target_stats;
+
+  ASSERT_EQ(source_stats, target_stats);
 }
 
 class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
@@ -1617,6 +1637,54 @@ TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyD
 
   // Recreate the table.
   ASSERT_OK(create_partitioned_table(target_conn));
+}
+
+TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
+  const std::string kRenamedNamespaceName = "testdb_renamed";
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES (1, 10)"));
+
+  // Rename requires disconnecting from the source DB first.
+  source_conn_.reset();
+  auto default_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "ALTER DATABASE $0 RENAME TO $1", kSourceNamespaceName, kRenamedNamespaceName));
+
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
+
+  // Clone using the renamed DB name. This should succeed.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kRenamedNamespaceName,
+      timestamp.ToInt64()));
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, (std::tuple<int32_t, int32_t>{1, 10}));
+  }
+  ASSERT_OK(default_conn.ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  // Rename the DB back to the original name.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "ALTER DATABASE $0 RENAME TO $1", kRenamedNamespaceName, kSourceNamespaceName));
+
+  // Clone using the current (original) name.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, (std::tuple<int32_t, int32_t>{1, 10}));
+  }
+  ASSERT_OK(default_conn.ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  // Clone using the old renamed name.
+  auto status = default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName2, kRenamedNamespaceName,
+      timestamp.ToInt64());
+  // The renamed name no longer exists, so this should fail.
+  ASSERT_NOK(status);
 }
 
 }  // namespace master

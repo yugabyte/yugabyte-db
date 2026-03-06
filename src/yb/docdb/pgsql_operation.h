@@ -59,8 +59,9 @@ class PgsqlWriteOperation :
   Result<bool> HasDuplicateUniqueIndexValueBackward(const DocOperationApplyData& data);
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data,
-      const ReadHybridTime& read_time);
-  Result<HybridTime> FindOldestOverwrittenTimestamp(
+      const ReadHybridTime& read_time,
+      IntraTxnWriteId write_id = kMaxWriteId);
+  Result<DocHybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter,
       const dockv::SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);

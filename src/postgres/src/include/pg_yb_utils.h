@@ -106,6 +106,7 @@ extern bool YbGetNeedInvalidateAllTableCache();
 extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
 extern void YbSetNewCatalogVersion(uint64_t new_version);
 
@@ -643,6 +644,30 @@ extern bool yb_debug_original_backtrace_format;
  * schema-version restarts (e.g. catalog version mismatch errors).
  */
 extern bool yb_debug_log_internal_restarts;
+
+/*
+ * Tracks whether a non-atomic (in-procedure) COMMIT has been executed during
+ * the current top-level query. This is used to prevent unsafe retries of
+ * CALL/DO statements: once a COMMIT has been performed inside a stored
+ * procedure or DO block, retrying the entire statement from scratch would
+ * re-execute already-committed work, potentially causing duplicates or other
+ * incorrect behavior.
+ *
+ * Set to true in _SPI_commit() and reset at the start of each top-level query
+ * in yb_exec_query_wrapper().
+ */
+extern bool yb_is_non_atomic_commit_done;
+
+/*
+ * When true, allows the query layer to retry CALL/DO statements even after a
+ * non-atomic (in-procedure) COMMIT has been executed. This can lead to
+ * re-execution of already-committed work, but is provided as a safety valve
+ * for customers who depend on the old retry behavior.
+ *
+ * Default: false (safe behavior -- retries are blocked after in-procedure
+ * COMMIT).
+ */
+extern bool yb_enable_retry_after_non_atomic_commit;
 
 /*
  * Relaxes some internal sanity checks for system catalogs to allow creating them.

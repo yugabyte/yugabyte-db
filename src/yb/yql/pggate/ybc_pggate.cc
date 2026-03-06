@@ -3056,6 +3056,17 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
   return YBCStatusOK();
 }
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+    size_t num_values, const char** tablet_id) {
+  auto result = pgapi->GetTabletForKey(database_oid, table_oid, key_values, num_values);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *tablet_id = YBCPAllocStdString(*result);
+  return YBCStatusOK();
+}
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** servers_metrics_info, size_t* count) {
   const auto result = pgapi->ServersMetrics();
   if (!result.ok()) {
@@ -3242,8 +3253,13 @@ bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
 
 void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) {
-  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode, is_session_lock));
+}
+
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
+  return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }
 
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {

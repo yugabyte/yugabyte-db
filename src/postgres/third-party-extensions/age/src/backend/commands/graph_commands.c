@@ -107,6 +107,8 @@ Oid create_graph_internal(const Name graph_name)
                  errmsg("graph \"%s\" already exists", graph_name_str)));
     }
 
+    YB_BEGIN_TRANSACTIONAL_DDL();
+    
     nsp_id = create_schema_for_graph(graph_name);
 
     /* inserts the graph info into the relation which has all the other existing graphs info */
@@ -118,6 +120,7 @@ Oid create_graph_internal(const Name graph_name)
     /* Create the default label tables */
     create_label(graph_name_str, AG_DEFAULT_LABEL_VERTEX, LABEL_TYPE_VERTEX, NIL);
     create_label(graph_name_str, AG_DEFAULT_LABEL_EDGE, LABEL_TYPE_EDGE, NIL);
+    YB_END_TRANSACTIONAL_DDL();
 
     return nsp_id;
 }
@@ -222,10 +225,14 @@ Datum drop_graph(PG_FUNCTION_ARGS)
                         errmsg("graph \"%s\" does not exist", graph_name_str)));
     }
 
+    YB_BEGIN_TRANSACTIONAL_DDL();
+
     drop_schema_for_graph(graph_name_str, cascade);
 
     delete_graph(graph_name);
     CommandCounterIncrement();
+
+    YB_END_TRANSACTIONAL_DDL();
 
     ereport(NOTICE, (errmsg("graph \"%s\" has been dropped", graph_name_str)));
 
@@ -383,10 +390,15 @@ static void rename_graph(const Name graph_name, const Name new_name)
      *       not required.
      */
     schema_name = get_graph_namespace_name(oldname);
+
+    YB_BEGIN_TRANSACTIONAL_DDL();
+
     RenameSchema(schema_name, newname);
 
     update_graph_name(graph_name, new_name);
     CommandCounterIncrement();
+
+    YB_END_TRANSACTIONAL_DDL();
 
     ereport(NOTICE,
             (errmsg("graph \"%s\" renamed to \"%s\"", oldname, newname)));

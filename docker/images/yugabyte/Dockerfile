@@ -116,6 +116,7 @@ RUN $yum_install \
     && python3 -m pip install --upgrade lxml \
     && python3 -m pip install --upgrade s3cmd \
     && python3 -m pip install --upgrade psutil \
+    && python3 -m pip install --upgrade watchdog \
     && rm -rf /usr/share/python3-wheels/pip-9.0.3-py2.py3-none-any.whl \
     && rm -rf ~/.cache \
     && yum clean all && rm -rf /var/cache/yum

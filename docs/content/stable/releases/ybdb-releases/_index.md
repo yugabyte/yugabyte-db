@@ -8,6 +8,8 @@ aliases:
   - /stable/releases/release-notes/
   - /stable/releases/release-notes/stable-release/
   - /stable/releases/whats-new/stable-release/
+  - /stable/releases/release-notes/latest-release/
+  - /stable/releases/whats-new/latest-release
 showRightNav: true
 cascade:
   unversioned: true

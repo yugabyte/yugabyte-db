@@ -355,4 +355,12 @@ public class RuntimeConfService extends AuthenticatedController {
         .forEach(universeUUID -> formData.addMutableScope(ScopeType.UNIVERSE, universeUUID));
     return formData;
   }
+
+  public List<RuntimeConfigEntry> getRuntimeConfigEntries(UUID scopeUuid) {
+    return RuntimeConfigEntry.getAll(scopeUuid);
+  }
+
+  public List<RuntimeConfigEntry> getRuntimeConfigEntries(Set<UUID> scopeUuids) {
+    return RuntimeConfigEntry.getAll(scopeUuids);
+  }
 }

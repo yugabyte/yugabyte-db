@@ -52,8 +52,10 @@ typedef int64 graphid;
 #define AG_GETARG_GRAPHID(a) DATUM_GET_GRAPHID(PG_GETARG_DATUM(a))
 #define AG_RETURN_GRAPHID(x) return GRAPHID_GET_DATUM(x)
 
-/* Oid accessors for GRAPHID */
+/* YB: Oid accessors for GRAPHID */
+#ifndef GRAPHIDOID
 #define GRAPHIDOID get_GRAPHIDOID()
+#endif /* YB */
 #define GRAPHIDARRAYOID get_GRAPHIDARRAYOID()
 
 #define GET_LABEL_ID(id) \

@@ -14,7 +14,7 @@ type: docs
 
 The following tutorials describe how to integrate YugabyteDB with Apache Hudi:
 
-- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/0.10.0/hoodie_deltastreamer/) with Apache Spark.
+- Using real-time change data capture (CDC) with the [YugabyteDB gRPC connector](/stable/additional-features/change-data-capture/using-yugabytedb-grpc-replication/) and [HoodieDeltaStreamer](https://hudi.apache.org/docs/hoodie_streaming_ingestion/) with Apache Spark.
 - Loading incremental data into YugabyteDB using HoodieDeltaStreamer and JDBC driver.
 
 ## Prerequisites
@@ -53,7 +53,7 @@ This integration allows continuous and incremental data ingestion from YugabyteD
 
 ### Set up Kafka and schema registry
 
-1. Download `docker-compose.yaml` from the [CDC-examples](https://github.com/yugabyte/cdc-examples/blob/main/cdc-quickstart-kafka-connect/docker-compose.yaml) folder and run all the specified containers.
+1. Download `docker-compose.yaml` from the [CDC-examples](https://github.com/yugabyte/cdc-examples/blob/main/grpc_connector/cdc-quickstart-kafka-connect/docker-compose.yaml) folder and run all the specified containers.
 
     This installs the Confluent schema registry, Control Center, ZooKeeper, Kafka, YugabyteDB Debezium Kafka Connector, Grafana, and Prometheus containers. Configure the ports as required.
 

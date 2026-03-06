@@ -148,13 +148,6 @@ The following PG15 features are not yet implemented but are planned for the futu
 
 {{%/table%}}
 
-### Features not yet implemented
-
-The following features supported in v2024.2 and earlier are not yet available in PostgreSQL 15-based versions:
-
-- [View terminated queries with yb_terminated_queries](../../../explore/observability/yb-pg-stat-get-queries/)
-- [PostgreSQL_FDW extension](../../../additional-features/pg-extensions/extension-postgres-fdw/)
-
 ## What's changed
 
 The following features have different behaviors as compared to previous versions of YugabyteDB due to changes in the underlying PostgreSQL implementation.

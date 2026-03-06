@@ -207,6 +207,10 @@ PgFlushDebugContext PgFlushDebugContext::AcquireLock(std::string_view lock_id) {
   return DoMake("before acquiring lock on $0", lock_id);
 }
 
+PgFlushDebugContext PgFlushDebugContext::ReleaseLock(std::string_view lock_id) {
+  return DoMake("before releasing lock on $0", lock_id);
+}
+
 PgFlushDebugContext PgFlushDebugContext::ConflictingKeyWrite(
       PgOid table_oid, std::string_view table_name, std::string_view key) {
   return DoMake(

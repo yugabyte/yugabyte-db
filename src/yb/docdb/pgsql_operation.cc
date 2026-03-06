@@ -1258,33 +1258,55 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValueBackward(
       data.read_operation_data.WithAlteredReadTime(ReadHybridTime::Max()));
 
   VLOG_WITH_FUNC(4) << "whole row: " << doc_key_;
-  HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-      iter.get(), SubDocKey(doc_key_), data.read_time().read));
+  DocHybridTime oldest_past_min_dht = VERIFY_RESULT(
+      FindOldestOverwrittenTimestamp(iter.get(), SubDocKey(doc_key_), data.read_time().read));
   VLOG_WITH_FUNC(4) << "liveness column: " << SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn);
-  const HybridTime oldest_past_min_ht_liveness =
-      VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-          iter.get(),
-          SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn),
-          data.read_time().read));
-  oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
-  if (!oldest_past_min_ht.is_valid()) {
+  const DocHybridTime oldest_past_min_dht_liveness = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
+      iter.get(), SubDocKey(doc_key_, KeyEntryValue::kLivenessColumn), data.read_time().read));
+  // Use kMaxWriteId to include other column values that may have been written as
+  // part of the write.
+  const auto modified_oldest_past_min_dht_liveness =
+      DocHybridTime(oldest_past_min_dht_liveness.hybrid_time(), kMaxWriteId);
+  VLOG_WITH_FUNC(4) << "oldest_past_min_dht_liveness: " << oldest_past_min_dht_liveness
+                    << ", modified_oldest_past_min_dht_liveness: "
+                    << modified_oldest_past_min_dht_liveness
+                    << ", oldest_past_min_dht (before MakeAtMost): " << oldest_past_min_dht;
+  // Pick the older (smaller) DocHybridTime of the two.
+  if (modified_oldest_past_min_dht_liveness.is_valid() &&
+      (!oldest_past_min_dht.is_valid() ||
+       modified_oldest_past_min_dht_liveness < oldest_past_min_dht)) {
+    oldest_past_min_dht = modified_oldest_past_min_dht_liveness;
+  }
+  VLOG_WITH_FUNC(4) << "oldest_past_min_dht (after MakeAtMost): " << oldest_past_min_dht;
+  if (!oldest_past_min_dht.is_valid()) {
     return false;
   }
-  return HasDuplicateUniqueIndexValue(
-      data, ReadHybridTime::SingleTime(oldest_past_min_ht));
+  // Use the write_id from the oldest overwritten record so we don't see later writes at the
+  // same HybridTime (e.g., a concurrent INSERT after a DELETE within the same transaction).
+  //
+  // Use the exact write_id from the oldest overwritten record so we don't see
+  // later writes at the same HybridTime (e.g., a concurrent INSERT after a DELETE
+  // within the same transaction).
+  auto read_time = ReadHybridTime::SingleTime(oldest_past_min_dht.hybrid_time());
+  VLOG_WITH_FUNC(2) << "Reading for backward duplicate check at " << read_time
+                    << " with write_id=" << oldest_past_min_dht.write_id();
+  return HasDuplicateUniqueIndexValue(data, read_time, oldest_past_min_dht.write_id());
 }
 
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
-    const DocOperationApplyData& data, const ReadHybridTime& read_time) {
+    const DocOperationApplyData& data, const ReadHybridTime& read_time,
+    IntraTxnWriteId write_id) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
   dockv::ReaderProjection projection(doc_read_context_->schema());
+  auto altered_read_op_data =
+      data.read_operation_data.WithAlteredReadTimeAndWriteId(read_time, write_id);
   auto iterator = DocRowwiseIterator(
       projection,
       *doc_read_context_,
       txn_op_context_,
       data.doc_write_batch->doc_db(),
-      data.read_operation_data.WithAlteredReadTime(read_time),
+      altered_read_op_data,
       data.doc_write_batch->pending_op());
   RETURN_NOT_OK(iterator.Init(spec));
 
@@ -1341,11 +1363,11 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
   return false;
 }
 
-Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
+Result<DocHybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
     IntentAwareIterator* iter,
     const SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
-  HybridTime result;
+  DocHybridTime result = DocHybridTime::kInvalid;
   VLOG_WITH_FUNC(3) << doc_key_;
   iter->Seek(doc_key_);
   if (VERIFY_RESULT_REF(iter->Fetch())) {
@@ -1455,6 +1477,10 @@ Status PgsqlWriteOperation::DoInsertColumn(
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
   if (!is_upsert) {
     if (request_.is_backfill()) {
+      VLOG_WITH_FUNC(3) << "Applying backfill insert at DocDB layer"
+                        << ", read_time: " << data.read_time()
+                        << ", doc_key: " << doc_key_
+                        << ", request: " << request_.DebugString();
       if (VERIFY_RESULT(HasDuplicateUniqueIndexValue(data))) {
         // Unique index value conflict found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);

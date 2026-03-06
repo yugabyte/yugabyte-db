@@ -77,6 +77,7 @@ typedef struct GRAPH_global_context
     TransactionId xmin;            /* transaction ids for this graph */
     TransactionId xmax;
     CommandId curcid;              /* currentCommandId graph was created with */
+    uint64 invalidation_counter;   /* YB: graph modification counter at creation */
     int64 num_loaded_vertices;     /* number of loaded vertices in this graph */
     int64 num_loaded_edges;        /* number of loaded edges in this graph */
     ListGraphId *vertices;         /* vertices for vertex hashtable cleanup */
@@ -96,6 +97,15 @@ typedef struct GRAPH_global_context_container
 
 /* global variable to hold the per process GRAPH global contexts */
 static GRAPH_global_context_container global_graph_contexts_container = {0};
+
+/*
+ * YB: Global counter that gets incremented whenever graph data is modified
+ * (CREATE, DELETE, SET, MERGE). This is used for cache invalidation in
+ * is_ggctx_invalid() to detect when the graph has changed. This is
+ * especially important for YugabyteDB where xmin/xmax/curcid may not
+ * change across modifications within the same transaction.
+ */
+static uint64 global_graph_invalidation_counter = 0;
 
 /* declarations */
 /* GRAPH global context functions */
@@ -122,9 +132,37 @@ static bool insert_vertex_entry(GRAPH_global_context *ggctx, graphid vertex_id,
 
 /*
  * Helper function to determine validity of the passed GRAPH_global_context.
- * This is based off of the current active snapshot, to see if the graph could
- * have been modified. Ideally, we should find a way to more accurately know
- * whether the particular graph was modified.
+ *
+ * YB: Apache AGE maintains an in-memory, per-process cache of graph data (vertices
+ * and edges) to avoid repeated disk/network reads for graphs already referenced
+ * in the current transaction.  This cache is private to each backend — there is
+ * no cross-backend invalidation mechanism.
+ *
+ * This means the cache can serve stale data under Read Committed (RC) isolation,
+ * because RC requires each statement to use a fresh snapshot, yet another
+ * backend may have committed graph modifications between statements.  Upstream
+ * AGE acknowledges this limitation.  The problem is amplified in YugabyteDB
+ * where the graph can be modified on any node across the cluster.
+ *
+ * Possible approaches considered:
+ *   1. Retain AGE's existing semantics: allow reads to be stale in RC.
+ *   2. Disable the cache entirely for all isolation levels.
+ *   3. Disable the cache only for RC; allow it for Repeatable Read / Serializable
+ *      where a single snapshot is used for the entire transaction.
+ *   4. Mandate Repeatable Read or Serializable for AGE queries.
+ *
+ * We chose option 1 for now: the cache is kept for performance, accepting the
+ * trade-off that RC reads may be stale.  Options 2-4 remain viable if stricter
+ * correctness is required in the future.
+ *
+ * Within a single backend's transaction, two invalidation signals are checked:
+ *
+ *   (a) Snapshot change (xmin/xmax/curcid) — the original upstream mechanism.
+ *
+ *   (b) A global modification counter incremented by AGE's cypher executors
+ *       (CREATE, DELETE, SET, MERGE).  This is especially important for
+ *       YugabyteDB where xmin/xmax/curcid may not change across modifications
+ *       within the same transaction due to YB's HLC-based MVCC.
  */
 bool is_ggctx_invalid(GRAPH_global_context *ggctx)
 {
@@ -135,10 +173,28 @@ bool is_ggctx_invalid(GRAPH_global_context *ggctx)
      * changed, then we have a graph that was updated. This means that the
      * global context for this graph is no longer valid.
      */
-    return (ggctx->xmin != snap->xmin ||
-            ggctx->xmax != snap->xmax ||
-            ggctx->curcid != snap->curcid);
+    /* YB: restructured to allow additional invalidation check below */
+    if (ggctx->xmin != snap->xmin ||
+        ggctx->xmax != snap->xmax ||
+        ggctx->curcid != snap->curcid)
+    {
+        return true;
+    }
 
+    /*
+     * Check the graph modification counter. This counter is incremented by
+     * the AGE cypher executors (CREATE, DELETE, SET, MERGE) whenever graph
+     * data is modified. This is especially important for YugabyteDB where
+     * xmin/xmax/curcid may not change across modifications within the same
+     * transaction due to YB's HLC-based MVCC.
+     */
+    /* YB: check the graph modification counter (see comment above). */
+    if (ggctx->invalidation_counter != global_graph_invalidation_counter)
+    {
+        return true;
+    }
+
+    return false; /* YB */
 }
 /*
  * Helper function to create the global vertex and edge hashtables. One
@@ -935,6 +991,9 @@ GRAPH_global_context *manage_GRAPH_global_contexts(char *graph_name,
     new_ggctx->xmax = GetActiveSnapshot()->xmax;
     new_ggctx->curcid = GetActiveSnapshot()->curcid;
 
+    /* YB: store the current graph modification counter */
+    new_ggctx->invalidation_counter = global_graph_invalidation_counter;
+
     /* initialize our vertices list */
     new_ggctx->vertices = NULL;
     /* initialize our edges list */
@@ -1451,4 +1510,16 @@ Datum age_graph_stats(PG_FUNCTION_ARGS)
     result.res->type = AGTV_OBJECT;
 
     PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+}
+
+/*
+ * Function to signal that graph data has been modified. This increments the
+ * global modification counter, which will cause is_ggctx_invalid() to return
+ * true for any cached graph contexts created before this modification. This
+ * should be called from the cypher executors (CREATE, DELETE, SET, MERGE)
+ * after they modify graph data.
+ */
+void yb_invalidate_GRAPH_global_contexts(void)
+{
+    global_graph_invalidation_counter++;
 }

@@ -7,6 +7,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -23,10 +24,12 @@ import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
@@ -56,6 +59,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
   @Mock ApiHelper apiHelper;
 
   @Mock Clock clock;
+
+  @Mock RuntimeConfService runtimeConfService;
 
   Customer defaultCustomer;
   Users defaultUser;
@@ -119,6 +124,12 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
     when(apiHelper.postRequest(anyString(), any(), anyMap())).thenReturn(Json.toJson(responseJson));
+    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
+        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
     callHomeManager.sendDiagnostics(defaultCustomer);
 
     ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
@@ -159,6 +170,12 @@ public class CallHomeManagerTest extends FakeDBApplication {
             ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
     when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
+        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
 
     JsonNode payload =
         callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
@@ -200,6 +217,12 @@ public class CallHomeManagerTest extends FakeDBApplication {
             ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
     when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
+        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
 
     JsonNode payload =
         callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
@@ -216,5 +239,111 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertTrue(awsJson.get("on_prem_manually_provision").isNull());
     assertEquals("USE_CLOUD_NTP_SERVER", awsJson.get("ntp_setup_detail").asText());
     assertEquals("SPECIFY_ACCESS_KEY", awsJson.get("public_cloud_credential_type").asText());
+  }
+
+  @Test
+  public void testRuntimeConfigPayload() {
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+
+    RuntimeConfigEntry.upsert(defaultCustomer, "yb.test.override", "customerOverrideValue");
+    RuntimeConfigEntry.upsert(defaultCustomer, "yb.customer.region", "customerRegionValue");
+    RuntimeConfigEntry.upsert(defaultCustomer, "yb.security.secret", "customerSecretValue");
+
+    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.region", "providerRegionValue");
+    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.key", "providerValue");
+    RuntimeConfigEntry.upsert(
+        defaultProvider, "yb.security.ldap.ldap_service_account_password", "providerSecretValue");
+
+    RuntimeConfigEntry.upsert(u, "yb.universe.region", "universeRegionValue");
+    RuntimeConfigEntry.upsert(u, "yb.universe.key", "universeValue");
+
+    RuntimeConfigEntry.upsertGlobal("yb.test.override", "globalShouldBeFilteredOut");
+    RuntimeConfigEntry.upsertGlobal("yb.global.region", "globalRegionValue");
+    RuntimeConfigEntry.upsertGlobal("yb.global.key", "globalValue");
+    RuntimeConfigEntry.upsertGlobal(
+        "yb.security.ldap.ldap_service_account_password", "globalSecretValue");
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
+        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
+
+    JsonNode runtimeConfig =
+        callHomeManager
+            .collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW)
+            .get("runtime_config");
+    assertNotNull(runtimeConfig);
+    assertTrue(runtimeConfig.isArray());
+
+    String customerUuid = defaultCustomer.getUuid().toString();
+    String providerUuid = defaultProvider.getUuid().toString();
+    String universeUuid = u.getUniverseUUID().toString();
+
+    JsonNode customerOverride = null;
+    JsonNode customerNormal = null;
+    JsonNode providerNormal = null;
+    JsonNode universeNormal = null;
+    JsonNode globalNormal = null;
+    boolean foundFilteredGlobalOverride = false;
+
+    for (JsonNode e : runtimeConfig) {
+      String scopeType = e.get("scope_type").asText();
+      String scopeUuid = e.get("scopeUUID").asText();
+      String path = e.get("path").asText();
+      String value = e.get("value").asText();
+
+      if ("CUSTOMER".equals(scopeType) && customerUuid.equals(scopeUuid)) {
+        if ("yb.test.override".equals(path)) {
+          customerOverride = e;
+          assertEquals("customerOverrideValue", value);
+        } else if ("yb.customer.region".equals(path)) {
+          customerNormal = e;
+          assertEquals("customerRegionValue", value);
+        } else if ("yb.security.secret".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        }
+      } else if ("PROVIDER".equals(scopeType) && providerUuid.equals(scopeUuid)) {
+        if ("yb.provider.region".equals(path)) {
+          providerNormal = e;
+          assertEquals("providerRegionValue", value);
+        } else if ("yb.provider.key".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        } else if ("yb.security.ldap.ldap_service_account_password".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        }
+      } else if ("UNIVERSE".equals(scopeType) && universeUuid.equals(scopeUuid)) {
+        if ("yb.universe.region".equals(path)) {
+          universeNormal = e;
+          assertEquals("universeRegionValue", value);
+        } else if ("yb.universe.key".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        }
+      } else if ("GLOBAL".equals(scopeType)) {
+        if ("yb.global.region".equals(path)) {
+          globalNormal = e;
+          assertEquals("globalRegionValue", value);
+        } else if ("yb.global.key".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        } else if ("yb.security.ldap.ldap_service_account_password".equals(path)) {
+          assertEquals(RedactingService.SECRET_REPLACEMENT, value);
+        } else if ("yb.test.override".equals(path)) {
+          foundFilteredGlobalOverride = true;
+        }
+      }
+    }
+
+    assertNotNull(customerOverride);
+    assertNotNull(customerNormal);
+    assertNotNull(providerNormal);
+    assertNotNull(universeNormal);
+    assertNotNull(globalNormal);
+    assertTrue(!foundFilteredGlobalOverride);
   }
 }

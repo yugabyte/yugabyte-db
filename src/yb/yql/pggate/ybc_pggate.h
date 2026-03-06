@@ -1011,6 +1011,11 @@ YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid,
+    const YbcPgKeyValue* key_values, size_t num_values,
+    const char** tablet_id);
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
@@ -1043,7 +1048,9 @@ YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapsho
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will

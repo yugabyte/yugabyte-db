@@ -2057,6 +2057,22 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     try {
       replicationClusterData =
           collectReplicationClusterData(ybClientService, xClusterConfig, timeoutMs, confGetter);
+      if (replicationClusterData.sourceTableInfoList == null) {
+        log.error(
+            "Error getting cluster details for xCluster config {}: Source({}) table info list is"
+                + " null",
+            xClusterConfig.getUuid(),
+            xClusterConfig.getSourceUniverseUUID());
+        return;
+      }
+      if (replicationClusterData.targetTableInfoList == null) {
+        log.error(
+            "Error getting cluster details for xCluster config {}: Target({}) table info list is"
+                + " null",
+            xClusterConfig.getUuid(),
+            xClusterConfig.getTargetUniverseUUID());
+        return;
+      }
       XClusterConfig.TableType tableType = xClusterConfig.getTableType();
       replicationClusterData.sourceTableInfoList =
           tableType.equals(XClusterConfig.TableType.YSQL)
