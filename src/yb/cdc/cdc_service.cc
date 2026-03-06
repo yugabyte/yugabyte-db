@@ -3538,7 +3538,7 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
       // Log a warning in this case but skip deletion. Who knows if the leader 
       // comes back up and cleans up the entry later. If the warning persists
       // it may indicate a problem with the tablet that needs to be investigated.
-      LOG(WARNING)
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
           << "Cannot delete CDC state table entry for tablet " << tablet_id
           << " and stream " << stream_id
           << " - tablet exists but this tserver is not leader.";
