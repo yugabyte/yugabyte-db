@@ -1526,6 +1526,8 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations(const YbcFlushDebugContext& debug_context) {
+  RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
+  // TODO: Consider flushing FK reference intents also.
   return ResultToStatus(pg_session_->FlushBufferedOperations(debug_context));
 }
 

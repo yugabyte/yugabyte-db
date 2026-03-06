@@ -11,6 +11,10 @@
 // under the License.
 //
 
+#include <algorithm>
+#include <string_view>
+#include <thread>
+
 #include "yb/common/pgsql_error.h"
 
 #include "yb/util/logging.h"
@@ -1157,27 +1161,55 @@ TEST_F_EX(PgRowLockTest,
   });
 }
 
+// The test checks that batcher row locks are flushed before execution of write operation
+// (i.e. lock is taken prior to write)
+TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnWrite, PgMiniTestNoTxnRetry) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(a INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1), (2), (3)"));
+  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>(
+      "WITH s AS MATERIALIZED (SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE) "
+      "DELETE FROM t USING s WHERE t.a = s.a RETURNING t.a"));
+  ASSERT_EQ(row, 1);
+}
+
+class PgMiniTestRowLockBatchFlush : public PgMiniTestNoTxnRetry {
+ protected:
+  static Status PrepareTables(PGConn& conn) {
+    return conn.Execute(
+        "CREATE TABLE lock(k INT PRIMARY KEY);"
+        "CREATE TABLE t(k INT PRIMARY KEY, v INT);"
+        "INSERT INTO t VALUES(1, 1);"
+        "INSERT INTO lock VALUES(1)");
+  }
+
+  static Status CreateReadWithDelayFunction(PGConn& conn, bool delay_before_read = false) {
+    auto first_query = "SELECT v FROM t WHERE k = key INTO value"sv;
+    auto second_query = "PERFORM pg_sleep(delay)"sv;
+    if (delay_before_read) {
+      std::swap(first_query, second_query);
+    }
+    return conn.ExecuteFormat(
+        "CREATE FUNCTION read_with_delay(key INT, delay INT) RETURNS INT AS $$$$"
+        "DECLARE"
+        "  value INT;"
+        "BEGIN"
+        "  $0;"
+        "  $1;"
+        "  RETURN value;"
+        "END; $$$$ LANGUAGE plpgsql", first_query, second_query);
+  }
+};
+
 // The test checks that batcher row locks are flushed before execution of read operation
 // (i.e. read is performed after taking the lock)
-TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnRead, PgMiniTestNoTxnRetry) {
+TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnRead, PgMiniTestRowLockBatchFlush) {
   auto conn = ASSERT_RESULT(SetHighPriTxn(Connect()));
-  ASSERT_OK(conn.Execute(
-      "CREATE TABLE lock(k INT PRIMARY KEY);"
-      "CREATE TABLE t(k INT PRIMARY KEY, v INT);"
-      "INSERT INTO t VALUES(1, 1);"
-      "INSERT INTO lock VALUES(1)"));
-  ASSERT_OK(conn.ExecuteFormat(
-      "CREATE FUNCTION read_with_delay(key INT, delay INT) RETURNS INT AS $$"
-      "DECLARE"
-      "  value INT;"
-      "BEGIN"
-      "  SELECT v FROM t WHERE k = key INTO value;"
-      "  PERFORM pg_sleep(delay);"
-      "  RETURN value;"
-      "END; $$ LANGUAGE plpgsql"));
+  ASSERT_OK(PrepareTables(conn));
+  ASSERT_OK(CreateReadWithDelayFunction(conn));
   CountDownLatch latch(1);
-  TestThreadHolder threads;
   auto aux_conn = ASSERT_RESULT(SetLowPriTxn(Connect()));
+  TestThreadHolder threads;
   constexpr auto kShortDelay = 2s;
   constexpr auto kLongDelay = 5s;
   threads.AddThreadFunctor([&latch, &aux_conn, &kShortDelay] {
@@ -1194,15 +1226,29 @@ TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnRead, PgMiniTestNoTxnRetry) {
   ASSERT_EQ(row, 1);
 }
 
-// The test checks that batcher row locks are flushed before execution of write operation
-// (i.e. lock is taken prior to write)
-TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnWrite, PgMiniTestNoTxnRetry) {
+// The test checks that batcher row locks are flushed before swithing to a new snapshot
+// (i.e. new statement execution inside READ_COMMITTED txn)
+TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnSnapshotChange, PgMiniTestRowLockBatchFlush) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE t(a INT)"));
-  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1), (2), (3)"));
-  auto row = ASSERT_RESULT(conn.FetchRow<int32_t>(
-      "WITH s AS MATERIALIZED (SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE) "
-      "DELETE FROM t USING s WHERE t.a = s.a RETURNING t.a"));
+  ASSERT_OK(PrepareTables(conn));
+  ASSERT_OK(CreateReadWithDelayFunction(conn, /* delay_before_read = */ true));
+  auto aux_conn = ASSERT_RESULT(Connect());
+  CountDownLatch latch(1);
+  TestThreadHolder threads;
+  constexpr auto kShortDelay = 2s;
+  constexpr auto kLongDelay = 5s;
+  threads.AddThreadFunctor([&latch, &aux_conn, &kShortDelay] {
+    latch.Wait();
+    std::this_thread::sleep_for(kShortDelay);
+    auto status = aux_conn.Execute("DELETE FROM lock");
+    ASSERT_NOK(status);
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+  });
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  latch.CountDown();
+  const auto row = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
+      "SELECT read_with_delay(k, $0) FROM (SELECT k FROM lock FOR UPDATE) AS lock_subquery",
+      std::chrono::duration_cast<std::chrono::seconds>(kLongDelay).count())));
   ASSERT_EQ(row, 1);
 }
 
