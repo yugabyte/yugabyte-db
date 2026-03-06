@@ -12,7 +12,7 @@ type: docs
 
 YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the [query planner](../../architecture/query-layer/planner-optimizer/) can devise plans that leverage multiple CPUs to answer queries faster.
 
-Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for hash- and range-sharded tables is available in v2025.2.
+Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for [hash- and range-sharded](../../architecture/docdb-sharding/sharding/) tables is available in v2025.2.
 
 To configure parallel queries, set the following configuration parameters.
 
