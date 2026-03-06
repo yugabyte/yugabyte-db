@@ -1851,4 +1851,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " no batching, i.e. move all pods in a single go",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> runImmediateBackupOnResume =
+      new ConfKeyInfo<>(
+          "yb.backup.run_immediate_backup_on_resume",
+          ScopeType.UNIVERSE,
+          "Run Immediate Backup On Schedule Resume",
+          "When true, resumes a stopped backup schedule by running a full or incremental backup"
+              + " immediately instead of waiting for the next scheduled time. This will only change"
+              + " the default functionality, and which can still be overwritten with an api"
+              + " payload.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
