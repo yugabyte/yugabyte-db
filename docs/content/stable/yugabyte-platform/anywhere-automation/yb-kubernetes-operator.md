@@ -24,7 +24,7 @@ You can define and update these custom resources to manage your universe's confi
 
 ## YugabyteDB Kubernetes Operator CRDs
 
-The Operator is built around the **Universe CRD (YBUniverse)**, which defines and manages a YugabyteDB universe.
+The Operator is built around the **YBUniverse CRD**, which defines and manages a YugabyteDB universe.
 
 The following additional CRDs support day 2 operations.
 
@@ -150,7 +150,7 @@ FIELDS:
 
 ## Prerequisites
 
-Before installing the Kubernetes Operator and YBA universes, verify that the following components are installed and configured:
+Before installing the Kubernetes Operator, verify that the following components are installed and configured:
 
 - Kubernetes cluster v1.27 or later.
 - Helm v3.11 or later.
@@ -167,11 +167,12 @@ The YugabyteDB Kubernetes Operator requires a service account with sufficient pe
 
 The yugaware chart, when installed with `rbac.create=true`, automatically creates appropriate `ClusterRoles` and `Roles` needed for the Kubernetes Operator.
 
-## Installation
+## Install Kubernetes Operator
 
+To use the Kubernetes Operator with YugabyteDB Anywhere, you can either install YugabyteDB Anywhere using the operator, or upgrade an existing YugabyteDB installation.
 {{< tabpane text=true >}}
 
- {{% tab header="Install YBA with operator" %}}
+ {{% tab header="New Installation" %}}
 
 To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the following:
 
@@ -204,13 +205,13 @@ To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the 
 
  {{% /tab %}}
 
- {{% tab header="Install operator on existing YBA" %}}
+ {{% tab header="Upgrade Installation" %}}
 
 <span id="existing-yba-installs"></span>
 
-You can install the YugabyteDB Kubernetes operator by upgrading an existing YBA as follows:
+To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere instance, perform an upgrade as follows:
 
-1. Apply the following Custom Resource Definition:
+1. Apply the following CRD:
 
     ```sh
     kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
@@ -775,7 +776,7 @@ spec:
 
 {{<tags/feature/ea idea="12874">}} Available in YugabyteDB Anywhere v2025.2.2 and later.
 
-Use the Operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator.
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator.
 
 Currently, universes with any of the following configurations are not supported for import:
 
@@ -785,7 +786,7 @@ Currently, universes with any of the following configurations are not supported 
 
 ### Before you begin
 
-- Install the Operator. The YBA Operator must be enabled on the YBA instance. See [Installation - Install operator on existing YBA](#installation) for steps to enable the operator on an existing YBA.
+- Install the operator. The operator must be enabled on your instance. See [Installing Kubernetes Operator](#installing-kubernetes-operator).
 - Verify namespace configuration.
   - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
   - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
@@ -797,7 +798,7 @@ After a universe and its related resources are imported to be managed by the ope
 
 ### Import
 
-You perform Operator import using the YugabyteDB Anywhere API.
+To perform an operator import, you use the YugabyteDB Anywhere API.
 
 You need an [API token](../#authentication) to authenticate when calling the endpoints, and [account details](../#account-details).
 
@@ -843,7 +844,7 @@ curl --request POST \
 
 ### Resources imported
 
-Importing a universe to the Operator creates or adopts the following in the target namespace:
+Importing a universe to the operator creates or adopts the following in the target namespace:
 
 - Universe.
 - Provider, if all universes managed by that provider are being brought under operator control.

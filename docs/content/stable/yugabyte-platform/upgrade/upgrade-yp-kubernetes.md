@@ -31,8 +31,8 @@ You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere (YBA) i
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
 
-{{< tip title="Install the YugabyteDB Kubernetes Operator on an existing YBA" >}}
-To install the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) on an existing YugabyteDB Anywhere instance, see [Installation - Install operator on existing YBA](../../anywhere-automation/yb-kubernetes-operator/#installation).
+{{< tip title="Install the YugabyteDB Kubernetes Operator" >}}
+To install the [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/) on an existing YugabyteDB Anywhere instance, see [Installing Kubernetes Operator](../../anywhere-automation/yb-kubernetes-operator/#installing-kubernetes-operator).
 {{< /tip >}}
 
 Before running an upgrade, execute the following command to obtain the latest versions of YugabyteDB Anywhere from Helm charts:
