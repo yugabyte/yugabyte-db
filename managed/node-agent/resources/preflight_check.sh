@@ -450,7 +450,7 @@ setup() {
   elif [ -n "$(command -v apt-get)" ]; then
     package_manager_cmd="apt list --installed"
   elif [ -n "$(command -v zypper)" ]; then
-    package_manager_cmd="rpm -qa"
+    package_manager_cmd="zypper search --installed-only"
   else
     err_msg "Yum, Apt, and Zypper do not exist"
     exit 1
