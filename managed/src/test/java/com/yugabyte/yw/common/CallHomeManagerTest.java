@@ -22,20 +22,27 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
@@ -62,6 +69,14 @@ public class CallHomeManagerTest extends FakeDBApplication {
 
   @Mock RuntimeConfService runtimeConfService;
 
+  @Mock AlertConfigurationService alertConfigurationService;
+
+  @Mock AlertDestinationService alertDestinationService;
+
+  @Mock AlertChannelService alertChannelService;
+
+  @Mock AlertService alertService;
+
   Customer defaultCustomer;
   Users defaultUser;
   Provider defaultProvider;
@@ -71,6 +86,13 @@ public class CallHomeManagerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultUser = ModelFactory.testUser(defaultCustomer);
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
+
+    when(alertConfigurationService.listByCustomerUuid(any(UUID.class)))
+        .thenReturn(ImmutableList.of());
+    when(alertDestinationService.listByCustomer(any(UUID.class))).thenReturn(ImmutableList.of());
+    when(alertChannelService.list(any(UUID.class))).thenReturn(ImmutableList.of());
+    when(alertService.listByCustomerSince(any(UUID.class), any(Date.class)))
+        .thenReturn(ImmutableList.of());
   }
 
   private void verifyCallHome(JsonNode result, Universe u) {
@@ -124,8 +146,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
     ObjectNode responseJson = Json.newObject();
     responseJson.put("success", true);
     when(apiHelper.postRequest(anyString(), any(), anyMap())).thenReturn(Json.toJson(responseJson));
-    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
-        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
     when(runtimeConfService.getRuntimeConfigEntries(anySet()))
         .thenAnswer(
             invocation ->
@@ -170,8 +190,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
             ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
     when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
-    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
-        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
     when(runtimeConfService.getRuntimeConfigEntries(anySet()))
         .thenAnswer(
             invocation ->
@@ -217,8 +235,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
             ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
     when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
-    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
-        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
     when(runtimeConfService.getRuntimeConfigEntries(anySet()))
         .thenAnswer(
             invocation ->
@@ -268,8 +284,6 @@ public class CallHomeManagerTest extends FakeDBApplication {
             ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
     when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
     when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
-    when(runtimeConfService.getRuntimeConfigEntries(any(UUID.class)))
-        .thenAnswer(invocation -> RuntimeConfigEntry.getAll(invocation.getArgument(0, UUID.class)));
     when(runtimeConfService.getRuntimeConfigEntries(anySet()))
         .thenAnswer(
             invocation ->
@@ -345,5 +359,89 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertNotNull(universeNormal);
     assertNotNull(globalNormal);
     assertTrue(!foundFilteredGlobalOverride);
+  }
+
+  @Test
+  public void testAddAlertMetadata() {
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+
+    Instant now = Instant.parse("2019-01-24T18:46:07.517Z");
+    when(clock.instant()).thenReturn(now);
+
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
+    Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
+    ModelFactory.createAlertConfiguration(defaultCustomer, u);
+
+    String emailName = "Email Channel A";
+    String slackName = "Slack Channel B";
+    String destName = "Destination 1";
+
+    ModelFactory.createAlertDestination(
+        defaultCustomer.getUuid(),
+        destName,
+        ImmutableList.of(
+            ModelFactory.createEmailChannel(defaultCustomer.getUuid(), emailName),
+            ModelFactory.createSlackChannel(defaultCustomer.getUuid(), slackName)));
+
+    ModelFactory.createAlert(defaultCustomer, u);
+
+    when(alertConfigurationService.listByCustomerUuid(any(UUID.class)))
+        .thenAnswer(
+            inv ->
+                AlertConfiguration.createQueryByFilter(
+                        AlertConfigurationFilter.builder()
+                            .customerUuid(inv.getArgument(0, UUID.class))
+                            .build())
+                    .findList());
+
+    when(alertDestinationService.listByCustomer(any(UUID.class))).thenCallRealMethod();
+    when(alertChannelService.list(any(UUID.class))).thenCallRealMethod();
+    when(alertService.listByCustomerSince(any(UUID.class), any(Date.class))).thenCallRealMethod();
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    JsonNode policies = payload.get("alert_policies");
+    assertNotNull(policies);
+    assertTrue(policies.isArray());
+    assertEquals(2, policies.size());
+    assertEquals("MEMORY_CONSUMPTION", policies.get(0).get("template").asText());
+
+    JsonNode channels = payload.get("alert_notification_channels");
+    assertNotNull(channels);
+    assertEquals(2, channels.size());
+
+    boolean hasEmail = false;
+    boolean hasSlack = false;
+    for (JsonNode ch : channels) {
+      assertTrue(ch.hasNonNull("name"));
+      assertTrue(ch.hasNonNull("type"));
+      if (emailName.equals(ch.get("name").asText())) {
+        assertEquals("Email", ch.get("type").asText());
+        hasEmail = true;
+      } else if (slackName.equals(ch.get("name").asText())) {
+        assertEquals("Slack", ch.get("type").asText());
+        hasSlack = true;
+      }
+    }
+    assertTrue(hasEmail);
+    assertTrue(hasSlack);
+
+    JsonNode destinations = payload.get("alert_destinations");
+    assertNotNull(destinations);
+    assertTrue(destinations.isArray());
+    assertEquals(1, destinations.size());
+    assertEquals(destName, destinations.get(0).get("name").asText());
+
+    JsonNode alertList = payload.get("alert_list");
+    assertNotNull(alertList);
+    assertTrue(alertList.isArray());
+    assertTrue(alertList.size() >= 1);
+    assertEquals("Alert 1", alertList.get(0).get("name").asText());
   }
 }

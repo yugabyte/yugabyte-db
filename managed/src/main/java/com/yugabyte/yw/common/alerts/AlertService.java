@@ -31,6 +31,7 @@ import io.ebean.DB;
 import io.ebean.Query;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -291,5 +292,13 @@ public class AlertService {
           .forField("", "can't update missing alert '" + alert.getUuid() + "'")
           .throwError();
     }
+  }
+
+  public List<Alert> listByCustomerSince(UUID customerUuid, Date cutoff) {
+    return Alert.createQueryByFilter(AlertFilter.builder().customerUuid(customerUuid).build())
+        .ge("createTime", cutoff)
+        .orderBy()
+        .desc("createTime")
+        .findList();
   }
 }

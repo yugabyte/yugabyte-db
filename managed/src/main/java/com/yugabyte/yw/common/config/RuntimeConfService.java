@@ -356,10 +356,6 @@ public class RuntimeConfService extends AuthenticatedController {
     return formData;
   }
 
-  public List<RuntimeConfigEntry> getRuntimeConfigEntries(UUID scopeUuid) {
-    return RuntimeConfigEntry.getAll(scopeUuid);
-  }
-
   public List<RuntimeConfigEntry> getRuntimeConfigEntries(Set<UUID> scopeUuids) {
     return RuntimeConfigEntry.getAll(scopeUuids);
   }

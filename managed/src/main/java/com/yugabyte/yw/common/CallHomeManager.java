@@ -7,10 +7,18 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -24,8 +32,9 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.time.Instant;
 import java.util.Base64;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -46,9 +55,16 @@ public class CallHomeManager {
 
   @Inject private RuntimeConfGetter confGetter;
   @Inject private RuntimeConfService runtimeConfService;
+  @Inject private AlertConfigurationService alertConfigurationService;
+  @Inject private AlertService alertService;
+  @Inject private AlertChannelService alertChannelService;
+  @Inject private AlertDestinationService alertDestinationService;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
+
+  // include alerts from a day ago
+  private static final Duration CALLHOME_ALERT_PERIOD = Duration.ofDays(1);
 
   // Get timestamp from clock to make testing easier
   Clock clock = Clock.systemUTC();
@@ -124,6 +140,8 @@ public class CallHomeManager {
     payload.put("code", c.getCode());
     payload.put("email", Users.getAllEmailDomainsForCustomer(c.getUuid()));
     payload.put("creation_date", c.getCreationDate().toString());
+
+    addAlertMetadata(payload, c);
 
     // k8s operator info
     ObjectNode operatorInfo = Json.newObject();
@@ -264,23 +282,28 @@ public class CallHomeManager {
 
   private ArrayNode buildRuntimeConfigPayload(
       Customer c, Set<UUID> providerUuids, Set<UUID> universeUuids) {
-    List<RuntimeConfigEntry> allEntries = new ArrayList<>();
-
-    List<RuntimeConfigEntry> customerEntries =
-        runtimeConfService.getRuntimeConfigEntries(c.getUuid());
-    Set<String> customerOverriddenPaths =
-        customerEntries.stream().map(RuntimeConfigEntry::getPath).collect(Collectors.toSet());
-    allEntries.addAll(customerEntries);
-
     Set<UUID> scopeUuids = new HashSet<>(providerUuids);
     scopeUuids.addAll(universeUuids);
-    allEntries.addAll(runtimeConfService.getRuntimeConfigEntries(scopeUuids));
+    scopeUuids.add(c.getUuid());
+    scopeUuids.add(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
 
-    runtimeConfService.getRuntimeConfigEntries(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID).stream()
-        .filter(e -> !customerOverriddenPaths.contains(e.getPath()))
-        .forEach(allEntries::add);
+    List<RuntimeConfigEntry> allEntries = runtimeConfService.getRuntimeConfigEntries(scopeUuids);
 
-    ArrayNode runtimeConfigEntries = (ArrayNode) Json.toJson(allEntries);
+    Set<String> customerOverriddenPaths =
+        allEntries.stream()
+            .filter(e -> c.getUuid().equals(e.getScopeUUID()))
+            .map(RuntimeConfigEntry::getPath)
+            .collect(Collectors.toSet());
+
+    List<RuntimeConfigEntry> filteredEntries =
+        allEntries.stream()
+            .filter(
+                e ->
+                    !(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID.equals(e.getScopeUUID())
+                        && customerOverriddenPaths.contains(e.getPath())))
+            .collect(Collectors.toList());
+
+    ArrayNode runtimeConfigEntries = (ArrayNode) Json.toJson(filteredEntries);
 
     for (int i = 0; i < runtimeConfigEntries.size(); i++) {
       ObjectNode obj = (ObjectNode) runtimeConfigEntries.get(i);
@@ -306,5 +329,28 @@ public class CallHomeManager {
     }
 
     return runtimeConfigEntries;
+  }
+
+  private void addAlertMetadata(ObjectNode payload, Customer c) {
+    List<AlertConfiguration> alertConfigurations =
+        alertConfigurationService.listByCustomerUuid(c.getUuid());
+    payload.set("alert_policies", Json.toJson(alertConfigurations));
+
+    List<AlertDestination> alertDestinations = alertDestinationService.listByCustomer(c.getUuid());
+    payload.set("alert_destinations", Json.toJson(alertDestinations));
+
+    ArrayNode allChannels = Json.newArray();
+    for (AlertChannel ch : alertChannelService.list(c.getUuid())) {
+      ObjectNode one = Json.newObject();
+      one.put("uuid", ch.getUuid().toString());
+      one.put("type", ch.getParams().getChannelType().toString());
+      one.put("name", ch.getName());
+      allChannels.add(one);
+    }
+    payload.set("alert_notification_channels", allChannels);
+
+    Instant cutoff = clock.instant().minus(CALLHOME_ALERT_PERIOD);
+    List<Alert> alerts = alertService.listByCustomerSince(c.getUuid(), Date.from(cutoff));
+    payload.set("alert_list", Json.toJson(alerts));
   }
 }
