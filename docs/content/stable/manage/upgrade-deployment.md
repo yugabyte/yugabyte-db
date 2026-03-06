@@ -84,7 +84,7 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
 
   - Auto Analyze (ysql_enable_auto_analyze=true)
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
-  - Parallel query (yb_enable_parallel_append=true)
+  - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
 ## Upgrade YugabyteDB cluster
 
