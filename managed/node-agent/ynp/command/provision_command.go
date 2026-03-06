@@ -27,6 +27,7 @@ import (
 	"node-agent/ynp/module/provision/otelcol"
 	"node-agent/ynp/module/provision/pglogotelcol"
 	"node-agent/ynp/module/provision/rebootnode"
+	"node-agent/ynp/module/provision/rootsystemd"
 	"node-agent/ynp/module/provision/sshd"
 	"node-agent/ynp/module/provision/systemd"
 	"node-agent/ynp/module/provision/tailscale"
@@ -139,7 +140,7 @@ func (pc *ProvisionCommand) runPrechecks() error {
 		// Ensure user is the specific yb_user
 		if currentUser.Username != expectedUser {
 			return fmt.Errorf(
-				"Error: --noroot mode must be run as '%s' user, not '%s'\n\n"+
+				"--noroot mode must be run as '%s' user, not '%s'\n\n"+
 					"Please login as %s and run: ./node-provision.sh --noroot",
 				expectedUser, currentUser.Username, expectedUser)
 		}
@@ -154,7 +155,7 @@ func (pc *ProvisionCommand) runPrechecks() error {
 		// Requirement: If --root is passed OR if neither flag is passed, user MUST be root (UID 0)
 		if currentUser.Uid != "0" {
 			return fmt.Errorf(
-				"Error: Provisioning requires root privileges.\n"+
+				"Provisioning requires root privileges.\n"+
 					"Current user '%s' is not root. Please run with sudo or as the root user.\n"+
 					"If you intended to run without root, use the --noroot flag.",
 				currentUser.Username)
@@ -202,6 +203,7 @@ func (pc *ProvisionCommand) RegisterModules() error {
 	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
+	pc.registerModule(rootsystemd.NewConfigureRootSystemd(modulesPath))
 
 	return nil
 }
@@ -457,9 +459,12 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 			)
 		}
 		if len(pc.args.SpecificModules) > 0 && !slices.Contains(pc.args.SpecificModules, key) {
+			util.FileLogger().
+				Infof(pc.ctx, "Skipping %s because it is not in the specific modules list", key)
 			continue
 		}
 		if len(pc.args.SkipModules) > 0 && slices.Contains(pc.args.SkipModules, key) {
+			util.FileLogger().Infof(pc.ctx, "Skipping %s because it is in the skip list", key)
 			continue
 		}
 		values := pc.iniConfig.SectionValue(key)

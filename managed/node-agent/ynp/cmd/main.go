@@ -346,6 +346,8 @@ func handleCommand(
 	if len(args) > 0 {
 		return fmt.Errorf("Unknown non-flag args: %v", args)
 	}
+	// Don't show error from here.
+	cmd.SilenceErrors = true
 	ctx := context.Background()
 	// Parse the arguments into a structured format.
 	pArgs, err := parseArguments(cmd)
@@ -404,8 +406,10 @@ func handleCommand(
 func main() {
 	setupCommand(rootCmd)
 	if err := rootCmd.Execute(); err != nil {
-		// Errors are propagated up to main, log the error and exit with non-zero code.
-		log.Printf("Error executing command: %v\n", err)
+		if !util.IsConsoleLoggerSetup() {
+			// If logger was not set up, log to standard error as a fallback.
+			log.Printf("Error executing command: %v\n", err)
+		}
 		exitCode := 1
 		var scriptErr *command.ScriptExitError
 		if errors.As(err, &scriptErr) {

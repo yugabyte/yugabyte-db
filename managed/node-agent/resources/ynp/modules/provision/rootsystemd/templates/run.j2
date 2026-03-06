@@ -1,0 +1,43 @@
+# Uninstall root systemd services if needed.
+uninstall_root_systemd_services() {
+    local unit_paths=()
+    # Node agent service is always expected to be running as user systemd.
+    local service_files=()
+    {% if is_install_node_agent == 'True' %}
+    service_files+=("yb-node-agent.service")
+    {% endif %}
+    {% if use_system_level_systemd == 'False' %}
+    {% for service_file in service_files | split_string %}
+    service_files+=("{{ service_file }}")
+    {% endfor %}
+    {% endif %}
+    # Collect all the root systemd services first.
+    {% raw %}
+    for service_file in "${service_files[@]}"; do
+      # Output is like /etc/systemd/system/yb-master.service.
+      unit_path=$(systemctl cat $service_file  --no-pager 2>/dev/null | head -1 | sed -e 's/#\s*//g' || true)
+      if [ -n "$unit_path" ] && [ -f "$unit_path" ]; then
+        unit_paths+=("$unit_path")
+      fi
+    done
+    if [ ${#unit_paths[@]} -eq 0 ]; then
+        echo "No root systemd services found. Nothing to uninstall"
+        return
+    fi
+    {% endraw %}
+    if [ "$SUDO_ACCESS" != "true" ]; then
+        echo "Cannot uninstall systemd root services ${unit_paths[*]} to migrate to user-level systemd. Run with root provisioning"
+        exit 1
+    fi
+    for unit_path in "${unit_paths[@]}"; do
+        service_name=$(basename "$unit_path")
+        echo "Uninstalling root systemd service $service_name at $unit_path"
+        systemctl stop $service_name
+        systemctl disable $service_name
+        rm -f "$unit_path"
+        systemctl daemon-reload
+        echo "Uninstalled root systemd service $service_name at $unit_path"
+    done
+}
+
+uninstall_root_systemd_services
