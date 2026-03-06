@@ -18,7 +18,7 @@ The Operator establishes `ybuniverse` as a Custom Resource Definition (CRD) in K
 
 You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. Custom resources support seamless upgrades with no downtime, as well as automated, transparent scaling, and cluster-balanced deployments.
 
-{{<tags/feature/ea idea="12874">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
+{{<tags/feature/ea idea="2004">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
 
 ![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
@@ -35,7 +35,7 @@ The following additional CRDs support day 2 operations.
 | [StorageConfig](#backup-and-restore) | Configure backup destinations. |
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
-| YBProvider | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
+| [Provider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
 
 For details of each CRD, run `kubectl explain` on the CR.
 
@@ -255,54 +255,6 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
     LOG.info("Finished running ybUniverseController");
     ```
 
-1. Create the following custom resource, and save it as `demo-universe.yaml`.
-
-    ```yaml
-    # demo-universe.yaml
-    apiVersion: operator.yugabyte.io/v1alpha1
-    kind: YBUniverse
-    metadata:
-      name: demo-test
-    spec:
-      numNodes: 1
-      replicationFactor: 1
-      enableYSQL: true
-      enableNodeToNodeEncrypt: true
-      enableClientToNodeEncrypt: true
-      enableLoadBalancer: true
-      # Use your YBA version
-      ybSoftwareVersion: "2024.1.0-b2"
-      enableYSQLAuth: false
-      enableYCQL: true
-      enableYCQLAuth: false
-      gFlags:
-        tserverGFlags: {}
-        masterGFlags: {}
-      deviceInfo:
-        volumeSize: 100
-        numVolumes: 1
-        storageClass: "yb-standard"
-    ```
-
-1. Create a universe using the custom resource, `demo-universe.yaml` as follows:
-
-    ```sh
-    kubectl apply -f demo-universe.yaml -n yb-platform
-    ```
-
-1. Check the status of the universe as follows:
-
-    ```sh
-    kubectl get ybuniverse  -n yb-operator
-    ```
-
-    ```output
-    NAME                STATE   SOFTWARE VERSION
-    anab-test-2         Ready   2.23.0.0-b33
-    anab-test-backups   Ready   2.21.1.0-b269
-    anab-test-restore   Ready   2.21.1.0-b269
-    ```
-
  {{% /tab %}}
 
 {{< /tabpane >}}
@@ -330,6 +282,7 @@ spec:
   enableNodeToNodeEncrypt: true
   enableClientToNodeEncrypt: true
   enableLoadBalancer: false
+  # Use your YBA version
   ybSoftwareVersion: "2.20.1.3-b3"
   enableYSQLAuth: false
   enableYCQL: true
@@ -364,6 +317,138 @@ operator-universe-demo   Ready   {{< yb-version version="stable" format="build">
 ```
 
 To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+
+### Create a universe with placement information
+
+Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+```sh
+kubectl apply universedemo-placement.yaml -n yb-platform
+```
+
+```yaml
+# universedemo-placement.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe-demo
+spec:
+  placementInfo:
+    defaultRegion: us-west1
+    regions:
+    - code: us-west1
+      zones:
+      - code: us-west1-a
+        numNodes: 2
+        preferred: true
+      - code: us-west1-b
+        numNodes: 1
+        preferred: true
+  providerName: test-provider
+  numNodes: 3
+  replicationFactor: 3
+  enableYSQL: true
+  enableNodeToNodeEncrypt: true
+  enableClientToNodeEncrypt: true
+  ybSoftwareVersion: 2025.2.0.0-b131
+  enableYSQLAuth: false
+  enableYCQL: true
+  enableYCQLAuth: false
+  enableIPV6: false
+  deviceInfo:
+    numVolumes: 1
+    volumeSize: 800
+  gFlags:
+    masterGFlags: {}
+    tserverGFlags: {}
+  kubernetesOverrides:
+    resource:
+      master:
+        requests:
+          cpu: 2
+          memory: 8Gi
+        limits:
+          cpu: 3
+          memory: 8Gi
+```
+
+### Create a provider
+
+Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
+
+```sh
+kubectl apply provider-demo.yaml -n yb-platform
+```
+
+```yaml
+# provider-demo.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBProvider
+metadata:
+  name: test-provider
+spec:
+  cloudInfo:
+    kubernetesProvider: gke
+    kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+  regions:
+    - code: us-west1
+      zones:
+        - code: us-west1-a
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-b
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-c
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+```
+
+You can then reference this provider in a [Universe CR with placement information](#create-a-universe-with-placement-information) by setting `spec.providerName` to the provider's `metadata.name` (for example, `test-provider`).
+
+#### Using a custom kubeconfig
+
+To use a custom kubeconfig for the provider, specify it in either top-level `spec.cloudInfo` or in zone-level `cloudInfo`. The kubeconfig content must be stored in a Kubernetes secret with the key `kubeconfig`.
+
+1. Create the secret:
+
+    ```sh
+    kubectl create secret generic test-kubeconfig -n yb-operator --from-file=kubeconfig=/tmp/kubeconfig.conf
+    ```
+
+1. Reference the secret in the YBProvider manifest via `kubeConfigSecret`:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBProvider
+    metadata:
+      name: test-provider
+    spec:
+      cloudInfo:
+        kubernetesProvider: gke
+        kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+        kubeConfigSecret:
+          name: test-kubeconfig
+          namespace: yb-operator
+      regions:
+        - code: us-west1
+          zones:
+            - code: us-west1-a
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-b
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-c
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+    ```
 
 ### Add a different software release of YugabyteDB
 
