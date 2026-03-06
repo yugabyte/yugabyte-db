@@ -62,6 +62,9 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 // Handle to a global view read scan.
 YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 
+// Handle to a distributed trace scope.
+YB_DEFINE_HANDLE_TYPE(OtelScope);
+
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)

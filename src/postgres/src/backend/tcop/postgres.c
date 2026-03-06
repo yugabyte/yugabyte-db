@@ -89,6 +89,7 @@
 #include "commands/variable.h"
 #include "libpq/auth.h"
 #include "libpq/yb_pqcomm_extensions.h"
+#include "pg_yb_utils.h"
 #include "replication/walsender_private.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -97,6 +98,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_tcmalloc_utils.h"
@@ -1196,6 +1198,21 @@ YbShouldCollectCommitStats(CommandTag command_tag, bool is_implict_block,
 }
 
 
+static void
+YbDistTraceSetQueryId(YbcOtelScope scope, List *querytree_list)
+{
+	ListCell *lc;
+	foreach(lc, querytree_list)
+	{
+		Query *q = lfirst_node(Query, lc);
+		if (q->queryId != UINT64CONST(0))
+		{
+			YBCDistTraceSetSpanAttributeUint64(scope, "query.id", q->queryId);
+			break;
+		}
+	}
+}
+
 /*
  * exec_simple_query
  *
@@ -1215,6 +1232,8 @@ exec_simple_query(const char *query_string)
 
 	const char *yb_redacted_query_string;
 	CommandTag	yb_command_tag;
+	/* TODO(#30672): Add distributed tracing support for extended query protocol */
+	YbcOtelScope yb_dist_trace_scope = NULL;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -1228,6 +1247,20 @@ exec_simple_query(const char *query_string)
 	pgstat_report_activity(STATE_RUNNING, yb_redacted_query_string);
 
 	TRACE_POSTGRESQL_QUERY_START(query_string);
+
+	if (YBCIsDistTraceEnabled())
+	{
+		/*
+		 * YB: Start a root span. The scope is registered with the current YB
+		 * memory context (tied to CurrentMemoryContext) via PgMemctx::Register.
+		 * On error, the Postgres MemoryContext reset will destroy the associated
+		 * PgMemctx, automatically cleaning up this scope.
+		 *
+		 * TODO(#30597): Pass the traceparent received from comment / GUC.
+		 */
+		yb_dist_trace_scope = YBCDistTraceStartRootSpan(yb_redacted_query_string, NULL,
+														MyDatabaseId, GetUserId());
+	}
 
 	/*
 	 * We use save_log_statement_stats so ShowUsage doesn't report incorrect
@@ -1387,6 +1420,8 @@ exec_simple_query(const char *query_string)
 
 		querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
 															NULL, 0, NULL);
+		if (yb_dist_trace_scope)
+			YbDistTraceSetQueryId(yb_dist_trace_scope, querytree_list);
 
 		plantree_list = pg_plan_queries(querytree_list, query_string,
 										CURSOR_OPT_PARALLEL_OK, NULL);
@@ -1597,6 +1632,8 @@ exec_simple_query(const char *query_string)
 		ShowUsage("QUERY STATISTICS");
 
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
+	if (yb_dist_trace_scope)
+		YBCDistTraceEndSpan(yb_dist_trace_scope);
 
 	debug_query_string = NULL;
 }

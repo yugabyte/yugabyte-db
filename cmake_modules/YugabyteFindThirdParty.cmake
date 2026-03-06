@@ -423,4 +423,17 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(pcre
     STATIC_LIB "${PCRE_STATIC_LIB}")
 
+  ## OpenTelemetry
+  find_package(Otel REQUIRED)
+  include_directories(SYSTEM ${OTEL_INCLUDE_DIR})
+
+  ADD_THIRDPARTY_LIB(opentelemetry_trace
+   SHARED_LIB "${OTEL_TRACE_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_exporter_otlp_http
+   SHARED_LIB "${OTEL_EXPORTER_OTLP_HTTP_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_resources
+   SHARED_LIB "${OTEL_RESOURCES_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_proto
+   SHARED_LIB "${OTEL_PROTO_SHARED_LIB}")
+
 endmacro()

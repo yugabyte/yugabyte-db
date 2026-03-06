@@ -253,6 +253,7 @@ YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
+YbcOtelScope
 YbcPallocFn
 YbcPgAshConfig
 YbcPgAtomicUint64
