@@ -113,7 +113,7 @@ Enable more efficient communication between YB-TServer and PostgreSQL using shar
 
 ## Planned features
 
-The following features are planned for EPCM in future releases.
+The following features are planned for future releases.
 
 ### Parallel query
 
