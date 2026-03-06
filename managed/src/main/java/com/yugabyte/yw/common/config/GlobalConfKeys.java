@@ -395,6 +395,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybClientDnsDebugThresholdNs =
+      new ConfKeyInfo<>(
+          "yb.client.dns_debug_threshold_ns",
+          ScopeType.GLOBAL,
+          "DNS debug logging threshold",
+          "Threshold in nanoseconds above which DNS lookups are logged at DEBUG level",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybClientDnsWarningThresholdNs =
+      new ConfKeyInfo<>(
+          "yb.client.dns_warning_threshold_ns",
+          ScopeType.GLOBAL,
+          "DNS warning logging threshold",
+          "Threshold in nanoseconds above which DNS lookups are logged at WARN level",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
       new ConfKeyInfo<>(
           "yb.certVerifyBackupRestore.is_enforced",

@@ -87,6 +87,8 @@
 | "XCluster/DR config GET API timeout" | "yb.xcluster.get_api_timeout_ms" | "GLOBAL" | "XCluster/DR config GET API timeout in milliseconds" | "Integer" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
+| "DNS debug logging threshold" | "yb.client.dns_debug_threshold_ns" | "GLOBAL" | "Threshold in nanoseconds above which DNS lookups are logged at DEBUG level" | "Integer" |
+| "DNS warning logging threshold" | "yb.client.dns_warning_threshold_ns" | "GLOBAL" | "Threshold in nanoseconds above which DNS lookups are logged at WARN level" | "Integer" |
 | "Server certificate verification for S3 backup/restore" | "yb.certVerifyBackupRestore.is_enforced" | "GLOBAL" | "Enforce server certificate verification during S3 backup/restore" | "Boolean" |
 | "Javax Net SSL TrustStore" | "yb.wellKnownCA.trustStore.path" | "GLOBAL" | "Java property javax.net.ssl.trustStore" | "String" |
 | "Javax Net SSL TrustStore Type" | "yb.wellKnownCA.trustStore.type" | "GLOBAL" | "Java property javax.net.ssl.trustStoreType" | "String" |

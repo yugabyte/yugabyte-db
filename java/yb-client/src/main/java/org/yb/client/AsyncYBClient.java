@@ -287,6 +287,10 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final int maxAttempts;
 
+  private final int dnsWarningThresholdNs;
+
+  private final int dnsDebugThresholdNs;
+
   private AsyncYBClient(AsyncYBClientBuilder b) {
     this.executor = b.getOrCreateWorker();
     this.eventLoopGroup = b.createEventLoopGroup(executor);
@@ -306,6 +310,8 @@ public class AsyncYBClient implements AutoCloseable {
     this.numTabletsInTable = b.numTablets;
     this.maxAttempts = b.maxRpcAttempts;
     sleepTime = b.sleepTime;
+    this.dnsDebugThresholdNs = b.dnsDebugThresholdNs;
+    this.dnsWarningThresholdNs = b.dnsWarningThresholdNs;
   }
 
   /**
@@ -3961,16 +3967,16 @@ public class AsyncYBClient implements AutoCloseable {
    * @return The IP address associated with the given hostname, or {@code null} if the address
    *     couldn't be resolved.
    */
-  private static String getIP(final String host) {
+  private String getIP(final String host) {
     // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
     for (int i = 0; i < 3; i++) {
      final long start = System.nanoTime();
      try {
        final String ip = InetAddress.getByName(host).getHostAddress();
        final long latency = System.nanoTime() - start;
-       if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
+       if (latency >= dnsDebugThresholdNs && LOG.isDebugEnabled()) {
          LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-       } else if (latency >= 3000000 /*ns*/) {
+       } else if (latency >= dnsWarningThresholdNs) {
          LOG.warn(
              "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
        }
@@ -4297,6 +4303,9 @@ public class AsyncYBClient implements AutoCloseable {
 
     private int sleepTime = 500;
 
+    private int dnsDebugThresholdNs = 1000000; // 1ms
+    private int dnsWarningThresholdNs = 200000000; // 200ms
+
     /**
      * Creates a new builder for a client that will connect to the specified masters.
      *
@@ -4461,6 +4470,16 @@ public class AsyncYBClient implements AutoCloseable {
       Preconditions.checkArgument(
           numTablets > 0, "Number of tablets in a table should " + "be greater than 0");
       this.numTablets = numTablets;
+      return this;
+    }
+
+    public AsyncYBClientBuilder dnsDebugThresholdNs(int dnsDebugThresholdNs) {
+      this.dnsDebugThresholdNs = dnsDebugThresholdNs;
+      return this;
+    }
+
+    public AsyncYBClientBuilder dnsWarningThresholdNs(int dnsWarningThresholdNs) {
+      this.dnsWarningThresholdNs = dnsWarningThresholdNs;
       return this;
     }
 
