@@ -68,7 +68,7 @@ To create an AWS provider:
 
 1. Click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-220.png)
+    ![Create AWS provider](/images/yb-platform/config/yba-aws-config-create-2024.png)
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
@@ -141,6 +141,8 @@ To add your own machine images to the catalog:
 1. Enter the Amazon Machine Image (AMI) ID to use for each [provider region](#regions).
 
 1. Provide the SSH user and port to use to access the machine image OS. Leave this empty to use the [default SSH user](#ssh-key-pairs).
+
+1. To configure instances so that the [Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) _requires_ IMDSv2, select the **Use IMDSv2** option (recommended). If **Use IMDSv2** is not selected, the service accepts both IMDSv1 and IMDSv2 requests.
 
 1. Click **Add Linux Version**.
 
