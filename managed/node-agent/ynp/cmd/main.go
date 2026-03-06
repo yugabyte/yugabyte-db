@@ -65,6 +65,11 @@ func setupCommand(cmd *cobra.Command) {
 		false,
 		"Execute the pre-flight check on the node",
 	)
+	cmd.Flags().String(
+		"config_ini",
+		"configs/config.j2",
+		"Path to the INI configuration file",
+	)
 	cmd.Flags().Bool(
 		"list_modules",
 		false,
@@ -105,6 +110,7 @@ func setupCommand(cmd *cobra.Command) {
 	// Hide internally used flags from help output.
 	cmd.Flags().MarkHidden("ynp_base_path")
 	cmd.Flags().MarkHidden("extra_vars")
+	cmd.Flags().MarkHidden("config_ini")
 	cmd.MarkFlagsMutuallyExclusive("root", "noroot")
 	cmd.MarkFlagsMutuallyExclusive("generate_config", "generate_and_run")
 	cmd.MarkFlagRequired("ynp_base_path")
@@ -131,6 +137,10 @@ func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 	configFile, err := cmd.Flags().GetString("config_file")
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing config_file flag: %v\n", err)
+	}
+	configIniFile, err := cmd.Flags().GetString("config_ini")
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing config_ini flag: %v\n", err)
 	}
 	preflightCheck, err := cmd.Flags().GetBool("preflight_check")
 	if err != nil {
@@ -175,6 +185,7 @@ func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 			SpecificModules: specificModules,
 			SkipModules:     skipModules,
 			ConfigFile:      configFile,
+			ConfigIniFile:   configIniFile,
 			PreflightCheck:  preflightCheck,
 			ListModules:     listModules,
 			DryRun:          dryRun,
