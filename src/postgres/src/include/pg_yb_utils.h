@@ -1170,6 +1170,7 @@ void		YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblE
  */
 void		YbRegisterSysTableForPrefetching(int sys_table_id);
 void		YbTryRegisterCatalogVersionTableForPrefetching();
+extern void	YbTryRegisterLogicalClientVersionTableForPrefetching();
 
 YbcPgTableLocalityInfo
 YbBuildTableLocalityInfo(Relation rel);

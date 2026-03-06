@@ -3349,9 +3349,21 @@ YBCommitTransactionContainingDDL()
 				 "local catalog version of db %u "
 				 "kept at %" PRIu64, database_oid, MyDatabaseId, YbGetCatalogCacheVersion());
 
-		if (YbIsClientYsqlConnMgr())
+		if (YbIsClientYsqlConnMgr() ||
+			(YbIsYsqlConnMgrEnabled() &&
+			 YbCheckTserverResponseCacheForAuthGflags()))
 		{
-			/* Wait for tserver hearbeat */
+			/*
+			 * Wait for tserver heartbeat in case this was a conn mgr backend or
+			 * if conn mgr is enabled and tserver response cache is used for
+			 * auth processing to allow heartbeat to signal cache invalidation.
+			 *
+			 * YbIsClientYsqlConnMgr() is false if any DDL (which might change
+			 * authorization/login privileges) was triggered by a direct-to-PG
+			 * connection. This would be a vulnerability if a stale tserver
+			 * response cache is used for auth processing, hence the extra
+			 * condition to allow wait.
+			 */
 			int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
 
 			elog(LOG_SERVER_ONLY,
@@ -6651,6 +6663,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 
 		case YBCatalogVersionRelationId:	/* pg_yb_catalog_version */
+		case YBLogicalClientVersionRelationId:	/* pg_yb_logical_client_version */
 			fetch_ybctid = false;
 			yb_switch_fallthrough();
 
@@ -6784,6 +6797,14 @@ YbTryRegisterCatalogVersionTableForPrefetching()
 {
 	if (YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
 		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
+}
+
+void
+YbTryRegisterLogicalClientVersionTableForPrefetching()
+{
+	/* Only check existence as checking LCV type may require an RPC to the master. */
+	if (YbLogicalClientVersionTableExists())
+		YbRegisterSysTableForPrefetching(YBLogicalClientVersionRelationId);
 }
 
 static bool
@@ -8376,9 +8397,12 @@ YbCheckTserverResponseCacheForAuthGflags()
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!YbIsAuthBackend())
+	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
 		return false;
-	/* We should only see auth backend if connection manager is enabled. */
+	/*
+	 * We should only see auth backend or auth passthrough in progress if
+	 * connection manager is enabled.
+	 */
 	Assert(YbIsYsqlConnMgrEnabled());
 
 	if (!YbCheckTserverResponseCacheForAuthGflags())

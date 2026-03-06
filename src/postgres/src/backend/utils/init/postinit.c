@@ -1030,6 +1030,12 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
+		/*
+		 * YB: We prefetch the Logical Client Version table for all backends
+		 * as the LCV will be queried during backend startup.
+		 */
+		YbTryRegisterLogicalClientVersionTableForPrefetching();
+
 		HandleYBStatus(YBCPrefetchRegisteredSysTables());
 		/*
 		 * If per database catalog version mode is enabled, this will load the
@@ -1381,6 +1387,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YbAshSetDatabaseId(MyDatabaseId);
 	}
 
+	if (YBIsDBLogicalClientVersionMode())
+	{
+		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+
+		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
+		YbSetLogicalClientCacheVersion(logical_client_version);
+	}
+
 	/*
 	 * We established a catalog snapshot while reading pg_authid and/or
 	 * pg_database; but until we have set up MyDatabaseId, we won't react to
@@ -1390,14 +1404,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	InvalidateCatalogSnapshot();
 	if (IsYugaByteEnabled() && YBCIsSysTablePrefetchingStarted())
 		YBCStopSysTablePrefetching();
-
-	if (YBIsDBLogicalClientVersionMode())
-	{
-		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
-
-		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
-		YbSetLogicalClientCacheVersion(logical_client_version);
-	}
 
 	/* No local physical path for the database in YugaByte mode */
 	if (!IsYugaByteEnabled())

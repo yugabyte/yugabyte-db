@@ -3119,6 +3119,17 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTH_MEMBERS);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DATABASE);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS);
+
+	/*
+	 * YB: Prefetch the LCV table for AP specifically, as YbPrefetchRequiredData
+	 * is called by AP in postgres.c.
+	 * When called by regular backends in postinit.c via
+	 * RelationCacheInitializePhase3, the LCV has already been read from the
+	 * systable, so no need to prefetch it.
+	 */
+	if (YbIsAuthPassthroughInProgress(MyProcPort))
+		YbTryRegisterLogicalClientVersionTableForPrefetching();
+
 	status = YbPrefetch(prefetcher);
 	if (status)
 		return status;
