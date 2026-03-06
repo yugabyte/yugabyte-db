@@ -4639,53 +4639,37 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
 	TM_Result	res = TM_Ok;
-	MemoryContext exec_context = CurrentMemoryContext;
+	bool		has_data = false;
+	Datum	   *values = NULL;
+	bool	   *nulls = NULL;
+	YbcPgSysColumns syscols;
 
-	PG_TRY();
-	{
-		/*
-		 * Execute the select statement to lock the tuple with given ybctid.
-		 */
-		HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params));
-
-		bool		has_data = false;
-		Datum	   *values = NULL;
-		bool	   *nulls = NULL;
-		YbcPgSysColumns syscols;
-
-		/*
-		 * Below is done to ensure the read request is flushed to tserver.
-		 */
-		HandleYBStatus(YBCPgDmlFetch(ybc_stmt, 0, (uint64_t *) values, nulls,
-									 &syscols, &has_data));
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, &exec_params));
+	YbcStatus status = YBCPgDmlFetch(ybc_stmt, 0, (uint64_t *) values, nulls, &syscols, &has_data);
+	if (!status)
 		YBCPgAddIntoForeignKeyReferenceCache(relfile_oid, ybctid);
-	}
-	PG_CATCH();
+	else
 	{
-		MemoryContext error_context = MemoryContextSwitchTo(exec_context);
-		ErrorData  *edata = CopyErrorData();
-
+		const uint32_t err_code = YBCStatusPgsqlError(status);
 		elog(DEBUG2, "Error when trying to lock row. "
-			 "pg_wait_policy=%d docdb_wait_policy=%d message=%s",
+			 "pg_wait_policy=%d docdb_wait_policy=%d message=%s err_code=%d",
 			 lock_params.pg_wait_policy, lock_params.docdb_wait_policy,
-			 edata->message);
+			 YBCStatusMessageBegin(status), err_code);
 
-		if (edata->sqlerrcode == ERRCODE_YB_TXN_CONFLICT)
-			res = TM_Updated;
-		else if (edata->sqlerrcode == ERRCODE_YB_TXN_SKIP_LOCKING)
-			res = TM_WouldBlock;
-		else
+		switch(err_code)
 		{
-			YBCPgDeleteStatement(ybc_stmt);
-			MemoryContextSwitchTo(error_context);
-			PG_RE_THROW();
+			case ERRCODE_YB_TXN_CONFLICT:
+				res = TM_Updated;
+				break;
+			case ERRCODE_YB_TXN_SKIP_LOCKING:
+				res = TM_WouldBlock;
+				break;
+			default:
+				HandleYBStatus(status);
+				break;
 		}
-
-		/* Discard the error if not rethrown */
-		FlushErrorState();
+		YBCFreeStatus(status);
 	}
-	PG_END_TRY();
-
 	YBCPgDeleteStatement(ybc_stmt);
 	return res;
 }
