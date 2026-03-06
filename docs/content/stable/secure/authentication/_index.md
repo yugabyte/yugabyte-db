@@ -24,7 +24,7 @@ YugabyteDB supports the following methods for authenticating users.
 
   {{<index/item
     title="Password"
-    body="Authenticate using MD5 or SCRAM-SHA-256 authentication methods."
+    body="Authenticate using SCRAM-SHA-256  or MD5 authentication methods."
     href="password-authentication/"
     icon="fa-thin fa-lock-keyhole">}}
 

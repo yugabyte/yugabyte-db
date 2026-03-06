@@ -37,21 +37,14 @@ The [passwordcheck extension](../../../additional-features/pg-extensions/extensi
 
 The following password authentication methods are supported by YugabyteDB.
 
-### MD5
-
-The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force). MD5 is the default password encryption for YugabyteDB clusters.
-
-The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
-
-- If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
-- The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
-
 ### SCRAM-SHA-256
 
-The SCRAM-SHA-256 method (`scram-sha-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method implemented here is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/stable/develop/drivers-orms/).
+The SCRAM-SHA-256 method (`scram-sha-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/stable/develop/drivers-orms/).
 
 - Allows for two parties to verify they both know a secret without exchanging the secret.
 - SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/15/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.
+
+SCRAM-SHA-256 is the default authentication method for new universes.
 
 {{< note title="Note" >}}
 
@@ -59,13 +52,22 @@ For additional security, SCRAM-SHA-256 password encryption can also be used with
 
 {{< /note >}}
 
+### MD5
+
+The MD5 method (`md5`) prevents password sniffing and avoids storing passwords on the server in plain text, but provides no protection if an attacker obtains password hashes from the server or from clients (by sniffing, man-in-the-middle, or by brute force).
+
+The MD5 hash algorithm is not considered secure against determined attacks. Some of the security risks include:
+
+- If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
+- The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
+
 ## Enable SCRAM-SHA-256 authentication
 
-To configure a YugabyteDB cluster to use SCRAM-SHA-256 authentication for databases, follow these steps.
+To configure a YugabyteDB universe that was using MD5 authentication to use SCRAM-SHA-256, follow these steps.
 
 1. Change the password encryption to use SCRAM-SHA-256.
 
-    To change the default MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
+    To change MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
 
     ```sh
     --ysql_pg_conf_csv=password_encryption=scram-sha-256
@@ -95,76 +97,9 @@ or in the `yb-tserver.conf`, add the following line:
 
 For details on using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag to specify rules that satisfy your security requirements, see [Fine-grained authentication](../host-based-authentication/).
 
-## Create a cluster that uses SCRAM-SHA-256 password authentication
-
-To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow this procedure:
-
-1. In the YB-TServer configuration file (flagfile), add the following two lines:
-
-    ```sh
-    --ysql_pg_conf_csv=password_encryption=scram-sha-256
-    --ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
-    ```
-
-    - The first line starts your YugabyteDB cluster with password encryption set to encrypt all *new* passwords using SCRAM-SHA-256.
-    - The `ysql_hba_conf_csv` flag above specifies rules that allow both MD5 and SCRAM-SHA-256 *existing* passwords to be used to connect to databases.
-
-2. Start the YugabyteDB cluster.
-
-3. Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
-
-    ```sh
-    $ ./ysqlsh -U yugabyte -W
-    ```
-
-    When prompted for the password, enter the `yugabyte` password (default is `yugabyte`). You should be able to log in and see a response like this:
-
-    ```output
-    ysqlsh (15.2-YB-{{<yb-version version="stable">}}-b0)
-    Type "help" for help.
-
-    yugabyte=#
-    ```
-
-4. Change the password for `yugabyte` to a SCRAM-SHA-256 password.
-
-    You can use either the ALTER ROLE statement or the ysqlsh `\password\` meta-command to change the password. The new password is encrypted using the SCRAM-SHA-256 hashing algorithm. In the following example, the `\password` meta-command is used to change the password.
-
-    ```sql
-    \password
-    ```
-
-    You are prompted twice for the new password and then returned to the YSQL shell prompt.
-
-    ```output
-    Enter new password:
-    Enter it again:
-    yugabyte=#
-    ```
-
-5. Stop the YugabyteDB cluster.
-
-6. Remove the MD5 rules from the `--ysql_hba_conf_csv` flag.
-
-    In the flagfile, the updated flag should appear like this:
-
-    ```sh
-    --ysql_hba_conf_csv=host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
-    ```
-
-7. Restart the YugabyteDB cluster.
-
-8. Open the YSQL shell and log in, specifying the `yugabyte` user and password prompt.
-
-    ```sh
-    $ ./ysqlsh -U yugabyte -W
-    ```
-
-When prompted, the changed `yugabyte` user password should get you access. Any new users or roles that you create are encrypted using SCRAM-SHA-256. Access to the host and databases is determined by the rules you specify in the YB-TServer `--ysql_hba_conf_csv` configuration flag.
-
 ## Migrate existing MD5 passwords to SCRAM-SHA-256
 
-When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authentication) on an existing YugabyteDB cluster that has users and roles, with their MD5 passwords), you need to be aware that:
+When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authentication) on an existing YugabyteDB cluster that has users and roles, with their MD5 passwords, you need to be aware that:
 
 - All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
 - All existing passwords were encrypted using the MD5 hashing algorithm.
@@ -197,4 +132,4 @@ And update the password of the user to new desired password:
 ALTER ROLE yugabyte WITH PASSWORD 'new-password';
 ```
 
-Rollback the configuration and restart the yb-tserver to enable password authentication for the `yugabyte` user again.
+Roll back the configuration and restart the yb-tserver to enable password authentication for the `yugabyte` user again.
