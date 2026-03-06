@@ -54,6 +54,11 @@ func setupCommand(cmd *cobra.Command) {
 		false,
 		"Execute the pre-flight check on the node",
 	)
+	cmd.Flags().String(
+		"config_ini",
+		"configs/config.j2",
+		"Path to the INI configuration file",
+	)
 	cmd.Flags().Bool(
 		"list_modules",
 		false,
@@ -70,6 +75,8 @@ func setupCommand(cmd *cobra.Command) {
 		"Render Execution Scripts without executing them for dry_run",
 	)
 	cmd.Flags().MarkHidden("ynp_base_path")
+	cmd.Flags().MarkHidden("extra_vars")
+	cmd.Flags().MarkHidden("config_ini")
 	cmd.MarkFlagRequired("ynp_base_path")
 }
 
@@ -94,6 +101,10 @@ func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing config_file flag: %v\n", err)
 	}
+	configIniFile, err := cmd.Flags().GetString("config_ini")
+	if err != nil {
+		return nil, fmt.Errorf("Error parsing config_ini flag: %v\n", err)
+	}
 	preflightCheck, err := cmd.Flags().GetBool("preflight_check")
 	if err != nil {
 		return nil, fmt.Errorf("Error parsing preflight_check flag: %v\n", err)
@@ -117,6 +128,7 @@ func parseArguments(cmd *cobra.Command) (*parsedArgs, error) {
 			SpecificModules: specificModules,
 			SkipModules:     skipModules,
 			ConfigFile:      configFile,
+			ConfigIniFile:   configIniFile,
 			PreflightCheck:  preflightCheck,
 			ListModules:     listModules,
 			DryRun:          dryRun,
@@ -141,11 +153,10 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	setDefaultConfigs(ynpConfig)
 	mergeConfigs(ynpConfig, exVars)
-	// Setup logger first to use the custom logger.
-	config.SetupLogger(ctx, pArgs.YnpConfig)
 	// Fix the types in the parsed config after merging the extra_vars.
-	ynpConfig = config.FixParsedConfigMap(ynpConfig)
-	pArgs.YnpConfig = ynpConfig
+	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
+	// Setup logger now to use the custom logger with the final logging config.
+	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
 }
 

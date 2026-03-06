@@ -29,6 +29,7 @@ type Args struct {
 	SpecificModules []string
 	SkipModules     []string
 	ConfigFile      string
+	ConfigIniFile   string
 	PreflightCheck  bool
 	YnpConfig       map[string]map[string]any
 	DryRun          bool
@@ -39,6 +40,7 @@ type Args struct {
 type Module interface {
 	BasePath() string // Base path of the module.
 	Name() string     // Name of the module.
+	Validate() error  // Validates the module configuration.
 	RenderTemplates(ctx context.Context, values map[string]any) (*RenderedTemplates, error)
 }
 
@@ -124,6 +126,14 @@ func NewBaseModule(name, basePath string) *BaseModule {
 		basePath: basePath,
 		name:     name, // Name of the module for resources e.g jinja files folder.
 	}
+}
+
+func (bm *BaseModule) Validate() error {
+	basePath := bm.BasePath()
+	if _, err := os.Stat(basePath); os.IsNotExist(err) {
+		return fmt.Errorf("Base path %s does not exist for module %s", basePath, bm.Name())
+	}
+	return nil
 }
 
 func (bm *BaseModule) RenderTemplates(
@@ -270,7 +280,12 @@ func GenerateConfigINI(
 	ctx context.Context,
 	args *Args,
 ) (*INIConfig, error) {
-	configTemplate := filepath.Join(args.YnpBasePath, "configs/config.j2")
+	var configTemplate string
+	if filepath.IsAbs(args.ConfigIniFile) {
+		configTemplate = args.ConfigIniFile
+	} else {
+		configTemplate = filepath.Join(args.YnpBasePath, args.ConfigIniFile)
+	}
 	configPath := filepath.Join(args.YnpBasePath, "configs/config.ini")
 	ynpValues := map[string]any{
 		"ynp_config": args.YnpConfig,

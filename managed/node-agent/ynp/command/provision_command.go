@@ -215,9 +215,6 @@ func (pc *ProvisionCommand) ListModules() error {
 }
 
 func (pc *ProvisionCommand) Execute() error {
-	if err := pc.validateSpecificModules(); err != nil {
-		return err
-	}
 	runScript, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
@@ -242,7 +239,10 @@ func (pc *ProvisionCommand) Execute() error {
 
 func (pc *ProvisionCommand) Cleanup() {}
 
-func (pc *ProvisionCommand) validateSpecificModules() error {
+// validateEnabledModules checks if the modules specified in the INI config are registered and valid.
+// A non-existing module can be registered as long as it is not consumed but it must exist
+// if it is referenced in the INI config for consumption.
+func (pc *ProvisionCommand) validateEnabledModules() error {
 	unknownModules := []string{}
 	for _, moduleName := range pc.args.SpecificModules {
 		if _, ok := pc.modules[moduleName]; !ok {
@@ -251,6 +251,24 @@ func (pc *ProvisionCommand) validateSpecificModules() error {
 	}
 	if len(unknownModules) > 0 {
 		return fmt.Errorf("unknown modules specified: %s", strings.Join(unknownModules, ", "))
+	}
+	// Go over all the enabled modules.
+	for _, key := range pc.iniConfig.Sections() {
+		if key == config.DefaultINISection {
+			// Default section is not a module, skip.
+			continue
+		}
+		module, ok := pc.modules[key]
+		if ok {
+			// Make sure the module is valid e.g template path is correct.
+			err := module.Validate()
+			if err != nil {
+				return fmt.Errorf("Validation failed for module %s: %v", module.Name(), err)
+			}
+		} else {
+			// Module defined in config.ini exists.
+			return fmt.Errorf("Module %s is defined in INI but not registered in the command", key)
+		}
 	}
 	return nil
 }
@@ -334,10 +352,13 @@ func (pc *ProvisionCommand) prepareGenerateTemplate() error {
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
 func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
-	allTemplates := make([]*config.RenderedTemplates, 0)
+	if err := pc.validateEnabledModules(); err != nil {
+		return "", "", err
+	}
 	if err := pc.prepareGenerateTemplate(); err != nil {
 		return "", "", err
 	}
+	allTemplates := make([]*config.RenderedTemplates, 0)
 	// Process in the order of sections in the ini file.
 	for _, key := range pc.iniConfig.Sections() {
 		if key == config.DefaultINISection {
@@ -345,8 +366,10 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		}
 		module, ok := pc.modules[key]
 		if !ok {
-			util.FileLogger().Infof(pc.ctx, "Module not found: %s", key)
-			continue
+			return "", "", fmt.Errorf(
+				"Module %s is defined in INI but not registered in the command",
+				key,
+			)
 		}
 		if len(pc.args.SpecificModules) > 0 && !slices.Contains(pc.args.SpecificModules, key) {
 			continue
