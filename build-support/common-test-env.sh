@@ -998,15 +998,17 @@ run_one_cxx_test() {
       # the root cgroup that we cannot write to).
       echo $BASHPID >> /sys/fs/cgroup/cpu/yb-unit-test/cgroup.procs
     fi
-    if [[ $cgroup_version == 2 ]] && ! is_jenkins ; then
-      # CGroup v2 doesn't let non-root move a process from cgroup A to cgroup B unless it has write
-      # permission to the cgroup.procs file in the common ancestor of A and B. So we use systemd
-      # to run things in a cgroup we have control over.
+
+    find_cgroup_for_controller cpu
+    if [[ $cgroup_version == 2 && "$controller_cgroup" == */user.slice/* ]] ; then
+      # CGroup v2 doesn't let non-root move a process from cgroup A to cgroup B unless it has
+      # write permission to the cgroup.procs file in the common ancestor of A and B. So we use
+      # systemd to run things in a cgroup we have control over.
       test_cmd_line_with_cgroups=(
         systemd-run --scope --user -p "Delegate=cpu" "${test_wrapper_cmd_line[@]}"
       )
     else
-      # For CGroups v2 + Jenkins, since we run things as a systemd system service on Jenkins,
+      # For CGroups v2 + Spark, since we run things as a systemd system service on Spark workers,
       # systemd-run --user doesn't work (user is not logged in normally). So we instead have the
       # following hierarchy set up under the service cgroup:
       #   $SERVICE_CGROUP
@@ -1014,6 +1016,8 @@ run_one_cxx_test() {
       #     - yb_unit_test (inner cgroup with CPU controller)
       # and can just make a child cgroup under $THIS_PROCESS_CGROUP/../yb_unit_test that is
       # dedicated to this test run.
+      # Note that for Jenkins build workers, we don't run things as a systemd service, so it falls
+      # under the other path.
       #
       # For CGroup v1 we just rely on a global writable cgroup dedicated for YB unit tests
       # (/sys/fs/cgroup/cpu/yb-unit-test) that our dev and Jenkins environments have set up.
@@ -1021,7 +1025,6 @@ run_one_cxx_test() {
       # $THIS_PROCESS_CGROUP/../yb_unit_test is just /yb_unit_test.
       local random_md5
       random_md5="$(head -c 32 /dev/urandom | md5sum | cut -d' ' -f 1)"
-      find_cgroup_for_controller cpu
       local cgroup_name="$controller_cgroup/../yb-unit-test/run-r$random_md5.scope"
       test_cmd_line_with_cgroups=(
         run_cmd_in_dedicated_cgroup cpu "$cgroup_name" "${test_wrapper_cmd_line[@]}"
