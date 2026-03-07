@@ -2533,6 +2533,11 @@ Status VectorLSM<Vector, DistanceResult>::DoCompact(
   auto merged_chunk = VERIFY_RESULT(DoCompactChunks(scope.chunks()));
 
   if (metrics_) {
+    uint64_t read_bytes = 0;
+    for (const auto& chunk : scope.chunks()) {
+      read_bytes += chunk->file_size();
+    }
+    metrics_->compact_read_bytes->IncrementBy(read_bytes);
     // TODO(vector_index): include metadata file update in write metrics.
     metrics_->compact_write_bytes->IncrementBy(merged_chunk->file_size());
   }
