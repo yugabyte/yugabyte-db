@@ -76,6 +76,7 @@ message TabletStatusPB {
   // Leader is the last replica in the list.
   repeated string replicas = 24;
   optional bool is_hash_partitioned = 25;
+  optional int64 vector_index_disk_size = 26;
 }
 
 // Used to present the maintenance manager's internal state.

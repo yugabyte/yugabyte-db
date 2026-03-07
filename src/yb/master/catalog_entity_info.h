@@ -152,11 +152,12 @@ struct TabletReplicaDriveInfo {
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
   uint64 total_size = 0;
+  uint64 vector_index_disk_size = 0;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data, total_size);
+        may_have_orphaned_post_split_data, total_size, vector_index_disk_size);
   }
 };
 
