@@ -36,7 +36,7 @@ Follow these steps to deploy a free YugabyteDB Aeon instance:
 
 1. Create a YugabyteDB Aeon account: <https://cloud.yugabyte.com/signup>
 
-1. Begin creating the free cluster by clicking on the **Create a Free cluster** button.
+1. Begin creating the free cluster by clicking on the **Create Cluster** button.
 
     ![Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
 

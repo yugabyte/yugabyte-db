@@ -11,7 +11,7 @@ menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-connect
-    weight: 40
+    weight: 300
 type: indexpage
 ---
 
