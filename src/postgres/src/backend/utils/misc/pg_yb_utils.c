@@ -2224,7 +2224,6 @@ bool		yb_enable_expression_pushdown = true;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
 bool		yb_enable_optimizer_statistics = false;
-bool		yb_bypass_cond_recheck = true;
 bool		yb_make_next_ddl_statement_nonbreaking = false;
 bool		yb_make_next_ddl_statement_nonincrementing = false;
 bool		yb_plpgsql_disable_prefetch_in_for_query = false;

@@ -846,6 +846,10 @@ static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+bool		yb_test_skip_binding_scan_keys;
+static bool yb_bypass_cond_recheck;
+static bool yb_pushdown_is_not_null;
+static bool yb_pushdown_strict_inequality;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -2580,7 +2584,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("If true, strict inequality filters are pushed down."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
 		},
@@ -2591,7 +2595,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("If true, IS NOT NULL is pushed down."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
 		},
@@ -3038,12 +3042,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_EXPLAIN
 		},
 		&yb_bypass_cond_recheck,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_skip_binding_scan_keys", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("For YB scans, skip binding scan keys to pggate. "
+						 "ybgin and internal scans are not affected."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
+		},
+		&yb_test_skip_binding_scan_keys,
+		false,
 		NULL, NULL, NULL
 	},
 

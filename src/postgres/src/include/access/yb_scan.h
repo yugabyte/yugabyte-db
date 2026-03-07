@@ -39,6 +39,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
+extern bool yb_test_skip_binding_scan_keys;
 
 /*
  * In fact, only initial fetch uses the default size, we estimate the number
@@ -194,11 +195,11 @@ typedef struct YbScanDescData
 	List	   *hash_code_keys;
 
 	/*
-	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
-	 * could be false negatives: it could say false when they are in fact all
-	 * bound.
+	 * True if any type of recheck (YB or PG) is needed because not all scan
+	 * keys are bound.  There could be false positives: it could say true when
+	 * recheck is actually not needed.
 	 */
-	bool		all_ordinary_keys_bound;
+	bool		needs_recheck;
 
 	/* Destination for queried data from Yugabyte database */
 	TupleDesc	target_desc;

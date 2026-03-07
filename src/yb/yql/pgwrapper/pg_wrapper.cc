@@ -186,16 +186,16 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVola
     "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
-    "Push down strict inequality filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_is_not_null, kLocalVolatile, false, true,
-    "Push down IS NOT NULL condition filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_hash_batch_in, kLocalVolatile, false, true,
     "Enable batching of hash in queries.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
-    "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, true,
     "Enable the pg_locks view. This view provides information about the locks held by "

@@ -739,7 +739,6 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_max_connections=42");
     options->extra_tserver_flags.emplace_back("--ysql_log_min_duration_statement=13");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_bypass_cond_recheck=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_pg_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_min_txn_age=100");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_max_transactions=3");
@@ -758,7 +757,6 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "42"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "13"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_min_txn_age", "100"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_max_transactions", "3"));
@@ -796,9 +794,6 @@ TEST_F_EX(
     PgWrapperFlagsTest, TestAutoFlagOnNewCluster, PgWrapperAutoFlagsTest) {
   // New clusters should start with Target value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "true"));
 
@@ -818,9 +813,6 @@ TEST_F_EX(
     PgWrapperAutoFlagsDisabledTest) {
   // Old clusters that have upgraded to new version should have Initial value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 

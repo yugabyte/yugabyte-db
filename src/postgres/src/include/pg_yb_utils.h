@@ -505,12 +505,6 @@ extern bool yb_enable_index_aggregate_pushdown;
 extern bool yb_enable_optimizer_statistics;
 
 /*
- * If true then condition rechecking is bypassed at YSQL if the condition is
- * bound to DocDB.
- */
-extern bool yb_bypass_cond_recheck;
-
-/*
  * Enables nonbreaking DDL mode in which a DDL statement is not considered as
  * a "breaking catalog change" and therefore will not cause running transactions
  * to abort.

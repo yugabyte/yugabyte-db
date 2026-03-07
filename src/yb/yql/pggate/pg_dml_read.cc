@@ -618,12 +618,10 @@ Status PgDmlRead::BindColumnCondBetween(
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
 
-      if (yb_pushdown_strict_inequality) {
-        auto* op4_pb = condition_pb->add_operands();
-        auto* op5_pb = condition_pb->add_operands();
-        op4_pb->mutable_value()->set_bool_value(start_inclusive);
-        op5_pb->mutable_value()->set_bool_value(end_inclusive);
-      }
+      auto* op4_pb = condition_pb->add_operands();
+      auto* op5_pb = condition_pb->add_operands();
+      op4_pb->mutable_value()->set_bool_value(start_inclusive);
+      op5_pb->mutable_value()->set_bool_value(end_inclusive);
     } else {
       condition_pb->set_op(start_inclusive ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN);
 
