@@ -14,20 +14,32 @@ type: docs
 
 The YugabyteDB Kubernetes Operator streamlines the deployment and management of YugabyteDB clusters in Kubernetes environments. You can use the Operator to automate provisioning, scaling, and handling lifecycle events of YugabyteDB clusters, and it provides additional capabilities not available via other automation methods (which rely on REST APIs, UIs, and Helm charts).
 
-The Operator establishes `ybuniverse` as a Custom Resource (CR) in Kubernetes, and enables a declarative management of your YugabyteDB Anywhere (YBA) universe. You can update the custom resources to customize the `ybuniverse` resources, including CPU, memory, and disk configurations, and deploy multi-availability zone balanced YBA universes on the underlying cluster for optimal performance. The CR supports seamless upgrades of YBA universes with no downtime, as well as transparent scaling operations.
+The Operator establishes `ybuniverse` as a Custom Resource Definition (CRD) in Kubernetes, enabling a declarative management of your YugabyteDB Anywhere (YBA) universe.
 
-![YugabyteDB Kubernetes operator](/images/yb-platform/yb-kubernetes-operator.png)
+You can define and update these custom resources to manage your universe's configuration, including granular resource specifications (CPU and memory for Masters and TServers) and precise regional/zonal placement policies to ensure optimal performance and high availability. Custom resources support seamless upgrades with no downtime, as well as automated, transparent scaling, and cluster-balanced deployments.
+
+{{<tags/feature/ea idea="2004">}}You can additionally convert Kubernetes universes that are managed via Helm charts to be managed by the YugabyteDB Kubernetes Operator, using the `operator-import` API. See [Import universe](#import-universe).
+
+![YugabyteDB Kubernetes Operator](/images/yb-platform/yb-kubernetes-operator.png)
 
 ## YugabyteDB Kubernetes Operator CRDs
 
-The YugabyteDB Operator provides additional Custom Resource Definitions (CRDs) to manage the day 2 operations of a YBA universe, including the following:
+The Operator is built around the **YBUniverse CRD**, which defines and manages a YugabyteDB universe.
 
-- Release CRD - run multiple releases of YugabyteDB and upgrade the software in a YBA universe
-- Support Bundle CRD - collect logs when a universe fails
-- Backup and Restore CRDs - take full backups of a universe and restore for data protection
-- Storage Config CRD - configure backup destinations
+The following additional CRDs support day 2 operations.
 
-For details of each CRD, you can run a `kubectl explain` on the CR. For example:
+| CRD | Description |
+| :--- | :--- |
+| [Provider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
+| [Release](#add-a-different-software-release-of-yugabytedb) | Run multiple releases of YugabyteDB and upgrade the software in a YBA universe. |
+| [SupportBundle](#support-bundle) | Collect logs when a universe fails. |
+| [StorageConfig](#backup-and-restore) | Configure backup destinations. |
+| [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
+| [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
+
+For details of each CRD, run `kubectl explain` on the CR.
+
+For example, to view all available configuration options for the `YBUniverse` custom resource, run the following command:
 
 ```sh
 kubectl explain ybuniverse.spec
@@ -138,7 +150,7 @@ FIELDS:
 
 ## Prerequisites
 
-Before installing the Kubernetes Operator and YBA universes, verify that the following components are installed and configured:
+Before installing the Kubernetes Operator, verify that the following components are installed and configured:
 
 - Kubernetes cluster v1.27 or later.
 - Helm v3.11 or later.
@@ -155,15 +167,181 @@ The YugabyteDB Kubernetes Operator requires a service account with sufficient pe
 
 The yugaware chart, when installed with `rbac.create=true`, automatically creates appropriate `ClusterRoles` and `Roles` needed for the Kubernetes Operator.
 
-## Installation
+## Install Kubernetes Operator
 
-For information on installing YBA and creating universes using the YugabyteDB Kubernetes Operator, refer to [Use YugabyteDB Kubernetes Operator to automate YBA deployments](../../install-yugabyte-platform/install-software/kubernetes/#use-yugabytedb-kubernetes-operator-to-automate-yba-deployments).
+To use the Kubernetes Operator with YugabyteDB Anywhere, you can either install YugabyteDB Anywhere using the operator, or upgrade an existing YugabyteDB installation.
+{{< tabpane text=true >}}
+
+ {{% tab header="New Installation" %}}
+
+To install YugabyteDB Anywhere using the YugabyteDB Kubernetes Operator, do the following:
+
+1. Apply the following CRD:
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+1. Run the following `helm install` command to set the parameters from the preceding YAML file to install the YugabyteDB Anywhere (`yugaware`) Helm chart:
+
+    ```sh
+    # Modify the fields kubernetesOperatorNamespace and defaultUser username, email and password fields as required
+    helm install yba yugabytedb/yugaware \
+      --version {{< yb-version version="stable" format="short">}} \
+      --namespace yb-platform \
+      --set yugaware.kubernetesOperatorEnabled=true \
+      --set yugaware.kubernetesOperatorNamespace='yb-platform-test' \
+      --set yugaware.defaultUser.enabled=true \
+      --set yugaware.defaultUser.username=yb_platform_user \
+      --set yugaware.defaultUser.email='yugabyte_k8s@yugabyte.com' \
+      --set yugaware.defaultUser.password='Password#Test123'
+    ```
+
+1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+
+    ```sh
+    kubectl get pods -n <yba_namespace>
+    ```
+
+ {{% /tab %}}
+
+ {{% tab header="Upgrade Installation" %}}
+
+<span id="existing-yba-installs"></span>
+
+To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere instance, perform an upgrade as follows:
+
+1. Apply the following CRD:
+
+    ```sh
+    kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
+    ```
+
+1. Get a list of Helm chart releases in namespace using the following command:
+
+    ```sh
+    helm ls
+    ```
+
+    ```output
+    NAME    NAMESPACE       REVISION        UPDATED                                 STATUS          CHART           APP VERSION
+    yba         yb-platform-test      1               2024-05-08 16:42:47.480260572 +0000 UTC deployed        yugaware-2.19.3 2.19.3.0-b140
+    ```
+
+1. Run the following `helm upgrade` command to enable the YBA upgrade:
+
+    ```sh
+    helm upgrade yba yugabytedb/yugaware --version 2024.1.0 --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test"
+    ```
+
+1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
+
+    ```sh
+    kubectl get pods -n <yba_namespace>
+    ```
+
+    ```sh
+    kubectl get pods -n <operator_namespace>
+    ```
+
+    ```output
+    NAME                                       READY   STATUS    RESTARTS   AGE
+    chart-1706728534-yugabyte-k8s-operator-0   3/3     Running   0          26h
+    ```
+
+    Additionally, you should see no stack traces, but the following messages in the `KubernetesOperatorReconciler` log:
+
+    ```output
+    LOG.info("Finished running ybUniverseController");
+    ```
+
+ {{% /tab %}}
+
+{{< /tabpane >}}
 
 ## Example workflows
 
+### Create a provider
+
+Use the YBProvider CRD (available in v2025.2.2 or later) to define a Kubernetes provider that universes can reference via `spec.providerName`. The provider specifies cloud type, image registry, and per-region/per-zone settings such as storage class and namespace.
+
+```sh
+kubectl apply provider-demo.yaml -n yb-platform
+```
+
+```yaml
+# provider-demo.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBProvider
+metadata:
+  name: test-provider
+spec:
+  cloudInfo:
+    kubernetesProvider: gke
+    kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+  regions:
+    - code: us-west1
+      zones:
+        - code: us-west1-a
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-b
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+        - code: us-west1-c
+          cloudInfo:
+            kubernetesStorageClass: yb-standard
+            kubeNamespace: anabaria-devspace
+```
+
+You can then reference this provider in a [Universe CR with placement information](#create-a-universe-with-placement-information) by setting `spec.providerName` to the provider's `metadata.name` (for example, `test-provider`).
+
+#### Using a custom kubeconfig
+
+To use a custom kubeconfig for the provider, specify it in either top-level `spec.cloudInfo` or in zone-level `cloudInfo`. The kubeconfig content must be stored in a Kubernetes secret with the key `kubeconfig`.
+
+1. Create the secret:
+
+    ```sh
+    kubectl create secret generic test-kubeconfig -n yb-operator --from-file=kubeconfig=/tmp/kubeconfig.conf
+    ```
+
+1. Reference the secret in the YBProvider manifest via `kubeConfigSecret`:
+
+    ```yaml
+    apiVersion: operator.yugabyte.io/v1alpha1
+    kind: YBProvider
+    metadata:
+      name: test-provider
+    spec:
+      cloudInfo:
+        kubernetesProvider: gke
+        kubernetesImageRegistry: quay.io/yugabyte/yugabyte
+        kubeConfigSecret:
+          name: test-kubeconfig
+          namespace: yb-operator
+      regions:
+        - code: us-west1
+          zones:
+            - code: us-west1-a
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-b
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+            - code: us-west1-c
+              cloudInfo:
+                kubernetesStorageClass: yb-standard
+                kubeNamespace: anabaria-devspace
+    ```
+
 ### Create a universe
 
-Use the following CRD to create a universe using the `kubectl apply` command:
+Use the YBUniverse CRD to create a universe using the `kubectl apply` command:
 
 ```sh
 kubectl apply universedemo.yaml -n yb-platform
@@ -182,6 +360,7 @@ spec:
   enableNodeToNodeEncrypt: true
   enableClientToNodeEncrypt: true
   enableLoadBalancer: false
+  # Use your YBA version
   ybSoftwareVersion: "2.20.1.3-b3"
   enableYSQLAuth: false
   enableYCQL: true
@@ -204,11 +383,76 @@ spec:
           memory: 8Gi
 ```
 
-Any modifications to the universe can be done by modifying the CRD using `kubectl apply/edit` operations.
+To check the status of the universe, do the following:
+
+```sh
+kubectl get ybuniverse  -n yb-operator
+```
+
+```output
+NAME                     STATE   SOFTWARE VERSION
+operator-universe-demo   Ready   {{< yb-version version="stable" format="build">}}
+```
+
+To modify the universe, edit the CRD and use `kubectl apply/edit` operations.
+
+### Create a universe with placement information
+
+Starting from YugabyteDB Anywhere v2025.2, you can specify `placementInfo` in the YBUniverse CRD to control regional and zonal placement of nodes. Use `defaultRegion` and `regions` with zone-level `numNodes` and optional `preferred` to define where nodes are placed. You need a Kubernetes provider (for example, one created via [YBProvider](#create-a-provider)) and set `spec.providerName` to its name.
+
+```sh
+kubectl apply universedemo-placement.yaml -n yb-platform
+```
+
+```yaml
+# universedemo-placement.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: YBUniverse
+metadata:
+  name: operator-universe-demo
+spec:
+  placementInfo:
+    defaultRegion: us-west1
+    regions:
+    - code: us-west1
+      zones:
+      - code: us-west1-a
+        numNodes: 2
+        preferred: true
+      - code: us-west1-b
+        numNodes: 1
+        preferred: true
+  providerName: test-provider
+  numNodes: 3
+  replicationFactor: 3
+  enableYSQL: true
+  enableNodeToNodeEncrypt: true
+  enableClientToNodeEncrypt: true
+  ybSoftwareVersion: 2025.2.0.0-b131
+  enableYSQLAuth: false
+  enableYCQL: true
+  enableYCQLAuth: false
+  enableIPV6: false
+  deviceInfo:
+    numVolumes: 1
+    volumeSize: 800
+  gFlags:
+    masterGFlags: {}
+    tserverGFlags: {}
+  kubernetesOverrides:
+    resource:
+      master:
+        requests:
+          cpu: 2
+          memory: 8Gi
+        limits:
+          cpu: 3
+          memory: 8Gi
+```
 
 ### Add a different software release of YugabyteDB
 
-Use the release CRD to add a different software release of YugabyteDB:
+Use the Release CRD to add a different software release of YugabyteDB:
 
 ```sh
 kubectl apply updaterelease.yaml -n yb-platform
@@ -369,7 +613,7 @@ Set up scheduled backups as follows:
     kubectl apply -f https://raw.github.com/yugabyte/charts/{{< yb-version version="stable" format="short">}}/crds/concatenated_crd.yaml
     ```
 
-1. Verify scheduled backup fields in the backup CRD specification using `kubectl explain` to understand the available configuration options.
+1. Verify scheduled backup fields in the BackupSchedule CRD specification using `kubectl explain` to understand the available configuration options.
 
     ```sh
     $ kubectl explain backupschedules.operator.yugabyte.io.spec
@@ -414,9 +658,9 @@ Set up scheduled backups as follows:
 
 ##### Example
 
-This example decribes how to create and delete scheduled backups, and assumes you have the following:
+This example describes how to create and delete scheduled backups, and assumes you have the following:
 
-- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- An existing YugabyteDB Anywhere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups.
 
 Use the following CRD to create a scheduled backup:
@@ -528,9 +772,9 @@ Set up incremental backups as follows:
 
 ##### Example
 
-This example decribes how to create and delete incremental backups, and assumes you have the following:
+This example describes how to create and delete incremental backups, and assumes you have the following:
 
-- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- An existing YugabyteDB Anywhere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups. You must have an existing base backup (either a full backup or a previous incremental backup) to create the new incremental backup.
 
 Use the following CRD to create an incremental backup:
@@ -582,7 +826,7 @@ No resources found in schedule-cr namespace.
 
 ### Support bundle
 
-Use the following CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
+Use the SupportBundle CRD to create a [support bundle](../../troubleshoot/universe-issues/#use-support-bundles):
 
 ```sh
 kubectl apply supportbundle.yaml -n yb-platform
@@ -612,6 +856,87 @@ spec:
   - K8sInfo
   - GFlags
 ```
+
+## Import universe
+
+{{<tags/feature/ea idea="12874">}} Available in YugabyteDB Anywhere v2025.2.2 and later.
+
+Use the operator import universe feature to import existing YugabyteDB Anywhere Kubernetes universes that are managed via Helm charts to be managed by the Kubernetes Operator.
+
+Currently, universes with any of the following configurations are not supported for import:
+
+- Universes configured in an [xCluster](../../../architecture/docdb-replication/async-replication/) setup.
+- Universes with a [Read Replica](../../../architecture/key-concepts/#read-replica-cluster) cluster.
+- Universes configured with availability zone (AZ) level overrides.
+
+### Before you begin
+
+- Install the operator. The operator must be enabled on your instance. See [Installing Kubernetes Operator](#installing-kubernetes-operator).
+- Verify namespace configuration.
+  - If the operator is configured to watch a single, specific namespace, the namespace provided in the import payload must match that runtime configuration (for example, `yb.kubernetes.operator.namespace`).
+  - If the operator is not watching a specific namespace, the payload should be the namespace you want the resources to be created in.
+- Update universe CRDs. You must update the CRDs for your Kubernetes universe to the latest for the version of YugabyteDB Anywhere you have installed. Failure to do so may result in scaling down of pod resources during future edit operations.
+
+{{< warning title="Import cannot be reversed" >}}
+After a universe and its related resources are imported to be managed by the operator most edit operations are allowed only via the operator. The API and UI block edit actions on the imported resource. This operation _cannot_ be reversed.
+{{< /warning >}}
+
+### Import
+
+To perform an operator import, you use the YugabyteDB Anywhere API.
+
+You need an [API token](../#authentication) to authenticate when calling the endpoints, and [account details](../#account-details).
+
+In the following commands, replace the following values:
+
+| <div style="width:150px">Replace</div> | With |
+| :--- | :--- |
+| `<platform-url>` | The URL of your YugabyteDB Anywhere instance. |
+| `<customer-uuid>` | Your customer UUID. |
+| `<universe-uuid>` | The UUID of the universe to import. |
+| `<api-token>` | Your API token. |
+| `<namespace>` | The Kubernetes namespace where the custom resources will be created.<br>This must be a namespace the operator is watching; when set, this corresponds to the runtime configuration `yb.kubernetes.operator.namespace`. |
+
+#### Precheck
+
+Run the precheck to ensure the universe is eligible for import. Returns HTTP 200 on success.
+
+An example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<platform-url>/api/v2/customers/<customer-uuid>/universes/<universe-uuid>/operator-import/precheck \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{"namespace": "<namespace>"}'
+```
+
+#### Import
+
+Creates operator resources for the universe in the given namespace. Returns a task UUID and resource UUID.
+
+An example API request is as follows:
+
+```sh
+curl --request POST \
+  --url https://<platform-url>/api/v2/customers/<customer-uuid>/universes/<universe-uuid>/operator-import \
+  --header 'Accept: application/json' \
+  --header 'Content-Type: application/json' \
+  --header 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{"namespace": "<namespace>"}'
+```
+
+### Resources imported
+
+Importing a universe to the operator creates or adopts the following in the target namespace:
+
+- Universe.
+- Provider, if all universes managed by that provider are being brought under operator control.
+- Backups.
+- Backup schedules.
+- Storage configurations related to the backups or backup schedules, including secrets to access the storage configuration.
+- Release, including secrets to access the release.
 
 ## Limitations
 
