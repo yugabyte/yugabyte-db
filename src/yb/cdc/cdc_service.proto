@@ -558,7 +558,7 @@ message RowMessage {
   // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
   optional bytes primary_key = 18;
 
-  // Replication origin id associated with the transaction. Only set for COMMIT Ops.
+  // Replication origin id associated with the transaction. Set on DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
 }
 
