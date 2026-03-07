@@ -97,6 +97,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 * *tablet_id*: The identifier of the tablet to compact.
 
+### compact_vector_index
+
+Trigger compaction of [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on a specific tablet. Use this for tablet-level vector index compaction when you need to compact only vector indexes on a given tablet (for example, after bulk loads or for maintenance).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet_id> [<vector_index_id1> <vector_index_id2> ...]
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet_id*: The identifier of the tablet that contains the vector index(es).
+* *vector_index_id1*, *vector_index_id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
+
 ### count_intents
 
 Print the count of uncommitted intents (or [provisional records](../../architecture/transactions/distributed-txns/#provisional-records)). Helpful for debugging transactional workloads.
