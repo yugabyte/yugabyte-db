@@ -3239,7 +3239,7 @@ YbApplyMergeSortKeys(YbScanDesc ybScan, Scan *pg_scan_plan)
  * - PG recheck
  * There is only one condition to avoid both of those: needs_recheck.  Use as
  * little resources as possible to make this determination.  This is largely a
- * dup of ybcBeginScan minus the unessential parts.
+ * dup of YbBeginScan minus the unessential parts.
  * TODO(jason): there may be room for further cleanup/optimization.
  */
 bool
@@ -3286,45 +3286,44 @@ YbPredetermineNeedsRecheck(Scan *scan,
  * Begin a scan for
  *   SELECT <Targets> FROM <relation> USING <index> WHERE <Binds>
  * NOTES:
- * - "relation" is the non-index table.
- * - "index" is the index table, if applicable.
- * - "nkeys" and "key" identify which key columns are provided in the SELECT
- *   WHERE clause.
+ * - "table" is the table (not index).  Must always be specified.
+ * - "index" is the index, if applicable.  NULL otherwise.
+ * - "nkeys" and "keys" identify which key columns are provided in the SELECT
+ *   WHERE clause.  Can be 0/NULL.
  *   - nkeys = Number of keys.
  *   - keys[].sk_attno = the column's attribute number with respect to
- *     - "relation" if sequential scan
+ *     - "table" if sequential scan
  *     - "index" if index (only) scan
  *     Easy way to tell between the two cases is whether index is NULL.
  *     Note: ybc_systable_beginscan can call for either case.
- * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple that
- *   has ybctid to identify the desired row.
+ * - If "xs_want_itup" is true, Postgres layer is expecting an IndexTuple.
  * - "rel_pushdown" defines expressions to push down to the targeted relation.
- *   - sequential scan: non-index table.
- *   - index scan: non-index table.
- *   - index only scan: index table.
+ *   - sequential scan: table.
+ *   - index scan: table (not index).
+ *   - index only scan: index.
  * - "idx_pushdown" defines expressions to push down to the index in case of an
  *   index scan.
  */
 YbScanDesc
-ybcBeginScan(Relation relation,
-			 Relation index,
-			 bool xs_want_itup,
-			 int nkeys,
-			 ScanKey keys,
-			 Scan *pg_scan_plan,
-			 YbPushdownExprs *rel_pushdown,
-			 YbPushdownExprs *idx_pushdown,
-			 List *aggrefs,
-			 int distinct_prefixlen,
-			 YbcPgExecParameters *exec_params,
-			 bool is_internal_scan,
-			 bool fetch_ybctids_only)
+YbBeginScan(Relation table,
+			Relation index,
+			bool xs_want_itup,
+			int nkeys,
+			ScanKey keys,
+			Scan *pg_scan_plan,
+			YbPushdownExprs *rel_pushdown,
+			YbPushdownExprs *idx_pushdown,
+			List *aggrefs,
+			int distinct_prefixlen,
+			YbcPgExecParameters *exec_params,
+			bool is_internal_scan,
+			bool fetch_ybctids_only)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc	ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
 	TableScanDesc tsdesc = (TableScanDesc) ybScan;
 
-	tsdesc->rs_rd = relation;
+	tsdesc->rs_rd = table;
 	tsdesc->rs_key = keys;
 	tsdesc->rs_nkeys = nkeys;
 
@@ -3347,7 +3346,7 @@ ybcBeginScan(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	ybScan->handle = YbNewSelect(relation, &ybScan->prepare_params);
+	ybScan->handle = YbNewSelect(table, &ybScan->prepare_params);
 
 	/* Set up binds */
 	if (!ybBindScanKeys(ybScan, &scan_plan, pg_scan_plan,
@@ -3387,7 +3386,7 @@ ybcBeginScan(Relation relation,
 	 * Initdb and walsender don't have local catalog version, so ignore for
 	 * those cases as well.
 	 */
-	if (!(is_internal_scan && IsSystemRelation(relation)) &&
+	if (!(is_internal_scan && IsSystemRelation(table)) &&
 		!IsBootstrapProcessingMode() &&
 		MyBackendType != B_WAL_SENDER &&
 		MyBackendType != YB_YSQL_CONN_MGR_WAL_SENDER)
@@ -3701,7 +3700,7 @@ ybc_systable_begin_default_scan(Relation relation,
 								bool indexOK,
 								Snapshot snapshot,
 								int nkeys,
-								ScanKey key)
+								ScanKey keys)
 {
 	Relation	index = NULL;
 
@@ -3730,25 +3729,29 @@ ybc_systable_begin_default_scan(Relation relation,
 			 *   must be used for bindings.
 			 */
 			for (int i = 0; i < nkeys; ++i)
-				key[i].sk_attno = YbGetIndexAttnum(index, key[i].sk_attno);
+				keys[i].sk_attno = YbGetIndexAttnum(index, keys[i].sk_attno);
 		}
 	}
 
 	YbDefaultSysScan scan = palloc0(sizeof(YbDefaultSysScanData));
 
-	scan->ybscan = ybcBeginScan(relation,
-								index,
-								false /* xs_want_itup */ ,
-								nkeys,
-								key,
-								NULL /* pg_scan_plan */ ,
-								NULL /* rel_pushdown */ ,
-								NULL /* idx_pushdown */ ,
-								NULL /* aggrefs */ ,
-								0 /* distinct_prefixlen */ ,
-								NULL /* exec_params */ ,
-								true /* is_internal_scan */ ,
-								false /* fetch_ybctids_only */ );
+	/*
+	 * In case of an index scan here, it would do a full scan and use local
+	 * filtering.
+	 */
+	scan->ybscan = YbBeginScan(relation,
+							   index,
+							   false,	/* xs_want_itup */
+							   nkeys,
+							   keys,
+							   NULL,	/* pg_scan_plan */
+							   NULL,	/* rel_pushdown */
+							   NULL,	/* idx_pushdown */
+							   NULL,	/* aggrefs */
+							   0,	/* distinct_prefixlen */
+							   NULL,	/* exec_params */
+							   true,	/* is_internal_scan */
+							   false);	/* fetch_ybctids_only */
 	Assert(!YbNeedsPgRecheck(scan->ybscan));
 
 	scan->base.vtable = &yb_default_scan;
@@ -3763,28 +3766,27 @@ TableScanDesc
 ybc_heap_beginscan(Relation relation,
 				   Snapshot snapshot,
 				   int nkeys,
-				   ScanKey key,
+				   ScanKey keys,
 				   uint32 flags)
 {
 	/*
 	 * Restart should not be prevented if operation caused by system read of
 	 * system table.
 	 */
-	Scan	   *pg_scan_plan = NULL;	/* In current context scan plan is not
-										 * available */
-	YbScanDesc	ybScan = ybcBeginScan(relation,
-									  NULL /* index */ ,
-									  false /* xs_want_itup */ ,
-									  nkeys,
-									  key,
-									  pg_scan_plan,
-									  NULL /* rel_pushdown */ ,
-									  NULL /* idx_pushdown */ ,
-									  NULL /* aggrefs */ ,
-									  0 /* distinct_prefixlen */ ,
-									  NULL /* exec_params */ ,
-									  false /* is_internal_scan */ ,
-									  false /* fetch_ybctids_only */ );
+	YbScanDesc	ybScan = YbBeginScan(relation,
+									 NULL,	/* index */
+									 false, /* xs_want_itup */
+									 nkeys,
+									 keys,
+									 NULL,	/* pg_scan_plan */
+									 NULL,	/* rel_pushdown */
+									 NULL,	/* idx_pushdown */
+									 NULL,	/* aggrefs */
+									 0, /* distinct_prefixlen */
+									 NULL,	/* exec_params */
+									 false, /* is_internal_scan */
+									 false);	/* fetch_ybctids_only */
+
 	Assert(!YbNeedsPgRecheck(ybScan));
 
 	/* Set up Postgres sys table scan description */
@@ -3821,7 +3823,7 @@ ybc_heap_endscan(TableScanDesc tsdesc)
 /*
  * Build a Scan node with a targetlist containing the columns required for
  * index backfill. This creates Var nodes for each column needed by the index,
- * allowing ybcBeginScan to use its standard column projection logic.
+ * allowing YbBeginScan to use its standard column projection logic.
  */
 static Scan *
 ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
@@ -3974,19 +3976,19 @@ ybc_heap_beginscan_for_index_build(Relation relation,
 
 	pg_scan_plan = ybcBuildScanPlanForIndexBuild(relation, indexInfo);
 
-	ybScan = ybcBeginScan(relation,
-						  NULL,		/* index */
-						  false,	/* xs_want_itup */
-						  nkeys,
-						  key,
-						  pg_scan_plan,
-						  NULL,		/* rel_pushdown */
-						  NULL,		/* idx_pushdown */
-						  NIL,		/* aggrefs */
-						  0,      /* distinct_prefixlen */
-						  NULL,		/* exec_params */
-						  false,	/* is_internal_scan */
-						  false);	/* fetch_ybctids_only */
+	ybScan = YbBeginScan(relation,
+						 NULL,	/* index */
+						 false, /* xs_want_itup */
+						 nkeys,
+						 key,
+						 pg_scan_plan,
+						 NULL,	/* rel_pushdown */
+						 NULL,	/* idx_pushdown */
+						 NIL,	/* aggrefs */
+						 0,		/* distinct_prefixlen */
+						 NULL,	/* exec_params */
+						 false, /* is_internal_scan */
+						 false);	/* fetch_ybctids_only */
 
 	TableScanDesc tsdesc = (TableScanDesc) ybScan;
 	tsdesc->rs_snapshot = snapshot;

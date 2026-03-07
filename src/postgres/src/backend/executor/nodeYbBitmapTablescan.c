@@ -269,19 +269,19 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 											 scanstate->ss.ps.state);
 
 
-	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
-						  NULL /* index */ ,
-						  false /* xs_want_itup */ ,
-						  0 /* nkeys */ ,
-						  NULL /* keys */ ,
-						  (Scan *) &plan /* pg_scan_plan */ ,
-						  yb_pushdown /* rel_pushdown */ ,
-						  NULL /* idx_pushdown */ ,
-						  scanstate->aggrefs /* aggrefs */ ,
-						  0 /* distinct_prefixlen */ ,
-						  &scanstate->ss.ps.state->yb_exec_params,
-						  false /* is_internal_scan */ ,
-						  false /* fetch_ybctids_only */ );
+	ybScan = YbBeginScan(scanstate->ss.ss_currentRelation,
+						 NULL,	/* index */
+						 false,	/* xs_want_itup */
+						 0,	/* nkeys */
+						 NULL,	/* keys */
+						 (Scan *) &plan,	/* pg_scan_plan */
+						 yb_pushdown,	/* rel_pushdown */
+						 NULL,	/* idx_pushdown */
+						 scanstate->aggrefs,	/* aggrefs */
+						 0,	/* distinct_prefixlen */
+						 &scanstate->ss.ps.state->yb_exec_params,
+						 false,	/* is_internal_scan */
+						 false);	/* fetch_ybctids_only */
 
 	if (yb_pushdown)
 		pfree(yb_pushdown);
