@@ -15,7 +15,7 @@ type: docs
 
 [LangChain](https://www.langchain.com) is a powerful framework for developing large language model-powered applications. It provides a comprehensive toolkit for building context-aware LLM applications by managing the communication between LLMs and various data sources, including databases and vector stores.
 
-YugabyteDB supports the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) in a distributed SQL architecture, providing resilience and seamless scalability for buildling generative AI (GAI) applications.
+YugabyteDB supports the [pgvector extension](../../additional-features/pg-extensions/extension-pgvector/) in a distributed SQL architecture, providing resilience and seamless scalability for building generative AI (GAI) applications.
 
 The [langchain-yugabytedb](https://pypi.org/project/langchain-yugabytedb/) Python package (available as a PyPi module) provides capabilities for Gen-AI applications to use YugabyteDB as a vector store, using the LangChain framework's vector store retrieval for storing and retrieving vector data.
 
@@ -35,6 +35,7 @@ The example progresses from basic operations (storing and searching documents) t
 
 ### Prerequisites
 
+- [YugabyteDB v2025.2](https://download.yugabyte.com/) or later
 - Python 3.9 or later
 - Docker
 - Create an [OpenAI API key](https://platform.openai.com/api-keys). Export it as an environment variable with the name `OPENAI_API_KEY`.
@@ -59,7 +60,7 @@ The example progresses from basic operations (storing and searching documents) t
     ```sh
     docker run -d --name yugabyte_node01 --hostname yugabyte01 \
     -p 7000:7000 -p 9000:9000 -p 15433:15433 -p 5433:5433 -p 9042:9042 \
-    yugabytedb/yugabyte:2.25.2.0-b359 bin/yugabyted start --background=false
+    yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}} bin/yugabyted start --background=false
     ```
 
 1. Enable the vector extension and verify it's working:

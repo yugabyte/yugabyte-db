@@ -212,7 +212,7 @@ wiki_yugabytedb_pgvector_tool = QueryEngineTool.from_defaults(
 
 ### Use the YugabyteDB Vector index
 
-The `PGVectorStore` object is created to store and retrieve vector indicies from the YugabyteDB universe.
+The `PGVectorStore` object is created to store and retrieve vector indices from the YugabyteDB universe.
 
 ```python
 # wiki_search.py
