@@ -770,28 +770,33 @@ Status PgTxnManager::SetupPerformOptions(
     options->set_restart_transaction(true);
     need_restart_ = false;
   }
-  // Two ways to defer read point:
-  // 1. SET TRANSACTION READ ONLY DEFERRABLE
-  // 2. SET yb_read_after_commit_visibility = 'deferred'
-  if (need_defer_read_point_) {
-    options->set_defer_read_point(true);
-    // Setting read point at pg client. Reset other time manipulations.
-    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
-    read_time_action.reset();
-  }
 
-  // Do not clamp in the serializable case (or fast path write) since
-  // - SERIALIZABLE (and fast path) reads do not pick read time until they reach the storage layer.
-  // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
-  // Fast path writes are also referred to as NonTransactional writes.
-  // Also skip clamping in catalog sessions since catalog sessions are legacy mode.
-  if ((yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
-       || clamp_uncertainty_window_)
-      && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
-      && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())
-      && !options->use_catalog_session()) {
-    options->set_clamp_uncertainty_window(true);
-    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  // Do not clamp or defer read point when the read time is being reset
+  // because RESET => read time needs to be empty.
+  if (!(read_time_action && *read_time_action == ReadTimeAction::RESET)) {
+    // Do not clamp in the serializable case (or fast path write) since
+    // - SERIALIZABLE (and fast path) reads do not pick read time until they reach storage layer.
+    // - SERIALIZABLE (and fast path) reads do not observe read restarts anyways.
+    // Fast path writes are also referred to as NonTransactional writes.
+    if ((yb_read_after_commit_visibility == YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY
+         || clamp_uncertainty_window_)
+        && isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION
+        && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())) {
+      // Can remove this check in the future since catalog session also clamps catalog_read_time.
+      RSTATUS_DCHECK(!options->use_catalog_session(), IllegalState,
+        "SetupPerformOptions cannot be called with use_catalog_session set.");
+      options->set_clamp_uncertainty_window(true);
+      read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+      read_time_action.reset();
+    } else if (need_defer_read_point_) {
+      // Two ways to defer read point:
+      // 1. SET TRANSACTION READ ONLY DEFERRABLE
+      // 2. SET yb_read_after_commit_visibility = 'deferred'
+      options->set_defer_read_point(true);
+      // Setting read point at pg client. Reset other time manipulations.
+      read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+      read_time_action.reset();
+    }
   }
 
   if (!IsDdlModeWithSeparateTransaction()) {
@@ -873,7 +878,7 @@ YbcReadPointHandle PgTxnManager::GetCurrentReadPoint() const {
 YbcReadPointHandle PgTxnManager::GetMaxReadPoint() const { return serial_no_.max_read_time(); }
 
 TxnReadPoint PgTxnManager::GetCurrentReadPointState() const {
-  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time()};
+  return TxnReadPoint{serial_no_.txn(), serial_no_.read_time(), clamp_uncertainty_window_};
 }
 
 Status PgTxnManager::RestoreReadPoint(YbcReadPointHandle read_point) {
@@ -894,6 +899,7 @@ Status PgTxnManager::RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     }
     return Status::OK();
   }
+  clamp_uncertainty_window_ = saved_read_point.is_clamped;
   return RestoreReadPoint(saved_read_point.read_time_serial_no);
 }
 

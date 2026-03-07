@@ -58,6 +58,7 @@ YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
   uint64_t read_time_serial_no; // Read time serial number
+  bool is_clamped; // Whether the uncertainty window is clamped
 };
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {

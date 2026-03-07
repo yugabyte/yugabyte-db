@@ -1028,8 +1028,26 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
   RSTATUS_DCHECK(
       catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
-  // Avoid picking safe time for catalog reads.
-  RETURN_NOT_OK(pg_txn_manager_->EnsureReadPoint());
+  // Clamp the uncertainty window for catalog reads.
+  //
+  // User table reads need an uncertainty window to guarantee read-after-commit-visibility because
+  // clock skew can cause a write's commit timestamp to exceed the reader's chosen read time.
+  //
+  // Catalog reads do not need this. Catalog operations use object locks (shared for reads,
+  // exclusive for writes) instead of relying solely on MVCC. A concurrent DDL writer must hold
+  // an exclusive lock, and the catalog reader can only acquire its shared lock after that
+  // exclusive lock is released. The lock release happens strictly after the DDL transaction
+  // commits, so it propagates the commit hybrid time. By the time the reader picks its catalog
+  // snapshot read time, that time is guaranteed to be >= the commit time of any concurrent DDL.
+  //
+  // The guarantee is also maintained when postgres uses AcceptInvalidationMessages instead of
+  // share locks: the exclusive lock release still propagates the commit time before invalidation
+  // messages are applied and a new catalog read time is chosen. The object lock release
+  // happens before postgres acknowledges the catalog write, maintaining the same guarantee.
+  //
+  // Without clamping, the uncertainty window causes spurious read restart errors on catalog
+  // tables that are unnecessary given the object-lock / invalidation-messages protocol.
+  pg_txn_manager_->SetClampUncertaintyWindow(true);
   return original_read_point;
 }
 
@@ -1057,13 +1075,13 @@ Result<PerformFuture> PgSession::DoRunAsync(
     RETURN_NOT_OK(rw_operations_hook_(options.marker));
   }
   auto force_non_bufferable = options.force_non_bufferable;
-  std::optional<TxnReadPoint> original_read_point;
+  std::optional<TxnReadPoint> read_point_before_catalog_ops;
   if (!YBCIsLegacyModeForCatalogOps() &&
       first_table.schema().table_properties().is_ysql_catalog_table()) {
     // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
     // writes.
     force_non_bufferable = ForceNonBufferable::kTrue;
-    original_read_point.emplace(VERIFY_RESULT(UpdateReadPointForCatalogOps(
+    read_point_before_catalog_ops.emplace(VERIFY_RESULT(UpdateReadPointForCatalogOps(
         first_table.pg_table_id().object_oid)));
   }
   RunHelper runner(
@@ -1106,11 +1124,12 @@ Result<PerformFuture> PgSession::DoRunAsync(
     RETURN_NOT_OK(processor(table_op));
   }
   auto result = runner.Flush(std::move(cache_options));
-  if (original_read_point) {
+  if (read_point_before_catalog_ops) {
     LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
         << "Restoring original read time serial no to "
-        << original_read_point->read_time_serial_no << " for txn no " << original_read_point->txn;
-    RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*original_read_point));
+        << read_point_before_catalog_ops->read_time_serial_no
+        << " for txn no " << read_point_before_catalog_ops->txn;
+    RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*read_point_before_catalog_ops));
   }
   return result;
 }
