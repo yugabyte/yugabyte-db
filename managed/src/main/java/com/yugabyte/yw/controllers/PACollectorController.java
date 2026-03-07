@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.pa.PerfAdvisorService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PACollectorExt;
+import com.yugabyte.yw.forms.PaRegistrationStatusResponse;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
@@ -179,7 +180,7 @@ public class PACollectorController extends AuthenticatedController {
   @ApiOperation(
       notes = "YbaApi Internal.",
       value = "Check if universe is registered with PA Collector",
-      response = YBPSuccess.class)
+      response = PaRegistrationStatusResponse.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -198,12 +199,13 @@ public class PACollectorController extends AuthenticatedController {
 
     PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, paCollectorUuid);
 
-    boolean isRegistered = perfAdvisorService.isRegistered(collector, universe);
-    if (isRegistered) {
-      return YBPSuccess.empty();
-    } else {
+    var metadata = perfAdvisorService.getUniverseMetadata(collector, universe);
+    if (metadata == null) {
       throw new PlatformServiceException(NOT_FOUND, "Universe is not registered with PA Collector");
     }
+
+    boolean advancedObservability = metadata.isMetricsExportToPrometheusEnabled();
+    return PlatformResults.withData(new PaRegistrationStatusResponse(true, advancedObservability));
   }
 
   @ApiOperation(
@@ -218,13 +220,17 @@ public class PACollectorController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result registerUniverse(
-      UUID customerUUID, UUID universeUUID, UUID collectorUUID, Http.Request request) {
+      UUID customerUUID,
+      UUID universeUUID,
+      UUID collectorUUID,
+      Boolean advancedObservability,
+      Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     PACollector collector = perfAdvisorService.getOrBadRequest(customerUUID, collectorUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    perfAdvisorService.putUniverse(collector, universe);
+    perfAdvisorService.putUniverse(collector, universe, Boolean.TRUE.equals(advancedObservability));
     Universe.saveDetails(
         universeUUID, u -> u.getUniverseDetails().setPaCollectorUuid(collectorUUID));
     auditService()

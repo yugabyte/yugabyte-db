@@ -32,6 +32,8 @@
 
 #include "yb/tablet/operations/write_operation.h"
 
+#include "yb/common/pgsql_error.h"
+
 #include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
@@ -47,8 +49,7 @@ DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
                  "Pause applying of write operations.");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 template <>
 void RequestTraits<LWWritePB>::SetAllocatedRequest(
@@ -114,7 +115,8 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
   *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
   // Failure is regular case, since could happen because transaction was aborted, while
   // replicating its intents.
-  LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;
+  LOG_IF(FATAL, !complete_status->ok() && !IsTxnAborted(*complete_status))
+      << "Apply operation failed: " << *complete_status;
 
   // Now that all of the changes have been applied and the commit is durable
   // make the changes visible to readers.
@@ -132,5 +134,8 @@ HybridTime WriteOperation::WriteHybridTime() const {
   return Operation::WriteHybridTime();
 }
 
-}  // namespace tablet
-}  // namespace yb
+bool IsTxnAborted(const Status& status) {
+  return PgsqlError(status) == YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
+}
+
+}  // namespace yb::tablet

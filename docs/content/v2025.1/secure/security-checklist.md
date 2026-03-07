@@ -73,3 +73,9 @@ See [Encryption in transit](../tls-encryption/).
 {{<lead link="../encryption-at-rest/">}}
 See [Encryption at rest](../encryption-at-rest/).
 {{</lead>}}
+
+## See also
+
+For recommendations on configuring antivirus or endpoint scanning to work with YugbayteDB, refer to [Antivirus and endpoint scanning](/stable/faq/antivirus/).
+
+For recommendations on conducting penetration testing with YugbayteDB, refer to [Penetration testing](/stable/faq/penetration-testing/).

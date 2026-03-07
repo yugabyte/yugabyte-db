@@ -170,7 +170,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.OperatorImportUniverse,
           TaskType.CreatePitrConfig,
           TaskType.UpdatePitrConfig,
-          TaskType.DeletePitrConfig);
+          TaskType.DeletePitrConfig,
+          TaskType.RestoreSnapshotSchedule);
 
   @Override
   protected Application provideApplication() {

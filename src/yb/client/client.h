@@ -357,7 +357,9 @@ class YBClient {
           num_rows_read_from_table_for_backfill,
       google::protobuf::RepeatedField<double>* num_rows_backfilled_in_index);
 
-  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
+  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata(
+      std::optional<std::string> table_id = std::nullopt,
+      std::optional<std::string> partition_key = std::nullopt);
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);

@@ -23,6 +23,9 @@
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 
+/* YB includes */
+#include "utils/age_global_graph.h"
+
 static void begin_cypher_create(CustomScanState *node, EState *estate,
                                 int eflags);
 static TupleTableSlot *exec_cypher_create(CustomScanState *node);
@@ -238,7 +241,10 @@ static TupleTableSlot *exec_cypher_create(CustomScanState *node)
     }
 
     /* update the current command Id */
-    CommandCounterIncrement();
+    YbCommandCounterIncrement();
+
+    /* invalidate the global graph cache so subsequent queries see new data */
+    yb_invalidate_GRAPH_global_contexts();
 
     /* if this was a terminal CREATE just return NULL */
     if (terminal)
@@ -257,7 +263,10 @@ static void end_cypher_create(CustomScanState *node)
     ListCell *lc;
 
     /* increment the command counter */
-    CommandCounterIncrement();
+    YbCommandCounterIncrement();
+
+    /* invalidate the global graph cache so subsequent queries see new data */
+    yb_invalidate_GRAPH_global_contexts();
 
     ExecEndNode(node->ss.ps.lefttree);
 

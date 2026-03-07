@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.NodeScriptRunner.NodeFilter;
+import com.yugabyte.yw.models.FileCollection;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Files;
@@ -87,6 +88,8 @@ public class NodeFileCollector {
   @Data
   @Builder
   public static class CollectionResult {
+    // Unique UUID for this collection - used to download files later
+    private UUID collectionUuid;
     private int totalNodes;
     private int successfulNodes;
     private int failedNodes;
@@ -101,15 +104,20 @@ public class NodeFileCollector {
 
   /**
    * Collect files from selected nodes in a universe and return results. Reuses the support bundle
-   * infrastructure for file downloads via Node Agent or SSH.
+   * infrastructure for file downloads via Node Agent or SSH. The collection metadata is stored in
+   * database so files can be downloaded later using the collection ID.
    *
+   * @param customerUuid The customer UUID
    * @param universe The universe to collect files from
    * @param collectionParams File collection configuration
    * @param nodeFilter Optional node selection criteria (null for all nodes)
-   * @return Aggregated collection results
+   * @return Aggregated collection results including a collection ID for downloading
    */
   public CollectionResult collectFiles(
-      Universe universe, CollectionParams collectionParams, NodeFilter nodeFilter) {
+      UUID customerUuid,
+      Universe universe,
+      CollectionParams collectionParams,
+      NodeFilter nodeFilter) {
     // Validate linux_user for manual on-prem providers
     Util.validateLinuxUserForOnPrem(collectionParams.getLinuxUser(), universe);
 
@@ -117,6 +125,7 @@ public class NodeFileCollector {
 
     if (targetNodes.isEmpty()) {
       return CollectionResult.builder()
+          .collectionUuid(null) // No collection created when no nodes
           .totalNodes(0)
           .successfulNodes(0)
           .failedNodes(0)
@@ -194,7 +203,29 @@ public class NodeFileCollector {
 
     long totalTime = System.currentTimeMillis() - startTime;
 
+    // Store collection metadata in database for later download
+    // Only store if we have successful tar files to download
+    Map<String, String> nodeTarPaths = new LinkedHashMap<>();
+    Map<String, String> nodeAddresses = new LinkedHashMap<>();
+    for (Map.Entry<String, NodeResult> entry : results.entrySet()) {
+      NodeResult result = entry.getValue();
+      if (result.isSuccess() && result.getRemoteTarPath() != null) {
+        nodeTarPaths.put(entry.getKey(), result.getRemoteTarPath());
+        nodeAddresses.put(entry.getKey(), result.getNodeAddress());
+      }
+    }
+
+    UUID collectionUuid = null;
+    if (!nodeTarPaths.isEmpty()) {
+      // Save to database instead of cache - survives restarts and works with HA
+      FileCollection fileCollection =
+          FileCollection.create(
+              customerUuid, universe.getUniverseUUID(), nodeTarPaths, nodeAddresses);
+      collectionUuid = fileCollection.getCollectionUuid();
+    }
+
     return CollectionResult.builder()
+        .collectionUuid(collectionUuid)
         .totalNodes(targetNodes.size())
         .successfulNodes(successCount)
         .failedNodes(failCount)
@@ -423,8 +454,7 @@ public class NodeFileCollector {
   }
 
   /**
-   * Get the size of a single file on a remote node using stat command. This is more efficient than
-   * listing the entire parent directory.
+   * Get the size of a single file on a remote node using stat command.
    *
    * @param node The target node
    * @param universe The universe
@@ -434,13 +464,12 @@ public class NodeFileCollector {
   private long getRemoteFileSize(NodeDetails node, Universe universe, String filePath) {
     try {
       // Use stat to get file size - format %s gives size in bytes
-      // Using -L to follow symlinks (e.g., yb-tserver.INFO -> yb-tserver.INFO.timestamp)
+      // Using -L to follow symlinks
       List<String> cmd = List.of("stat", "-L", "-c", "%s", filePath);
       ShellResponse response =
           nodeUniverseManager.runCommand(node, universe, cmd, ShellProcessContext.DEFAULT);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
-        // Use extractRunCommandOutput to strip "Command output:" prefix
         String output = response.extractRunCommandOutput();
         return Long.parseLong(output);
       }
@@ -452,8 +481,7 @@ public class NodeFileCollector {
   }
 
   /**
-   * Resolve symlinks on a remote node path using readlink -f. This ensures we use the real path
-   * when listing files, similar to how support bundle uses actual mount paths.
+   * Resolve symlinks on a remote node path using readlink -f.
    *
    * @param node The target node
    * @param universe The universe
@@ -467,7 +495,6 @@ public class NodeFileCollector {
           nodeUniverseManager.runCommand(node, universe, cmd, ShellProcessContext.DEFAULT);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
-        // Use extractRunCommandOutput to strip "Command output:" prefix
         String resolvedPath = response.extractRunCommandOutput();
         if (!resolvedPath.isEmpty() && !resolvedPath.equals(path)) {
           log.debug("Resolved symlink {} -> {} on node {}", path, resolvedPath, node.nodeName);
@@ -481,9 +508,7 @@ public class NodeFileCollector {
   }
 
   /**
-   * Create a tar.gz archive on the remote node containing the specified files. The tar file is
-   * created in the remote node's tmp directory and NOT downloaded to YBA. A separate API can be
-   * used to download the tar file later.
+   * Create a tar.gz archive on the remote node containing the specified files.
    *
    * @param node The target node
    * @param universe The universe
@@ -515,8 +540,7 @@ public class NodeFileCollector {
         nodeUniverseManager.uploadFileToNode(
             node, universe, localTempFile.toString(), remoteFileListPath, "644");
 
-        // Run node_utils.sh create_tar_file on the remote node
-        // Parameters: change_to_dir, tar_file_name, file_list_text_path
+        // Create tar on remote node
         String remoteTarPath = remoteTmpDir + "/" + tarFileName;
         List<String> cmd =
             List.of(

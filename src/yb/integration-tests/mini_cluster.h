@@ -426,6 +426,10 @@ Status WaitForLeaderOfSingleTablet(
     MiniCluster* cluster, tablet::TabletPeerPtr leader, MonoDelta duration,
     const std::string& description);
 
+Status WaitForLeaderOfSingleTablet(
+    MiniCluster* cluster, const TabletId& leader, MonoDelta duration,
+    const std::string& description);
+
 Status WaitForTableLeaders(
     MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline,
     RequireLeaderIsReady require_leader_is_ready = RequireLeaderIsReady::kFalse);
@@ -439,6 +443,10 @@ Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout);
 Status StepDown(
     tablet::TabletPeerPtr leader, const std::string& new_leader_uuid,
     ForceStepDown force_step_down, MonoDelta timeout = 10s);
+
+Status TransferLeadership(
+    MiniCluster* cluster, const TabletId& tablet_id, const TabletServerId& new_leader_uuid,
+    MonoDelta timeout = 10s);
 
 // Waits until all tablet peers of the specified cluster are in the Running state.
 // And total number of those peers equals to the number of tablet servers for each known tablet.

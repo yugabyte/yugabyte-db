@@ -196,8 +196,10 @@ YugabyteDB currently supports the `vector` type.
 
 You can fine-tune HNSW indexing using the following parameters:
 
-- `m` - specifies the maximum number of connections per layer.
-- `ef_construction` - Specifies the size of the dynamic candidate list for constructing the graph.
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| m | Maximum number of connections per layer. Valid range: 5–64. | 32 |
+| ef_construction | Size of the dynamic candidate list for constructing the graph. Valid range: 50–1000. | 200 |
 
 For example:
 

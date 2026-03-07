@@ -286,6 +286,14 @@ _SPI_commit(bool chain)
 		/* Do the deed */
 		CommitTransactionCommand();
 
+		/*
+		 * YB: Mark that a non-atomic (in-procedure) COMMIT has been executed
+		 * during this top-level query. This prevents the query retry logic
+		 * from retrying the entire CALL/DO statement, which would re-execute
+		 * already-committed work.
+		 */
+		yb_is_non_atomic_commit_done = true;
+
 		/* Immediately start a new transaction */
 		StartTransactionCommand();
 		if (chain)

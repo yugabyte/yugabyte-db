@@ -870,6 +870,10 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+      size_t num_values);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;

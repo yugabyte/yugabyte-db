@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <regex>
 #include <string>
 
 #include "yb/util/logging.h"
@@ -87,6 +88,27 @@ TEST_F(YBRocksDBLoggerTest, LogvWithContextSmall) {
 
     log_.clear();
   }
+}
+
+TEST_F(YBRocksDBLoggerTest, DetailLevelPrefix) {
+  // DETAIL maps to GLOG_INFO, so temporarily capture the INFO logger.
+  google::base::Logger* old_info_logger = google::base::GetLogger(google::GLOG_INFO);
+  google::base::SetLogger(google::GLOG_INFO, this);
+
+  // Log line format: ...filename.cc:NNN] DETAIL: prefix: test_detail_message
+  // Verify "DETAIL: " appears at the start of the message body (right after "] ").
+  log_.clear();
+  RLOG(rocksdb::InfoLogLevel::DETAIL_LEVEL, &rocksdb_logger_, "test_detail_message");
+  ASSERT_TRUE(std::regex_search(log_, std::regex(R"(\] DETAIL: prefix: test_detail_message)")))
+      << "log: " << log_;
+
+  // Non-DETAIL message should have the prefix but no "DETAIL: " tag.
+  log_.clear();
+  RLOG(rocksdb::InfoLogLevel::INFO_LEVEL, &rocksdb_logger_, "test_info_message");
+  ASSERT_TRUE(std::regex_search(log_, std::regex(R"(\] prefix: test_info_message)")))
+      << "log: " << log_;
+
+  google::base::SetLogger(google::GLOG_INFO, old_info_logger);
 }
 
 } // namespace yb

@@ -32,6 +32,10 @@
 #include "executor/cypher_utils.h"
 #include "utils/ag_cache.h"
 
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
+
 /*
  * Given the graph name and the label name, create a ResultRelInfo for the table
  * those to variables represent. Open the Indices too.
@@ -208,6 +212,35 @@ HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
                                    GetCurrentCommandId(true));
 }
 
+static HeapTuple yb_insert_entity_tuple(ResultRelInfo *resultRelInfo,
+                                        TupleTableSlot *elemTupleSlot,
+                                        EState *estate)
+{
+    HeapTuple tuple = NULL;
+    Relation rel = resultRelInfo->ri_RelationDesc;
+
+    ExecStoreVirtualTuple(elemTupleSlot);
+    tuple = ExecFetchSlotHeapTuple(elemTupleSlot, true, NULL);
+
+    tuple->t_tableOid = RelationGetRelid(rel);
+    if (rel->rd_att->constr != NULL)
+    {
+        ExecConstraints(resultRelInfo, elemTupleSlot, estate,
+                        NULL /* mtstate */);
+    }
+
+    YBCHeapInsert(resultRelInfo, elemTupleSlot, NULL /* blockInsertStmt */,
+                  estate);
+
+    if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+    {
+        ExecInsertIndexTuples(resultRelInfo, elemTupleSlot, estate, false,
+                              true, NULL, NIL);
+    }
+
+    return tuple;
+}
+
 /*
  * Insert the edge/vertex tuple into the table and indices. Check that the
  * table's constraints have not been violated.
@@ -220,6 +253,9 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
 {
     HeapTuple tuple = NULL;
 
+    if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+        return yb_insert_entity_tuple(resultRelInfo, elemTupleSlot, estate);
+
     ExecStoreVirtualTuple(elemTupleSlot);
     tuple = ExecFetchSlotHeapTuple(elemTupleSlot, true, NULL);
 
@@ -227,7 +263,7 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
     if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
     {
-        ExecConstraints(resultRelInfo, elemTupleSlot, estate);
+        ExecConstraints(resultRelInfo, elemTupleSlot, estate, NULL /* YB: mtstate */);
     }
 
     /* Insert the tuple normally */
@@ -242,4 +278,17 @@ HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
     }
 
     return tuple;
+}
+
+/*
+ * YB has incomplete support for Postgres command counters.
+ * This function increments/resets the read time on the tserver as a proxy for
+ * command counter increment. This has the side effect of flushing buffered
+ * writes in pggate and can potentially cause performance degradation.
+ */
+void YbCommandCounterIncrement()
+{
+	(void) YbResetTransactionReadPoint(false /* is_catalog_snapshot */ );
+
+	CommandCounterIncrement(); /* YB */
 }

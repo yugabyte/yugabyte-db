@@ -272,7 +272,11 @@ message GetStatefulServiceLocationResponsePB {
   optional StatefulServiceInfoPB service_info = 2;
 }
 
-message GetTabletsMetadataRequestPB {}
+message GetTabletsMetadataRequestPB {
+  // Optional: return only the tablet containing this partition key (used by GetTabletForKey).
+  optional bytes table_id = 1;
+  optional bytes partition_key = 2;
+}
 
 message GetTabletsMetadataResponsePB {
   optional MasterErrorPB error = 1;

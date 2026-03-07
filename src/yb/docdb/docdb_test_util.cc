@@ -86,7 +86,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return STATUS(Expired, "");
   }
 
-  Result<int64_t> RegisterRequest() override {
+  Result<int64_t> RegisterRequest(bool allow_when_closing) override {
     Fail();
     return 0;
   }

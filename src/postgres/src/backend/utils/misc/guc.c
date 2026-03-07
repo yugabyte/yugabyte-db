@@ -2414,6 +2414,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_retry_after_non_atomic_commit", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Allow query layer retries of CALL/DO statements after an "
+						 "in-procedure COMMIT."),
+			gettext_noop("When enabled, the query layer will retry CALL and DO statements "
+						 "on conflict or read-restart errors even if the procedure or DO "
+						 "block has already performed a COMMIT. This can lead to "
+						 "re-execution of already-committed work (e.g., duplicate inserts) "
+						 "and is provided only as a compatibility option to revert to the "
+						 "old behavior. The default (off) is the safe behavior."),
+		},
+		&yb_enable_retry_after_non_atomic_commit,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_debug_log_docdb_requests", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Log the contents of all internal (protobuf) requests to DocDB."),
 			NULL,

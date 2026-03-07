@@ -11,14 +11,16 @@
 // under the License.
 
 #pragma once
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <boost/assign.hpp>
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -629,6 +631,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
           std::nullopt,
       bool include_catalog_tables = false);
+
+  void VerifyTabletIdsInCdcStateForStream(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TabletId>& expected_tablet_ids,
+      const std::string& timeout_msg =
+          "Tablets in cdc_state for the stream doesn't match the expected set");
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 

@@ -92,9 +92,15 @@ class ApiService {
   };
 
   // Enable Perf Advisor for current universe
-  attachUniverseToPerfAdvisor = (paUuid: string, universeUuid: string) => {
+  attachUniverseToPerfAdvisor = (
+    paUuid: string,
+    universeUuid: string,
+    advancedObservability?: boolean
+  ) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector/${paUuid}`;
-    return axios.put(requestUrl).then((resp) => resp.data);
+    const params =
+      advancedObservability ? { advancedObservability: true } : undefined;
+    return axios.put(requestUrl, undefined, { params }).then((resp) => resp.data);
   };
 
   // Disable Perf Advisor for current universe

@@ -418,7 +418,7 @@ class Tablet : public AbstractTablet,
   // being removed while the object is alive. It is necessary to hold
   // a RequestScope when scanning with IntentAwareIterator to prevent missing entries
   // due to intent removal.
-  Result<RequestScope> CreateRequestScope();
+  Result<RequestScope> CreateRequestScope(bool allow_when_closing = false);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.

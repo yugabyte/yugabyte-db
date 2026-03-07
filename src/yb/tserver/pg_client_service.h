@@ -89,6 +89,7 @@ class TserverXClusterContextIf;
     (RollbackToSubTransaction) \
     (ServersMetrics) \
     (TabletsMetadata) \
+    (GetTabletForKey) \
     (TabletServerCount) \
     (TruncateTable) \
     (UpdateSequenceTuple) \

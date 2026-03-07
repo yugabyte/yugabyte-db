@@ -5948,5 +5948,36 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteDDLsInUpgradeScen
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN serial_col SERIAL", kTableName));
 }
 
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestSysCatalogEntriesNotCountedForActiveCalculation) {
+  // Set ysql_yb_enable_implicit_dynamic_tables_logical_replication to true so that sys catalog
+  // entries are added to state table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cdc_active_replication_slot_window_ms) = 300 * 1000;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create slot without any table in the DB.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("test_slot"));
+
+  // We should only have slot entry and an entry for the sys catalog tablet.
+  CheckTabletsInCDCStateTable(
+      {kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      "Timed out while verifying the state table entries", true /* include_catalog_tables */);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // Verify that the active field is false in pg_replication_slots for the stream.
+  auto is_active = ASSERT_RESULT(conn.FetchRow<bool>(
+      Format("SELECT active FROM pg_replication_slots WHERE yb_stream_id = '$0'", stream_id)));
+  ASSERT_FALSE(is_active);
+
+  // Drop slot should proceed successfully since the slot is inactive.
+  ASSERT_OK(conn.Fetch("select pg_drop_replication_slot('test_slot')"));
+}
+
 }  // namespace cdc
 }  // namespace yb

@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType;
 import io.swagger.annotations.ApiModel;
@@ -72,7 +73,26 @@ public class SupportBundleFormData {
 
   @ApiModelProperty(
       value =
-          "Query resolution step width for prometheus dump (in seconds). Overrides global default."
+          "How to export Prometheus metrics: PROMQL (query_range) or REMOTE_READ. Default PROMQL"
+              + " for backward compatibility.")
+  public PromExportType promExportType = PromExportType.PROMQL;
+
+  @ApiModelProperty(
+      value =
+          "When promExportType is REMOTE_READ, format for remote read export: PROMQL_JSON or"
+              + " PROM_CHUNK. Default PROMQL_JSON for backward compatibility.")
+  public PrometheusMetricsFormat promMetricsFormat = PrometheusMetricsFormat.PROMQL_JSON;
+
+  @ApiModelProperty(
+      value =
+          "When promExportType is REMOTE_READ, whether to downsample raw data points by"
+              + " yb.support_bundle.step_prom_dump_secs or stepPromDumpSecs."
+              + " Ignored for PROMQL (always downsampled). Default true.")
+  public boolean promDumpDownSample = true;
+
+  @ApiModelProperty(
+      value =
+          "Metrics downsample step (in seconds). Overrides global default."
               + " Use with batchDurationPromDumpMins to get longer historical trends while keeping"
               + " the same number of data points",
       required = false)

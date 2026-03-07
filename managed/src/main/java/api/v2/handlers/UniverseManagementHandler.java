@@ -45,6 +45,7 @@ import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.FileCollectionDownloader;
 import com.yugabyte.yw.common.LocalhostAccessChecker;
 import com.yugabyte.yw.common.NodeFileCollector;
 import com.yugabyte.yw.common.NodeScriptRunner;
@@ -121,6 +122,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private YsqlQueryExecutor ysqlQueryExecutor;
   @Inject private NodeScriptRunner nodeScriptRunner;
   @Inject private NodeFileCollector nodeFileCollector;
+  @Inject private FileCollectionDownloader fileCollectionDownloader;
   @Inject private LocalhostAccessChecker localhostChecker;
 
   private static final String RELEASES_PATH = "yb.releases.path";
@@ -1031,11 +1033,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   }
 
   /**
-   * Collect files from database nodes in a universe.
+   * Create a file collection from database nodes in a universe.
    *
    * <p>This API is restricted to localhost access only for security.
    */
-  public CollectFilesResponse collectFiles(
+  public CollectFilesResponse createFileCollection(
       Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest) {
     localhostChecker.checkLocalhost(request);
     Customer customer = Customer.getOrBadRequest(cUUID);
@@ -1097,11 +1099,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     // Execute file collection - creates tar on remote nodes (no download to YBA)
     NodeFileCollector.CollectionResult result =
-        nodeFileCollector.collectFiles(universe, collectionParams, nodeFilter);
+        nodeFileCollector.collectFiles(cUUID, universe, collectionParams, nodeFilter);
 
     // Convert to API response
     FileCollectionSummary summary =
         new FileCollectionSummary()
+            .collectionUuid(result.getCollectionUuid())
             .totalNodes(result.getTotalNodes())
             .successfulNodes(result.getSuccessfulNodes())
             .failedNodes(result.getFailedNodes())
@@ -1148,6 +1151,94 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
 
     return new CollectFilesResponse().summary(summary).results(nodeResults);
+  }
+
+  /**
+   * Download a file collection from database nodes and stream to client.
+   *
+   * <p>This API does NOT have localhost restriction by default. However, if cleanupDbNodesAfter is
+   * true, localhost restriction applies since it modifies files on database nodes.
+   *
+   * @param cleanupDbNodesAfter If true, delete collected files from DB nodes after download
+   *     (requires localhost access)
+   */
+  public InputStream downloadFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUuid, Boolean cleanupDbNodesAfter) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // If cleanup is requested, enforce localhost restriction
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      localhostChecker.checkLocalhost(request);
+    }
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/download is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info("Downloading collection {} from universe {}", collectionUuid, uniUUID);
+
+    // Download files from nodes and stream to client
+    InputStream stream = fileCollectionDownloader.downloadAsStream(collectionUuid, universe);
+
+    // After successful download to YBA, cleanup DB nodes if requested
+    // (files are already downloaded to YBA at this point, so safe to delete from nodes)
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      log.info("Cleaning up DB node files for collection {} after download", collectionUuid);
+      fileCollectionDownloader.cleanupCollection(
+          collectionUuid, universe, true /* deleteFromDbNodes */, false /* deleteFromYba */);
+    }
+
+    return stream;
+  }
+
+  /** Get the filename for a file collection download. */
+  public String getFileCollectionFileName(UUID collectionUuid) {
+    return fileCollectionDownloader.getDownloadFileName(collectionUuid);
+  }
+
+  /**
+   * Delete a file collection from database nodes and/or YBA local storage.
+   *
+   * <p>This API has localhost restriction - can only be called from the YBA server itself.
+   *
+   * @param deleteFromDbNodes Whether to delete tar files from DB nodes (default: true)
+   * @param deleteFromYba Whether to delete downloaded files from YBA local storage (default: true)
+   */
+  public int deleteFileCollection(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UUID collectionUuid,
+      boolean deleteFromDbNodes,
+      boolean deleteFromYba) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Localhost restriction - same as collect-files
+    localhostChecker.checkLocalhost(request);
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/cleanup is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info(
+        "Deleting collection {} from universe {} (DB nodes: {}, YBA: {})",
+        collectionUuid,
+        uniUUID,
+        deleteFromDbNodes,
+        deleteFromYba);
+
+    return fileCollectionDownloader.cleanupCollection(
+        collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
   }
 
   /**

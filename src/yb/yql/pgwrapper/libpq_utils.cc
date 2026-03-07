@@ -259,6 +259,7 @@ constexpr Oid UUIDOID = 2950;
 constexpr Oid JSONBOID = 3802;
 constexpr Oid VECTOROID = 8078;
 constexpr Oid BSONOID = 8095;
+constexpr Oid GRAPHIDOID = 8113;
 
 template<BasePGType T>
 bool IsValidType(Oid pg_type) {
@@ -293,7 +294,7 @@ bool IsValidType(Oid pg_type) {
   } else if constexpr (std::is_same_v<T, int32_t>) {
     return pg_type == INT4OID;
   } else if constexpr (std::is_same_v<T, int64_t>) {
-    return pg_type == INT8OID;
+    return pg_type == INT8OID || pg_type == GRAPHIDOID;
   } else if constexpr (std::is_same_v<T, float>) {
     return pg_type == FLOAT4OID;
   } else if constexpr (std::is_same_v<T, double>) {
@@ -599,10 +600,8 @@ Result<PGConn> PGConn::Connect(const std::string& conn_str,
     }
     status = PQstatus(result.get());
     if (status == CONNECTION_OK) {
-      LOG(INFO) << "Connected to PG ("
-                << conn_str_for_log
-                << "), time taken: "
-                << MonoDelta(CoarseMonoClock::Now() - start);
+      VLOG(1) << "Connected to PG (" << conn_str_for_log
+              << "), time taken: " << MonoDelta(CoarseMonoClock::Now() - start);
       return PGConn(std::move(result), simple_query_protocol);
     }
     if (status == CONNECTION_BAD) {

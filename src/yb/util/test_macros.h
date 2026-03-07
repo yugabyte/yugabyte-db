@@ -171,6 +171,9 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
 #define ASSERT_RESULT_FAST(expr) \
   RESULT_CHECKER_HELPER(expr, ASSERT_OK_FAST(__result))
 
+// Helper version of ASSERT_RESULT which returns reference instead of std::reference_wrapper.
+#define ASSERT_RESULT_REF(expr) ASSERT_RESULT(expr).get()
+
 #ifdef THREAD_SANITIZER
 #define ASSERT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)
 #define EXPECT_PERF_LE(lhs, rhs) do { (void)(lhs); (void)(rhs); } while(false)

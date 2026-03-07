@@ -88,6 +88,10 @@ Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
   return STATUS_FORMAT(InvalidArgument, "Invalid column number $0", attr_num);
 }
 
+const std::vector<std::pair<int, size_t>>& PgTableDesc::GetAttrNumMap() const {
+  return attr_num_map_;
+}
+
 Result<YbcPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
   YbcPgColumnInfo column_info {
     .is_primary = false,

@@ -818,7 +818,7 @@ Valid values are `connection` and `server`.
 
 This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
 
-For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/sequence_functions/func_nextval/) page.
 
 Default: `connection`
 
@@ -1255,7 +1255,7 @@ Default: `50`
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1000`
+Default: `1680`
 
 ##### --cdc_snapshot_batch_size
 
@@ -1790,7 +1790,9 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+Both [enable_bitmapscan](#enable-bitmapscan) (enabled by default) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |

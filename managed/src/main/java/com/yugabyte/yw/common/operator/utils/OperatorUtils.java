@@ -43,6 +43,7 @@ import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
@@ -95,6 +96,7 @@ import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
+import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
@@ -120,6 +122,7 @@ import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -2104,6 +2107,50 @@ public class OperatorUtils {
       // On error, return false to avoid unnecessary updates
       return false;
     }
+  }
+
+  public RestoreSnapshotScheduleParams getRestoreSnapshotScheduleParamsFromCr(
+      PitrRestore pitrRestore) throws Exception {
+    RestoreSnapshotScheduleParams restoreParams =
+        getRestoreSnapshotScheduleParamsFromCr(
+            pitrRestore, pitrRestore.getMetadata().getNamespace());
+    return restoreParams;
+  }
+
+  @VisibleForTesting
+  RestoreSnapshotScheduleParams getRestoreSnapshotScheduleParamsFromCr(
+      PitrRestore pitrRestore, String namespace) throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get universe from CR
+    String universeName = pitrRestore.getSpec().getUniverse();
+    Universe universe = getUniverseFromNameAndNamespace(cust.getId(), universeName, namespace);
+    if (universe == null) {
+      throw new Exception("No universe found with name " + universeName);
+    }
+
+    // Get PitrConfig from database by name
+    String pitrConfigName = pitrRestore.getSpec().getPitrConfig();
+    Optional<com.yugabyte.yw.models.PitrConfig> pitrConfigOpt =
+        com.yugabyte.yw.models.PitrConfig.maybeGetByName(
+            universe.getUniverseUUID(), pitrConfigName);
+    if (pitrConfigOpt.isEmpty()) {
+      throw new Exception(
+          "No PITR config found with name " + pitrConfigName + " for universe " + universeName);
+    }
+    com.yugabyte.yw.models.PitrConfig pitrConfig = pitrConfigOpt.get();
+
+    // Parse restore time from ISO 8601 format to millis
+    String restoreTimeStr = pitrRestore.getSpec().getRestoreTime();
+    long restoreTimeInMillis = OffsetDateTime.parse(restoreTimeStr).toInstant().toEpochMilli();
+
+    // Build RestoreSnapshotScheduleParams
+    RestoreSnapshotScheduleParams taskParams = new RestoreSnapshotScheduleParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.pitrConfigUUID = pitrConfig.getUuid();
+    taskParams.restoreTimeInMillis = restoreTimeInMillis;
+
+    return taskParams;
   }
 
   /**

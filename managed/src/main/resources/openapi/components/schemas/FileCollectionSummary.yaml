@@ -3,6 +3,13 @@ description: Summary of file collection across all nodes
 x-yba-api-visibility: internal
 type: object
 properties:
+  collection_uuid:
+    description: |
+      Unique identifier for this collection. Use this UUID with the download-collection
+      API to download the collected files to YBA. Collections expire after 1 hour.
+    type: string
+    format: uuid
+    example: f47ac10b-58cc-4372-a567-0e02b2c3d479
   total_nodes:
     description: Total number of nodes targeted
     type: integer

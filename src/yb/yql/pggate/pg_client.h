@@ -79,6 +79,7 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
@@ -345,6 +346,9 @@ class PgClient {
       const std::string& stream_id, YbcPgXLogRecPtr restart_lsn, YbcPgXLogRecPtr confirmed_flush);
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
+
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key);
 
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 

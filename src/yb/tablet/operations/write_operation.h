@@ -41,8 +41,7 @@
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 using AsyncWriteCallback = boost::function<void(Result<OpId>)>;
 
@@ -113,5 +112,6 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
   bool do_replicated_completed_ = false;
 };
 
-}  // namespace tablet
-}  // namespace yb
+bool IsTxnAborted(const Status& status);
+
+}  // namespace yb::tablet

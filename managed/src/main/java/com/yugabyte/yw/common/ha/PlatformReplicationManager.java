@@ -898,7 +898,10 @@ public class PlatformReplicationManager {
       }
     }
     if (succeeded) {
-      config.refresh();
+      // Refetch the latest HA config using the cluster key as UUID can get changed.
+      config =
+          HighAvailabilityConfig.getByClusterKey(config.getClusterKey())
+              .orElseThrow(() -> new IllegalStateException("HA config not found"));
       // Fix the local instance after restore.
       updateLocalInstanceAfterRestore(config);
       // Keep the local instance as follower after restore.

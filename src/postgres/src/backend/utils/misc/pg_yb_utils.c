@@ -242,15 +242,21 @@ YbGetCatalogCacheVersionForTablePrefetching()
 }
 
 void
-YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version)
 {
 	yb_catalog_cache_version = catalog_cache_version;
-	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
 				(errmsg("set local catalog version: %" PRIu64,
 						yb_catalog_cache_version)));
+}
+
+void
+YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+{
+	YbUpdateCatalogCacheVersionNoPgStat(catalog_cache_version);
+	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
 void
@@ -1956,6 +1962,8 @@ YBPgTypeOidToStr(Oid type_id)
 			return "CSTRINGARRAY";
 		case BSONOID:
 			return "BSON";
+		case GRAPHIDOID:
+			return "GRAPHID";
 		default:
 			return "user_defined_type";
 	}
@@ -2118,10 +2126,11 @@ YBCGetDatabaseOidByRelid(Oid relid)
 {
 	Relation	relation = RelationIdGetRelation(relid);
 	bool		relisshared = relation->rd_rel->relisshared;
+	bool		belongs_to_yb_system_db = relation->belongs_to_yb_system_db;
 
 	RelationClose(relation);
 	return YBCGetDatabaseOidFromShared(relisshared,
-									   relation->belongs_to_yb_system_db);
+									   belongs_to_yb_system_db);
 }
 
 Oid
@@ -2282,6 +2291,10 @@ bool		yb_debug_log_docdb_error_backtrace = false;
 bool		yb_debug_original_backtrace_format = false;
 
 bool		yb_debug_log_internal_restarts = false;
+
+bool		yb_is_non_atomic_commit_done = false;
+
+bool		yb_enable_retry_after_non_atomic_commit = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
@@ -8598,6 +8611,87 @@ yb_stat_auto_analyze(PG_FUNCTION_ARGS)
 #undef YB_AUTO_ANALYZE_TABLE_COLS
 
 	return (Datum) 0;
+}
+
+/*
+ * Return the tablet ID that would contain the row identified by the given
+ * key values. Supports both same-database and cross-database lookups.
+ *
+ * Table and database are identified by OID and name; key/row values are
+ * validated and encoded into a partition key in the pggate layer, then the
+ * tserver looks up the tablet containing that partition key.
+ *
+ * Arguments:
+ *   db_name   - name of the database containing the table
+ *   table_oid - OID of the table (in the target database)
+ *   row_values - record of key column values (PK columns only, or full row)
+ *
+ * Returns: tablet ID as text (hex string).
+ */
+Datum
+yb_get_tablet_for_key(PG_FUNCTION_ARGS)
+{
+	char	   *db_name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	Oid			table_oid = PG_GETARG_OID(1);
+	Oid			db_oid = get_database_oid(db_name, false);
+
+	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(2);
+	Oid			tupType = HeapTupleHeaderGetTypeId(rec);
+	int32		tupTypmod = HeapTupleHeaderGetTypMod(rec);
+	TupleDesc	rec_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	int			num_rec_cols = rec_tupdesc->natts;
+
+	if (num_rec_cols == 0)
+	{
+		ReleaseTupleDesc(rec_tupdesc);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("at least one key column value is required for yb_get_tablet_for_key")));
+	}
+
+	/* Deform the tuple to get values and nulls. */
+	HeapTupleData tuple;
+	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+	ItemPointerSetInvalid(&tuple.t_self);
+	tuple.t_tableOid = InvalidOid;
+	tuple.t_data = rec;
+
+	Datum	   *values = (Datum *) palloc(num_rec_cols * sizeof(Datum));
+	bool	   *nulls = (bool *) palloc(num_rec_cols * sizeof(bool));
+	heap_deform_tuple(&tuple, rec_tupdesc, values, nulls);
+
+	/* Build key values array to pass to pggate (validates, encodes). */
+	YbcPgKeyValue *key_values = (YbcPgKeyValue *) palloc(num_rec_cols * sizeof(YbcPgKeyValue));
+
+	for (int i = 0; i < num_rec_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(rec_tupdesc, i);
+		Oid			type_oid = attr->atttypid;
+
+		/* UNKNOWNOID values are stored as cstrings; convert to text datum. */
+		if (type_oid == UNKNOWNOID && !nulls[i])
+		{
+			values[i] = CStringGetTextDatum(DatumGetCString(values[i]));
+			type_oid = TEXTOID;
+		}
+
+		key_values[i].type_entity = YBCPgFindTypeEntity(type_oid);
+		key_values[i].datum = values[i];
+		key_values[i].is_null = nulls[i];
+	}
+
+	pfree(values);
+	pfree(nulls);
+	ReleaseTupleDesc(rec_tupdesc);
+
+	/* Pggate validates key values, encodes the partition key. */
+	const char *tablet_id = NULL;
+	HandleYBStatus(YBCGetTabletForKey(db_oid, table_oid, key_values, num_rec_cols, &tablet_id));
+
+	pfree(key_values);
+	Assert(tablet_id != NULL);
+
+	PG_RETURN_TEXT_P(cstring_to_text(tablet_id));
 }
 
 YbcPgStatement

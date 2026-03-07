@@ -243,56 +243,10 @@ public class PitrController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
-    log.info("Received restore PITR config request");
-
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-
-    pitrConfigHelper.checkCompatibleYbVersion(
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    if (universe.getUniverseDetails().universePaused) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot perform PITR when the universe is in paused state");
-    } else if (universe.getUniverseDetails().updateInProgress) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
-    }
-
-    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot perform PITR when the universe is not in ready state");
-    }
 
     RestoreSnapshotScheduleParams taskParams =
         parseJsonAndValidate(request, RestoreSnapshotScheduleParams.class);
-    if (taskParams.restoreTimeInMillis <= 0L
-        || taskParams.restoreTimeInMillis > System.currentTimeMillis()) {
-      throw new PlatformServiceException(BAD_REQUEST, "Time to restore specified is incorrect");
-    }
-    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
-    ListSnapshotSchedulesResponse scheduleResp;
-    List<SnapshotScheduleInfo> scheduleInfoList = null;
-    try (YBClient client = ybClientService.getUniverseClient(universe)) {
-      scheduleResp = client.listSnapshotSchedules(taskParams.pitrConfigUUID);
-      scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
-    } catch (Exception ex) {
-      log.error(ex.getMessage());
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
-    }
-
-    if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
-      throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
-    }
-
-    taskParams.setUniverseUUID(universeUUID);
-    UUID taskUUID = commissioner.submit(TaskType.RestoreSnapshotSchedule, taskParams);
-    CustomerTask.create(
-        customer,
-        universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.RestoreSnapshotSchedule,
-        universe.getName());
+    UUID taskUUID = pitrConfigHelper.restorePitrConfig(customerUUID, universeUUID, taskParams);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -302,7 +256,7 @@ public class PitrController extends AuthenticatedController {
             Audit.ActionType.RestoreSnapshotSchedule,
             Json.toJson(taskParams),
             taskUUID);
-    return new YBPTask(taskUUID, pitrConfig.getUuid()).asResult();
+    return new YBPTask(taskUUID, taskParams.pitrConfigUUID).asResult();
   }
 
   @ApiOperation(

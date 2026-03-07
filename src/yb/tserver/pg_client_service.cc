@@ -1988,8 +1988,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         }
 
         // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-        // yet by the client. So treat it is as an inactive case.
-        if (!active_time) {
+        // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+        // tablet's entries are added for internal usage only, do not use them for checking if the
+        // stream is active.
+        if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
           continue;
         }
 
@@ -2173,8 +2175,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto active_time = entry.active_time;
 
       // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
+      // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+      // tablet's entries are added for internal usage only, do not use them for checking if the
+      // stream is active.
+      if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
         continue;
       }
 
@@ -2698,6 +2702,15 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto tablet_metadatas = VERIFY_RESULT(client().GetTabletsMetadata());
       *resp->mutable_tablets() = {tablet_metadatas.begin(), tablet_metadatas.end()};
     }
+    return Status::OK();
+  }
+
+  Status GetTabletForKey(
+      const PgGetTabletForKeyRequestPB& req, PgGetTabletForKeyResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tablet_metadata = VERIFY_RESULT(
+        client().GetTabletsMetadata(req.table_id(), req.partition_key()));
+    resp->set_tablet_id(tablet_metadata[0].tablet_id());
     return Status::OK();
   }
 

@@ -1756,9 +1756,9 @@ public class OtelCollectorConfigGenerator {
           case BearerToken:
             OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
                 new OtelCollectorConfigFormat.BearerTokenAuthExtension();
-            bearerAuthExt.setBearer_token(otlpConfig.getBearerToken().getToken());
+            bearerAuthExt.setToken(otlpConfig.getBearerToken().getToken());
 
-            authExtensionName = "bearertoken/" + exportTypeAndUUIDString;
+            authExtensionName = "bearertokenauth/" + exportTypeAndUUIDString;
             extensions.put(authExtensionName, bearerAuthExt);
 
             // Set the auth reference in the exporter

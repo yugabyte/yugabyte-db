@@ -366,7 +366,8 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
       // we will schedule a second flush, which will unnecessarily stall writes for a short time.
       // This will not happen often, but should be fixed.
       if (tablet_to_flush) {
-        LOG(INFO) << LogPrefix(peer_to_flush) << "Flushing tablet " << tablet_to_flush->tablet_id()
+        LOG_DETAIL << LogPrefix(peer_to_flush) << "Flushing tablet "
+                  << tablet_to_flush->tablet_id()
                   << ", which has oldest memstore write time of "
                   << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
@@ -383,7 +384,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
     }
     first_iteration = false;
   }
-  LOG(INFO) << Format(
+  LOG_DETAIL << Format(
       "RocksDB reported write buffers size of $0 bytes now under Memstore global limit",
       memory_monitor_->memory_usage());
 }

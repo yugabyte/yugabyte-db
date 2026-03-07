@@ -43,6 +43,9 @@ push @{$oids}, 8095;
 # YB: We also reserve 8078 for VECTOROID
 push @{$oids}, 8078;
 
+# YB: GRAPHIDOID
+push @{$oids}, 8113;
+
 my $prev_oid = 0;
 my @sortedoids = sort { $a <=> $b } @{$oids};
 foreach my $oid (@sortedoids)

@@ -557,9 +557,8 @@ templates:
   DB_MEMORY_OVERLOAD:
     name: DB memory overload
     description: DB memory rejections detected during last 10 minutes
-    queryTemplate: sum by (universe_uuid) (increase(leader_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
-      + sum by (universe_uuid) (increase(follower_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
-      + sum by (universe_uuid) (increase(operation_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
+    queryTemplate: sum by (universe_uuid) (increase(leader_memory_pressure_rejections{universe_uuid="__universeUuid__",
+      saved_name=~"leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"}[10m]))
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
     defaultThresholdMap:
@@ -571,9 +570,8 @@ templates:
     thresholdUnitName: rejection(s)
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        + sum by (universe_uuid, node_name) (increase(follower_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        + sum by (universe_uuid, node_name) (increase(operation_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}',
+        saved_name=~'leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure'}[10m]))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-

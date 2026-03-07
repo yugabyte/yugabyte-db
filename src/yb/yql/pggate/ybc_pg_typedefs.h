@@ -203,6 +203,13 @@ typedef enum {
   kHighestPriority
 } YbcTxnPriorityRequirement;
 
+// Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
+typedef struct {
+  const YbcPgTypeEntity *type_entity;
+  uint64_t datum;
+  bool is_null;
+} YbcPgKeyValue;
+
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
 

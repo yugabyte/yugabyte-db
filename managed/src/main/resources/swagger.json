@@ -2093,7 +2093,9 @@
             "KubernetesToggleImmutableYbc",
             "OperatorImportUniverse",
             "RunScript",
-            "CollectFiles"
+            "CreateFileCollection",
+            "DownloadFileCollection",
+            "DeleteFileCollection"
           ],
           "example" : "Create User",
           "readOnly" : true,
@@ -2682,6 +2684,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -4727,6 +4731,19 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "promMetricsFormat" : {
+          "description" : "Specifies Prom Dump metrics format.",
+          "enum" : [
+            "PROMQL_JSON",
+            "PROM_CHUNK"
+          ],
+          "type" : "string"
+        },
+        "promMetricsStepSec" : {
+          "description" : "Specifies Prom Dump metrics step in seconds.",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "prometheusMetricsTypes" : {
           "description" : "List of exports to be included in the prometheus dump",
           "items" : {
@@ -5479,6 +5496,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -8587,6 +8606,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -9399,6 +9420,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -10921,6 +10944,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -11658,6 +11683,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -14237,14 +14264,25 @@
       "required" : [
         "apiToken",
         "customerUUID",
-        "metricsPassword",
         "metricsScrapePeriodSecs",
         "metricsUrl",
-        "metricsUsername",
         "paUrl",
         "uuid",
         "ybaUrl"
       ],
+      "type" : "object"
+    },
+    "PA Collector universe registration status" : {
+      "properties" : {
+        "advancedObservability" : {
+          "description" : "Whether advanced observability (metrics export to Prometheus) is enabled",
+          "type" : "boolean"
+        },
+        "success" : {
+          "description" : "Whether the universe is registered with PA Collector",
+          "type" : "boolean"
+        }
+      },
       "type" : "object"
     },
     "PACollector" : {
@@ -14299,10 +14337,8 @@
       "required" : [
         "apiToken",
         "customerUUID",
-        "metricsPassword",
         "metricsScrapePeriodSecs",
         "metricsUrl",
-        "metricsUsername",
         "paUrl",
         "uuid",
         "ybaUrl"
@@ -16151,6 +16187,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -17199,6 +17237,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -18034,6 +18074,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -19569,6 +19611,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -20222,6 +20266,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -20630,6 +20676,8 @@
               "SetNodeState",
               "SwamperTargetsFileUpdate",
               "UniverseUpdateSucceeded",
+              "RegisterUniverseWithPaCollector",
+              "UnregisterUniverseFromPaCollector",
               "UpdateAndPersistGFlags",
               "UpdateAndPersistKubernetesOverrides",
               "HandleKubernetesNamespacedServices",
@@ -21464,6 +21512,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -22087,6 +22137,10 @@
           ],
           "type" : "string"
         },
+        "promDumpDownSample" : {
+          "description" : "When promExportType is REMOTE_READ, whether to downsample raw data points by yb.support_bundle.step_prom_dump_secs or stepPromDumpSecs. Ignored for PROMQL (always downsampled). Default true.",
+          "type" : "boolean"
+        },
         "promDumpEndDate" : {
           "description" : "End date to filter prometheus metrics till",
           "example" : "2022-12-12T13:07:18Z",
@@ -22097,6 +22151,22 @@
           "description" : "Start date to filter prometheus metrics from",
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
+          "type" : "string"
+        },
+        "promExportType" : {
+          "description" : "How to export Prometheus metrics: PROMQL (query_range) or REMOTE_READ. Default PROMQL for backward compatibility.",
+          "enum" : [
+            "PROMQL",
+            "REMOTE_READ"
+          ],
+          "type" : "string"
+        },
+        "promMetricsFormat" : {
+          "description" : "When promExportType is REMOTE_READ, format for remote read export: PROMQL_JSON or PROM_CHUNK. Default PROMQL_JSON for backward compatibility.",
+          "enum" : [
+            "PROMQL_JSON",
+            "PROM_CHUNK"
+          ],
           "type" : "string"
         },
         "promQueries" : {
@@ -22129,7 +22199,7 @@
           "type" : "string"
         },
         "stepPromDumpSecs" : {
-          "description" : "Query resolution step width for prometheus dump (in seconds). Overrides global default. Use with batchDurationPromDumpMins to get longer historical trends while keeping the same number of data points",
+          "description" : "Metrics downsample step (in seconds). Overrides global default. Use with batchDurationPromDumpMins to get longer historical trends while keeping the same number of data points",
           "format" : "int32",
           "type" : "integer"
         }
@@ -22595,6 +22665,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -23919,6 +23991,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -24597,6 +24671,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -25417,6 +25493,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -26059,6 +26137,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -26701,6 +26781,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -27853,6 +27935,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",
@@ -29057,6 +29141,8 @@
             "SetNodeState",
             "SwamperTargetsFileUpdate",
             "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
             "UpdateAndPersistGFlags",
             "UpdateAndPersistKubernetesOverrides",
             "HandleKubernetesNamespacedServices",

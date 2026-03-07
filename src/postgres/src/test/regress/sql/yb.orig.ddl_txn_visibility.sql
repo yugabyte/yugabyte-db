@@ -54,3 +54,27 @@ SELECT 3, sum(balance) FROM mixed_visibility_test;
 SELECT * FROM mixed_visibility_test ORDER BY id;
 COMMIT;
 
+-- -----------------------------------------------------------------------------
+-- TEST 4: The "Infinite Increment" Test
+-- -----------------------------------------------------------------------------
+BEGIN;
+CREATE TABLE increment_test (id INT PRIMARY KEY, val INT);
+
+-- Initial Data: Single row
+INSERT INTO increment_test VALUES (1, 10);
+
+-- Scenario:
+-- We want to increment 'val' by 1 for any row where val < 100.
+-- 1. Scan finds val=10. 10 < 100 is TRUE.
+-- 2. UPDATE writes val=11 directly to Regular DB (Skip Intents).
+-- 3. If the scan is NOT isolated, it might find val=11 later.
+-- 4. 11 < 100 is still TRUE.
+-- 5. UPDATE writes val=12... and so on.
+
+UPDATE increment_test SET val = val + 1 WHERE val < 100;
+
+-- EXPECTED (Correct Isolation): val = 11
+-- ACTUAL (If Isolation Fails): val = 100 (or the query loops/times out)
+SELECT * FROM increment_test;
+
+COMMIT;
