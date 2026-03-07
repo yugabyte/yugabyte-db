@@ -3499,8 +3499,25 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
   for (const auto& [tablet_id, stream_id] : cdc_state_entries_to_delete) {
     auto tablet_peer_result = GetServingTablet(tablet_id);
     if (!tablet_peer_result.ok()) {
+      // Check if tablet actually exists in the cluster
+      auto remote_tablet_result = GetRemoteTablet(tablet_id, false);
+
+      if (!remote_tablet_result.ok() && remote_tablet_result.status().IsNotFound()) {
+        // Tablet doesn't exist anywhere in cluster, safe to delete orphaned entry
+        LOG(WARNING) << "Deleting orphaned cdc_state entry for non-existent tablet: "
+                  << tablet_id << ", stream: " << stream_id;
+        Status s = cdc_state_table_->DeleteEntries({{tablet_id, stream_id}});
+        if (!s.ok()) {
+          LOG(WARNING) << "Unable to delete orphaned cdc_state entry for tablet " << tablet_id
+                       << " and stream " << stream_id << ": " << s;
+        }
+        continue;
+      }
+
+      // Tablet exists but this tserver doesn't have it or isn't leader - skip
       VLOG(2) << "Could not delete the metric object for CDC state table entry for stream "
-              << stream_id << " and the tablet " << tablet_id;
+              << stream_id << " and the tablet " << tablet_id
+              << " - tablet exists but not available on this tserver";
       continue;
     }
     if ((*tablet_peer_result)->IsLeaderAndReady()) {
@@ -3515,6 +3532,16 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
       RemoveXReplTabletMetrics(stream_id, *tablet_peer_result);
       LOG(INFO) << "Metric object for CDC state table entry for tablet " << tablet_id
                 << " and streamid " << stream_id << " is deleted";
+    } else {
+      // Tablet exists locally but this tserver is not the leader. If the tablet can never 
+      // elect a leader (no quorum, etc.) then the entry will be orphaned and never cleaned up.
+      // Log a warning in this case but skip deletion. Who knows if the leader 
+      // comes back up and cleans up the entry later. If the warning persists
+      // it may indicate a problem with the tablet that needs to be investigated.
+      YB_LOG_EVERY_N_SECS(WARNING, 10)
+          << "Cannot delete CDC state table entry for tablet " << tablet_id
+          << " and stream " << stream_id
+          << " - tablet exists but this tserver is not leader.";
     }
   }
 

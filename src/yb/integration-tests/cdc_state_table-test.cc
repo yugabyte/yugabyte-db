@@ -621,5 +621,65 @@ TEST_F(CDCStateTableTest, TestUpsertEntriesWithRemoveKey) {
   ASSERT_EQ(*entry_opt->cdc_sdk_safe_time, cdc_sdk_safe_time_1);
 }
 
+// Test that orphaned cdc_state entries for non-existent tablets get cleaned up automatically.
+TEST_F(CDCStateTableTest, TestCleanupOrphanedEntriesForNonExistentTablet) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  TabletId real_tablet_id = tablets[0].tablet_id();
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+
+  // Verify the entry exists for the real tablet
+  auto entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {real_tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+
+  // Drop the table
+  DropTable(&test_cluster_, kTableName);
+
+  // Wait for table to be fully deleted
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = test_client()->TableExists(
+            client::YBTableName(YQL_DATABASE_PGSQL, kNamespaceName, kTableName));
+        return !result.ok() || !*result;
+      },
+      MonoDelta::FromSeconds(30), "Waiting for table deletion"));
+
+  // Simulating the scenario where tablet was deleted but cdc_state entry remains
+  CDCStateTableEntry orphaned_entry(real_tablet_id, stream_id);
+  orphaned_entry.active_time = GetCurrentTimeMicros();
+  ASSERT_OK(cdc_state_table.InsertEntries({orphaned_entry}));
+
+  // Verify the orphaned entry exists
+  entry_opt = ASSERT_RESULT(cdc_state_table.TryFetchEntry(
+      {real_tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeAll()));
+  ASSERT_TRUE(entry_opt.has_value());
+
+  LOG(INFO) << "Orphaned entry created for deleted tablet: " << real_tablet_id;
+
+  // Wait for the background cleanup thread (UpdatePeersAndMetrics) to detect and clean up
+  // the orphaned entry. 
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = cdc_state_table.TryFetchEntry(
+            {real_tablet_id, stream_id}, CDCStateTableEntrySelector().IncludeAll());
+        if (!result.ok()) {
+          return false;
+        }
+        // Entry should be deleted
+        return !result->has_value();
+      },
+      MonoDelta::FromSeconds(120),
+      "Waiting for orphaned cdc_state entry to be cleaned up"));
+
+  LOG(INFO) << "Orphaned entry successfully cleaned up for tablet: " << real_tablet_id;
+}
+
 }  // namespace cdc
 }  // namespace yb
