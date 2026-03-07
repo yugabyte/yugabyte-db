@@ -34,6 +34,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
@@ -192,52 +193,6 @@ Result<PgDocResponse::Data> GetResponse(
       table.IsIndex() ||
       (op.is_read() && down_cast<const PgsqlReadOp&>(op).read_request().has_index_request())
           ? TableType::INDEX : TableType::USER;
-}
-
-// These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-// Returns false if new boundary makes request range empty.
-bool ApplyPartitionBounds(
-    LWPgsqlReadRequestPB& req,
-    Slice partition_lower_bound, bool lower_bound_is_inclusive,
-    Slice partition_upper_bound, bool upper_bound_is_inclusive,
-    const Schema& schema) {
-  auto lower_bound = partition_lower_bound;
-  auto upper_bound = partition_upper_bound;
-  dockv::KeyBytes lower_key_bytes_holder, upper_key_bytes_holder;
-
-  if (schema.num_hash_key_columns()) {
-    auto bound_builder =
-        [&schema] (auto& holder, Slice bound, bool& is_inclusive, bool is_lower) {
-            holder =  HashCodeToDocKeyBound(
-                schema, dockv::PartitionSchema::DecodeMultiColumnHashValue(bound), is_inclusive,
-                is_lower);
-            is_inclusive = false;
-            return holder.AsSlice();
-        };
-
-    if (!partition_lower_bound.empty()) {
-      lower_bound = bound_builder(
-          lower_key_bytes_holder, partition_lower_bound, lower_bound_is_inclusive,
-          /* is_lower = */ true);
-    }
-
-    if (!partition_upper_bound.empty()) {
-      upper_bound = bound_builder(
-          upper_key_bytes_holder, partition_upper_bound, upper_bound_is_inclusive,
-          /* is_lower = */ false);
-    }
-  }
-
-  return ApplyBounds(
-      req, lower_bound, lower_bound_is_inclusive, upper_bound, upper_bound_is_inclusive);
-}
-
-// Check if boundaries set on request define valid (not empty) range.
-bool CheckScanBoundary(const LWPgsqlReadRequestPB& req) {
-  const auto key_diff = req.has_lower_bound() && req.has_upper_bound()
-      ? req.lower_bound().key().compare(req.upper_bound().key()) : -1;
-  return key_diff < 0 ||
-         (key_diff == 0 && req.lower_bound().is_inclusive() && req.upper_bound().is_inclusive());
 }
 
 bool IsActiveOp(const PgsqlOpPtr& op) {
@@ -629,13 +584,6 @@ Result<bool> PgDocOp::PopulateMergeStreamRequests(
 Result<size_t> PgDocOp::CompleteRequests() {
   size_t count = 0;
   for (const auto& op : ActiveOps()) {
-    if (op->is_read() && table_->num_hash_key_columns() > 0 && !yb_allow_dockey_bounds) {
-      // With GHI#28219, lower_bound and upper_bound fields are dockeys in read requests of hash
-      // partitioned tables. Since the AutoFlag is false, it is possible that some tservers may not
-      // yet have this change yet. So fallback to the older protocol (where these fields are encoded
-      // hash codes) to maintain backward compatibility.
-      RETURN_NOT_OK(op->ConvertBoundsToHashCode());
-    }
     RETURN_NOT_OK(op->InitPartitionKey(*table_));
     ++count;
   }
@@ -863,13 +811,18 @@ Result<bool> PgDocReadOp::SetScanBounds(PgTable& table, LWPgsqlReadRequestPB& re
   if (lower_range_components.empty() && upper_range_components.empty()) {
     return true;
   }
-  auto lower_bound = dockv::DocKey(
-      table->schema(), std::move(lower_range_components)).Encode().ToStringBuffer();
-  auto upper_bound = dockv::DocKey(
-      table->schema(), std::move(upper_range_components)).Encode().ToStringBuffer();
-  VLOG_WITH_FUNC(4) << "Lower bound: " << Slice(lower_bound).ToDebugHexString()
-                    << ", upper bound: " << Slice(upper_bound).ToDebugHexString();
-  return ApplyBounds(request, lower_bound, true, upper_bound, false);
+  auto scan_range = PgReadRange(table_);
+  if (!lower_range_components.empty()) {
+    auto lower_bound = dockv::DocKey(table->schema(), std::move(lower_range_components));
+    VLOG_WITH_FUNC(4) << "New lower bound: " << lower_bound.ToString();
+    scan_range.SetDocKeyBound(lower_bound, true /* is_inclusive */, true /* is_lower */);
+  }
+  if (!upper_range_components.empty()) {
+    auto upper_bound = dockv::DocKey(table->schema(), std::move(upper_range_components));
+    VLOG_WITH_FUNC(4) << "New upper bound: " << upper_bound.ToString();
+    scan_range.SetDocKeyBound(upper_bound, false /* is_inclusive */, false /* is_lower */);
+  }
+  return scan_range.ApplyBounds(request);
 }
 
 bool CouldBeExecutedInParallel(const LWPgsqlReadRequestPB& req) {
@@ -1073,14 +1026,11 @@ Result<bool> PgDocReadOp::BindExprsRegular(
     PgTable& table, LWPgsqlReadRequestPB& read_req, const QLValuePBs& values) {
   if (table->num_hash_key_columns() > 0) {
     std::span hash_values(values.begin(), table->num_hash_key_columns());
+    auto scan_range = PgReadRange(table);
     auto hash = VERIFY_RESULT(table->partition_schema().PgsqlHashColumnCompoundValue(hash_values));
-    const auto lower_bound =
-        HashCodeToDocKeyBound(table->schema(), hash, true /* is_inclusive */, true /* is_lower */);
-    const auto upper_bound = HashCodeToDocKeyBound(
-        table->schema(), hash, true /* is_inclusive */, false /* is_lower */);
-    if (!ApplyBounds(
-            read_req, lower_bound, false /* lower_bound_is_inclusive */, upper_bound,
-            false /* upper_bound_is_inclusive */)) {
+    scan_range.SetHashCodeBound(hash, true /* is_inclusive */, true /* is_lower */);
+    scan_range.SetHashCodeBound(hash, true /* is_inclusive */, false /* is_lower */);
+    if (!scan_range.ApplyBounds(read_req)) {
       return false;
     }
     read_req.mutable_partition_column_values()->clear();
@@ -1304,19 +1254,8 @@ Result<bool> PgDocReadOp::SetScanPartitionBoundary() {
       partition_keys.begin(), partition_keys.end(), a2b_hex(exec_params_.partition_key));
   RSTATUS_DCHECK(
       partition_key != partition_keys.end(), InvalidArgument, "invalid partition key given");
-
-  // Seek upper bound (Beginning of next tablet).
-  std::string upper_bound;
-  const auto& next_partition_key = std::next(partition_key, 1);
-  if (next_partition_key != partition_keys.end()) {
-    upper_bound = *next_partition_key;
-  }
-  return ApplyPartitionBounds(read_op_->read_request(),
-                              *partition_key,
-                              /* lower_bound_is_inclusive =*/true,
-                              upper_bound,
-                              /* upper_bound_is_inclusive =*/false,
-                              table_->schema());
+  auto partition = std::distance(partition_keys.begin(), partition_key);
+  return SetLowerUpperBound(&read_op_->read_request(), partition);
 }
 
 Status PgDocReadOp::CompleteProcessResponse() {
@@ -1534,17 +1473,9 @@ LWPgsqlReadRequestPB& PgDocReadOp::GetReadReq(size_t op_index) {
 }
 
 Result<bool> PgDocReadOp::SetLowerUpperBound(LWPgsqlReadRequestPB* request, size_t partition) {
-  const auto& partition_keys = table_->GetPartitionList();
-  const std::string default_upper_bound;
-  const auto& upper_bound = (partition < partition_keys.size() - 1)
-      ? partition_keys[partition + 1]
-      : default_upper_bound;
-  return ApplyPartitionBounds(*request,
-                              partition_keys[partition],
-                              /* lower_bound_is_inclusive =*/true,
-                              upper_bound,
-                              /* upper_bound_is_inclusive =*/false,
-                              table_->schema());
+  auto scan_range = PgReadRange(table_);
+  scan_range.SetPartitionBounds(partition);
+  return scan_range.ApplyBounds(*request);
 }
 
 void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
@@ -1598,96 +1529,6 @@ LWPgsqlWriteRequestPB& PgDocWriteOp::GetWriteOp(int op_index) {
 PgDocOp::SharedPtr MakeDocReadOpWithData(
     const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data) {
   return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
-}
-
-bool ApplyBounds(
-    LWPgsqlReadRequestPB& req,
-    Slice lower_bound, bool lower_bound_is_inclusive,
-    Slice upper_bound, bool upper_bound_is_inclusive) {
-  ApplyLowerBound(req, lower_bound, lower_bound_is_inclusive);
-  ApplyUpperBound(req, upper_bound, upper_bound_is_inclusive);
-  return CheckScanBoundary(req);
-}
-
-dockv::KeyBytes HashCodeToDocKeyBound(
-    const Schema& schema, uint16_t hash, bool is_inclusive, bool is_lower) {
-  if (!is_inclusive) {
-    if (is_lower) {
-      DCHECK(hash != UINT16_MAX) << Format("Invalid hash code bound '> $0'", UINT16_MAX);
-      ++hash;
-    } else {
-      DCHECK(hash != 0) << "Invalid hash code bound '< 0'";
-      --hash;
-    }
-  }
-
-  using dockv::KeyEntryValues;
-  using dockv::KeyEntryValue;
-  using dockv::KeyEntryType;
-
-  static const KeyEntryValues kLowest{KeyEntryValue{KeyEntryType::kLowest}};
-  static const KeyEntryValues kHighest{KeyEntryValue{KeyEntryType::kHighest}};
-
-  const auto& hash_range_components = is_lower ? kLowest : kHighest;
-
-  return dockv::DocKey(schema, hash, hash_range_components, hash_range_components).Encode();
-}
-
-void ApplyLowerBound(LWPgsqlReadRequestPB& req, Slice lower_bound, bool is_inclusive) {
-  if (lower_bound.empty()) {
-    return;
-  }
-
-  // With GHI#28219, bounds are expected to be dockeys.
-  DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(lower_bound));
-
-  if (req.has_lower_bound()) {
-    const auto key = req.lower_bound().key();
-    // With GHI#28219, bounds are expected to be dockeys.
-    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(key));
-    const auto diff = key.compare(lower_bound);
-    if (diff > 0) {
-      return;
-    }
-
-    if (!diff) {
-      is_inclusive = is_inclusive & req.lower_bound().is_inclusive();
-      req.mutable_lower_bound()->set_is_inclusive(is_inclusive);
-      return;
-    }
-    // req->lower_bound() < lower_bound
-  }
-  req.mutable_lower_bound()->dup_key(lower_bound);
-  req.mutable_lower_bound()->set_is_inclusive(is_inclusive);
-}
-
-void ApplyUpperBound(LWPgsqlReadRequestPB& req, Slice upper_bound, bool is_inclusive) {
-  if (upper_bound.empty()) {
-    return;
-  }
-
-  // With GHI#28219, bounds are expected to be dockeys.
-  DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(upper_bound));
-
-  if (req.has_upper_bound()) {
-    const auto key = req.upper_bound().key();
-    // With GHI#28219, bounds are expected to be dockeys.
-    DCHECK(!dockv::PartitionSchema::IsValidHashPartitionKeyBound(key));
-    const auto diff = key.compare(upper_bound);
-
-    if (diff < 0) {
-      return;
-    }
-
-    if (!diff) {
-      is_inclusive = is_inclusive & req.upper_bound().is_inclusive();
-      req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
-      return;
-    }
-    // req->upper_bound() > upper_bound
-  }
-  req.mutable_upper_bound()->dup_key(upper_bound);
-  req.mutable_upper_bound()->set_is_inclusive(is_inclusive);
 }
 
 }  // namespace yb::pggate

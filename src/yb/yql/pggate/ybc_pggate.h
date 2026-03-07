@@ -567,9 +567,9 @@ YbcStatus YBCPgDmlBindBounds(
     uint64_t upper_bound_ybctid, bool upper_bound_inclusive);
 
 // For parallel scan only, limit fetch to specified range of ybctids
-YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
-                            const char *lower_bound, size_t lower_bound_len,
-                            const char *upper_bound, size_t upper_bound_len);
+YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
+                                     const char *lower_bound, size_t lower_bound_len,
+                                     const char *upper_bound, size_t upper_bound_len);
 
 YbcStatus YBCPgDmlAddRowUpperBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);

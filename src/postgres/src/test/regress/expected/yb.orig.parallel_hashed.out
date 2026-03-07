@@ -890,6 +890,65 @@ SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
    877 | 1000 | 124
 (1 row)
 
+-- GHI #30204 support for conditions on yb_hash_code()
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_pkey on pctest1
+         Index Cond: ((yb_hash_code(k) >= 512) AND (yb_hash_code(k) < 1024))
+(4 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+  k  |  a  |  b  | c  |    d     
+-----+-----+-----+----+----------
+ 984 |  16 | 328 | 34 | Value984
+ 149 | 851 |  49 | 49 | Value149
+ 988 |  12 | 329 | 38 | Value988
+ 135 | 865 |  45 | 35 | Value135
+ 311 | 689 | 103 | 11 | Value311
+ 489 | 511 | 163 | 39 | Value489
+(6 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather
+   Workers Planned: 2
+   ->  Parallel Index Scan using pctest1_c_idx on pctest1
+         Index Cond: ((yb_hash_code(c) >= 1024) AND (yb_hash_code(c) < 2048))
+(4 rows)
+
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
+  k  |  a  |  b  | c  |    d     
+-----+-----+-----+----+----------
+  45 | 955 |  15 | 45 | Value45
+ 845 | 155 | 281 | 45 | Value845
+ 645 | 355 | 215 | 45 | Value645
+ 595 | 405 | 198 | 45 | Value595
+ 895 | 105 | 298 | 45 | Value895
+ 995 |   5 | 331 | 45 | Value995
+ 745 | 255 | 248 | 45 | Value745
+ 295 | 705 |  98 | 45 | Value295
+ 345 | 655 | 115 | 45 | Value345
+ 545 | 455 | 181 | 45 | Value545
+ 695 | 305 | 231 | 45 | Value695
+ 795 | 205 | 265 | 45 | Value795
+ 395 | 605 | 131 | 45 | Value395
+ 195 | 805 |  65 | 45 | Value195
+ 945 |  55 | 315 | 45 | Value945
+ 445 | 555 | 148 | 45 | Value445
+ 495 | 505 | 165 | 45 | Value495
+ 145 | 855 |  48 | 45 | Value145
+ 245 | 755 |  81 | 45 | Value245
+  95 | 905 |  31 | 45 | Value95
+(20 rows)
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;
