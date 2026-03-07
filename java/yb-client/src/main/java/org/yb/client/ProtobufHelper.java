@@ -113,7 +113,7 @@ public class ProtobufHelper {
     List<ColumnSchema> columns = new ArrayList<>(schemaPB.getColumnsCount());
     List<Integer> columnIds = new ArrayList<>(schemaPB.getColumnsCount());
     long timeToLive = Schema.defaultTTL;
-    if (schemaPB.hasTableProperties() && schemaPB.getTableProperties().hasDefaultTimeToLive()) {
+    if (schemaPB.hasTableProperties() && schemaPB.getTableProperties().HasEffectiveDefaultTimeToLive()) {
       timeToLive = schemaPB.getTableProperties().getDefaultTimeToLive();
     }
     for (Common.ColumnSchemaPB columnPb : schemaPB.getColumnsList()) {

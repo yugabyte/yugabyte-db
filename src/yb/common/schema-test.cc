@@ -292,10 +292,10 @@ TEST(TestSchema, TestSchemaBuilder) {
 
 TEST(TestSchema, TestTableProperties) {
   TableProperties properties;
-  ASSERT_FALSE(properties.HasDefaultTimeToLive());
+  ASSERT_FALSE(properties.HasEffectiveDefaultTimeToLive());
 
   properties.SetDefaultTimeToLive(1000);
-  ASSERT_TRUE(properties.HasDefaultTimeToLive());
+  ASSERT_TRUE(properties.HasEffectiveDefaultTimeToLive());
   ASSERT_EQ(1000, properties.DefaultTimeToLive());
 
   TableProperties properties1;
@@ -308,16 +308,16 @@ TEST(TestSchema, TestTableProperties) {
   ASSERT_EQ(1000, pb.default_time_to_live());
 
   auto properties2 = TableProperties::FromTablePropertiesPB(pb);
-  ASSERT_TRUE(properties2.HasDefaultTimeToLive());
+  ASSERT_TRUE(properties2.HasEffectiveDefaultTimeToLive());
   ASSERT_EQ(1000, properties2.DefaultTimeToLive());
 
   properties.Reset();
   pb.Clear();
-  ASSERT_FALSE(properties.HasDefaultTimeToLive());
+  ASSERT_FALSE(properties.HasEffectiveDefaultTimeToLive());
   properties.ToTablePropertiesPB(&pb);
   ASSERT_FALSE(pb.has_default_time_to_live());
   auto properties3 = TableProperties::FromTablePropertiesPB(pb);
-  ASSERT_FALSE(properties3.HasDefaultTimeToLive());
+  ASSERT_FALSE(properties3.HasEffectiveDefaultTimeToLive());
 }
 
 } // namespace tablet

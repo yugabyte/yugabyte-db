@@ -896,7 +896,7 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValueMsg& column_va
       break;
     }
     case DataType::LIST: {
-      MonoDelta default_ttl = doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
+      MonoDelta default_ttl = doc_read_context_->schema().table_properties().HasEffectiveDefaultTimeToLive()
           ? MonoDelta::FromMilliseconds(
                 doc_read_context_->schema().table_properties().DefaultTimeToLive())
           : MonoDelta::kMax;
@@ -1301,7 +1301,7 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
     }
     case DataType::LIST: {
       const MonoDelta default_ttl =
-          doc_read_context_->schema().table_properties().HasDefaultTimeToLive()
+          doc_read_context_->schema().table_properties().HasEffectiveDefaultTimeToLive()
               ? MonoDelta::FromMilliseconds(
                     doc_read_context_->schema().table_properties().DefaultTimeToLive())
               : MonoDelta::kMax;

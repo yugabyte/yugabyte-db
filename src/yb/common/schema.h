@@ -395,12 +395,6 @@ class TableProperties {
     return true;
   }
 
-  // Returns true if default TTL is configured with a valid value.
-  // The method could be redundant, refer to https://github.com/yugabyte/yugabyte-db/issues/30230.
-  bool HasDefaultTimeToLive() const {
-    return IsValidTTL(default_time_to_live_);
-  }
-
   // Return true if default TTL is configred with a valid and effective value.
   bool HasEffectiveDefaultTimeToLive() const {
     return IsEffectiveTTL(default_time_to_live_);
