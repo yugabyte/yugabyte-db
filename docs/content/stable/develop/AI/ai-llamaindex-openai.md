@@ -17,6 +17,7 @@ This tutorial demonstrates how use LlamaIndex to build Retrieval-Augmented Gener
 
 ## Prerequisites
 
+* [YugabyteDB v2025.2](https://download.yugabyte.com/) or later
 * Python 3.9
 * Docker
 
