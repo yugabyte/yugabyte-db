@@ -68,6 +68,21 @@ To enable or disable connection pooling on a universe:
 1. Optionally, you can change the YSQL API port (used by applications to connect to a universe) and the Internal YSQL Port, which is the port that the YugabyteDB internal PostgreSQL process listens on when connection pooling is enabled. It defaults to 6433 and is only required for local binding, not external connectivity.
 1. Click **Apply Changes**.
 
+### Edit EarlyOOM
+
+{{<tags/feature/ea idea="1804">}} EarlyOOM runs on database nodes and kills processes under extreme memory pressure to prevent VM hangs (it prefers keeping PostgreSQL).
+
+While in Early Access, the feature is not available by default. To enable EarlyOOM on universes, set the **Enables Earlyoom Installation on Nodes** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_earlyoom`) to true.
+
+Note that only a Super Admin user can modify Global configuration settings.
+Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
+To enable or disable EarlyOOM on an existing universe:
+
+1. Navigate to your universe.
+1. Set the runtime configuration for EarlyOOM as needed (enable or disable at Global or Universe scope).
+1. Choose **Actions > Edit Universe** to open the **Edit universe** page, then click **Apply Changes**. Alternatively, perform a [rolling restart](../edit-config-flags/#modify-configuration-flags) so that node agents reprovision and EarlyOOM starts or stops on the nodes.
+
 ## Smart resize
 
 Normally when resizing a universe, YugabyteDB moves the data from the old nodes to the new nodes. However, if the universe is deployed on AWS, GCP, or Azure using a [cloud provider configuration](../../configure-yugabyte-platform/aws/), you can perform some resizing operations without migrating the data. This is referred to as smart resize, and can be significantly faster than a full copy of the data.
