@@ -166,6 +166,10 @@ To improve query performance, you can use approximate nearest neighbor (ANN) sea
 
 YugabyteDB currently supports the [HNSW (Hierarchical Navigable Small World)](https://github.com/pgvector/pgvector?tab=readme-ov-file#hnsw) index type.
 
+{{< note title="Vector indexes and upgrades" >}}
+While vector indexes are in Tech Preview, YugabyteDB upgrades do not support upgrading the indexes. Drop vector indexes and then re-add them after the upgrade is finalized.
+{{< /note >}}
+
 ### HNSW
 
 HNSW indexing creates a multilayer graph to enable efficient high-dimensional vector search. HNSW offers faster query performance but requires more memory and has longer build times. You can create an index before inserting any data into the table.
