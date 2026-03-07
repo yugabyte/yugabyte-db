@@ -20,6 +20,34 @@ If you are using YugabyteDB Anywhere, set flags using the [Edit Flags](../../../
 
 {{< /note >}}
 
+Flags are organized in the following categories.
+
+| Category | Description |
+|----------|-------------|
+| [General flags](#general-flags) | Basic server setup including version, flagfile, master addresses, data and WAL directories, RPC and webserver settings. |
+| [YSQL flags](#ysql-flags) | YSQL API and pg_cron settings. |
+| [Logging flags](#logging-flags) | Log output and level settings. |
+| [Memory division flags](#memory-division-flags) | How RAM is split between processes and internal components. |
+| [Raft flags](#raft-flags) | Raft replication and leader lease settings. |
+| [Write ahead log (WAL) flags](#write-ahead-log-wal-flags) | WAL directories and durability settings. |
+| [Cluster balancing flags](#cluster-balancing-flags) | Load balancing and tablet movement. |
+| [Sharding flags](#sharding-flags) | Replication factor and shards per TServer. |
+| [Tablet splitting flags](#tablet-splitting-flags) | Automatic tablet splitting thresholds and limits. |
+| [Geo-distribution flags](#geo-distribution-flags) | Placement zone, region, and cloud. |
+| [Security flags](#security-flags) | Certificates and encryption for node-to-node and client-server. |
+| [Change data capture (CDC) flags](#change-data-capture-cdc-flags) | CDC state table and WAL retention. |
+| [Metric export flags](#metric-export-flags) | Prometheus metrics output. |
+| [Catalog flags](#catalog-flags) | YSQL catalog version and invalidation. |
+| [Advisory lock flags](#advisory-lock-flags) | Advisory locking. |
+| [Advanced flags](#advanced-flags) | Preview flags and index backfill timeout. |
+
+**Legend**
+
+Flags with specific characteristics are highlighted using the following badges:
+
+- {{% tags/feature/restart-needed %}} – A restart of the server is required for the flag to take effect. For example, if the flag is used on *yb-master*, you need to restart only *yb-master*. If the flag is used on both the *yb-master* and *yb-tserver*, restart both services.
+- {{% tags/feature/t-server %}} – The flag must have the same value across all *yb-master* and *yb-tserver* nodes.
+
 ## Syntax
 
 ```sh
@@ -56,9 +84,18 @@ Shows version and build information, then exits.
 
 ##### --flagfile
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
+
 Specifies the configuration file to load flags from.
 
 ##### --master_addresses
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `127.0.0.1:7100`
+{{% /tags/wrap %}}
 
 Specifies a comma-separated list of all RPC addresses for YB-Master consensus-configuration.
 
@@ -70,9 +107,11 @@ The number of comma-separated values should match the total number of YB-Master 
 
 Required.
 
-Default: `127.0.0.1:7100`
-
 ##### --fs_data_dirs
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
 
 Specifies a comma-separated list of mount directories, where yb-master will add a `yb-data/master` data directory, `master.err`, `master.out`, and `pg_data` directory.
 
@@ -82,11 +121,19 @@ Changing the value of this flag after the cluster has already been created is no
 
 ##### --fs_wal_dirs
 
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: Same value as `--fs_data_dirs`
+{{% /tags/wrap %}}
+
 Specifies a comma-separated list of directories, where YB-Master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
-Default: Same value as `--fs_data_dirs`
-
 ##### --rpc_bind_addresses
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
 
 Specifies the comma-separated list of the network interface addresses to which to bind for RPC connections.
 
@@ -106,15 +153,21 @@ Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) f
 
 ##### --server_broadcast_addresses
 
-Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""`
+{{% /tags/wrap %}}
+
+Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 ##### --dns_cache_expiration_ms
 
-Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided. This reduces latency, improves load times, and reduces bandwidth and CPU consumption.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 Default: `60000` (1 minute)
+{{% /tags/wrap %}}
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided. This reduces latency, improves load times, and reduces bandwidth and CPU consumption.
 
 {{< note title="Note" >}}
 
@@ -124,6 +177,11 @@ If this value is changed from the default, make sure to add the same value to al
 
 ##### --use_private_ip
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `never`
+{{% /tags/wrap %}}
+
 Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never`, `zone`, `cloud`, and `region`. Based on the values of the [geo-distribution flags](#geo-distribution-flags).
 
 Valid values for the policy are:
@@ -132,43 +190,59 @@ Valid values for the policy are:
 - `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
-Default: `never`
-
 ##### --webserver_interface
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `0.0.0.0`
+{{% /tags/wrap %}}
 
 Specifies the bind address for web server user interface access.
 
-Default: `0.0.0.0`
-
 ##### --webserver_port
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `7000`
+{{% /tags/wrap %}}
 
 Specifies the web server monitoring port.
 
-Default: `7000`
-
 ##### --webserver_doc_root
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: The `www` directory in the YugabyteDB home directory.
+{{% /tags/wrap %}}
 
 Monitoring web server home.
 
-Default: The `www` directory in the YugabyteDB home directory.
-
 ##### --webserver_certificate_file
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `""`
+{{% /tags/wrap %}}
 
 Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
 
-Default: `""`
-
 ##### --webserver_authentication_domain
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `""`
+{{% /tags/wrap %}}
 
 Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
 
-Default: `""`
-
 ##### --webserver_password_file
 
-Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""`
+{{% /tags/wrap %}}
+
+Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
 
 ##### --defer_index_backfill
 
@@ -186,13 +260,24 @@ Default: `true`
 
 ##### --time_source
 
-Specifies the time source used by the database. {{<tags/feature/ea idea="1807">}} Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{<tags/feature/ea idea="1807">}}
 Default: `""`
+{{% /tags/wrap %}}
+
+Specifies the time source used by the database. Set this to `clockbound` for configuring a highly accurate time source. Using `clockbound` requires [system configuration](../../../deploy/manual-deployment/system-config/#set-up-time-synchronization).
 
 ## YSQL flags
 
 ##### --enable_ysql
+
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: `true`
+{{% /tags/wrap %}}
+
+Enables the YSQL API when value is `true`.
 
 {{< note title="Note" >}}
 
@@ -200,15 +285,15 @@ Ensure that `enable_ysql` values in yb-master configurations match the values in
 
 {{< /note >}}
 
-Enables the YSQL API when value is `true`.
-
-Default: `true`
-
 ##### --enable_pg_cron
 
-Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+Set this flag to true on all YB-Masters and YB-TServers to add the [pg_cron extension](../../../additional-features/pg-extensions/extension-pgcron/).
 
 ##### --ysql_follower_reads_avoid_waiting_for_safe_time
 
@@ -236,9 +321,9 @@ Refer to [YSQL lease mechanism](../../../architecture/transactions/concurrency-c
 
 ##### --colorlogtostderr
 
-Color messages logged to `stderr` (if supported by terminal).
-
 Default: `false`
+
+Color messages logged to `stderr` (if supported by terminal).
 
 ##### --logbuflevel
 
@@ -262,9 +347,12 @@ Default: `false`
 
 ##### --log_dir
 
-The directory to write YB-Master log files.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
+{{% /tags/wrap %}}
+
+The directory to write YB-Master log files.
 
 ##### --log_link
 
@@ -321,11 +409,14 @@ The memory division flags have multiple sets of defaults; which set of defaults 
 
 ##### --use_memory_defaults_optimized_for_ysql
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
+{{% /tags/wrap %}}
+
 If true, the defaults for the memory division settings take into account the amount of RAM and cores available and are optimized for using YSQL. If false, the defaults will be the old defaults, which are more suitable for YCQL but do not take into account the amount of RAM and cores available.
 
 For information on how memory is divided among processes when this flag is set, refer to [Memory division defaults](../../configuration/smart-defaults/).
-
-Default: `false`. When creating a new universe using yugabyted or YugabyteDB Anywhere, the flag is set to `true`.
 
 ### Flags controlling the split of memory among processes
 
@@ -333,19 +424,25 @@ Note that in general these flags will have different values for TServer and Mast
 
 ##### --memory_limit_hard_bytes
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `0`
+{{% /tags/wrap %}}
+
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
 For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
-Default: `0`
-
 ##### --default_memory_limit_to_ram_ratio
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+{{% /tags/wrap %}}
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
 This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
-
-Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 ### Flags controlling the split of memory within a Master
 
@@ -377,27 +474,36 @@ With the exception of flags that have different defaults for yb-master vs yb-tse
 
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `7200` (2 hours)
+{{% /tags/wrap %}}
+
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
 
 ##### --evict_failed_followers
 
-Failed followers will be evicted from the Raft group and the data will be re-replicated.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
 
 Note that it is not recommended to set the flag to true for Masters as you cannot automatically recover a failed Master once it is evicted.
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `6`
+{{% /tags/wrap %}}
+
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
 For read replica clusters, set the value to `10` in all yb-tserver and yb-master configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
-
-Default: `6`
 
 ##### --leader_lease_duration_ms
 
@@ -411,9 +517,12 @@ Default: `2000`
 
 ##### --raft_heartbeat_interval_ms
 
-The heartbeat interval, in milliseconds, for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `500`
+{{% /tags/wrap %}}
+
+The heartbeat interval, in milliseconds, for Raft replication. The leader produces heartbeats to followers at this interval. The followers expect a heartbeat at this interval and consider a leader to have failed if it misses several in a row.
 
 ### Write ahead log (WAL) flags
 
@@ -427,47 +536,72 @@ Default: Same as `--fs_data_dirs`
 
 ##### --durable_wal_write
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
 
 ##### --interval_durable_wal_write_ms
 
-When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `1000`
+{{% /tags/wrap %}}
+
+When [`--durable_wal_write`](#durable-wal-write) is false, writes to the WAL are synced to disk every `--interval_durable_wal_write_ms` or [`--bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb), whichever comes first.
 
 ##### --bytes_durable_wal_write_mb
 
-When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `1`
+{{% /tags/wrap %}}
+
+When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL are synced to disk every `--bytes_durable_wal_write_mb` or `--interval_durable_wal_write_ms`, whichever comes first.
 
 ##### --log_min_seconds_to_retain
 
-The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `7200` (2 hours)
+{{% /tags/wrap %}}
+
+The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
 The `--log_min_seconds_to_retain` value should match the value for [`--follower_unavailable_considered_failed_sec`](#follower-unavailable-considered-failed-sec).
 
 ##### --log_min_segments_to_retain
 
-The minimum number of WAL segments (files) to retain, regardless of durability requirements. The value must be at least `1`.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `2`
+{{% /tags/wrap %}}
+
+The minimum number of WAL segments (files) to retain, regardless of durability requirements. The value must be at least `1`.
 
 ##### --log_segment_size_mb
 
-The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `64`
+{{% /tags/wrap %}}
+
+The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reaches the specified size, then a log rollover occurs and a new WAL segment file is created.
 
 ##### --reuse_unclosed_segment_threshold_bytes
 
-When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: The default value in [v2.18.1](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.1.0) is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
+{{% /tags/wrap %}}
+
+When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
 
 ## Cluster balancing flags
 
@@ -553,9 +687,12 @@ Default: `false`
 
 ##### --max_clock_skew_usec
 
-The expected maximum clock skew, in microseconds (µs), between any two servers in your deployment.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `500000` (500,000 µs = 500ms)
+{{% /tags/wrap %}}
+
+The expected maximum clock skew, in microseconds (µs), between any two servers in your deployment.
 
 ##### --replication_factor
 
@@ -565,9 +702,12 @@ Default: `3`
 
 ##### --yb_num_shards_per_tserver
 
-The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 Default: `-1`, where the number of shards is determined at runtime, as follows:
+{{% /tags/wrap %}}
+
+The number of shards (tablets) per YB-TServer for each YCQL table when a user table is created.
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
@@ -591,9 +731,12 @@ Clusters created using yugabyted always use a default value of `1`.
 
 ##### --ysql_num_shards_per_tserver
 
-The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 Default: `-1`, where the number of shards is determined at runtime, as follows:
+{{% /tags/wrap %}}
+
+The number of shards (tablets) per YB-TServer for each YSQL table when a user table is created.
 
 - If [enable_automatic_tablet_splitting](#enable-automatic-tablet-splitting) is `true`
   - The default value is considered as `1`.
@@ -618,11 +761,14 @@ Clusters created using yugabyted always use a default value of `1`.
 
 ##### --ysql_colocate_database_by_default
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `false`
+{{% /tags/wrap %}}
+
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
 For more details, see [clusters in colocated tables](../../../additional-features/colocation/).
-
-Default: `false`
 
 ##### enforce_tablet_replica_limits
 
@@ -658,9 +804,12 @@ Default: `50`
 
 ##### --enable_automatic_tablet_splitting
 
-Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
-
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
 Default: `true`
+{{% /tags/wrap %}}
+
+Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
 
 {{< note title="Important" >}}
 
@@ -778,27 +927,39 @@ Settings related to managing geo-distributed clusters.
 
 ##### --placement_zone
 
-The name of the availability zone (AZ), or rack, where this instance is deployed.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `rack1`
+{{% /tags/wrap %}}
+
+The name of the availability zone (AZ), or rack, where this instance is deployed.
 
 ##### --placement_region
 
-Name of the region or data center where this instance is deployed.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `datacenter1`
+{{% /tags/wrap %}}
+
+Name of the region or data center where this instance is deployed.
 
 ##### --placement_cloud
 
-Name of the cloud where this instance is deployed.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `cloud1`
+{{% /tags/wrap %}}
+
+Name of the cloud where this instance is deployed.
 
 ##### --placement_uuid
 
-The unique identifier for the cluster.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""`
+{{% /tags/wrap %}}
+
+The unique identifier for the cluster.
 
 ##### --use_private_ip
 
@@ -818,33 +979,48 @@ For details on enabling encryption in transit, see [Encryption in transit](../..
 
 ##### --certs_dir
 
-Directory that contains certificate authority, private key, and certificates for this server.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""` (uses `<data drive>/yb-data/master/data/certs`.)
+{{% /tags/wrap %}}
+
+Directory that contains certificate authority, private key, and certificates for this server.
 
 ##### --certs_for_client_dir
 
-The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `""` (Use the same directory as certs_dir.)
+{{% /tags/wrap %}}
+
+The directory that contains certificate authority, private key, and certificates for this server that should be used for client-to-server communications.
 
 ##### --allow_insecure_connections
 
-Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `true`
+{{% /tags/wrap %}}
+
+Allow insecure connections. Set to `false` to prevent any process with unencrypted communication from joining a cluster. Note that this flag requires [use_node_to_node_encryption](#use-node-to-node-encryption) to be enabled and [use_client_to_server_encryption](#use-client-to-server-encryption) to be enabled.
 
 ##### --dump_certificate_entries
 
-Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is helpful for debugging certificate issues.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages. Enabling this flag is helpful for debugging certificate issues.
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+Use client-to-server (client-to-node) encryption to protect data in transit between YugabyteDB servers and clients, tools, and APIs.
 
 ##### --use_node_to_node_encryption
 
@@ -856,6 +1032,11 @@ Default: `false`
 
 ##### --cipher_list
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `DEFAULTS`
+{{% /tags/wrap %}}
+
 Specify cipher lists for TLS 1.2 and earlier versions. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon-separated list of TLS 1.2 cipher names in order of preference. Use an exclamation mark ( `!` ) to exclude ciphers. For example:
 
 ```sh
@@ -866,11 +1047,14 @@ This allows all ciphers for TLS 1.2 to be accepted, except those matching the ca
 
 This flag requires a restart or rolling restart.
 
-Default: `DEFAULTS`
-
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
 ##### --ciphersuite
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `DEFAULTS`
+{{% /tags/wrap %}}
 
 Specify cipher lists for TLS 1.3. For TLS 1.2 and earlier, use [--cipher_list](#cipher-list).
 
@@ -884,15 +1068,16 @@ This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers
 
 This flag requires a restart or rolling restart.
 
-Default: `DEFAULTS`
-
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
 ##### --ssl_protocols
 
-Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: An empty string, which is equivalent to allowing all protocols except "ssl2" and "ssl3".
+{{% /tags/wrap %}}
+
+Specifies an explicit allow-list of TLS protocols for YugabyteDB's internal RPC communication.
 
 You can pass a comma-separated list of strings, where the strings can be one of "ssl2", "ssl3", "tls10", "tls11", "tls12", and "tls13".
 
@@ -1080,15 +1265,22 @@ To learn about advisory locks, see [Advisory locks](../../../architecture/transa
 
 ##### --ysql_yb_enable_advisory_locks
 
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+Default: true
+{{% /tags/wrap %}}
+
 Enables advisory locking.
 
 This value must match on all yb-master and yb-tserver configurations of a YugabyteDB cluster.
 
-Default: true
-
 ## Advanced flags
 
 ##### --allowed_preview_flags_csv
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+{{% /tags/wrap %}}
 
 Comma-separated values (CSV) formatted catalogue of [preview feature](/stable/releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as "preview" cannot be modified or configured unless they are included in this list.
 
