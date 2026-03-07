@@ -86,6 +86,8 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
   - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
 
+- If you are upgrading from v2025.1 series and your database includes a [vector index](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing), the upgrade will fail. Drop the indexes and then re-add them after the upgrade is finalized.
+
 ## Upgrade YugabyteDB cluster
 
 You upgrade a cluster in the following phases:

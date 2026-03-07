@@ -35,14 +35,14 @@ The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../
 
 ## Prerequisites
 
-- YugabyteDB {{<release "2025.1">}} or later (stable), or {{<release "2.25.1">}} or later (preview)
+- YugabyteDB {{<release "2025.2">}} or later
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 - [Claude Desktop](https://claude.ai/download)
 
 ## Set up YugabyteDB MCP Server
 
-Clone the repo and install dependencies:
+Clone the repository and install dependencies:
 
 ```sh
 git clone https://github.com/yugabyte/yugabytedb-mcp-server.git
@@ -52,7 +52,7 @@ uv sync
 
 ## Set up YugabyteDB
 
-1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.1">}} or later (stable), or {{<release "2.25.1">}} or later (preview).
+1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.2">}} or later.
 
 1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 
