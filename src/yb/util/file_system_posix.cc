@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -114,35 +115,35 @@ size_t GetUniqueIdFromFile(int fd, uint8_t* id) {
 }
 #endif // __linux__
 
-PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* f,
+PosixSequentialFile::PosixSequentialFile(const std::string& fname, int fd,
                                          const FileSystemOptions& options)
     : filename_(fname),
-      file_(f),
-      fd_(fileno(f)),
+      fd_(fd),
       use_os_buffer_(options.use_os_buffer) {}
 
-PosixSequentialFile::~PosixSequentialFile() { fclose(file_); }
+PosixSequentialFile::~PosixSequentialFile() { close(fd_); }
 
 Status PosixSequentialFile::Read(size_t n, Slice* result, uint8_t* scratch) {
   ThreadRestrictions::AssertIOAllowed();
   Status s;
-  size_t r = 0;
-  do {
-    r = fread_unlocked(scratch, 1, n, file_);
-  } while (r == 0 && ferror(file_) && errno == EINTR);
-  TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
-  *result = Slice(scratch, r);
-  if (r < n) {
-    if (feof(file_)) {
-      // We leave status as ok if we hit the end of the file
-      // We also clear the error so that the reads can continue
-      // if a new data is written to the file
-      clearerr(file_);
-    } else {
-      // A partial read with an error: return a non-ok status
+  size_t total_read = 0;
+  while (total_read < n) {
+    ssize_t r = read(fd_, scratch + total_read, n - total_read);
+    if (r < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
       s = STATUS_IO_ERROR(filename_, errno);
+      break;
     }
+    if (r == 0) {
+      // EOF
+      break;
+    }
+    TrackStackTrace(StackTraceTrackingGroup::kReadIO, r);
+    total_read += r;
   }
+  *result = Slice(scratch, total_read);
   if (!use_os_buffer_) {
     // We need to fadvise away the entire range of pages because we do not want readahead pages to
     // be cached.
@@ -154,7 +155,7 @@ Status PosixSequentialFile::Read(size_t n, Slice* result, uint8_t* scratch) {
 Status PosixSequentialFile::Skip(uint64_t n) {
   TRACE_EVENT1("io", "PosixSequentialFile::Skip", "path", filename_);
   ThreadRestrictions::AssertIOAllowed();
-  if (fseek(file_, static_cast<long>(n), SEEK_CUR)) { // NOLINT
+  if (lseek(fd_, static_cast<off_t>(n), SEEK_CUR) == static_cast<off_t>(-1)) {
     return STATUS_IO_ERROR(filename_, errno);
   }
   return Status::OK();

@@ -1638,11 +1638,11 @@ class PosixFileFactory : public FileFactory {
       const std::string& fname, std::unique_ptr<SequentialFile>* result) override {
     TRACE_EVENT1("io", "PosixEnv::NewSequentialFile", "path", fname);
     ThreadRestrictions::AssertIOAllowed();
-    FILE* f = fopen(fname.c_str(), "r");
-    if (f == nullptr) {
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
       return STATUS_IO_ERROR(fname, errno);
     } else {
-      result->reset(new yb::PosixSequentialFile(fname, f, yb::FileSystemOptions::kDefault));
+      result->reset(new yb::PosixSequentialFile(fname, fd, yb::FileSystemOptions::kDefault));
       return Status::OK();
     }
   }
