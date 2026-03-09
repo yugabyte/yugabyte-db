@@ -2185,8 +2185,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // following the protocol's default mechanism.
   Result<std::shared_ptr<AsyncTryStepDown>> ScheduleTryStepDownTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-      const std::string& reason, const std::string& new_leader_ts_uuid = "");
+      const std::string& change_config_ts_uuid, bool also_remove_replica,
+      const LeaderEpoch& epoch, const std::string& reason,
+      const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
