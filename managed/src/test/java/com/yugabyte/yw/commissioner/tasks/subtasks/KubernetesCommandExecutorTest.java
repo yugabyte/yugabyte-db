@@ -353,7 +353,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     tserverGFlags.put("placement_zone", defaultAZ.getCode());
     tserverGFlags.put(
         "placement_uuid", defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid.toString());
-    tserverGFlags.put("start_redis_proxy", "true");
+    tserverGFlags.put("start_redis_proxy", String.valueOf(defaultUserIntent.enableYEDIS));
     gflagOverrides.put("tserver", tserverGFlags);
     // Put all the flags together.
     expectedOverrides.put("gflags", gflagOverrides);
