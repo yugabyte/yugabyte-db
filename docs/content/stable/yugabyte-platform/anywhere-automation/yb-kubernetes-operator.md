@@ -830,7 +830,7 @@ No resources found in schedule-cr namespace.
 
 Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe.
 
-Currently, only declarative operations are supported including, creating a PITR configuration, updating the list of databases, and deleting it. Imperative operations such as restore from a PITR configuration will be supported in a future release.
+Currently, only declarative operations are supported, including creating a PITR configuration, updating the list of databases, and deleting the configuration. Imperative operations such as restore from a PITR configuration will be supported in a future release.
 
 ```sh
 kubectl apply pitr-config.yaml -n test-pitr
