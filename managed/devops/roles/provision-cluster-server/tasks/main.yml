@@ -474,11 +474,12 @@
   when: ansible_distribution == "Ubuntu"
   tags: yb-prebuilt-ami
 
-- name: Add prometheus user to yugabyte group
+- name: Add prometheus user to yugabyte group and set non-interactive shell
   ansible.builtin.user:
     name: prometheus
     groups: yugabyte
     append: true
+    shell: /sbin/nologin
   become: yes
 
 - name: Restart the node_exporter service
