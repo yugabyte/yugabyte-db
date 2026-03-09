@@ -90,6 +90,7 @@ kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%p_%t_%E
 vm_max_map_count = 262144
 
 [ConfigureOs.limits]
+# Add all the limits to be set in /etc/security/limits.conf.
 core = unlimited
 data = unlimited
 fsize = unlimited
@@ -100,7 +101,7 @@ nofile = 1048576
 msgqueue = 819200
 stack = 8192
 cpu = unlimited
-nproc = 12000
+nproc = 64000
 locks = unlimited
 
 [ConfigureSystemd]
