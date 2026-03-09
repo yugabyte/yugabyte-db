@@ -155,6 +155,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(defaultRegion, defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
+    defaultUserIntent.dedicatedNodes = true;
     defaultUserIntent.masterGFlags = new HashMap<>();
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
@@ -220,40 +221,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     }
     double burstVal = 1.2;
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(defaultProvider);
-
-    Map<String, Object> storageOverrides =
-        (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
-    if (defaultUserIntent.deviceInfo != null) {
-      Map<String, Object> tserverDiskSpecs =
-          (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
-      Map<String, Object> masterDiskSpecs =
-          (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
-
-      if (defaultUserIntent.deviceInfo.numVolumes != null) {
-        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
-      }
-      if (defaultUserIntent.deviceInfo.volumeSize != null) {
-        tserverDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
-      }
-      if (defaultUserIntent.deviceInfo.storageClass != null) {
-        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
-      }
-
-      // For master
-      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
-        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
-      }
-      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
-        masterDiskSpecs.put(
-            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
-      }
-      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
-        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
-      }
-      storageOverrides.put("tserver", tserverDiskSpecs);
-      storageOverrides.put("master", masterDiskSpecs);
-    }
 
     expectedOverrides.put(
         "replicas",
@@ -422,6 +389,40 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     ybcOverrides.put("enabled", false);
     ybcOverrides.put("useYBDBImage", defaultUserIntent.isUseYbdbInbuiltYbc());
     expectedOverrides.put("ybc", ybcOverrides);
+
+    Map<String, Object> storageOverrides =
+        (Map<String, Object>) expectedOverrides.getOrDefault("storage", new HashMap<>());
+    if (defaultUserIntent.deviceInfo != null) {
+      Map<String, Object> tserverDiskSpecs =
+          (Map<String, Object>) storageOverrides.getOrDefault("tserver", new HashMap<>());
+      Map<String, Object> masterDiskSpecs =
+          (Map<String, Object>) storageOverrides.getOrDefault("master", new HashMap<>());
+
+      if (defaultUserIntent.deviceInfo.numVolumes != null) {
+        tserverDiskSpecs.put("count", defaultUserIntent.deviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.deviceInfo.volumeSize != null) {
+        tserverDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.deviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.deviceInfo.storageClass != null) {
+        tserverDiskSpecs.put("storageClass", defaultUserIntent.deviceInfo.storageClass);
+      }
+
+      // For master
+      if (defaultUserIntent.masterDeviceInfo.numVolumes != null) {
+        masterDiskSpecs.put("count", defaultUserIntent.masterDeviceInfo.numVolumes);
+      }
+      if (defaultUserIntent.masterDeviceInfo.volumeSize != null) {
+        masterDiskSpecs.put(
+            "size", String.format("%dGi", defaultUserIntent.masterDeviceInfo.volumeSize));
+      }
+      if (defaultUserIntent.masterDeviceInfo.storageClass != null) {
+        masterDiskSpecs.put("storageClass", defaultUserIntent.masterDeviceInfo.storageClass);
+      }
+      storageOverrides.put("tserver", tserverDiskSpecs);
+      storageOverrides.put("master", masterDiskSpecs);
+    }
 
     expectedOverrides.put("defaultServiceScope", "AZ");
     return expectedOverrides;
@@ -1373,7 +1374,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
         createExecutor(
             KubernetesCommandExecutor.CommandType.POD_INFO,
             defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
-    assertEquals(3, defaultUniverse.getNodes().size());
+    assertEquals(6, defaultUniverse.getNodes().size());
     kubernetesCommandExecutor.run();
     verify(kubernetesManager, times(1)).getPodInfos(azConfig, nodePrefix, namespace);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

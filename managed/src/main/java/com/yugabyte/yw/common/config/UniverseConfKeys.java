@@ -1841,4 +1841,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable canary upgrade for the universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> fullMoveRollBatchSize =
+      new ConfKeyInfo<>(
+          "yb.task.full_move.roll_batch_size",
+          ScopeType.UNIVERSE,
+          "Number of nodes to move in a given batch during full move",
+          "Set numer of nodes to move in a given batch during full move. Default is 0 which means"
+              + " no batching, i.e. move all pods in a single go",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

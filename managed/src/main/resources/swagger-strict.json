@@ -2860,7 +2860,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -5646,7 +5647,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -8753,7 +8755,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -9560,7 +9563,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -11077,7 +11081,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -11801,7 +11806,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -16253,7 +16259,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -17287,7 +17294,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -18121,7 +18129,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -19647,7 +19656,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -20303,7 +20313,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -20714,7 +20725,8 @@
               "CheckServiceLiveness",
               "CheckNodeCommandExecution",
               "CheckNodeDataDirDiskSpace",
-              "OperatorImportResource"
+              "OperatorImportResource",
+              "UpdateParentTaskParams"
             ],
             "type" : "string"
           },
@@ -21547,7 +21559,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -22697,7 +22710,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -24020,7 +24034,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -24697,7 +24712,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -25516,7 +25532,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -26157,7 +26174,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -26798,7 +26816,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -27949,7 +27968,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
@@ -29077,7 +29097,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },
