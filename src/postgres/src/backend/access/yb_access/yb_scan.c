@@ -544,10 +544,11 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle,
-													 low_bound, low_bound_size,
-													 high_bound,
-													 high_bound_size));
+					HandleYBStatus(YBCPgDmlApplyParallelRange(ybScan->handle,
+															  low_bound,
+															  low_bound_size,
+															  high_bound,
+															  high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)
@@ -679,9 +680,11 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle, low_bound,
-													 low_bound_size, high_bound,
-													 high_bound_size));
+					HandleYBStatus(YBCPgDmlApplyParallelRange(ybScan->handle,
+															  low_bound,
+															  low_bound_size,
+															  high_bound,
+															  high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)

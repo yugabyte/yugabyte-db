@@ -632,6 +632,4 @@ inline bool AreBoundsHashCode(const Req& request) {
           dockv::PartitionSchema::IsValidHashPartitionKeyBound(request.upper_bound().key()));
 }
 
-template bool AreBoundsHashCode(const LWPgsqlReadRequestPB& request);
-
 }  // namespace yb::client

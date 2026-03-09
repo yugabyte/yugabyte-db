@@ -525,6 +525,17 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
     primary_binds_processed_ = true;
   }
 
+  VLOG_WITH_FUNC(3)
+      << "Request before the scan range is applied: " << read_req_->ShortDebugString();
+  if (scan_range_) {
+    if (!scan_range_->ApplyBounds(*read_req_)) {
+      VLOG_WITH_FUNC(3) << "Scan range is empty";
+      return Status::OK();
+    }
+  }
+  VLOG_WITH_FUNC(3)
+      << "Request after the scan range is applied: " << read_req_->ShortDebugString();
+
   if (!doc_op_) {
     return Status::OK();
   }
@@ -793,29 +804,6 @@ Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
       std::move(range_components));
 }
 
-Status PgDmlRead::AddRowUpperBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowUpperBound(handle, n_col_values, col_values, is_inclusive);
-  }
-
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, false));
-  ApplyUpperBound(*read_req_, dockey.Encode().AsSlice(), is_inclusive);
-  return Status::OK();
-}
-
-Status PgDmlRead::AddRowLowerBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
-
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowLowerBound(handle, n_col_values, col_values, is_inclusive);
-  }
-
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, true));
-  ApplyLowerBound(*read_req_, dockey.Encode().AsSlice(), is_inclusive);
-  return Status::OK();
-}
-
 Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
   DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
@@ -929,26 +917,21 @@ bool PgDmlRead::IsAllPrimaryKeysBound() const {
   return true;
 }
 
-void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    secondary_index->BindHashCode(start, end);
-    return;
-  }
-
-  if (start) {
-    const auto& lower_bound = HashCodeToDocKeyBound(
-        bind_->schema(), start->value, start->is_inclusive, /* is_lower =*/true);
-    ApplyLowerBound(*read_req_, lower_bound.Encode().AsSlice(), /* is_inclusive =*/false);
-  }
-
-  if (end) {
-    const auto& upper_bound = HashCodeToDocKeyBound(
-        bind_->schema(), end->value, end->is_inclusive, /* is_lower =*/false);
-    ApplyUpperBound(*read_req_, upper_bound.Encode().AsSlice(), /* is_inclusive =*/false);
-  }
-}
-
-Status PgDmlRead::BindRange(
+//--------------------------------------------------------------------------------------------------
+// Read range binding functions.
+// The PgDmlRead::ApplyParallelRange function differs from other request boundary limiting
+// functions (BindBounds, BindHashCode) as it applies the bounds directly to the template
+// request, overwriting any previous values. That's because this function is used to reset the read
+// for the next parallel range, which is supposed to overwrite the previous parallel range.
+// The function performs relevant clean up and sets the new bounds into the template request's
+// fields.
+// The other request boundary limiting functions store the bounds with the statement.
+// Multiple calls to those functions are allowed, and update the stored bounds, potentially
+// narrowing the range.
+// The resulting bounds are applied, or re-applied in the parallel case, during the execution.
+// If the resulting request range is empty, the execution is going to be skipped.
+//--------------------------------------------------------------------------------------------------
+Status PgDmlRead::ApplyParallelRange(
     Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive) {
   // Clean up operations remaining from the previous range's scan
   if (doc_op_) {
@@ -959,16 +942,25 @@ Status PgDmlRead::BindRange(
   }
   if (auto* secondary_index = SecondaryIndex(); secondary_index) {
     secondary_index->RequireReExecution();
-    return secondary_index->query().BindRange(
+    return secondary_index->query().ApplyParallelRange(
         lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   }
+
   // Override the lower bound
-  read_req_->clear_lower_bound();
-  ApplyLowerBound(*read_req_, lower_bound, lower_bound_inclusive);
+  if (lower_bound.empty()) {
+    read_req_->clear_lower_bound();
+  } else {
+    read_req_->mutable_lower_bound()->dup_key(lower_bound);
+    read_req_->mutable_lower_bound()->set_is_inclusive(lower_bound_inclusive);
+  }
 
   // Override the upper bound
-  read_req_->clear_upper_bound();
-  ApplyUpperBound(*read_req_, upper_bound, upper_bound_inclusive);
+  if (upper_bound.empty()) {
+    read_req_->clear_upper_bound();
+  } else {
+    read_req_->mutable_upper_bound()->dup_key(upper_bound);
+    read_req_->mutable_upper_bound()->set_is_inclusive(upper_bound_inclusive);
+  }
 
   return Status::OK();
 }
@@ -980,8 +972,52 @@ void PgDmlRead::BindBounds(
     return secondary_index->BindBounds(
         lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   }
-  ApplyBounds(*read_req_, lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+  if (!lower_bound.empty()) {
+    GetScanRange().SetDocKeyBound(lower_bound, lower_bound_inclusive, true /* is_lower_bound */);
+  }
+  if (!upper_bound.empty()) {
+    GetScanRange().SetDocKeyBound(upper_bound, upper_bound_inclusive, false /* is_lower_bound */);
+  }
 }
+
+void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    secondary_index->BindHashCode(start, end);
+    return;
+  }
+
+  if (start) {
+    GetScanRange().SetHashCodeBound(start->value, start->is_inclusive, true /* is_lower_bound */);
+  }
+
+  if (end) {
+    GetScanRange().SetHashCodeBound(end->value, end->is_inclusive, false /* is_lower_bound */);
+  }
+}
+
+Status PgDmlRead::AddRowLowerBound(
+    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->AddRowLowerBound(handle, n_col_values, col_values, is_inclusive);
+  }
+
+  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, true));
+  GetScanRange().SetDocKeyBound(dockey, is_inclusive, true /* is_lower_bound */);
+  return Status::OK();
+}
+
+Status PgDmlRead::AddRowUpperBound(
+    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->AddRowUpperBound(handle, n_col_values, col_values, is_inclusive);
+  }
+
+  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, false));
+  GetScanRange().SetDocKeyBound(dockey, is_inclusive, false /* is_lower_bound */);
+  return Status::OK();
+}
+//--------------------------------------------------------------------------------------------------
 
 void PgDmlRead::UpgradeDocOp(PgDocOp::SharedPtr doc_op) {
   CHECK(!original_doc_op_) << "DocOp can be upgraded only once";

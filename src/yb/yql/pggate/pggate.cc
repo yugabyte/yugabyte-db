@@ -1439,10 +1439,10 @@ Status PgApiImpl::DmlBindHashCode(
   return Status::OK();
 }
 
-Status PgApiImpl::DmlBindRange(
+Status PgApiImpl::DmlApplyParallelRange(
     PgStatement* handle, Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound,
     bool upper_bound_inclusive) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).BindRange(
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).ApplyParallelRange(
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 

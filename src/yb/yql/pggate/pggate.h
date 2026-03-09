@@ -492,11 +492,11 @@ class PgApiImpl {
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
-  Status DmlBindRange(YbcPgStatement handle,
-                      Slice lower_bound,
-                      bool lower_bound_inclusive,
-                      Slice upper_bound,
-                      bool upper_bound_inclusive);
+  Status DmlApplyParallelRange(YbcPgStatement handle,
+                               Slice lower_bound,
+                               bool lower_bound_inclusive,
+                               Slice upper_bound,
+                               bool upper_bound_inclusive);
 
   Status DmlBindBounds(PgStatement* handle,
                        const Slice lower_bound,

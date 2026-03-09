@@ -179,9 +179,11 @@ YbSeqNext(YbSeqScanState *node)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle, low_bound,
-													 low_bound_size, high_bound,
-													 high_bound_size));
+					HandleYBStatus(YBCPgDmlApplyParallelRange(ybScan->handle,
+															  low_bound,
+															  low_bound_size,
+															  high_bound,
+															  high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)
