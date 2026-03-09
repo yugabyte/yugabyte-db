@@ -248,8 +248,8 @@ YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version)
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set local catalog version: %" PRIu64,
-						yb_catalog_cache_version)));
+				(errmsg("set db %u local catalog version: %" PRIu64,
+						MyDatabaseId, yb_catalog_cache_version)));
 }
 
 void
@@ -297,8 +297,8 @@ YbSetNewCatalogVersion(uint64_t new_version)
 	yb_new_catalog_version = new_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set new catalog version: %" PRIu64,
-						yb_new_catalog_version)));
+				(errmsg("set db %u new catalog version: %" PRIu64,
+						MyDatabaseId, yb_new_catalog_version)));
 }
 
 void
