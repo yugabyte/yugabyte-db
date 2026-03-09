@@ -30,12 +30,14 @@ The following additional CRDs support day 2 operations.
 
 | CRD | Description |
 | :--- | :--- |
-| [Provider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
+| [YBProvider](#create-a-provider) | Define a Kubernetes provider for multi-cluster deployments and operator-managed universes (available in v2025.2.2 or later). |
 | [Release](#add-a-different-software-release-of-yugabytedb) | Run multiple releases of YugabyteDB and upgrade the software in a YBA universe. |
 | [SupportBundle](#support-bundle) | Collect logs when a universe fails. |
 | [StorageConfig](#backup-and-restore) | Configure backup destinations. |
 | [Backup and RestoreJob](#backup-and-restore) | Take full backups of a universe and restore for data protection. |
 | [BackupSchedule](#scheduled-backups) | Schedule full and incremental backups of a universe. |
+| [PitrConfig](#configure-pitr) | Configure point-in-time recovery (PITR) for a universe. |
+| [YBCertificate](#configure-tls-certificates) | Configure TLS certificates for encryption in transit (self-signed or cert-manager). |
 
 For details of each CRD, run `kubectl explain` on the CR.
 
@@ -822,6 +824,51 @@ $ kubectl get backups -n schedule-cr
 
 ```output
 No resources found in schedule-cr namespace.
+```
+
+### Configure PITR
+
+Use the PitrConfig CRD to configure point-in-time recovery (PITR) for a universe.
+
+Currently, only declarative operations are supported including, creating a PITR configuration, updating the list of databases, and deleting it. Imperative operations such as restore from a PITR configuration will be supported in a future release.
+
+```sh
+kubectl apply pitr-config.yaml -n test-pitr
+```
+
+```yaml
+# pitr-config.yaml
+apiVersion: operator.yugabyte.io/v1alpha1
+kind: PitrConfig
+metadata:
+  name: pitr-config
+  namespace: test-pitr
+spec:
+  name: pitr-config
+  universe: test-universe
+  database: 'yugabyte'
+  tableType: 'YSQL'
+```
+
+### Configure TLS certificates
+
+Use the YBCertificate CRD to configure TLS certificates for encryption in transit:
+
+```sh
+kubectl apply yb-certificate.yaml -n yb-operator
+```
+
+```yaml
+# yb-certificate.yaml
+apiVersion: ybcertificates.operator.yugabyte.io/v1alpha1
+kind: YBCertificate
+metadata:
+  name: yb-certificate
+spec:
+  certType: SELF_SIGNED   # SELF_SIGNED | K8S_CERT_MANAGER
+  certificateSecretRef:
+    name: cert_secret      # Name of the secret
+    namespace: yb-operator # Optional: defaults to operator namespace
 ```
 
 ### Support bundle
