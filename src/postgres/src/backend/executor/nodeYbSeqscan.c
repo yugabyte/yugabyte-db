@@ -437,7 +437,7 @@ ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
 	EState	   *estate = node->ss.ps.state;
 	YBParallelPartitionKeys pscan = node->pscan;
 
-	yb_init_partition_key_data(pscan);
+	yb_rescan_partition_key_data(pscan);
 	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
 					  &estate->yb_exec_params, true /* is_forward */ );
 }
