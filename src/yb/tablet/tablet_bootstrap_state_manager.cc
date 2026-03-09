@@ -26,6 +26,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/logging.h"
 
 namespace yb::tablet {
 
@@ -93,7 +94,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   bootstrap_state.ToPB(&pb);
 
   auto path = NewFilePath();
-  LOG(INFO) << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
+  LOG_DETAIL << "Saving bootstrap state up to " << pb.last_op_id() << " to " << path;
   auto* env = fs_manager()->env();
   SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
@@ -104,7 +105,7 @@ Status TabletBootstrapStateManager::SaveToDisk(
   if (has_file_on_disk_) {
     RETURN_NOT_OK(env->DeleteFile(CurrentFilePath()));
   }
-  LOG(INFO) << "Renaming " << NewFileName() << " to " << FileName();
+  LOG_DETAIL << "Renaming " << NewFileName() << " to " << FileName();
   RETURN_NOT_OK(env->RenameFile(NewFilePath(), CurrentFilePath()));
   has_file_on_disk_ = true;
   RETURN_NOT_OK(env->SyncDir(dir_));

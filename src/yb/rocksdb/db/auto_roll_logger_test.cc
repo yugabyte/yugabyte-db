@@ -363,23 +363,37 @@ TEST_F(AutoRollLoggerTest, InfoLogLevel) {
       for (int log_type = InfoLogLevel::DEBUG_LEVEL;
            log_type <= InfoLogLevel::HEADER_LEVEL; log_type++) {
         // log messages with log level smaller than log_level will not be
-        // logged.
+        // logged, except that DETAIL_LEVEL messages are treated as equivalent
+        // to INFO_LEVEL for filtering (via ShouldLog): if log_level is
+        // INFO_LEVEL, DETAIL messages will also be logged alongside INFO.
         LogMessage((InfoLogLevel)log_type, &logger, kSampleMessage.c_str());
       }
       log_lines += InfoLogLevel::HEADER_LEVEL - log_level + 1;
+      // DETAIL_LEVEL is treated as equivalent to INFO_LEVEL for filtering
+      // (via ShouldLog), so at INFO_LEVEL the DETAIL message also passes.
+      if (log_level == InfoLogLevel::INFO_LEVEL) {
+        log_lines++;
+      }
     }
     for (int log_level = InfoLogLevel::HEADER_LEVEL;
          log_level >= InfoLogLevel::DEBUG_LEVEL; log_level--) {
       logger.SetInfoLogLevel((InfoLogLevel)log_level);
 
-      // again, messages with level smaller than log_level will not be logged.
+      // again, messages with level smaller than log_level will not be logged,
+      // with the exception of DETAIL_LEVEL messages and an INFO_LEVEL logger.
       RLOG(InfoLogLevel::HEADER_LEVEL, &logger, "%s", kSampleMessage.c_str());
       RDEBUG(&logger, "%s", kSampleMessage.c_str());
+      RLOG(InfoLogLevel::DETAIL_LEVEL, &logger, "%s", kSampleMessage.c_str());
       RINFO(&logger, "%s", kSampleMessage.c_str());
       RWARN(&logger, "%s", kSampleMessage.c_str());
       RERROR(&logger, "%s", kSampleMessage.c_str());
       RFATAL(&logger, "%s", kSampleMessage.c_str());
       log_lines += InfoLogLevel::HEADER_LEVEL - log_level + 1;
+      // DETAIL_LEVEL is treated as equivalent to INFO_LEVEL for filtering
+      // (via ShouldLog), so at INFO_LEVEL the DETAIL message also passes.
+      if (log_level == InfoLogLevel::INFO_LEVEL) {
+        log_lines++;
+      }
     }
   }
   std::ifstream inFile(AutoRollLoggerTest::kLogFile.c_str());
@@ -483,6 +497,23 @@ TEST_F(AutoRollLoggerTest, LogHeaderTest) {
       ASSERT_EQ(GetLinesCount(oldfname, HEADER_STR), MAX_HEADERS);
     }
   }
+}
+
+TEST_F(AutoRollLoggerTest, DetailLevelFiltering) {
+  InitTestDb();
+
+  size_t log_size = 8192;
+  {
+    AutoRollLogger logger(Env::Default(), kTestDir, "", log_size, 0);
+    logger.SetInfoLogLevel(InfoLogLevel::INFO_LEVEL);
+
+    RLOG(InfoLogLevel::DETAIL_LEVEL, &logger, "test_detail");
+    RLOG(InfoLogLevel::INFO_LEVEL, &logger, "test_info");
+  }
+
+  // DETAIL messages pass at INFO level (ShouldLog treats DETAIL as equivalent to INFO).
+  ASSERT_EQ(1u, GetLinesCount(kLogFile, "test_detail"));
+  ASSERT_EQ(1u, GetLinesCount(kLogFile, "test_info"));
 }
 
 TEST_F(AutoRollLoggerTest, LogFileExistence) {

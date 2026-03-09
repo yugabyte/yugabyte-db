@@ -935,6 +935,27 @@ TEST_F(EnvPosixTest, LogBufferMaxSizeTest) {
   }
 }
 
+TEST_F(EnvPosixTest, LogBufferDetailTest) {
+  TestLogger test_logger;
+  test_logger.SetInfoLogLevel(InfoLogLevel::INFO_LEVEL);
+  test_logger.log_count = 0;
+  test_logger.char_x_count = 0;
+  test_logger.char_0_count = 0;
+
+  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, &test_logger);
+
+  // Mix DETAIL and regular INFO entries. DETAIL should pass at INFO level.
+  LOG_TO_BUFFER(&log_buffer, "x%sx", "info1");
+  LOG_TO_BUFFER_DETAIL(&log_buffer, "x%sx", "detail1");
+  LOG_TO_BUFFER(&log_buffer, "x%sx", "info2");
+
+  ASSERT_EQ(0, test_logger.log_count);
+  log_buffer.FlushBufferToLog();
+  ASSERT_EQ(3, test_logger.log_count);
+  ASSERT_EQ(3, test_logger.char_0_count);
+  ASSERT_EQ(6, test_logger.char_x_count);
+}
+
 TEST_F(EnvPosixTest, Preallocation) {
   const std::string src = test::TmpDir() + "/" + "testfile";
   unique_ptr<WritableFile> srcfile;
