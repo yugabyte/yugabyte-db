@@ -87,6 +87,7 @@
     "events": "^3.3.0",
     "jsdom": "27.4.0",
     "msw": "2.12.10",
+    "msw-storybook-addon": "2.0.6",
     "ncp": "2.0.0",
     "orval": "6.4.1",
     "prettier": "3.8.1",

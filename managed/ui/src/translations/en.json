@@ -368,6 +368,30 @@
             "dbUpgradeInitiated": "Database upgrade initiated",
             "dbUpgradeFailed": "Database upgrade request failed"
           }
+        },
+        "rollbackModal": {
+          "modalTitle": "Roll Back Upgrade",
+          "confirmationMessage": "Are you sure you want to roll back to",
+          "rollbackPaceTitle": "ROLLBACK PACE",
+          "rollbackPaceRolling": "Rolling rollback of nodes in upgraded AZs",
+          "rollbackPaceConcurrent": "Concurrent rollback of all upgraded nodes",
+          "concurrentRollbackDowntimeWarning": "<bold>Requires downtime.</bold> The universe will be unavailable while the rollback is in progress.",
+          "upgradedAzsLabel": "Upgraded AZs:",
+          "submitLabel": "Proceed to Roll Back",
+          "rollingOptions": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "maxNodesPerBatchTooltip": "Applies to T-Servers.\nMasters are upgraded one at a time.",
+            "waitBetweenBatches": "Wait between batches:",
+            "waitBetweenBatchesTooltip": "Applies between all batches\n(Masters and T-Servers)."
+          },
+          "toast": {
+            "rollbackFailedLabel": "Rollback request failed"
+          },
+          "validation": {
+            "maxNodesPerBatchMinimum": "Must be at least 1.",
+            "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
+            "waitBetweenBatchesMin": "Must be 0 or greater."
+          }
         }
       },
       "dbRollbackUpgrade": {

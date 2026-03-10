@@ -46,6 +46,7 @@ export const colors = {
     900: '#590000'
   } as PaletteColor,
   warning: {
+    50: '#FFF6E3',
     100: '#FFEEC8',
     300: '#FFD383',
     500: '#FFA400',
