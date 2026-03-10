@@ -5552,7 +5552,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_wait_for_backends_catalog_version_timeout,
-		5 * 60 * 1000, 0, INT_MAX,
+		15 * 60 * 1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
