@@ -2,7 +2,7 @@
 title: Password authentication
 headerTitle: Password authentication
 linkTitle: Password authentication
-description: Use SCRAM-SHA-256 password authentication to strengthen your YugyabyteDB security.
+description: Use SCRAM-SHA-256 password authentication to strengthen your YugabyteDB security.
 menu:
   stable:
     identifier: password-authentication
@@ -39,14 +39,14 @@ The following password authentication methods are supported by YugabyteDB.
 
 ### SCRAM-SHA-256
 
+SCRAM-SHA-256 is the default authentication method for new universes.
+
 The SCRAM-SHA-256 method (`scram-sha-256`) performs SCRAM-SHA-256 authentication, as described in [RFC 7677](https://tools.ietf.org/html/rfc7677). This challenge-response scheme prevents password sniffing on untrusted connections and supports storing passwords on YugabyteDB clusters in the most secure cryptographically hashed form available. The SCRAM-SHA-256 method is explained in further detail in [SASL Authentication (PostgreSQL documentation)](https://www.postgresql.org/docs/15/sasl-authentication.html). This is the most secure password authentication available and is supported by most of the [client drivers for the YSQL API](/stable/develop/drivers-orms/).
 
 - Allows for two parties to verify they both know a secret without exchanging the secret.
 - SCRAM-SHA-256 encryption uses the [SASL authentication mechanism flow](https://www.postgresql.org/docs/15/sasl-authentication.html) to limit security risks from brute force attacks and sniffing.
 
-SCRAM-SHA-256 is the default authentication method for new universes.
-
-{{< note title="Note" >}}
+{{< note title="TLS encryption" >}}
 
 For additional security, SCRAM-SHA-256 password encryption can also be used with [encryption in transit (TLS encryption)](../../../secure/tls-encryption/).
 
