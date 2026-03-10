@@ -501,7 +501,7 @@ Default: `3000` (3 seconds)
 
 Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
-Default: `25`
+Default: `1`
 
 ##### --load_balancer_max_concurrent_moves
 
@@ -519,13 +519,13 @@ Default: `-1`
 
 Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
-Default: `50`
+Default: `1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `10`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
@@ -537,7 +537,7 @@ Default: `2`
 
 Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
-Default: `50`
+Default: `1`
 
 ##### --load_balancer_num_idle_runs
 

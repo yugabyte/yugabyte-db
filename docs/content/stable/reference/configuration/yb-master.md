@@ -523,13 +523,13 @@ Default: `50`
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `10`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
 Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
 
-Default: `2`
+Default: `-1`
 
 ##### --load_balancer_max_over_replicated_tablets
 
