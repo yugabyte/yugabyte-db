@@ -46,10 +46,12 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
@@ -2726,9 +2728,8 @@ Status TabletServiceImpl::PerformWrite(
 
   if (RandomActWithProbability(FLAGS_TEST_respond_write_with_abort_probability)) {
     LOG(INFO) << "Responding with transaction aborted failure to " << req->ShortDebugString();
-    SetupErrorAndRespond(resp->mutable_error(), STATUS_EC_FORMAT(
-        Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-        "Transaction expired or aborted by a conflict"), context_ptr.get());
+    SetupErrorAndRespond(resp->mutable_error(),
+        CreateExpiredStatus("Transaction expired or aborted by a conflict"), context_ptr.get());
     return Status::OK();
   }
 

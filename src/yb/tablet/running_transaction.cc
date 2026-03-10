@@ -17,6 +17,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/transaction_participant_context.h"
@@ -526,14 +527,11 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
           expected_deadlock_status, pg_session_req_version});
     } else {
-      waiter.callback(STATUS(
-          TryAgain,
-          Format(
-              "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-              "last known: $2 at $3",
-              waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
-              time_of_status),
-          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)));
+      waiter.callback(CreateAbortedStatus(
+          "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+          "last known: $2 at $3",
+          waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
+          time_of_status));
     }
   }
 }
@@ -608,9 +606,7 @@ std::string RunningTransaction::LogPrefix() const {
 }
 
 Status MakeAbortedStatus(const TransactionId& id) {
-  return STATUS(
-      TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+  return CreateAbortedStatus("Transaction aborted: $0", id);
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
