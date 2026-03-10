@@ -28,6 +28,7 @@ DECLARE_bool(TEST_force_automatic_ddl_replication_mode);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 DECLARE_bool(ysql_enable_auto_analyze);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::chrono_literals;
 
@@ -1065,6 +1066,20 @@ TEST_F(XClusterDBScopedTest, CreateDropTablesWithPITR) {
 TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndex) {
   // Disable auto analyze becauses the query plan changes.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  ASSERT_OK(SetUpClusters());
+
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  ASSERT_NO_FATALS(VerifyRangedPartitionsWithIndex(/*is_colocated=*/false));
+}
+
+TEST_F(XClusterDBScopedTest, RangedPartitionsWithIndexConcurrentDDL) {
+  // Disable auto analyze becauses the query plan changes
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+  auto& csv = FLAGS_ysql_pg_conf_csv;
+  ANNOTATE_UNPROTECTED_WRITE(csv) =
+      Format("$0$1yb_enable_concurrent_ddl=true", csv, csv.empty() ? "" : ",");
   ASSERT_OK(SetUpClusters());
 
   ASSERT_OK(CheckpointReplicationGroup());
