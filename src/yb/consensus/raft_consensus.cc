@@ -80,6 +80,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
@@ -1976,6 +1977,9 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
 
   // The deduplicated request.
   LeaderRequest deduped_req;
+
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+      "RaftConsensus::UpdateReplica", const_cast<LWConsensusRequestPB*>(&request));
 
   ReplicaState::UniqueLock lock;
   RETURN_NOT_OK(state_->LockForUpdate(&lock));

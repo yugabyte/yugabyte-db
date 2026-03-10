@@ -307,6 +307,9 @@ class TransactionParticipant::Impl
       return false;
     }
 
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+        "TransactionParticipant::Impl::StartShutdown", &participant_context_);
+
     auto was_started = loader_.Started();
     loader_.StartShutdown();
 
@@ -342,7 +345,8 @@ class TransactionParticipant::Impl
       UniqueLock lock(mutex_);
       WaitOnConditionVariable(
           &requests_completed_cond_, &lock,
-          [this] { return running_requests_.empty(); });
+          [this] NO_THREAD_SAFETY_ANALYSIS { return running_requests_.empty(); });
+      running_requests_closed_ = true;
 
       MinRunningNotifier min_running_notifier(nullptr /* applier */);
       DumpClear(RemoveReason::kShutdown);
@@ -392,10 +396,7 @@ class TransactionParticipant::Impl
     if (WasTransactionRecentlyRemoved(metadata.transaction_id) ||
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
-      auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-          "Transaction was recently aborted: $0", metadata.transaction_id);
-      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+      return CreateAbortedStatus("Transaction was recently aborted: $0", metadata.transaction_id);
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
@@ -516,9 +517,7 @@ class TransactionParticipant::Impl
     if (!lock_and_iterator.found()) {
       return lock_and_iterator.did_txn_deadlock()
                  ? lock_and_iterator.deadlock_status
-                 : STATUS(
-                       TryAgain, Format("Unknown transaction, could be recently aborted: $0", id),
-                       Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+                 : CreateAbortedStatus("Unknown transaction, could be recently aborted: $0", id);
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -579,13 +578,17 @@ class TransactionParticipant::Impl
   }
 
   // Registers a request, giving it a newly allocated id and returning this id.
-  Result<int64_t> RegisterRequest() {
-    if (Closing()) {
+  Result<int64_t> RegisterRequest(bool allow_when_closing) {
+    if (!allow_when_closing && Closing()) {
       LOG_WITH_PREFIX(INFO) << "Closing, not allow request to be registered";
-      return STATUS_FORMAT(ShutdownInProgress, "Tablet is shutting down");
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
     }
 
     std::lock_guard lock(mutex_);
+    if (running_requests_closed_) {
+      LOG_WITH_PREFIX(DFATAL) << "Forced register request on closed participant";
+      return STATUS(ShutdownInProgress, "Tablet is shutting down");
+    }
     auto result = NextRequestIdUnlocked();
     running_requests_.push_back(result);
     return result;
@@ -1513,8 +1516,7 @@ class TransactionParticipant::Impl
         // before the update RPC is received.
         YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
             << "Request to unknown transaction " << transaction_id;
-        return STATUS_EC_FORMAT(
-            Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
+        return CreateExpiredStatus(
             "Transaction $0 expired or aborted by a conflict", transaction_id);
       }
 
@@ -2171,7 +2173,7 @@ class TransactionParticipant::Impl
 
   void RemoveTransaction(
       Transactions::iterator it, RemoveReason reason, MinRunningNotifier* min_running_notifier,
-      const Status& expected_deadlock_status = Status::OK()) REQUIRES(mutex_) {
+      const Status& expected_deadlock_status) REQUIRES(mutex_) {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
@@ -2798,7 +2800,8 @@ class TransactionParticipant::Impl
 
   Transactions transactions_;
   // Ids of running requests, stored in increasing order.
-  std::deque<int64_t> running_requests_;
+  std::deque<int64_t> running_requests_ GUARDED_BY(mutex_);
+  bool running_requests_closed_ = false;
   // Ids of complete requests, minimal request is on top.
   // Contains only ids greater than first running request id, otherwise entry is removed
   // from both collections.
@@ -2981,8 +2984,8 @@ void TransactionParticipant::RequestStatusAt(const StatusRequest& request) {
   return impl_->RequestStatusAt(request);
 }
 
-Result<int64_t> TransactionParticipant::RegisterRequest() {
-  return impl_->RegisterRequest();
+Result<int64_t> TransactionParticipant::RegisterRequest(bool allow_when_closing) {
+  return impl_->RegisterRequest(allow_when_closing);
 }
 
 void TransactionParticipant::UnregisterRequest(int64_t request) {

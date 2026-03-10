@@ -47,6 +47,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
@@ -1852,10 +1853,8 @@ Status Tablet::WriteTransactionalBatch(
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS(
-        TryAgain,
-        Format("Transaction metadata missing: $0, looks like it was just aborted", transaction_id),
-        Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+    return CreateAbortedStatus(
+        "Transaction metadata missing: $0, looks like it was just aborted", transaction_id);
   }
 
   auto isolation_level = prepare_batch_data->first;
@@ -1873,7 +1872,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
@@ -3319,10 +3318,10 @@ void SleepToThrottleRate(
 
 }  // namespace
 
-Result<RequestScope> Tablet::CreateRequestScope() {
+Result<RequestScope> Tablet::CreateRequestScope(bool allow_when_closing) {
   RequestScope scope;
   if (transaction_participant_) {
-    return RequestScope::Create(transaction_participant_.get());
+    return RequestScope::Create(transaction_participant_.get(), allow_when_closing);
   }
   return scope;
 }

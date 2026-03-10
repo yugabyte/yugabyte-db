@@ -1789,9 +1789,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
           << "Request to unknown transaction " << id << ": "
           << state.ShortDebugString();
-      return STATUS_EC_FORMAT(
-          Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-          "Transaction $0 expired or aborted by a conflict", id);
+      return CreateExpiredStatus("Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {

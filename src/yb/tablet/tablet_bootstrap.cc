@@ -1743,9 +1743,10 @@ class TabletBootstrap {
     }
 
     auto apply_status = tablet_->ApplyRowOperations(&operation, apply_to_storages);
-    // Failure is regular case, since could happen because transaction was aborted, while
+    // Expiration is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
-    LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
+    LOG_IF(FATAL, !apply_status.ok() && !IsTxnAborted(apply_status))
+        << "Apply operation failed: " << apply_status;
 
     tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
     return Status::OK();
