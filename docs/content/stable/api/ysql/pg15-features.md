@@ -138,7 +138,7 @@ The following PG15 features are not yet implemented but are planned for the futu
 | --------| ----------- |
 
 | [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
-| INSERT, UPDATE or DELETE in one statement. |
+| INSERT, UPDATE, or DELETE in one statement. |
 
 | [Nondeterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)
 | Consider strings to be equal even if they consist of different bytes, for example, case-insensitive, or accent-insensitive comparisons. |
