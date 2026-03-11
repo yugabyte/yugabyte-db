@@ -542,6 +542,12 @@ void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::k
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster);
+
+Status WaitForTabletHidden(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
+
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 
 // Helper to check if a row exists in a tablet using tserver proxy directly

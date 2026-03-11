@@ -1941,4 +1941,27 @@ Result<bool> RowExistsInTablet(
   return row_count > 0;
 }
 
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster) {
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    auto* ts = cluster->mini_tablet_server(i)->server();
+    ts->client_future().get()->ClearAllMetaCachesOnServer();
+  }
+}
+
+Status WaitForTabletHidden(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  return WaitFor(
+      [cluster, &tablet_id]() -> Result<bool> {
+        auto& catalog_manager =
+            VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+        auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+        auto lock = tablet_info->LockForRead();
+        if (lock->is_hidden()) {
+          LOG(INFO) << "Tablet " << tablet_id << " is now hidden";
+          return true;
+        }
+        return false;
+      },
+      timeout, Format("Wait for tablet $0 to be hidden", tablet_id));
+}
+
 }  // namespace yb
