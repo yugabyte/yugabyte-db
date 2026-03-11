@@ -106,7 +106,7 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 - All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
 - All existing passwords were encrypted using the MD5 hashing algorithm.
 
-Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example:
+Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For example:
 
 ```sh
 --ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
