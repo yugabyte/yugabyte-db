@@ -277,3 +277,6 @@ inline size_t hash_value(const Uuid& uuid) {
 using UuidHash = boost::hash<Uuid>;
 
 } // namespace yb
+
+template <>
+struct std::hash<yb::Uuid> : public yb::UuidHash {};

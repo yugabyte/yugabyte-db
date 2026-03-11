@@ -130,6 +130,14 @@ class PackedRowData {
     return active_coprefix_dropped_;
   }
 
+  bool active_coprefix_missing_schema_has_table_tombstone() const {
+    return active_coprefix_missing_schema_has_table_tombstone_;
+  }
+
+  void set_active_coprefix_missing_schema_has_table_tombstone() {
+    active_coprefix_missing_schema_has_table_tombstone_ = true;
+  }
+
   bool can_start_packing() const {
     return new_packing_.packed_row_version.has_value();
   }
@@ -439,6 +447,8 @@ class PackedRowData {
     }
     RETURN_NOT_OK(Flush());
 
+    active_coprefix_missing_schema_has_table_tombstone_ = false;
+
     auto packing = GetCompactionSchemaInfo(coprefix);
     if (!packing.ok()) {
       if (packing.status().IsNotFound()) {
@@ -512,6 +522,11 @@ class PackedRowData {
 
   // True if the active coprefix is for a dropped table.
   bool active_coprefix_dropped_ = false;
+
+  // True if a table-level tombstone has been seen for the current missing-schema coprefix.
+  // When set, row-level tombstones for this coprefix are redundant and can be dropped.
+  // Otherwise, we keep the row-level tombstones to not reveal older data for this coprefix.
+  bool active_coprefix_missing_schema_has_table_tombstone_ = false;
 
   CompactionSchemaInfo new_packing_;
   std::optional<dockv::RowPackerVariant> packer_;
@@ -827,7 +842,35 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   RETURN_NOT_OK(dockv::SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
   RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
 
+  EncodedDocHybridTime encoded_doc_ht;
+  RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
+
   if (packed_row_.active_coprefix_dropped()) {
+    VLOG_WITH_FUNC(3) << "Active coprefix dropped: " << key.ToDebugHexString()
+                      << " => " << value.ToDebugHexString();
+    // During partial compaction, removing tombstones may expose older records from SST files not
+    // included in this compaction. This is relevant because cotable_id/colocation_id can be
+    // reused. For example: https://github.com/yugabyte/yugabyte-db/issues/28314.
+    auto value_slice = value;
+    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice)); // Move to the actual value.
+    if (value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
+        CanHaveOtherDataBefore(encoded_doc_ht)) {
+      // If a table-level tombstone (empty DocKey) is present, it masks all row-level data,
+      // making individual row tombstones redundant. We detect table tombstones via
+      // sub_key_ends_.size() == 1: DecodeDocKeyAndSubKeyEnds skips the doc-key end for table
+      // tombstones, leaving only the coprefix end.
+      if (sub_key_ends_.size() == 1) {
+        packed_row_.set_active_coprefix_missing_schema_has_table_tombstone();
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping table-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+      if (!packed_row_.active_coprefix_missing_schema_has_table_tombstone()) {
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping row-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+    }
+
+    // Can safely remove the record.
     return Status::OK();
   }
 
@@ -844,8 +887,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   if (num_shared_components < overwrite_.size()) {
     overwrite_.erase(overwrite_.begin() + num_shared_components, overwrite_.end());
   }
-  EncodedDocHybridTime encoded_doc_ht;
-  RETURN_NOT_OK(DocHybridTime::EncodedFromEnd(key, &encoded_doc_ht));
+
   // We're comparing the hybrid time in this key with the stack top of overwrite_ht_ after
   // truncating the stack to the number of components in the common prefix of previous and current
   // key.
