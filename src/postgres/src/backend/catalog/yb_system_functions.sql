@@ -129,6 +129,31 @@ LANGUAGE INTERNAL
 IMMUTABLE PARALLEL SAFE
 AS 'yb_compute_row_ybctid';
 
+CREATE OR REPLACE FUNCTION
+  yb_active_session_history(start_time TIMESTAMPTZ DEFAULT NULL,
+                            end_time TIMESTAMPTZ DEFAULT NULL,
+                            OUT sample_time TIMESTAMPTZ,
+                            OUT root_request_id UUID,
+                            OUT rpc_request_id INT8,
+                            OUT wait_event_component TEXT,
+                            OUT wait_event_class TEXT,
+                            OUT wait_event TEXT,
+                            OUT top_level_node_id UUID,
+                            OUT query_id INT8,
+                            OUT pid INT4,
+                            OUT client_node_ip TEXT,
+                            OUT wait_event_aux TEXT,
+                            OUT sample_weight FLOAT4,
+                            OUT wait_event_type TEXT,
+                            OUT ysql_dbid OID,
+                            OUT wait_event_code INT8,
+                            OUT pss_mem_bytes INT8,
+                            OUT ysql_userid OID)
+RETURNS SETOF RECORD
+LANGUAGE INTERNAL
+VOLATILE ROWS 100000 PARALLEL RESTRICTED
+AS 'yb_active_session_history';
+
 --
 -- Grant and revoke statements on YB objects.
 --
