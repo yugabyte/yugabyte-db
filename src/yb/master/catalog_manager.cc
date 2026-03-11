@@ -12365,7 +12365,11 @@ Status CatalogManager::BuildLocationsForTablet(
 
     // Hidden tablet locations are needed to support xCluster, CDC, CLONE, SELECT AS-OF.
     if (l_tablet->is_hidden() && !include_hidden_tablets) {
-      return STATUS_FORMAT(NotFound, "Tablet $0 hidden", tablet->id());
+      std::vector<TabletId> split_tablet_ids(
+          l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
+      return STATUS(
+          NotFound, Format("Tablet $0 hidden", tablet->id()),
+          SplitChildTabletIdsData(split_tablet_ids));
     }
 
     if (PREDICT_FALSE(l_tablet->is_deleted())) {
