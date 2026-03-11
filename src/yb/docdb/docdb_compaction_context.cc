@@ -131,6 +131,14 @@ class PackedRowData {
     return active_coprefix_missing_schema_;
   }
 
+  bool active_coprefix_missing_schema_has_table_tombstone() const {
+    return active_coprefix_missing_schema_has_table_tombstone_;
+  }
+
+  void set_active_coprefix_missing_schema_has_table_tombstone() {
+    active_coprefix_missing_schema_has_table_tombstone_ = true;
+  }
+
   bool can_start_packing() const {
     return new_packing_.packed_row_version.has_value();
   }
@@ -454,6 +462,8 @@ class PackedRowData {
     }
     RETURN_NOT_OK(Flush());
 
+    active_coprefix_missing_schema_has_table_tombstone_ = false;
+
     auto packing = GetCompactionSchemaInfo(coprefix);
     if (!packing.ok()) {
       if (packing.status().IsNotFound()) {
@@ -527,6 +537,11 @@ class PackedRowData {
 
   // True if the active coprefix is for a table that does not exist.
   bool active_coprefix_missing_schema_ = false;
+
+  // True if a table-level tombstone has been seen for the current missing-schema coprefix.
+  // When set, row-level tombstones for this coprefix are redundant and can be dropped.
+  // Otherwise, we keep the row-level tombstones to not reveal older data for this coprefix.
+  bool active_coprefix_missing_schema_has_table_tombstone_ = false;
 
   CompactionSchemaInfo new_packing_;
   std::optional<dockv::RowPackerVariant> packer_;
@@ -967,6 +982,33 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // This is used for xCluster DDL replication to handle upcoming colocated tables that have not yet
   // been created on the target side.
   if (packed_row_.active_coprefix_missing_schema()) {
+    VLOG_WITH_FUNC(3) << "Active coprefix missing schema: " << key.ToDebugHexString()
+                      << " => " << value.ToDebugHexString();
+    // During partial compaction, removing tombstones may expose older records from SST files not
+    // included in this compaction. This is relevant because cotable_id/colocation_id can be
+    // reused. For example: https://github.com/yugabyte/yugabyte-db/issues/28314.
+    auto value_slice = value;
+    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+    if (value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
+        CanHaveOtherDataBefore(encoded_doc_ht)) {
+      // If a table-level tombstone (empty DocKey) is present, it masks all row-level data,
+      // making individual row tombstones redundant. We detect table tombstones via
+      // sub_key_ends_.size() == 1: DecodeDocKeyAndSubKeyEnds skips the doc-key end for table
+      // tombstones, leaving only the coprefix end.
+      if (sub_key_ends_.size() == 1) {
+        packed_row_.set_active_coprefix_missing_schema_has_table_tombstone();
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping table-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+      if (!packed_row_.active_coprefix_missing_schema_has_table_tombstone()) {
+        // Having a row-level tombstone without a table-level tombstone for a missing-schema
+        // coprefix is not generally expected. However, let's be conservative here and keep
+        // the row-level tombstone. Maybe some info/warning would be useful here.
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping row-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+    }
+
     return Status::OK();
   }
 
