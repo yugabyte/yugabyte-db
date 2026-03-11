@@ -58,11 +58,11 @@ public class TestPgAuthorization extends BasePgSQLTest {
     flags.put("ysql_hba_conf", CUSTOM_PG_HBA_CONFIG);
     if(isTestRunningWithConnectionManager()) {
        flags.put("allowed_preview_flags_csv",
-                "ysql_conn_mgr_version_matching,"
-                + "ysql_conn_mgr_version_matching_connect_higher_version");
+                "ysql_conn_mgr_alter_guc_adoption_strategy,"
+                + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
       flags.put("enable_ysql_conn_mgr", "true");
-      flags.put("ysql_conn_mgr_version_matching", "true");
-      flags.put("ysql_conn_mgr_version_matching_connect_higher_version", "true");
+      flags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+      flags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", "-1");
     }
     return flags;
   }

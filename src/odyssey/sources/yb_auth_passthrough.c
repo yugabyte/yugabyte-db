@@ -512,6 +512,19 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 	return -1;
 }
 
+static inline int64_t yb_parse_logical_client_version(char *value)
+{
+	char *endptr;
+	long long parsed_lcv;
+
+	errno = 0;
+	parsed_lcv = strtoll(value, &endptr, 10);
+	if (errno != 0 || endptr == value || *endptr != '\0')
+		return -1;
+
+	return (int64_t)parsed_lcv;
+}
+
 int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 {
 	od_global_t *global = client->global;
@@ -629,9 +642,24 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				name_len, name, value_len, value, flags);
 
 			/* Parse the yb_logical_client_version to store it in server */
-			if (name_len == sizeof("yb_logical_client_version") &&
-			    strcmp("yb_logical_client_version", name) == 0) {
-				client->logical_client_version = atoi(value);
+			if (name_len == sizeof(YB_LOGICAL_CLIENT_VERSION_STR) &&
+			    strcmp(YB_LOGICAL_CLIENT_VERSION_STR, name) == 0) {
+				int64_t parsed_lcv =
+					yb_parse_logical_client_version(value);
+				if (parsed_lcv == -1) {
+					od_error(
+						&instance->logger, "startup",
+						NULL, server,
+						"failed to parse yb_logical_client_version: %.*s",
+						value_len, value);
+					machine_msg_free(msg);
+					return -1;
+				}
+
+				client->yb_logical_client_version = parsed_lcv;
+				yb_od_router_expire_stale_lcv_servers(
+					client->global->router,
+					client->yb_logical_client_version);
 				machine_msg_free(msg);
 				break;
 			}
