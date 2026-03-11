@@ -2993,9 +2993,8 @@
           "type" : "string"
         },
         "uuid" : {
-          "description" : "AZ UUID",
+          "description" : "AZ UUID. This must be specified for existing AZs on update",
           "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         }
       },
