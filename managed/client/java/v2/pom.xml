@@ -5,9 +5,9 @@
     <artifactId>yba-client-v2</artifactId>
     <packaging>jar</packaging>
     <name>yba-client-v2</name>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <url>https://github.com/openapitools/openapi-generator</url>
-    <description>Java client for Yugayte Anywhere</description>
+    <description>Java V2 client for Yugayte Anywhere</description>
     <scm>
         <connection>scm:git:git@github.com:openapitools/openapi-generator.git</connection>
         <developerConnection>scm:git:git@github.com:openapitools/openapi-generator.git</developerConnection>

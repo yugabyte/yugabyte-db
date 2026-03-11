@@ -278,7 +278,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.0.0" % Test,
 )
 
 // Clear default resolvers.
@@ -683,6 +683,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
+    version := "1.0.0",
     target := file("client/java/target/v1"),
   )
 
@@ -697,6 +698,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
+    version := "1.0.0",
     target := file("client/java/target/v2"),
   )
 
