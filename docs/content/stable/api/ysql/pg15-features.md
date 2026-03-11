@@ -191,6 +191,14 @@ SELECT pid, ssl, version FROM pg_stat_ssl;
 44345 |    t   | TLSv1.2 |
 ```
 
+### Default password encryption
+
+In versions of YugabyteDB prior to v2025.2 (and versions of PostgreSQL prior to 14), the default method for `password_encryption` was `md5`.
+
+Starting from YugabyteDB v2025.2, the default is `scram-sha-256`.
+
+Refer to [Password authentication methods](../../../secure/authentication/password-authentication/#password-authentication-methods).
+
 ### CREATE permission on public schema revoked for new users
 
 In versions of YugabyteDB prior to v2.25 (and versions of PostgreSQL prior to 15), whenever you create a database user, that user is granted [CREATE](../the-sql-language/statements/dcl_grant/#:~:text=the%20specified%20table.-,CREATE,-For%20databases%2C%20this) and [USAGE](../the-sql-language/statements/dcl_grant/#:~:text=of%20the%20function.-,USAGE,-For%20schemas%2C%20this) privileges on the public schema by default.
