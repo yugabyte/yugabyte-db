@@ -1317,7 +1317,10 @@ public enum TaskType {
 
   OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class),
 
-  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class);
+  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class),
+
+  SaveSoftwareUpgradeProgress(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class);
 
   private final Class<? extends ITask> taskClass;
 

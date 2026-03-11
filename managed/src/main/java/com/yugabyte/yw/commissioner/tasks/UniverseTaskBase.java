@@ -1003,8 +1003,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new IllegalStateException(msg);
         }
         if (getUserTaskUUID().equals(universeDetails.updatingTaskUUID)) {
-          // Freeze always sets this to the UUID of the currently run task. If it is already set to
-          // the current task UUID, freeze is already run for this task.
           String msg = "Universe " + universe.getUniverseUUID() + " is already frozen";
           log.error(msg);
           throw new IllegalStateException(msg);
@@ -1243,9 +1241,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (isFirstTry()) {
         createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
-      } else {
+      } else if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
         createFreezeUniverseTask(universeUuid, retryTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      } else {
+        log.info(
+            "Skipping freeze for universe {} as it is already frozen by task {}",
+            universeUuid,
+            getUserTaskUUID());
       }
       // Run to apply the change first before adding the rest of the subtasks.
       getRunnableTask().runSubTasks();
@@ -5684,6 +5687,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     params.retainPrevYBSoftwareConfig = retainPrevYBSoftwareConfig;
     UpdateUniverseSoftwareUpgradeState task = createTask(UpdateUniverseSoftwareUpgradeState.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a subtask that saves software upgrade progress and pauses after this subtask group. */
+  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
+      boolean mastersUpgradeCompleted,
+      List<UUID> primaryClusterAZsCompleted,
+      Map<UUID, List<UUID>> readReplicaClusterAZsCompleted) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SaveSoftwareUpgradeProgress");
+    subTaskGroup.setPausedAfter(true);
+    SaveSoftwareUpgradeProgress.Params params = new SaveSoftwareUpgradeProgress.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.mastersUpgradeCompleted = mastersUpgradeCompleted;
+    params.primaryClusterAZsCompleted =
+        primaryClusterAZsCompleted != null ? new ArrayList<>(primaryClusterAZsCompleted) : null;
+    params.readReplicaClusterAZsCompleted =
+        readReplicaClusterAZsCompleted != null
+            ? new HashMap<>(readReplicaClusterAZsCompleted)
+            : null;
+    SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

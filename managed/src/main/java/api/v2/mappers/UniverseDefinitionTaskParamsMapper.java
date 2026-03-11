@@ -229,7 +229,8 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "FINALIZING", source = "Finalizing"),
     @ValueMapping(target = "FINALIZEFAILED", source = "FinalizeFailed"),
     @ValueMapping(target = "ROLLINGBACK", source = "RollingBack"),
-    @ValueMapping(target = "ROLLBACKFAILED", source = "RollbackFailed")
+    @ValueMapping(target = "ROLLBACKFAILED", source = "RollbackFailed"),
+    @ValueMapping(target = "PAUSED", source = "Paused")
   })
   UniverseInfo.SoftwareUpgradeStateEnum mapSoftwareUpgradeState(
       UniverseDefinitionTaskParams.SoftwareUpgradeState state);

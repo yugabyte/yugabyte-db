@@ -104,6 +104,7 @@ properties:
       - FinalizeFailed
       - RollingBack
       - RollbackFailed
+      - Paused
     readOnly: true
   is_software_rollback_allowed:
     description: Whether a rollback of the last YugabyteDB upgrade operation is allowed

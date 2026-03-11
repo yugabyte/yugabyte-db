@@ -90,6 +90,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
@@ -591,6 +592,103 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testResumeCanarySoftwareUpgradeSuccess() {
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    storedParams.ybSoftwareVersion = "2.21.0.0-b2";
+    storedParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.save();
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.softwareUpgradeState = SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              u.setUniverseDetails(details);
+            });
+
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenReturn(taskUUID);
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", taskUUID.toString());
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", taskUUID.toString());
+    assertValue(json, "resourceUUID", defaultUniverse.getUniverseUUID().toString());
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.SoftwareUpgradeYB), any(SoftwareUpgradeParams.class), eq(taskUUID));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeInvalidTaskUUID() {
+    UUID nonExistentTaskUUID = UUID.randomUUID();
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", nonExistentTaskUUID.toString());
+
+    assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeWrongUniverse() {
+    Universe otherUniverse = ModelFactory.createUniverse("Other Universe", customer.getId());
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(otherUniverse.getUniverseUUID());
+    storedParams.clusters.add(otherUniverse.getUniverseDetails().getPrimaryCluster());
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.save();
+
+    otherUniverse =
+        Universe.saveDetails(
+            otherUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.softwareUpgradeState = SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              u.setUniverseDetails(details);
+            });
+
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/resume_canary";
+    ObjectNode bodyJson = Json.newObject().put("taskUUID", taskUUID.toString());
+
+    assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    verify(mockCommissioner, times(0))
+        .submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class));
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
   public void testSoftwareUpgradeNonRolling() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
@@ -820,6 +918,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     "UpgradeFailed",
     "Upgrading",
     "PreFinalize",
+    "Paused",
     "Finalizing",
     "FinalizeFailed",
     "RollingBack",

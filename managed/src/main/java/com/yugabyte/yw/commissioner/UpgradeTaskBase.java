@@ -370,7 +370,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       throw t;
     } finally {
       try {
-        if (hasRollingUpgrade) {
+        boolean isPauseRequested = getRunnableTask().isPaused();
+        if (hasRollingUpgrade && !isPauseRequested) {
           setTaskQueueAndRun(
               () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
         }

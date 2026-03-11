@@ -367,7 +367,7 @@ public class TaskExecutor {
     ITaskParams taskParams = params.getTaskParams();
     ITask task = taskTypeMap.get(params.getTaskType()).get();
     task.initialize(taskParams);
-    return createRunnableTask(task, null, taskParams.getPreviousTaskUUID());
+    return createRunnableTask(task, params.getTaskUuid(), taskParams.getPreviousTaskUUID());
   }
 
   /* Creates a RunnableTask instance for the given task. */
@@ -657,6 +657,8 @@ public class TaskExecutor {
     // Optional executor service for the subtasks.
     private ExecutorService executorService;
     private SubTaskGroupType subTaskGroupType = SubTaskGroupType.Configuring;
+    // If set, parent RunnableTask stops after this group.
+    private volatile boolean pausedAfter = false;
 
     // It is instantiated internally.
     private SubTaskGroup(String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
@@ -913,6 +915,15 @@ public class TaskExecutor {
       return this;
     }
 
+    public boolean isPausedAfter() {
+      return pausedAfter;
+    }
+
+    public SubTaskGroup setPausedAfter(boolean pausedAfter) {
+      this.pausedAfter = pausedAfter;
+      return this;
+    }
+
     private String title() {
       return String.format(
           "SubTaskGroup %s of type %s at position %d", name, subTaskGroupType.name(), position);
@@ -1059,7 +1070,11 @@ public class TaskExecutor {
       } finally {
         t = handleAfterRun(t);
         if (t == null) {
-          TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Success));
+          if (this instanceof RunnableTask && ((RunnableTask) this).isPaused()) {
+            TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Paused));
+          } else {
+            TaskInfo.updateInTxn(getTaskUUID(), tf -> tf.setTaskState(TaskInfo.State.Success));
+          }
         } else if (ExceptionUtils.hasCause(t, CancellationException.class)) {
           updateTaskDetailsOnError(TaskInfo.State.Aborted, t);
         } else {
@@ -1240,6 +1255,7 @@ public class TaskExecutor {
         new AtomicReference<>();
     // Time when the abort is set.
     private final AtomicReference<Supplier<Instant>> abortTimeSupplierRef = new AtomicReference<>();
+    private volatile boolean paused = false;
 
     RunnableTask(ITask task, UUID taskUuid) {
       super(task);
@@ -1263,6 +1279,10 @@ public class TaskExecutor {
      */
     public TaskCache getTaskCache() {
       return taskCache;
+    }
+
+    public boolean isPaused() {
+      return paused;
     }
 
     /** Invoked by the ExecutorService. Do not invoke this directly. */
@@ -1414,6 +1434,7 @@ public class TaskExecutor {
      * @param abortOnFailure boolean whether to abort peer subtasks on failure of one subtask.
      */
     public void runSubTasks(boolean abortOnFailure) {
+      paused = false;
       Throwable anyThrowable = null;
       try {
         fixSubTaskGroupType();
@@ -1444,6 +1465,10 @@ public class TaskExecutor {
             }
             // Invoke post-run method after successful completion of all subtasks.
             subTaskGroup.handleAfterGroupRun();
+            if (subTaskGroup.isPausedAfter()) {
+              paused = true;
+              break;
+            }
           } catch (CancellationException | RejectedExecutionException e) {
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (Throwable t) {
