@@ -623,6 +623,9 @@ public class Audit extends Model {
     @EnumValue("Update Universe's Proxy Configuration")
     UpdateProxyConfig,
 
+    @EnumValue("Provision Universe Nodes")
+    ProvisionUniverseNodes,
+
     @EnumValue("Clone Namespace")
     CloneNamespace,
 

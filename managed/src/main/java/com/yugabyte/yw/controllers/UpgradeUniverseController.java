@@ -22,6 +22,7 @@ import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
@@ -723,6 +724,37 @@ public class UpgradeUniverseController extends AuthenticatedController {
         upgradeUniverseHandler::rebootUniverse,
         UpgradeTaskParams.class,
         Audit.ActionType.RebootUniverse,
+        customerUUID,
+        universeUUID);
+  }
+
+  @ApiOperation(
+      value = "Provision universe nodes",
+      notes =
+          "Queues a task to provision universe nodes with YBA node agent and YNP stack."
+              + " Supports rolling upgrade.",
+      nickname = "provisionUniverseNodes",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "provision_universe_nodes_params",
+          value = "Provision Universe Nodes Params",
+          dataType = "com.yugabyte.yw.forms.ProvisionUniverseNodesParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result provisionUniverseNodes(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::provisionUniverseNodes,
+        ProvisionUniverseNodesParams.class,
+        Audit.ActionType.ProvisionUniverseNodes,
         customerUUID,
         universeUUID);
   }

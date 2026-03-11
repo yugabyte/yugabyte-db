@@ -453,6 +453,11 @@ public enum TaskType {
       CustomerTask.TaskType.Install,
       CustomerTask.TargetType.NodeAgent),
 
+  ProvisionUniverseNodes(
+      com.yugabyte.yw.commissioner.tasks.ProvisionUniverseNodes.class,
+      CustomerTask.TaskType.ProvisionUniverseNodes,
+      CustomerTask.TargetType.Universe),
+
   DeleteCustomerConfig(
       com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class,
       CustomerTask.TaskType.Delete,

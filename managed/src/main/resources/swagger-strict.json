@@ -2079,6 +2079,7 @@
             "Unlock",
             "LdapUniverseSync",
             "UpdateProxyConfig",
+            "ProvisionUniverseNodes",
             "CloneNamespace",
             "UpdateAdditionalServicesState",
             "KubernetesToggleImmutableYbc",
@@ -2574,6 +2575,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -5361,6 +5363,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -8469,6 +8472,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -9277,6 +9281,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -10795,6 +10800,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -11520,6 +11526,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -15630,6 +15637,669 @@
       },
       "type" : "object"
     },
+    "ProvisionUniverseNodesParams" : {
+      "properties" : {
+        "allowInsecure" : {
+          "type" : "boolean"
+        },
+        "arch" : {
+          "enum" : [
+            "x86_64",
+            "aarch64"
+          ],
+          "type" : "string"
+        },
+        "autoRollbackPerformed" : {
+          "type" : "boolean"
+        },
+        "capability" : {
+          "enum" : [
+            "READ_ONLY",
+            "EDITS_ALLOWED"
+          ],
+          "type" : "string"
+        },
+        "clientRootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusters" : {
+          "items" : {
+            "$ref" : "#/definitions/Cluster"
+          },
+          "maxItems" : 2147483647,
+          "minItems" : 1,
+          "type" : "array"
+        },
+        "cmkArn" : {
+          "description" : "Amazon Resource Name (ARN) of the CMK",
+          "type" : "string"
+        },
+        "communicationPorts" : {
+          "$ref" : "#/definitions/CommunicationPorts",
+          "description" : "Communication ports"
+        },
+        "creatingUser" : {
+          "$ref" : "#/definitions/Users"
+        },
+        "currentClusterType" : {
+          "enum" : [
+            "PRIMARY",
+            "ASYNC",
+            "ADDON"
+          ],
+          "type" : "string"
+        },
+        "deviceInfo" : {
+          "$ref" : "#/definitions/DeviceInfo",
+          "description" : "Device information"
+        },
+        "enableYbc" : {
+          "type" : "boolean"
+        },
+        "encryptionAtRestConfig" : {
+          "$ref" : "#/definitions/EncryptionAtRestConfig",
+          "description" : "Encryption at rest configation"
+        },
+        "errorString" : {
+          "description" : "Error message",
+          "type" : "string"
+        },
+        "expectedUniverseVersion" : {
+          "description" : "Expected universe version",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "extraDependencies" : {
+          "$ref" : "#/definitions/ExtraDependencies",
+          "description" : "Extra dependencies"
+        },
+        "importedState" : {
+          "enum" : [
+            "NONE",
+            "STARTED",
+            "MASTERS_ADDED",
+            "TSERVERS_ADDED",
+            "IMPORTED"
+          ],
+          "type" : "string"
+        },
+        "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
+        "isSoftwareRollbackAllowed" : {
+          "description" : "Available since YBA version 2.20.2.0",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "itestS3PackagePath" : {
+          "type" : "string"
+        },
+        "kubernetesUpgradeSupported" : {
+          "type" : "boolean"
+        },
+        "nextClusterIndex" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "nodeDetailsSet" : {
+          "description" : "Node details",
+          "items" : {
+            "$ref" : "#/definitions/NodeDetails"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodeExporterUser" : {
+          "description" : "Node exporter user",
+          "type" : "string"
+        },
+        "nodeNames" : {
+          "description" : "Node names to provision (empty means all nodes)",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "nodePrefix" : {
+          "type" : "string"
+        },
+        "nodesResizeAvailable" : {
+          "type" : "boolean"
+        },
+        "placementModificationTaskUuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "platformUrl" : {
+          "type" : "string"
+        },
+        "platformVersion" : {
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "prevYBSoftwareConfig" : {
+          "$ref" : "#/definitions/PrevYBSoftwareConfig",
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
+        },
+        "previousTaskUUID" : {
+          "description" : "Previous task UUID of a retry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "remotePackagePath" : {
+          "type" : "string"
+        },
+        "resetAZConfig" : {
+          "type" : "boolean"
+        },
+        "rootAndClientRootCASame" : {
+          "type" : "boolean"
+        },
+        "rootCA" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "setTxnTableWaitCountFlag" : {
+          "type" : "boolean"
+        },
+        "sleepAfterMasterRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "sleepAfterTServerRestartMillis" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "softwareUpgradeState" : {
+          "enum" : [
+            "Ready",
+            "Upgrading",
+            "UpgradeFailed",
+            "PreFinalize",
+            "Finalizing",
+            "FinalizeFailed",
+            "RollingBack",
+            "RollbackFailed"
+          ],
+          "type" : "string"
+        },
+        "sourceXClusterConfigs" : {
+          "description" : "The source universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "sshUserOverride" : {
+          "type" : "string"
+        },
+        "targetXClusterConfigs" : {
+          "description" : "The target universe's xcluster replication relationships",
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "universePaused" : {
+          "type" : "boolean"
+        },
+        "universeUUID" : {
+          "description" : "Associated universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "updateInProgress" : {
+          "type" : "boolean"
+        },
+        "updateOptions" : {
+          "items" : {
+            "enum" : [
+              "UPDATE",
+              "FULL_MOVE",
+              "SMART_RESIZE_NON_RESTART",
+              "SMART_RESIZE",
+              "GFLAGS_UPGRADE"
+            ],
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "updateSucceeded" : {
+          "type" : "boolean"
+        },
+        "updatingTask" : {
+          "enum" : [
+            "CloudBootstrap",
+            "CloudCleanup",
+            "CreateCassandraTable",
+            "CreateUniverse",
+            "ReadOnlyClusterCreate",
+            "ReadOnlyKubernetesClusterDelete",
+            "ReadOnlyClusterDelete",
+            "CreateKubernetesUniverse",
+            "ReadOnlyKubernetesClusterCreate",
+            "DestroyUniverse",
+            "PauseUniverse",
+            "ResumeUniverse",
+            "PauseKubernetesUniverse",
+            "ResumeKubernetesUniverse",
+            "DestroyKubernetesUniverse",
+            "DeleteTable",
+            "BackupUniverse",
+            "RestoreBackup",
+            "MultiTableBackup",
+            "CreateBackup",
+            "ConfigureDBApis",
+            "ConfigureDBApisKubernetes",
+            "CreatePitrConfig",
+            "UpdatePitrConfig",
+            "DeletePitrConfig",
+            "RestoreSnapshotSchedule",
+            "EditUniverse",
+            "EditKubernetesUniverse",
+            "ExternalScript",
+            "ImportIntoTable",
+            "RunApiTriggeredHooks",
+            "AddOnClusterCreate",
+            "AddOnClusterDelete",
+            "UpgradeUniverse",
+            "UpdateLoadBalancerConfig",
+            "RestartUniverse",
+            "RestartUniverseKubernetesUpgrade",
+            "SoftwareUpgrade",
+            "SoftwareKubernetesUpgrade",
+            "KubernetesOverridesUpgrade",
+            "GFlagsUpgrade",
+            "GFlagsKubernetesUpgrade",
+            "CertsRotate",
+            "CertsRotateKubernetesUpgrade",
+            "TlsToggle",
+            "VMImageUpgrade",
+            "SystemdUpgrade",
+            "RebootUniverse",
+            "UpgradeKubernetesUniverse",
+            "DeleteNodeFromUniverse",
+            "StopNodeInUniverse",
+            "StartNodeInUniverse",
+            "AddNodeToUniverse",
+            "RemoveNodeFromUniverse",
+            "RebootNodeInUniverse",
+            "ReleaseInstanceFromUniverse",
+            "RotateAccessKey",
+            "SetUniverseKey",
+            "CreateAndRotateAccessKey",
+            "CreateKMSConfig",
+            "EditKMSConfig",
+            "DeleteKMSConfig",
+            "UpdateDiskSize",
+            "UpdateKubernetesDiskSize",
+            "StartMasterOnNode",
+            "DeleteXClusterConfig",
+            "SyncXClusterConfig",
+            "CreateSupportBundle",
+            "CreateXClusterConfig",
+            "EditXClusterConfig",
+            "RestartXClusterConfig",
+            "RestartDrConfig",
+            "SyncDrConfig",
+            "SetDatabasesDrConfig",
+            "SetTablesDrConfig",
+            "CreateDrConfig",
+            "DeleteDrConfig",
+            "FailoverDrConfig",
+            "SwitchoverDrConfig",
+            "SwitchoverDrConfigRollback",
+            "EditDrConfig",
+            "EditDrConfigParams",
+            "PauseXClusterUniverses",
+            "ResumeXClusterUniverses",
+            "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
+            "DeleteCustomerConfig",
+            "DeleteCustomerStorageConfig",
+            "ResizeNode",
+            "CreateTableSpacesInUniverse",
+            "ThirdpartySoftwareUpgrade",
+            "ModifyAuditLoggingConfig",
+            "ModifyKubernetesAuditLoggingConfig",
+            "ModifyQueryLoggingConfig",
+            "ModifyMetricsExportConfig",
+            "InstallYbcSoftware",
+            "UpgradeUniverseYbc",
+            "UpgradeYbcGFlags",
+            "UpgradeKubernetesYbcGFlags",
+            "UpdateYbcThrottleFlags",
+            "UpdateK8sYbcThrottleFlags",
+            "DisableYbc",
+            "AddGFlagMetadata",
+            "CloudProviderDelete",
+            "CreateBackupSchedule",
+            "CreateBackupScheduleKubernetes",
+            "DeleteBackupSchedule",
+            "DeleteBackupScheduleKubernetes",
+            "EditBackupSchedule",
+            "EditBackupScheduleKubernetes",
+            "CloudProviderEdit",
+            "SoftwareUpgradeYB",
+            "SoftwareKubernetesUpgradeYB",
+            "FinalizeUpgrade",
+            "FinalizeKubernetesUpgrade",
+            "RollbackUpgrade",
+            "RollbackKubernetesUpgrade",
+            "LdapUniverseSync",
+            "ReprovisionNode",
+            "ReplaceNodeInUniverse",
+            "UpdateProxyConfig",
+            "RecommissionNodeInstance",
+            "DecommissionNodeInstance",
+            "MasterFailover",
+            "SyncMasterAddresses",
+            "CreateContinuousBackup",
+            "CreateYbaBackup",
+            "RestoreYbaBackup",
+            "RestoreContinuousBackup",
+            "EnableNodeAgentInUniverse",
+            "DecommissionNode",
+            "CloneNamespace",
+            "TlsToggleKubernetes",
+            "UpdateOOMServiceState",
+            "SendUserNotification",
+            "ImportUniverse",
+            "MigrateUniverse",
+            "KubernetesToggleImmutableYbc",
+            "OperatorImportUniverse",
+            "KubernetesCheckVolumeExpansion",
+            "KubernetesPostExpansionCheckVolume",
+            "NodeCertReloadTask",
+            "UpdateUniverseConfig",
+            "CreateRootVolumes",
+            "ReplaceRootVolume",
+            "ChangeInstanceType",
+            "PersistResizeNode",
+            "PersistSystemdUpgrade",
+            "PersistUseClockbound",
+            "UpdateNodeDetails",
+            "AddAuthorizedKey",
+            "AnsibleClusterServerCtl",
+            "AnsibleConfigureServers",
+            "AnsibleDestroyServer",
+            "PauseServer",
+            "ResumeServer",
+            "AnsibleSetupServer",
+            "AnsibleCreateServer",
+            "PrecheckNodeDetached",
+            "AnsibleUpdateNodeInfo",
+            "BulkImport",
+            "ChangeMasterConfig",
+            "ChangeAdminPassword",
+            "DropTable",
+            "CreateTable",
+            "DeleteNode",
+            "DeleteBackup",
+            "DeleteBackupYb",
+            "UpdateNodeProcess",
+            "DeleteTableFromUniverse",
+            "DeleteTablesFromUniverse",
+            "DeleteKeyspace",
+            "LoadBalancerStateChange",
+            "ModifyBlackList",
+            "CheckUnderReplicatedTablets",
+            "CheckFollowerLag",
+            "CheckNodeSafeToDelete",
+            "ManipulateDnsRecordTask",
+            "RemoveUniverseEntry",
+            "SetFlagInMemory",
+            "SetNodeState",
+            "SwamperTargetsFileUpdate",
+            "UniverseUpdateSucceeded",
+            "RegisterUniverseWithPaCollector",
+            "UnregisterUniverseFromPaCollector",
+            "UpdateAndPersistGFlags",
+            "UpdateAndPersistKubernetesOverrides",
+            "HandleKubernetesNamespacedServices",
+            "UpdatePlacementInfo",
+            "UpdateSoftwareVersion",
+            "UpdateUniverseYbcDetails",
+            "YBCBackupSucceeded",
+            "UpdateUniverseYbcGflagsDetails",
+            "SetYbcThrottleParamsInMemory",
+            "VerifyNodeSSHAccess",
+            "WaitForDataMove",
+            "WaitForLeaderBlacklistCompletion",
+            "WaitForFollowerLag",
+            "WaitForLoadBalance",
+            "WaitForMasterLeader",
+            "WaitForServer",
+            "WaitForYbcServer",
+            "WaitForTServerHeartBeats",
+            "DeleteClusterFromUniverse",
+            "InstanceActions",
+            "WaitForServerReady",
+            "WaitForClockSync",
+            "WaitForDuration",
+            "RunExternalScript",
+            "RemoveAuthorizedKey",
+            "UpdateUniverseAccessKey",
+            "ManageLoadBalancerGroup",
+            "BootstrapProducer",
+            "CheckBootstrapRequired",
+            "DeleteBootstrapIds",
+            "XClusterNetworkConnectivityCheck",
+            "DeleteReplication",
+            "DeleteXClusterConfigEntry",
+            "DeleteXClusterTableConfigEntry",
+            "DeleteDrConfigEntry",
+            "WaitForReplicationDrain",
+            "ResetXClusterConfigEntry",
+            "SetReplicationPaused",
+            "ChangeXClusterRole",
+            "SetDrStates",
+            "UpdateDrConfigParams",
+            "XClusterAddNamespaceToOutboundReplicationGroup",
+            "AddNamespaceToXClusterReplication",
+            "XClusterRemoveNamespaceFromTargetUniverse",
+            "XClusterRemoveNamespaceFromOutboundReplication",
+            "SetRestoreTime",
+            "XClusterConfigSetup",
+            "XClusterConfigSetStatus",
+            "XClusterConfigSetStatusForTables",
+            "XClusterConfigSetStatusForNamespaces",
+            "XClusterConfigModifyTables",
+            "XClusterConfigRename",
+            "XClusterConfigSync",
+            "XClusterConfigUpdateMasterAddresses",
+            "XClusterInfoPersist",
+            "ReplicateNamespaces",
+            "CheckXUniverseAutoFlags",
+            "PromoteSecondaryConfigToMainConfig",
+            "DeleteRemnantStreams",
+            "CreateOutboundReplicationGroup",
+            "XClusterDbReplicationSetup",
+            "DeleteReplicationOnSource",
+            "DeleteXClusterBackupRestoreEntries",
+            "AddExistingPitrToXClusterConfig",
+            "DrConfigWebhookCall",
+            "SetRestoreState",
+            "CloudAccessKeyCleanup",
+            "CloudAccessKeySetup",
+            "CloudInitializer",
+            "CloudProviderCleanup",
+            "CloudRegionCleanup",
+            "CloudRegionSetup",
+            "CloudSetup",
+            "BackupTable",
+            "BackupTableYb",
+            "BackupTableYbc",
+            "BackupUniverseKeys",
+            "RestoreBackupYb",
+            "RestoreBackupYbc",
+            "RestoreUniverseKeys",
+            "RestoreUniverseKeysYb",
+            "RestoreUniverseKeysYbc",
+            "SetBackupHiddenState",
+            "SetRestoreHiddenState",
+            "RestorePreflightValidate",
+            "BackupPreflightValidate",
+            "WaitForLeadersOnPreferredOnly",
+            "EnableEncryptionAtRest",
+            "DisableEncryptionAtRest",
+            "DestroyEncryptionAtRest",
+            "KubernetesCommandExecutor",
+            "KubernetesWaitForPod",
+            "KubernetesCheckNumPod",
+            "PodDisruptionBudgetPolicy",
+            "SetActiveUniverseKeys",
+            "WaitForEncryptionKeyInMemory",
+            "UnivSetCertificate",
+            "CreateAlertDefinitions",
+            "ManageAlertDefinitions",
+            "ManageCatalogUpgradeSuperUser",
+            "UpdatePitrConfigIntermittentMinRecoverTime",
+            "MarkSourceMetric",
+            "UniverseSetTlsParams",
+            "UniverseUpdateRootCert",
+            "ResetUniverseVersion",
+            "DeleteCertificate",
+            "SetNodeStatus",
+            "CheckMasterLeader",
+            "CheckMasters",
+            "CheckTServers",
+            "WaitForTServerHBs",
+            "CreatePrometheusSwamperConfig",
+            "PreflightNodeCheck",
+            "RunYsqlUpgrade",
+            "PromoteAutoFlags",
+            "UpdateSoftwareUpdatePrevConfig",
+            "RollbackAutoFlags",
+            "StoreAutoFlagConfigVersion",
+            "CheckUpgrade",
+            "CheckCertificateConfig",
+            "CheckMemory",
+            "CheckLocale",
+            "CheckShellConnectivity",
+            "CheckGlibc",
+            "CheckOpentelemetryOperator",
+            "PGUpgradeTServerCheck",
+            "CleanUpPGUpgradeDataDir",
+            "RunYsqlMajorVersionCatalogUpgrade",
+            "RollbackYsqlMajorVersionCatalogUpgrade",
+            "FinalizeYsqlMajorCatalogUpgrade",
+            "ValidateGFlags",
+            "CheckSoftwareVersion",
+            "UpdateMountedDisks",
+            "TransferXClusterCerts",
+            "CreateTableSpaces",
+            "ManageOtelCollector",
+            "UpdateAndPersistAuditLoggingConfig",
+            "UpdateAndPersistQueryLoggingConfig",
+            "UpdateAndPersistMetricsExportConfig",
+            "MarkUniverseForHealthScriptReUpload",
+            "RebootServer",
+            "HardRebootServer",
+            "RunHooks",
+            "UpdateUniverseTags",
+            "UpgradeYbc",
+            "InstallYbcSoftwareOnK8s",
+            "InstanceExistCheck",
+            "DeleteRootVolumes",
+            "InstallingThirdPartySoftware",
+            "InstallNodeAgent",
+            "WaitForNodeAgent",
+            "CloudImageBundleSetup",
+            "UpdateClusterUserIntent",
+            "UpdateClusterAPIDetails",
+            "UpdateUniverseState",
+            "UpdateUniverseCommunicationPorts",
+            "UpdateUniverseIntent",
+            "UpdateConsistencyCheck",
+            "FreezeUniverse",
+            "QueryLdapServer",
+            "DbLdapSync",
+            "CheckForClusterServers",
+            "CheckLeaderlessTablets",
+            "CheckNodesAreSafeToTakeDown",
+            "ValidateNodeDiskSize",
+            "CheckNodeReachable",
+            "CheckDbNodePortConnectivity",
+            "SupportBundleComponentDownload",
+            "WaitStartingFromTime",
+            "RemoveNodeAgent",
+            "UpdateUniverseFields",
+            "RunNodeCommand",
+            "MasterLeaderStepdown",
+            "SetupYNP",
+            "YNPProvisioning",
+            "ConfigureOOMServiceOnNode",
+            "CheckSshConnection",
+            "FetchServerConf",
+            "DoCapacityReservation",
+            "DeleteCapacityReservation",
+            "DisablePitrConfig",
+            "EnablePitrConfig",
+            "UpdateAndPersistKubernetesImmutableYbc",
+            "TablespaceValidationOnRemove",
+            "CheckServiceLiveness",
+            "CheckNodeCommandExecution",
+            "CheckNodeDataDirDiskSpace",
+            "OperatorImportResource"
+          ],
+          "type" : "string"
+        },
+        "updatingTaskUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "upgradeOption" : {
+          "enum" : [
+            "Rolling",
+            "Non-Rolling",
+            "Non-Restart"
+          ],
+          "type" : "string"
+        },
+        "useNewHelmNamingStyle" : {
+          "type" : "boolean"
+        },
+        "userAZSelected" : {
+          "type" : "boolean"
+        },
+        "xclusterInfo" : {
+          "$ref" : "#/definitions/XClusterInfo",
+          "description" : "XCluster related states in this universe",
+          "readOnly" : true
+        },
+        "ybPrevSoftwareVersion" : {
+          "description" : "Previous software version",
+          "type" : "string"
+        },
+        "ybcInstalled" : {
+          "type" : "boolean"
+        },
+        "ybcSoftwareVersion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "clusters",
+        "creatingUser",
+        "kubernetesUpgradeSupported",
+        "platformUrl",
+        "sleepAfterMasterRestartMillis",
+        "sleepAfterTServerRestartMillis",
+        "upgradeOption"
+      ],
+      "type" : "object"
+    },
     "ProxyConfig" : {
       "description" : "The Proxy Settings for the Universe",
       "properties" : {
@@ -15973,6 +16643,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -17008,6 +17679,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -17843,6 +18515,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -19370,6 +20043,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -20027,6 +20701,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -20439,6 +21114,7 @@
               "PauseXClusterUniverses",
               "ResumeXClusterUniverses",
               "ReinstallNodeAgent",
+              "ProvisionUniverseNodes",
               "DeleteCustomerConfig",
               "DeleteCustomerStorageConfig",
               "ResizeNode",
@@ -21273,6 +21949,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -22424,6 +23101,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -23246,6 +23924,7 @@
               "CreateImageBundle",
               "ReprovisionNode",
               "Install",
+              "ProvisionUniverseNodes",
               "MasterFailover",
               "UpdateProxyConfig",
               "SyncMasterAddresses",
@@ -23748,6 +24427,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -24426,6 +25106,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -25246,6 +25927,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -25888,6 +26570,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -26530,6 +27213,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -27682,6 +28366,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -28811,6 +29496,7 @@
             "PauseXClusterUniverses",
             "ResumeXClusterUniverses",
             "ReinstallNodeAgent",
+            "ProvisionUniverseNodes",
             "DeleteCustomerConfig",
             "DeleteCustomerStorageConfig",
             "ResizeNode",
@@ -43680,6 +44366,67 @@
           }
         ],
         "summary" : "Upgrade KubernetesOverrides",
+        "tags" : [
+          "Universe Upgrades Management"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/provision_nodes" : {
+      "post" : {
+        "description" : "Queues a task to provision universe nodes with YBA node agent and YNP stack. Supports rolling upgrade.",
+        "operationId" : "provisionUniverseNodes",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Provision Universe Nodes Params",
+            "in" : "body",
+            "name" : "provision_universe_nodes_params",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/ProvisionUniverseNodesParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Provision universe nodes",
         "tags" : [
           "Universe Upgrades Management"
         ]
