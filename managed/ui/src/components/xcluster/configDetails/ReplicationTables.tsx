@@ -77,9 +77,8 @@ const TABLE_MIN_PAGE_SIZE = 10;
 export function ReplicationTables(props: ReplicationTablesProps) {
   const { xClusterConfig, isTableInfoIncludedInConfig, isActive = true } = props;
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
-  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<
-    XClusterReplicationTable
-  >();
+  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] =
+    useState<XClusterReplicationTable>();
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
@@ -185,7 +184,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
-            dataFormat={(pgSchemaName: string, xClusterTable: YBTable | XClusterReplicationTable) =>
+            dataFormat={(
+              pgSchemaName: string,
+              xClusterTable: YBTable | XClusterReplicationTable
+            ) =>
               getIsXClusterReplicationTable(xClusterTable) && getIsTableInfoMissing(xClusterTable)
                 ? '-'
                 : formatSchemaName(xClusterTable.tableType, pgSchemaName)
@@ -328,14 +330,27 @@ const isTableMatchedBySearchTokens = (
 ) => {
   const candidate = {
     ...(!getIsTableInfoMissing(table) && {
-      database: { value: table.keySpace, type: FieldType.STRING },
-      schema: { value: table.pgSchemaName, type: FieldType.STRING },
-      sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
-      status: { value: table.statusLabel, type: FieldType.STRING },
-      replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
+      ...(table.keySpace && {
+        database: { value: table.keySpace, type: FieldType.STRING }
+      }),
+      ...(table.pgSchemaName && {
+        schema: { value: table.pgSchemaName, type: FieldType.STRING }
+      }),
+      ...(table.sizeBytes !== undefined &&
+        table.sizeBytes !== null && {
+          sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER }
+        }),
+      ...(table.statusLabel && {
+        status: { value: table.statusLabel, type: FieldType.STRING }
+      })
     }),
+    ...(table.replicationLag !== undefined &&
+      table.replicationLag !== null &&
+      table.replicationLag !== XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION && {
+        replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
+      }),
     table: {
-      value: getIsTableInfoMissing(table) ? table.tableUUID : table.tableName,
+      value: getIsTableInfoMissing(table) ? table.tableUUID : getTableName(table),
       type: FieldType.STRING
     }
   };
