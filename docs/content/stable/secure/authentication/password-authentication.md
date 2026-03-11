@@ -61,13 +61,15 @@ The MD5 hash algorithm is not considered secure against determined attacks. Some
 - If someone has access to a valid username/password combination, or their MD5-styled hash, they can log into any cluster where that user exists with the same username and password.
 - The "shared secret" is effectively shared over the wire every time the MD5 authentication method is used.
 
+To ease transition from MD5 to SCRAM-SHA-256, if `md5` is specified as a method in ysql_hba.conf but the user's password on the server is encrypted for SCRAM, then SCRAM-based authentication will automatically be chosen instead.
+
 ## Enable SCRAM-SHA-256 authentication
 
 To configure a YugabyteDB universe that was using MD5 authentication to use SCRAM-SHA-256, follow these steps.
 
 1. Change the password encryption to use SCRAM-SHA-256.
 
-    To change MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [`--ysql_pg_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
+    To change MD5 password encryption to use SCRAM-SHA-256, add the YB-TServer [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) flag and set the value to `scram-sha-256`:
 
     ```sh
     --ysql_pg_conf_csv=password_encryption=scram-sha-256
@@ -81,21 +83,21 @@ To configure a YugabyteDB universe that was using MD5 authentication to use SCRA
 
 2. Specify the rules for host-based authentication.
 
-    To specify rules for the use of the `scram-sha-256` authentication method, add the YB-TServer [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag and specify rules that satisfy your security requirements.
+    To specify rules for the use of the `scram-sha-256` authentication method, add the YB-TServer [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag and specify rules that satisfy your security requirements.
 
-In the following example, the `--ysql_hba_conf_csv` flag modifies the default rules that use `trust` to use SCRAM-SHA-256 authentication, changing the default values of `trust` to use `scram-sha-256`:
+    In the following example, the `--ysql_hba_conf_csv` flag modifies the default rules that use `trust` to use SCRAM-SHA-256 authentication, changing the default values of `trust` to use `scram-sha-256`:
 
-```sh
---ysql_hba_conf_csv='host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256'
-```
+    ```sh
+    --ysql_hba_conf_csv='host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256'
+    ```
 
-or in the `yb-tserver.conf`, add the following line:
+    or in the `yb-tserver.conf`, add the following line:
 
-```sh
---ysql_hba_conf_csv=host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
-```
+    ```sh
+    --ysql_hba_conf_csv=host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
+    ```
 
-For details on using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag to specify rules that satisfy your security requirements, see [Fine-grained authentication](../host-based-authentication/).
+    For details on using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag to specify rules that satisfy your security requirements, see [Fine-grained authentication](../host-based-authentication/).
 
 ## Migrate existing MD5 passwords to SCRAM-SHA-256
 
@@ -104,15 +106,19 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 - All new, or changed, passwords will be encrypted using the SCRAM-SHA-256 hashing algorithm.
 - All existing passwords were encrypted using the MD5 hashing algorithm.
 
-Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication).
+Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example:
 
-If you follow a similar approach for an existing cluster, you can enhance your cluster security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
+```sh
+--ysql_hba_conf_csv=host all all 0.0.0.0/0 md5,host all all ::0/0 md5,host all all 0.0.0.0/0 scram-sha-256,host all all ::0/0 scram-sha-256
+```
+
+If you follow this approach, you can enhance security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
 
 ## Resetting user password
 
 In PostgreSQL, if the administrator password is lost or changed to an unknown value, you can change the `pg_hba.conf` file to allow administrator access without a password. This is a static file that is used to control client authentication. To reset the password for the `postgres` user, you change the parameters in the configuration file, restart the database, and then log in as `postgres` without a password, and reset the password.
 
-The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to PostgreSQL. However, unlike PostgreSQL, the contents of the file are dynamically generated using the [`--ysql_hba_conf_csv`](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag at yb-tserver startup.
+The same is also true for YugabyteDB, although the implementation is slightly different. YugabyteDB has a `ysql_hba.conf` file similar to PostgreSQL. However, unlike PostgreSQL, the contents of the file are dynamically generated using the [--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag at yb-tserver startup.
 
 To change the `ysql_hba.conf` file to allow administrator access without a password, you restart the yb-tserver with the following `--ysql_hba_conf_csv` configuration flag:
 
