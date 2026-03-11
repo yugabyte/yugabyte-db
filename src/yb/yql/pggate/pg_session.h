@@ -211,30 +211,6 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
-  YbcReadPointHandle GetCurrentReadPoint() const {
-    return pg_txn_manager_->GetCurrentReadPoint();
-  }
-
-  TxnReadPoint GetCurrentReadPointState() const {
-    return pg_txn_manager_->GetCurrentReadPointState();
-  }
-
-  Status RestoreReadPoint(YbcReadPointHandle read_point) {
-    return pg_txn_manager_->RestoreReadPoint(read_point);
-  }
-
-  // Restores the read point to saved_read_point.read_time, but only if the current
-  // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
-  Status RestoreReadPoint(const TxnReadPoint& saved_read_point) {
-    return pg_txn_manager_->RestoreReadPoint(saved_read_point);
-  }
-
-  Status EnsureReadPoint() {
-    return pg_txn_manager_->EnsureReadPoint();
-  }
-
-  YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
-
   template<class... Args>
   [[nodiscard]] static PgSessionPtr Make(Args&&... args) {
     return std::make_shared<PgSession>(PrivateTag{}, std::forward<Args>(args)...);
@@ -249,6 +225,7 @@ class PgSession final : public std::enable_shared_from_this<PgSession> {
   std::string FlushReasonToString(const PgFlushDebugContext& debug_context) const;
 
   std::string LogPrefix() const;
+  Result<TxnReadPoint> UpdateReadPointForCatalogOps(PgOid catalog_table_oid);
 
   class RunHelper;
 
