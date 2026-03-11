@@ -274,13 +274,13 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   InitMarkerBehavior init_marker_behavior_ = InitMarkerBehavior::kOptional;
   HybridTime delete_marker_retention_time_ = HybridTime::kMax;
 
- private:
   Result<CompactionSchemaInfo> CotablePacking(
       const Uuid& table_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
   Result<CompactionSchemaInfo> ColocationPacking(
       ColocationId colocation_id, uint32_t schema_version, HybridTime history_cutoff) override;
 
+ private:
   std::atomic<int64_t> monotonic_counter_{0};
   std::optional<DocWriteBatch> doc_write_batch_;
   std::once_flag doc_reader_context_init_once_;
