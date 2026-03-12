@@ -11,7 +11,7 @@ menu:
     weight: 310
 tags:
   other: ysql
-  feature: tech-preview
+  feature: early-access
 type: docs
 ---
 
