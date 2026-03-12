@@ -546,6 +546,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_CONNECTION_POOLING
       )?.value === 'true';
 
+    const enableAzOverridesK8s =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S
+      )?.value === 'true';
+
     const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
 
     if (
@@ -603,7 +608,8 @@ class UniverseDetail extends Component {
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.UPGRADE_THIRD_PARTY_SOFTWARE);
     const isEditUniverseDisabled =
       isUniverseStatusPending ||
-      hasAsymmetricPrimaryCluster ||
+      (hasAsymmetricPrimaryCluster &&
+        !(isKubernetesUniverse && enableAzOverridesK8s)) ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_UNIVERSE) ||
       isK8ActionsDisabled;
     const isEditGFlagsDisabled =
@@ -1161,7 +1167,7 @@ class UniverseDetail extends Component {
                       >
                         <YBTooltip
                           title={
-                            hasAsymmetricPrimaryCluster
+                            hasAsymmetricPrimaryCluster && !(isKubernetesUniverse && enableAzOverridesK8s)
                               ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                               : ''
                           }

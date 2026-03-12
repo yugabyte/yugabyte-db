@@ -256,7 +256,8 @@ export const getFormData = (
     gFlags: userIntent?.specificGFlags
       ? transformSpecificGFlagToFlagsArray(userIntent?.specificGFlags)
       : transformGFlagToFlagsArray(userIntent.masterGFlags, userIntent.tserverGFlags),
-    azOverrides: userIntent.userIntentOverrides?.azOverrides,
+    azOverrides: (userIntent.azOverrides as Record<string, string>) ?? {},
+    k8sAzOverrides: userIntent.userIntentOverrides?.azOverrides ?? {},
     proxyConfig: userIntent.proxyConfig,
     specificGFlagsAzOverrides: userIntent.specificGFlags?.perAZ ?? {},
     universeOverrides: userIntent.universeOverrides,
@@ -297,6 +298,7 @@ export const getUserIntent = (
     instanceTags,
     gFlags,
     azOverrides,
+    k8sAzOverrides,
     proxyConfig,
     universeOverrides,
     inheritFlagsFromPrimary,
@@ -365,7 +367,10 @@ export const getUserIntent = (
 
   if (!_.isEmpty(advancedConfig.awsArnString)) intent.awsArnString = advancedConfig.awsArnString;
   if (!_.isEmpty(instanceTags)) intent.instanceTags = transformTagsArrayToObject(instanceTags);
-  if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
+  // Helm: userIntent.azOverrides (YAML strings per AZ)
+  if (!_.isEmpty(azOverrides)) (intent as unknown as Record<string, unknown>).azOverrides = azOverrides;
+  // K8s: userIntent.userIntentOverrides.azOverrides
+  if (!_.isEmpty(k8sAzOverrides)) intent.userIntentOverrides = { azOverrides: k8sAzOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
 

@@ -673,6 +673,18 @@
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
       },
+      "azOverrides": {
+        "modalTitle": "AZ Resource Overrides",
+        "sectionTitle": "Availability Zone Overrides",
+        "editAZOverrides": "Edit AZ Overrides",
+        "addStorageOverrides": "Add Storage Overrides",
+        "editStorageOverrides": "Edit storage overrides",
+        "addAZ": "Add AZ",
+        "addAnotherAZ": "Add Another AZ",
+        "availabilityZone": "Availability Zone",
+        "volumeCount": "Volume count",
+        "volumeSizeGib": "Volume size (Gib)"
+      },
       "instanceConfig": {
         "assignPublicIP": "Assign Public IP",
         "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
@@ -698,6 +710,7 @@
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
+        "storageClass": "Storage Class",
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
