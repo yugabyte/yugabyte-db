@@ -1,0 +1,117 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+Release Notes for Apache AGE release 1.6.0 for PostgreSQL version 15
+
+#
+#  WARNING!
+#
+#  Since there are modifications to agtype gin operators, users who are
+#  upgrading will need to drop the gin indexes before running the upgrade
+#  script and recreate them afterwards.
+#
+#  As always, please backup your database prior to any upgrade.
+#
+#  WARNING!
+#
+
+Apache AGE 1.6.0 - Release Notes
+
+     Fix issue 2205: left doesn't catch overflow (#2207)
+     Fix issue 2201: unexpected empty string behavior (#2203)
+     Add support for operators in cypher query (#2172)
+     Reimplement list comprehension (#2169)
+     Update labeler.yml (#2186)
+     Fix issue with the CI build and labeler (#2183)
+     Fix CSV import for edge with one property (#2175)
+     Remove stale bot and update .asf.yaml settings (#2171)
+     Prevent object access hook from accesing not installed namespace (#2161)
+     Fix CI build errors caused by missing dependencies (#2163)
+     Add support for external extensions (#2088)
+     Fix issue 2093: pfree() called with a NULL pointer (#2095)
+     Fix issue 1955 - List comprehension in WHERE clause (#2094)
+     Add support for fuzzystrmatch and other external extensions (#2083)
+     Fix memory leaks in functions part 1 (#2066)
+     Issue 1996 - Add agtype to json typecast (#2075)
+     Fix issue 2046: Memory leak during btree(agtype) (#2060)
+     Refactor Dockerfile to use multi-stage builds (#2004)
+     Revamp age csv loader (#2044)
+     Fix issue 2020: Memory leak (#2028)
+     Fix Issue 1907: SET on MERGE not storing edge properties (#2019)
+     Add EmitWarningsOnPlaceholders("age") (#1997)
+     Fix Issue 1988: How to update a property which is a keyword (#2005)
+     Fix obsolete docker-compose command in CIs (#2007)
+     Fix issue 1986: Failure creating label name close to MAX_LABEL_NAME_LEN (#1989)
+     Fix issue 1953 - PG Boolean used as AGTYPE object (#1959)
+     Add graph_exists function (#1958)
+     Fix issue 1956 - null key name passed. (#1957)
+     docs: add link to .NET open-source driver (#1938)
+     Add the `load_from_plugins` parameter in the Python driver to load AGE from the $libdir/plugins directory (#1935)
+     Fix issue 1910: Server crashes when using exists(vle path) (#1924)
+     Converted single line comments to multiline (#1908)
+     Add function is_valid_label_name (#1911) (#1912)
+     Fixes small typos in the python driver's README.md file (#1909)
+     Fix agtype_build_map to allow more than 50 pairs (#1901)
+     Agtype hash cmp (#1893)
+     Order some regression tests for stability on big-endian (#1892)
+     Update github stale action (#1891)
+     Make CALL YIELD grammar more precise (#1852)
+     Fix issue 1878 - Regression test failure with delete global graphs (#1881)
+     Corrected typos and grammatical errors in apache-age-basic.ipynb (#879)
+     Add workflow for stale issues and PRs (#1872)
+     Implement Returnless Unions in Subqueries (#1803)
+     [CI] Update docker image tags (#1865)
+     Add branch protection rules in .asf.yaml (#1854)
+     [CI] Update labeler github action (#1851)
+     Fix error using list comprehension with WITH * (#1838)
+     python driver psycopg3 (#1793)
+     Minor VLE and agtype_eq/ne performance updates (#1808)
+     Fix issue 1767: CREATE TABLE AS SELECT * FROM cypher, errors (#1799)
+     Implement Constraints on Subqueries (#1751)
+     Fix connection string in Python Driver (#1757)
+     Added integer conversion in toBoolean functions (#1199)
+     Update README.md (#1756)
+     Add the command graph_stats and improve VLE messaging for load (#1750)
+     Add helpful messages to the VLE subsystem (#1742)
+     Update README.md (#1728)
+     Added Networkx Support in python driver (#1716)
+     Remove duplicate check (#1740)
+     Fix Issue 1709 - MERGE creates incomplete vertices after the first one (#1721)
+     Fix shift/reduce conflict in grammar (#1719)
+     Fix Issue 1691 - MERGE incorrectly creates multiple vertices (#1718)
+     Implement map projection (#1710)
+     Add hooks for multi-arch builds on dockerhub (#1683)
+     Sample code for AGE-JDBC driver (#390)
+     Allow agtype_build_map to use AGTYPE keys (#1666)
+     Implement EXISTS Subquery      (#1562)
+     Fix Issue 1634: Setting all properties with map object causes error (#1637)
+     Fix Issue 1630: MERGE using array not working in some cases (#1636)
+     Implement list comprehension (#1610)
+     Update Go installation and add in parser files (#1582)
+     Add optional parameter '=' in property constraints (#1516)
+     Fix unsorted output of some queries in the cypher_match test (#1507)
+     Update age_load to make property value conversion optional (#1525)
+     Update the Go driver documentation, Linux installer, and CI (#1527)
+     Fix json serialization error in Python Driver (#1228)
+     Add template for upgrading between versions of Apache AGE (#1506)
+     Update age_load to load scalar property values with appropriate type (#1519)
+     Fix apache#1513 - Invalid variable reuse in CREATE and MERGE clause (#1515)
+     Clean up #included files in src/include directories (#1518)
+     Bump gopkg.in/yaml.v3 in /drivers/golang (#1202)
+     Clean up #included files in catalog & commands directories (#1514)
+     Clean up #included files in nodes, executor, & optimizer directories (#1509)
+     Correct cleanup of age--x.x.x.sql files (#1505)
