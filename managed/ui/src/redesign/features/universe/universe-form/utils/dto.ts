@@ -83,6 +83,22 @@ export interface DeviceInfo {
   storageType: StorageType | null;
 }
 
+/** Per-AZ override for K8s: perProcess.TSERVER/MASTER each have deviceInfo (volume size/count/storage class). */
+export interface AZOverridePerProcess {
+  deviceInfo?: {
+    volumeSize?: number;
+    numVolumes?: number;
+    storageClass?: string;
+  };
+}
+
+export interface AZOverridePerAZ {
+  perProcess?: {
+    TSERVER?: AZOverridePerProcess;
+    MASTER?: AZOverridePerProcess;
+  };
+}
+
 export enum ExposingServiceTypes {
   EXPOSED = 'EXPOSED',
   UNEXPOSED = 'UNEXPOSED'
@@ -164,7 +180,7 @@ export interface UserIntent {
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
   userIntentOverrides?: {
-    azOverrides?: Record<string, string>;
+    azOverrides?: Record<string, AZOverridePerAZ>;
   };
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
@@ -408,7 +424,7 @@ export interface UserIntent {
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
-  azOverrides?: Record<string, string>;
+  azOverrides?: Record<string, AZOverridePerAZ>;
 }
 
 export interface Cluster {
@@ -599,7 +615,10 @@ export interface UniverseFormData {
   gFlags: Gflag[];
   inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
+  /** Helm: userIntent.azOverrides (YAML strings per AZ) */
   azOverrides?: Record<string, string>;
+  /** K8s: userIntent.userIntentOverrides.azOverrides (per-AZ volume/config) */
+  k8sAzOverrides?: Record<string, AZOverridePerAZ>;
   proxyConfig?: {};
   specificGFlagsAzOverrides?: {};
 }
@@ -686,7 +705,8 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];
 export const DEFAULT_GFLAGS = [];
 export const DEFAULT_UNIVERSE_OVERRIDES = '';
-export const DEFAULT_AZ_OVERRIDES = {};
+export const DEFAULT_AZ_OVERRIDES: Record<string, string> = {};
+export const DEFAULT_K8S_AZ_OVERRIDES: Record<string, AZOverridePerAZ> = {};
 
 export const DEFAULT_FORM_DATA: UniverseFormData = {
   cloudConfig: DEFAULT_CLOUD_CONFIG,
@@ -696,7 +716,8 @@ export const DEFAULT_FORM_DATA: UniverseFormData = {
   gFlags: DEFAULT_GFLAGS,
   inheritFlagsFromPrimary: true,
   universeOverrides: DEFAULT_UNIVERSE_OVERRIDES,
-  azOverrides: DEFAULT_AZ_OVERRIDES
+  azOverrides: DEFAULT_AZ_OVERRIDES,
+  k8sAzOverrides: DEFAULT_K8S_AZ_OVERRIDES
 };
 //-------------------------------------------------------- Form Data related Types - Ends -------------------------------------------------------------------
 

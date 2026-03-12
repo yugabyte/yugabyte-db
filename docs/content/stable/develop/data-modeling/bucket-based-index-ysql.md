@@ -19,7 +19,7 @@ Traditional leading range (ASC/DESC) indexes with monotonic inserts concentrate 
 
 The goal is to have a globally ordered result (for example, the latest 1000 rows by timestamp) while avoiding write hot spots on a monotonically increasing column. Bucket-based indexes solve the hot spot issue by distributing data across multiple tablets (buckets). The system can return a globally ordered result for range queries and LIMIT clauses without a sort operation, even though the data is physically sharded by the bucket. This makes queries like top-N and keyset pagination very efficient.
 
-{{<tags/feature/tp idea="2275">}}In addition, YugabyteDB (v2025.2.1.0 and later) includes scan optimizations for bucket-based indexes that can produce a globally ordered result without query changes, even when additional ranges are introduced into the index structure.
+{{<tags/feature/ea idea="2275">}}In addition, YugabyteDB (v2025.2.1.0 and later) includes scan optimizations for bucket-based indexes that can produce a globally ordered result without query changes, even when additional ranges are introduced into the index structure.
 
 Normally, to get a globally ordered result for the most recent 1000 rows by timestamp (for example) from data that is sharded across multiple tablets, the database would have to:
 
@@ -48,7 +48,7 @@ Use bucket-based scans for the following workloads:
 ## Syntax
 
 ```sql
-CREATE INDEX index_name ON table_name(yb_hash_code(<key_columns>) % <buckets>) ASC, column_name ASC) 
+CREATE INDEX index_name ON table_name(yb_hash_code(<key_columns>) % <buckets>) ASC, column_name ASC)
 SPLIT AT VALUES ((1), (2));
 ```
 
@@ -261,7 +261,7 @@ Without the optimization, the planner performs a sort as expected.
 Turn the optimization back on:
 
 ```sql
-SET yb_max_saop_merge_streams = 64; 
+SET yb_max_saop_merge_streams = 64;
 ```
 
 Run the query again:

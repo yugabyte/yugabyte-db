@@ -123,6 +123,36 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void createStreamAndDropSlot() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR TABLE test_table");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'hello')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName("test_slot")
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "test_pub")
+        .start();
+
+    receiveMessage(stream, 4);
+    stream.close();
+    replConnection.dropReplicationSlot("test_slot");
+    conn.close();
+  }
+
+  @Test
   public void replicationConnectionCreateDrop() throws Exception {
     String[] wal_levels = {"minimal", "replica", "logical"};
     for (String wal_level : wal_levels) {

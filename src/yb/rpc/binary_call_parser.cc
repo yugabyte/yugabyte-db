@@ -130,6 +130,8 @@ Result<ProcessCallsResult> BinaryCallParser::Parse(
         auto consumption = blocking_mem_tracker ? blocking_mem_tracker->consumption() : -1;
         auto limit = blocking_mem_tracker ? blocking_mem_tracker->limit() : -1;
         if (FLAGS_binary_call_parser_reject_on_mem_tracker_hard_limit) {
+          IncrementCounter(
+              connection->rpc_metrics().inbound_calls_rejected_because_memory_pressure);
           bool logged = false;
           YB_LOG_EVERY_N_SECS(WARNING, 3)
               << "Unable to allocate read buffer because of limit, required: " << call_data_size

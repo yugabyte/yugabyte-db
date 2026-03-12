@@ -110,7 +110,6 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -676,7 +675,7 @@ Sets the maximum batch size per transaction when using [COPY FROM](../../../api/
 ##### yb_enable_derived_equalities
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -685,7 +684,7 @@ Enables derivation of additional equalities for columns that are generated or co
 ##### yb_enable_derived_saops
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -694,7 +693,7 @@ Enable derivation of IN clauses for columns generated or computed using a `yb_ha
 ##### yb_max_saop_merge_streams
 
 {{% tags/wrap %}}
-{{<tags/feature/tp idea="2275">}}
+{{<tags/feature/ea idea="2275">}}
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2270,7 +2269,7 @@ The maximum duration (in milliseconds) for the cooldown period between successiv
 Default: `2`
 {{% /tags/wrap %}}
 
-The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze). 
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_batch_size
 

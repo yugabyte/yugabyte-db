@@ -40,15 +40,21 @@ export const isMatchedBySearchToken = (
 ) => {
   if (!searchToken.modifier) {
     return substringSearchFields.some((substringSearchField) => {
-      const fieldValue = candidate[substringSearchField];
+      const { type: fieldType, value: fieldValue } = candidate[substringSearchField] ?? {};
       return (
         fieldValue &&
-        fieldValue.type === FieldType.STRING &&
-        hasSubstringMatch(fieldValue.value, searchToken.value)
+        fieldType === FieldType.STRING &&
+        hasSubstringMatch(fieldValue, searchToken.value)
       );
     });
   }
   const { type: fieldType, value: fieldValue } = candidate[searchToken.modifier] ?? {};
+
+  // If the field value is undefined or null, we consider it not a match for all candidates.
+  if (fieldValue === undefined || fieldValue === null) {
+    return false;
+  }
+
   switch (fieldType) {
     case FieldType.STRING:
       return fieldValue && hasSubstringMatch(fieldValue, searchToken.value);
@@ -57,7 +63,7 @@ export const isMatchedBySearchToken = (
         (fieldValue && searchToken.value === 'true') ||
         (!fieldValue && searchToken.value === 'false')
       );
-    case FieldType.NUMBER:
+    case FieldType.NUMBER: {
       const match = NUMERIC_COMPARISON_REGEX.exec(searchToken.value);
       if (match) {
         const comparisonOperator = match[1] as ComparisonOperator;
@@ -75,7 +81,7 @@ export const isMatchedBySearchToken = (
           case '=':
             return fieldValue === comparisonThreshold;
           case '!=':
-            return fieldValue != comparisonThreshold;
+            return fieldValue !== comparisonThreshold;
           default:
             // This should be an unreachable case because we handled all possible
             // strings for the comparison operator.
@@ -87,6 +93,7 @@ export const isMatchedBySearchToken = (
       // If the provided search token value does not match the comparison regex,
       // we consider it not a match for all candidates.
       return false;
+    }
     default:
       return assertUnreachableCase(fieldType);
   }

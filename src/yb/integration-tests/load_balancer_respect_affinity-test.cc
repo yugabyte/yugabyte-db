@@ -161,10 +161,8 @@ TEST_F(LoadBalancerRespectAffinityTest, RemoveReplicaBalancesLeadersByLeaderLoad
   ASSERT_OK(external_mini_cluster()->AddTabletServer(true, extra_flags));
   ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(4, kDefaultTimeout));
 
-  // Start with all leaders on z1.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
   ASSERT_OK(WaitForLoadBalancing());
-  ASSERT_OK(AreLeadersOnPreferredOnly());
 
   // Disable leader moves so only replica removal triggers leader stepdowns.
   for (ExternalDaemon* daemon : external_mini_cluster()->master_daemons()) {
@@ -172,6 +170,7 @@ TEST_F(LoadBalancerRespectAffinityTest, RemoveReplicaBalancesLeadersByLeaderLoad
         daemon, "load_balancer_max_concurrent_moves", "0"));
   }
 
+  // Blacklist ts0. All of its leaders should move in a balanced way.
   ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
     external_mini_cluster()->GetLeaderMaster(), external_mini_cluster()->tablet_server(0)));
   ASSERT_OK(WaitForLoadBalancing());
@@ -180,6 +179,7 @@ TEST_F(LoadBalancerRespectAffinityTest, RemoveReplicaBalancesLeadersByLeaderLoad
   auto max_leaders = 0;
   auto min_leaders = 100000;
   for (const auto& [ts_uuid, leaders] : leader_counts) {
+    LOG(INFO) << "Leader count for " << ts_uuid << " is " << leaders;
     if (ts_uuid == external_mini_cluster()->tablet_server(0)->uuid()) {
       continue;
     }

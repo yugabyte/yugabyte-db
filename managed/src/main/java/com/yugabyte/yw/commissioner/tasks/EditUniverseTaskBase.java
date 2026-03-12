@@ -21,7 +21,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -33,7 +32,6 @@ import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -120,46 +118,28 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       return;
     }
 
-    // SSH + service liveness on Live nodes
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
-    if (!liveNodes.isEmpty()) {
-      log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
-      createCheckSshConnectionTasks(liveNodes);
-
-      doInPrecheckSubTaskGroup(
-          "CheckServiceLiveness",
-          subTaskGroup -> {
-            for (NodeDetails node : liveNodes) {
-              CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
-              params.setUniverseUUID(taskParams().getUniverseUUID());
-              params.nodeName = node.nodeName;
-              params.timeoutMs = 10000;
-              CheckServiceLiveness task = createTask(CheckServiceLiveness.class);
-              task.initialize(params);
-              subTaskGroup.addSubTask(task);
-            }
-          });
+    if (liveNodes.isEmpty()) {
+      log.debug("No live nodes found, skipping comprehensive prechecks.");
+      return;
     }
 
-    // SSH check on ToBeAdded manual on-prem nodes (catches bad IPs early)
-    Set<NodeDetails> toBeAddedManualOnPremNodes =
-        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet).stream()
-            .filter(n -> isManualOnPremNode(n, taskParams().clusters))
-            .collect(Collectors.toSet());
-    if (!toBeAddedManualOnPremNodes.isEmpty()) {
-      log.info(
-          "Running SSH precheck on {} manual on-prem nodes to be added",
-          toBeAddedManualOnPremNodes.size());
-      createCheckSshConnectionTasks(toBeAddedManualOnPremNodes);
-    }
-  }
+    log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
+    createCheckSshConnectionTasks(liveNodes);
 
-  private boolean isManualOnPremNode(NodeDetails node, List<Cluster> clusters) {
-    return clusters.stream()
-        .filter(c -> c.uuid.equals(node.placementUuid))
-        .findFirst()
-        .map(c -> Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider)).isManualOnprem())
-        .orElse(false);
+    doInPrecheckSubTaskGroup(
+        "CheckServiceLiveness",
+        subTaskGroup -> {
+          for (NodeDetails node : liveNodes) {
+            CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = node.nodeName;
+            params.timeoutMs = 10000;
+            CheckServiceLiveness task = createTask(CheckServiceLiveness.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
   }
 
   protected Set<NodeDetails> getAddedMasters() {

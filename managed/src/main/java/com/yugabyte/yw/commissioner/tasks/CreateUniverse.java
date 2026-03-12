@@ -23,23 +23,19 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
 import com.yugabyte.yw.models.helpers.LoadBalancerPlacement;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -115,27 +111,6 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
                 }
               });
     }
-    // SSH check for manual on-prem nodes being created
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
-      Set<NodeDetails> manualOnPremNodes =
-          PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet).stream()
-              .filter(n -> isManualOnPremNode(n, taskParams().clusters))
-              .collect(Collectors.toSet());
-      if (!manualOnPremNodes.isEmpty()) {
-        log.info(
-            "Running SSH precheck on {} manual on-prem nodes to be created",
-            manualOnPremNodes.size());
-        createCheckSshConnectionTasks(manualOnPremNodes);
-      }
-    }
-  }
-
-  private boolean isManualOnPremNode(NodeDetails node, List<Cluster> clusters) {
-    return clusters.stream()
-        .filter(c -> c.uuid.equals(node.placementUuid))
-        .findFirst()
-        .map(c -> Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider)).isManualOnprem())
-        .orElse(false);
   }
 
   // This is invoked only on first try.
