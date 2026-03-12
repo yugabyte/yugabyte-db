@@ -8578,11 +8578,23 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 			/* The last replica is the leader. */
 			values[7] = CStringGetTextDatum(tablet->replicas[nreplicas - 1]);
 
-			/*
-			 * Build JSONB attributes before sorting replicas, because the
-			 * parallel size arrays must stay aligned with the replica order.
-			 * JSONB does not preserve key order so sorting is unnecessary.
-			 */
+			/* Convert char ** to List * */
+			{
+				List	   *replicas_list = NIL;
+
+				for (size_t idx = 0; idx < nreplicas; idx++)
+					replicas_list = lappend(replicas_list,
+											(char *) tablet->replicas[idx]);
+
+				/*
+				 * Sort the list lexicographically for consistency, so that
+				 * all rows with same replicas have same entries.
+				 */
+				list_sort(replicas_list, string_list_compare);
+				values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
+			}
+
+			/* Build JSONB attributes with per-replica size metrics. */
 			{
 				JsonbParseState *jb_state = NULL;
 				JsonbValue	jb_result;
@@ -8643,22 +8655,6 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 				jb_result = *pushJsonbValue(&jb_state, WJB_END_OBJECT, NULL);	/* end outer */
 
 				values[9] = JsonbPGetDatum(JsonbValueToJsonb(&jb_result));
-			}
-
-			/* Convert char ** to List * */
-			{
-				List	   *replicas_list = NIL;
-
-				for (size_t idx = 0; idx < nreplicas; idx++)
-					replicas_list = lappend(replicas_list,
-											(char *) tablet->replicas[idx]);
-
-				/*
-				 * Sort the list lexicographically for consistency, so that
-				 * all rows with same replicas have same entries.
-				 */
-				list_sort(replicas_list, string_list_compare);
-				values[8] = PointerGetDatum(strlist_to_textarray(replicas_list));
 			}
 		}
 		else
