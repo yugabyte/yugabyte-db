@@ -209,6 +209,8 @@ if [[ ${YB_COMPILE_ONLY} != "1" ]]; then
       if [[ ${NUM_REPETITIONS} -gt 1 ]]; then
         log "Repeating each test ${NUM_REPETITIONS} times"
         run_tests_extra_args+=( "--num_repetitions" "${NUM_REPETITIONS}" )
+      else
+        run_tests_extra_args+=( "--fail_repetitions" "${YB_FAIL_REPETITIONS:-0}" )
       fi
 
       set +u  # because extra_args can be empty
