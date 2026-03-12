@@ -2473,7 +2473,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
         "13515, 31, 144; 13515, 32, 192; 13515, 33, 120; 13515, 34, 96; 13515, 35, 120; "
         "13515, 36, 216; 13515, 37, 96; 13515, 38, 48; 13515, 39, 240; 13515, 40, 168; "
         "13515, 41, 120; 13515, 42, 120; 13515, 43, 96"
-      : "13515, 2, 10776";
+      : "13515, 2, 10632";
   const string yugabyte_db_oid_str = Format("$0, ", yugabyte_db_oid);
   // Replace 13515 with the real yugabyte_db_oid.
   GlobalReplaceSubstring("13515, ", yugabyte_db_oid_str, &expected);
