@@ -1,0 +1,27 @@
+name: JDBC Driver Tests
+
+on:
+  push:
+    branches: [ "PG15" ]
+
+  pull_request:
+    branches: [ "PG15" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: drivers/jdbc
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Build and Test
+      run: gradle build

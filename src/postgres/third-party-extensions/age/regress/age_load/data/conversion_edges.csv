@@ -1,0 +1,7 @@
+start_id,   start_vertex_type,  end_id, end_vertex_type,    string,           bool,        numeric,
+1,          Person1,            1,      Person2,            "John Smith",     "true",      1
+1,          Person1,            1,      Person2,            "John",           "false",     "-2"
+1,          Person1,            1,      Person2,            John Smith,       true,        1.4
+1,          Person1,            1,      Person2,            """John""",       false,       -1e10
+1,          Person1,            1,      Person2,            null,             false,       0
+1,          Person1,            1,      Person2,            nUll,             false,       "3.14"

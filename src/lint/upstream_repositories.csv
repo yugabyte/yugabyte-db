@@ -3,6 +3,7 @@ src/postgres,,https://github.com/yugabyte/postgres,cefdf543f78dd92ae34400f18d517
 src/postgres/contrib/passwordcheck,passwordcheck_extra,https://github.com/michaelpq/pg_plugins,66a75ea0ca0706bef7b1e17055aa5fd364189fec
 src/postgres/contrib/passwordcheck/expected/passwordcheck.out,contrib/passwordcheck/expected/passwordcheck.out,https://github.com/yugabyte/postgres,src/postgres
 src/postgres/contrib/passwordcheck/sql/passwordcheck.sql,contrib/passwordcheck/sql/passwordcheck.sql,https://github.com/yugabyte/postgres,src/postgres
+src/postgres/third-party-extensions/age,,https://github.com/apache/age,fa1af8de99d74d32e131c19b62cf580d396eb0ae
 src/postgres/third-party-extensions/documentdb,,https://github.com/microsoft/documentdb,f31e0b6cadda66c3cc7f7087365e996c212cfffe
 src/postgres/third-party-extensions/hypopg,,https://github.com/HypoPG/hypopg,97026c0bff16b905c555acdd82e15979fa6b9781
 src/postgres/third-party-extensions/orafce,,https://github.com/orafce/orafce,6adbd66c429dabb828f10d764d356824efeb8396
