@@ -6,7 +6,7 @@ module.exports = {
     browser: true,
     es2022: true
   },
-  ignorePatterns: ['build/*'],
+  ignorePatterns: ['build/*', 'public/mockServiceWorker.js'],
   settings: {
     react: {
       version: 'detect'

@@ -15,7 +15,7 @@ const preview: Preview = {
 };
 
 export const decorators = [
-  (Story) => (
+  (Story: any) => (
     <ThemeProvider theme={mainTheme}>
       <Story />
     </ThemeProvider>
