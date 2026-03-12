@@ -759,11 +759,12 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 		return nil
 	}
 	// Ensure yb_home_dir exists.
-	if err := os.MkdirAll(ybHomeDir, 0755); err != nil {
+	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
+	if err := os.MkdirAll(yugabyteDir, 0755); err != nil {
 		return err
 	}
 
-	ynpVersionFile := filepath.Join(ybHomeDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
 	if err := os.WriteFile(ynpVersionFile, []byte(currentYnpVersion), 0644); err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to write YNP version to file: %v", err)
 		return err
@@ -771,6 +772,11 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 	if details, err := util.UserInfo(ybUser); err == nil {
 		if details.CurrentUserID == 0 && !details.IsCurrent {
 			// Change ownership only if running as root and yb_user is different from current user.
+			if err := os.Chown(yugabyteDir, int(details.UserID), int(details.GroupID)); err != nil {
+				util.FileLogger().
+					Errorf(pc.ctx, "Cannot change ownership of .yugabyte dir: %v", err)
+				return err
+			}
 			if err := os.Chown(ynpVersionFile, int(details.UserID), int(details.GroupID)); err != nil {
 				util.FileLogger().
 					Errorf(pc.ctx, "Cannot change ownership of version file: %v", err)
@@ -825,7 +831,8 @@ func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 		return nil
 	}
 
-	ynpVersionFile := filepath.Join(ybHomeDir, YNPVersionFile)
+	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
+	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
 		if strict {
