@@ -396,7 +396,7 @@ lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
 
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
-  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " " +
+  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " --yba-mode=true" + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!

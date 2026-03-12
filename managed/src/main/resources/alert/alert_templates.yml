@@ -2220,6 +2220,35 @@ templates:
         Incorrect THP settings found for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}
+  
+  YNP_VERSION_SKEW:
+    name: YNP Version Skew
+    description: YNP version on node is behind the YBA YNP version or version file is missing
+    queryTemplate: count by (universe_uuid) (yb_node_ynp_version_skew{universe_uuid="__universeUuid__"} > 0
+      or on (universe_uuid, node_name) yb_node_ynp_version{universe_uuid="__universeUuid__"} == 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultDurationSec: 300
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "yb_node_ynp_version_skew{universe_uuid='{{
+        $labels.universe_uuid }}'} > 0
+        or on (universe_uuid, node_name) yb_node_ynp_version{universe_uuid='{{
+        $labels.universe_uuid }}'} == 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        YNP version skew detected for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s). Node YNP version is behind the YBA version
+        or version file is missing.
+
+        Affected nodes: {{ $labels.affected_node_names }}
 
   OTEL_LOG_EXPORT_FAILURE:
     name: OTel Log Export Failure

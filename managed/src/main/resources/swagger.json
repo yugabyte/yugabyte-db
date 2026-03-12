@@ -935,6 +935,7 @@
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
+            "YNP_VERSION_SKEW",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
@@ -1119,6 +1120,7 @@
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
+            "YNP_VERSION_SKEW",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
@@ -1399,6 +1401,7 @@
             "CONTINUOUS_BACKUPS_STATUS",
             "THP_RSS_ISSUE",
             "THP_INCORRECT_SETTINGS",
+            "YNP_VERSION_SKEW",
             "CDCSDK_FLUSH_LAG",
             "CDCSDK_EXPIRY",
             "OTEL_LOG_EXPORT_FAILURE",
@@ -16385,7 +16388,8 @@
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
-            "OperatorImportResource"
+            "OperatorImportResource",
+            "UpdateParentTaskParams"
           ],
           "type" : "string"
         },

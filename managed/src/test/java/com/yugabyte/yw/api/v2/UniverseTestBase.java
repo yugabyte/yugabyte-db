@@ -1205,7 +1205,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         dbUniverse
             .getCreationDate()
             .toInstant()
-            .truncatedTo(ChronoUnit.SECONDS)
+            .truncatedTo(ChronoUnit.MILLIS)
             .atOffset(ZoneOffset.UTC);
     validateUser(v2UnivInfo.getCreatingUser(), dbUniv.creatingUser);
     assertThat(v2UnivInfo.getCreationDate().compareTo(dbCreationDate), is(0));

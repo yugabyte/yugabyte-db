@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AssertHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -93,6 +94,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock private Config mockConfig;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private ExecutorService executorService;
+  @Mock private ConfigHelper mockConfigHelper;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -180,6 +182,9 @@ public class HealthCheckerTest extends FakeDBApplication {
         .when(executorService)
         .execute(any(Runnable.class));
 
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(Collections.emptyMap());
+
     metricService = app.injector().instanceOf(MetricService.class);
 
     // Finally setup the mocked instance.
@@ -201,7 +206,8 @@ public class HealthCheckerTest extends FakeDBApplication {
             executorService,
             mockFileHelperService,
             mockMaintenanceService,
-            app.injector().instanceOf(YBClientService.class)) {
+            app.injector().instanceOf(YBClientService.class),
+            mockConfigHelper) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);
