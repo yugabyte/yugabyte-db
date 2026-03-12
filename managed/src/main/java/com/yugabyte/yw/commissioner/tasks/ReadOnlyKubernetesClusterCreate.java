@@ -26,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -108,7 +109,9 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
           universe.getName(), KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
 
       Set<NodeDetails> tserversAdded =
-          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, true);
+          getPodsToAdd(placement, null, ServerType.TSERVER, isMultiAz, true).values().stream()
+              .flatMap(nDSet -> nDSet.stream())
+              .collect(Collectors.toSet());
 
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)

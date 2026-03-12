@@ -78,6 +78,12 @@ public class YBReconcilerFactory {
         pitrConfigHelper, formFactory, namespace, operatorUtils, client, informerFactory);
   }
 
+  public PitrRestoreReconciler getPitrRestoreReconciler(KubernetesClient client) {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
+    return new PitrRestoreReconciler(
+        pitrConfigHelper, namespace, operatorUtils, client, informerFactory);
+  }
+
   public DrConfigReconciler getDrConfigReconciler(KubernetesClient client) {
     String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     return new DrConfigReconciler(

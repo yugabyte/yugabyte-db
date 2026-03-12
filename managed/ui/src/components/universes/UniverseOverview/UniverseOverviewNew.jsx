@@ -769,6 +769,11 @@ export default class UniverseOverviewNew extends Component {
         (c) => c.key === RuntimeConfigKey.ENABLE_ROLLBACK_SUPPORT
       )?.value === 'true';
 
+    const isCanaryUpgradeEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.ENABLE_CANARY_UPGRADE
+      )?.value === 'true';
+
     const isMasterFailoverEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === RuntimeConfigKey.ENABLE_AUTO_MASTER_FAILOVER
@@ -811,6 +816,7 @@ export default class UniverseOverviewNew extends Component {
               <DBVersionWidget
                 higherVersionCount={updateAvailable}
                 isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+                isCanaryUpgradeEnabled={isCanaryUpgradeEnabled}
                 failedTaskDetails={failedTask}
               />
             )}

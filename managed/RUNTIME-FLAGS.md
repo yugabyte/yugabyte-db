@@ -22,6 +22,7 @@
 | "Fetch Batch Size of Task Info" | "yb.task_info_db_query_batch_size" | "CUSTOMER" | "Knob that can be used to make lesser number of calls to DB" | "Integer" |
 | "Use Ansible for provisioning" | "yb.node_agent.use_ansible_provisioning" | "CUSTOMER" | "If enabled use Ansible for provisioning" | "Boolean" |
 | "Notify user on password reset" | "yb.user.send_password_reset_notification" | "CUSTOMER" | "If enabled, user will be notified on password reset" | "Boolean" |
+| "Enable AZ overrides for K8s universes" | "yb.ui.feature_flags.enable_az_overrides_k8s" | "CUSTOMER" | "When enabled, allows editing asymmetric K8s universes and configuring AZ-specific volume size, volume count, and storage class for tserver and master" | "Boolean" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -197,6 +198,8 @@
 | "Allow Local Login with SSO" | "yb.security.allow_local_login_with_sso" | "GLOBAL" | "Allow local user login with SSO enabled. when disabled, only superAdmin can login using local credentials." | "Boolean" |
 | "Node Agent Server Log Level Per Request" | "yb.node_agent.server.request_log_level" | "GLOBAL" | "Log level for Node Agent server per request (0 for debug, -1 for default)" | "Integer" |
 | "Disable Platform HA Restore Transaction" | "yb.ha.disable_platform_ha_restore_transaction" | "GLOBAL" | "Disable running platform HA restore operations in a transaction" | "Boolean" |
+| "Enable Connectivity Metric Collection" | "yb.metrics.enable_connectivity_metric_collection" | "GLOBAL" | "Enable connectivity metric collection for all universes" | "Boolean" |
+| "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -314,6 +317,7 @@
 | "Verify current cluster state (from db perspective) before running task" | "yb.task.verify_cluster_state" | "UNIVERSE" | "Verify current cluster state (from db perspective) before running task" | "Boolean" |
 | "Wait time for xcluster/DR replication setup and edit RPCs" | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Maximum timeout for xCluster bootstrap producer RPC call" | "yb.xcluster.bootstrap_producer_timeout" | "UNIVERSE" | "If the RPC call to create the bootstrap streams on the source universe does not return before this timeout, the task will retry with exponential backoff until it fails." | "Duration" |
+| "Timeout for xCluster Pause RPC call" | "yb.xcluster.pause_rpc_timeout" | "UNIVERSE" | "Timeout for xCluster Pause RPC call; if the SetUniverseReplicationEnabled RPC times out, you can increase this runtime config to alleviate the issue" | "Duration" |
 | "Maximum timeout for delete replication RPC on source during failover" | "yb.xcluster.db_scoped.failover.delete_replication_on_source_timeout" | "UNIVERSE" | "If the source universe is down, this RPC call will time out during failover operation, increasing the failover task execution time; The lower the value, the less time the failover task will take to complete. If it is set to zero, this subtask during failover will be skipped providing a faster failover execution time." | "Duration" |
 | "Enable xCluster DR Semi-automatic Mode" | "yb.xcluster.db_scoped.creationEnabled" | "UNIVERSE" | "When enabled, new xCluster DR configurations use Semi-automatic mode." | "Boolean" |
 | "Enable xCluster DR Automatic Mode" | "yb.xcluster.db_scoped.automatic_ddl.creationEnabled" | "UNIVERSE" | "When this and yb.xcluster.db_scoped.creationEnabled are both enabled, new xCluster DR configurations use Automatic mode." | "Boolean" |
@@ -371,3 +375,4 @@
 | "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
 | "Enables new Performance Monitoring UI via Performance Tab if universe is registered with Perf Advisor Service" | "yb.ui.feature_flags.enable_new_perf_advisor_ui" | "UNIVERSE" | "Enables new Performance Monitoring UI via Performance Tab" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
+| "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |

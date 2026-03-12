@@ -332,7 +332,7 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
 
-    if (GetAtomicFlag(&FLAGS_update_all_tablets_upon_network_failure) &&
+    if (FLAGS_update_all_tablets_upon_network_failure &&
         rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
                                       << " as unreachable due to " << reason.ToString();
@@ -384,7 +384,7 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   bool consensus_info_refresh_succeeded = false;
-  if (status->ok() && GetAtomicFlag(&FLAGS_enable_metacache_partial_refresh)) {
+  if (status->ok() && FLAGS_enable_metacache_partial_refresh) {
     consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
     TEST_SYNC_POINT_CALLBACK(
         "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);

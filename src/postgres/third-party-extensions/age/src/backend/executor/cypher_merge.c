@@ -22,6 +22,8 @@
 #include "catalog/ag_label.h"
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
+/* YB includes */
+#include "utils/age_global_graph.h"
 #include "utils/datum.h"
 
 /*
@@ -861,7 +863,10 @@ static void end_cypher_merge(CustomScanState *node)
     int path_length = list_length(path->target_nodes);
 
     /* increment the command counter */
-    CommandCounterIncrement();
+    YbCommandCounterIncrement();
+
+    /* invalidate the global graph cache so subsequent queries see new data */
+    yb_invalidate_GRAPH_global_contexts();
 
     ExecEndNode(node->ss.ps.lefttree);
 
@@ -1096,7 +1101,10 @@ static Datum merge_vertex(cypher_merge_custom_scan_state *css,
              * to inadvertently or unnecessarily update the commandCounterId of
              * another command.
              */
-            CommandCounterIncrement();
+            YbCommandCounterIncrement();
+
+            /* invalidate the global graph cache */
+            yb_invalidate_GRAPH_global_contexts();
         }
         else if (should_insert)
         {
@@ -1435,7 +1443,10 @@ static void merge_edge(cypher_merge_custom_scan_state *css,
          * to inadvertently or unnecessarily update the commandCounterId of
          * another command.
          */
-        CommandCounterIncrement();
+        YbCommandCounterIncrement();
+
+        /* invalidate the global graph cache */
+        yb_invalidate_GRAPH_global_contexts();
     }
     else if (should_insert)
     {

@@ -60,16 +60,6 @@ extern bool yb_force_tablespace_locality;
 extern uint32_t yb_force_tablespace_locality_oid;
 
 /*
- * Guc that toggles whether strict inequalities are pushed down.
- */
-extern bool yb_pushdown_strict_inequality;
-
-/*
- * Guc that toggles whether IS NOT NULL is pushed down.
- */
-extern bool yb_pushdown_is_not_null;
-
-/*
  * Guc that toggles the pg_locks view on/off.
  */
 extern bool yb_enable_pg_locks;
@@ -193,7 +183,7 @@ extern bool yb_enable_ddl_savepoint_infra;
 /*
  * Refer YBCIsLegacyModeForCatalogOps() for details.
  */
-extern bool yb_fallback_to_legacy_catalog_read_time;
+extern bool yb_enable_concurrent_ddl;
 
 /*
  * xcluster consistency level

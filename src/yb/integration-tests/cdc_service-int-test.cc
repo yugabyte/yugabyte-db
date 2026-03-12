@@ -128,8 +128,8 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
 
     MiniClusterOptions opts;
-    SetAtomicFlag(/*value=*/false, &FLAGS_enable_ysql);
-    SetAtomicFlag(1000, &FLAGS_update_metrics_interval_ms);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
@@ -1107,7 +1107,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestGetChangesRpcTabletConsensusI
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
   // Test that the metric value is not time since epoch after a leadership change.
   docdb::DisableYcqlPackedRow();
-  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
 
@@ -1151,9 +1151,9 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
   docdb::DisableYcqlPackedRow();
   // Always update cdc_state with checkpoint info.
-  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   // Enable BG thread to generate metrics.
-  SetAtomicFlag(/*value=*/true, &FLAGS_enable_collect_cdc_metrics);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = true;
 
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
   std::string tablet_id = GetTablet();
@@ -1277,11 +1277,11 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
 TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadership) {
   docdb::DisableYcqlPackedRow();
   // Always update cdc_state with checkpoint info.
-  SetAtomicFlag(0, &FLAGS_cdc_state_checkpoint_update_interval_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   // Speed up leader moves.
-  SetAtomicFlag(1000, &FLAGS_min_leader_stepdown_retry_interval_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_min_leader_stepdown_retry_interval_ms) = 1000;
   // Trigger metrics updates manually in the test, instead of relying on background thread.
-  SetAtomicFlag(/*value=*/false, &FLAGS_enable_collect_cdc_metrics);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
   std::string tablet_id = GetTablet();
   const auto& tservers = cluster_->mini_tablet_servers();

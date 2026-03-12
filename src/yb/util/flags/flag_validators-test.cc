@@ -77,6 +77,15 @@ DEFINE_RUNTIME_int32(flag_validators_test_gt_rhs, 0, "Flag for RHS of > check");
 DEFINE_RUNTIME_int32(flag_validators_test_ge_lhs, 9, "Flag for LHS of >= check");
 DEFINE_RUNTIME_int32(flag_validators_test_ge_rhs, 0, "Flag for RHS of >= check");
 
+DEFINE_RUNTIME_double(flag_validators_test_lt_lhs_double, 0.5, "Flag for LHS of < check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_lt_rhs_double, 9.5, "Flag for RHS of < check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_le_lhs_double, 0.5, "Flag for LHS of <= check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_le_rhs_double, 9.5, "Flag for RHS of <= check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_gt_lhs_double, 9.5, "Flag for LHS of > check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_gt_rhs_double, 0.5, "Flag for RHS of > check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_ge_lhs_double, 9.5, "Flag for LHS of >= check (double)");
+DEFINE_RUNTIME_double(flag_validators_test_ge_rhs_double, 0.5, "Flag for RHS of >= check (double)");
+
 // Normally RHS flag validators are also needed, but we skip them here because we're interested
 // in checking the output of specific validators.
 DEFINE_validator(flag_validators_test_lt_lhs,
@@ -91,6 +100,19 @@ DEFINE_validator(flag_validators_test_gt_lhs,
 DEFINE_validator(flag_validators_test_ge_lhs,
     FLAG_GE_FLAG_VALIDATOR(flag_validators_test_ge_rhs),
     FLAG_GE_VALUE_VALIDATOR(5));
+
+DEFINE_validator(flag_validators_test_lt_lhs_double,
+    FLAG_LT_FLAG_VALIDATOR(flag_validators_test_lt_rhs_double),
+    FLAG_LT_VALUE_VALIDATOR(5.0));
+DEFINE_validator(flag_validators_test_le_lhs_double,
+    FLAG_LE_FLAG_VALIDATOR(flag_validators_test_le_rhs_double),
+    FLAG_LE_VALUE_VALIDATOR(5.0));
+DEFINE_validator(flag_validators_test_gt_lhs_double,
+    FLAG_GT_FLAG_VALIDATOR(flag_validators_test_gt_rhs_double),
+    FLAG_GT_VALUE_VALIDATOR(5.0));
+DEFINE_validator(flag_validators_test_ge_lhs_double,
+    FLAG_GE_FLAG_VALIDATOR(flag_validators_test_ge_rhs_double),
+    FLAG_GE_VALUE_VALIDATOR(5.0));
 
 DEFINE_RUNTIME_string(flag_validators_test_eq_lhs, "foo", "Flag for LHS of == check");
 DEFINE_RUNTIME_string(flag_validators_test_eq_rhs, "foo", "Flag for RHS of == check");
@@ -186,6 +208,39 @@ TEST_F(FlagValidatorsTest, TestValidators) {
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs", "6"));
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs", "5",
                                "Must be greater than or equal to flag_validators_test_ge_rhs: 6"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_lhs_double", "4.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_lhs_double", "5.0", "Must be less than 5"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_rhs_double", "4.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_lhs_double", "3.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_lt_lhs_double", "4.0",
+                               "Must be less than flag_validators_test_lt_rhs_double: 4"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_lhs_double", "5.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_lhs_double", "6.0",
+                               "Must be less than or equal to 5.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_rhs_double", "4.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_lhs_double", "4.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_le_lhs_double", "5.0",
+                               "Must be less than or equal to flag_validators_test_le_rhs_double: "
+                               "4"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_lhs_double", "6.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_lhs_double", "5",
+                               "Must be greater than 5.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_rhs_double", "6.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_lhs_double", "7.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_gt_lhs_double", "6.0",
+                               "Must be greater than flag_validators_test_gt_rhs_double: 6"));
+
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs_double", "5.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs_double", "4.0",
+                               "Must be greater than or equal to 5.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_rhs_double", "6.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs_double", "6.0"));
+  ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_ge_lhs_double", "5.0",
+                               "Must be greater than or equal to "
+                               "flag_validators_test_ge_rhs_double: 6"));
 
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_eq_value", "foo"));
   ASSERT_NO_FATALS(TestSetFlag("flag_validators_test_eq_value", "bar", "Must be equal to \"foo\""));

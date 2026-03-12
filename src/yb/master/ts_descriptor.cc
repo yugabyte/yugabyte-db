@@ -488,7 +488,7 @@ bool TSDescriptor::IsLiveAndHasReported() const {
 
 bool TSDescriptor::HasYsqlCatalogLease() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
-         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsReplaced();
+         FLAGS_master_ts_ysql_catalog_lease_ms && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {
@@ -510,14 +510,14 @@ std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTim
   SharedLock<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
-          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+          FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
     LOG(WARNING) << "Marking tserver " << permanent_uuid()
                  << " (" << addr.host() << ":" << addr.port() << ")"
                  << " as UNRESPONSIVE: no heartbeat received for "
                  << time.GetDeltaSince(last_heartbeat_).ToMilliseconds() << "ms"
-                 << " (threshold: " << GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)
+                 << " (threshold: " << FLAGS_tserver_unresponsive_timeout_ms
                  << "ms)";
     return std::move(proto_lock);
   }

@@ -78,6 +78,8 @@ public class ExplainAnalyzeUtils {
     TopLevelCheckerBuilder storageFlushRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageFlushExecutionTime(ValueChecker<Double> checker);
     TopLevelCheckerBuilder storageExecutionTime(ValueChecker<Double> checker);
+    TopLevelCheckerBuilder readMetrics(ObjectChecker checker);
+    TopLevelCheckerBuilder writeMetrics(ObjectChecker checker);
   }
 
   public interface PlanCheckerBuilder extends ObjectCheckerBuilder {
@@ -141,6 +143,7 @@ public class ExplainAnalyzeUtils {
 
     // DocDB Metric
     PlanCheckerBuilder readMetrics(ObjectChecker checker);
+    PlanCheckerBuilder writeMetrics(ObjectChecker checker);
   }
 
   public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {

@@ -471,7 +471,7 @@ int RetryableRequestTimeoutSecs(TableType table_type) {
   const int client_timeout_ms = table_type == TableType::PGSQL_TABLE_TYPE
       ? YsqlClientReadWriteTimeoutMs()
       : FLAGS_client_read_write_timeout_ms;
-  return std::min(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs), client_timeout_ms / 1000);
+  return std::min(FLAGS_retryable_request_timeout_secs, client_timeout_ms / 1000);
 }
 
 } // namespace yb::client

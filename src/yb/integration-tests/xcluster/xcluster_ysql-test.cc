@@ -479,7 +479,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
 
   // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
   // optimization will kick in:
-  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
 
   // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
   // be replicated and visible on the consumer side.
@@ -495,7 +495,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // No wait here; see next test for why this matters.
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
 
   ASSERT_OK(VerifyWrittenRecords());
   ASSERT_OK(DeleteUniverseReplication());

@@ -332,7 +332,7 @@ Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
   if (enable_follower_reads_ && read_only_) {
     constexpr uint64_t kMargin = 2;
     RSTATUS_DCHECK(
-        follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
+        follower_read_staleness_ms_ * 1000 > kMargin * FLAGS_max_clock_skew_usec,
         InvalidArgument,
         Format("Setting follower read staleness less than the $0 x max_clock_skew.", kMargin));
     // Add a delta to the start point to lower the read point.
@@ -788,6 +788,7 @@ Status PgTxnManager::SetupPerformOptions(
       && !VERIFY_RESULT(TransactionHasNonTransactionalWrites())
       && !options->use_catalog_session()) {
     options->set_clamp_uncertainty_window(true);
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
   }
 
   if (!IsDdlModeWithSeparateTransaction()) {
@@ -1014,6 +1015,7 @@ bool PgTxnManager::TryAcquireObjectLock(
 Status PgTxnManager::AcquireObjectLock(
     SetupPerformOptionsAccessorTag tag,
     const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+    bool is_session_lock,
     std::optional<PgTablespaceOid> tablespace_oid) {
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
@@ -1021,7 +1023,8 @@ Status PgTxnManager::AcquireObjectLock(
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
-  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode, tablespace_oid));
+  RETURN_NOT_OK(client_->AcquireObjectLock(
+      &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();
 }

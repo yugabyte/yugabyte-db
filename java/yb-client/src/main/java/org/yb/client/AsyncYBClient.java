@@ -915,6 +915,26 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get connectivity state from a TServer (tserver-to-tserver and tserver-to-master connectivity).
+   *
+   * @param hp host and port of the TServer.
+   * @return a deferred that yields the connectivity state response.
+   * @see YBClient#getConnectivityState(HostAndPort)
+   */
+  public Deferred<ConnectivityStateResponse> getConnectivityState(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    ConnectivityStateRequest rpc = new ConnectivityStateRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<ConnectivityStateResponse> d = rpc.getDeferred();
+    client.sendRpc(rpc);
+    return d;
+  }
+
+  /**
    * @see YBClient#getTabletConsensusStateFromTS(String, HostAndPort)
    */
   public Deferred<GetConsensusStateResponse> getTabletConsensusStateFromTS(final String tabletId,

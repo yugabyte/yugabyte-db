@@ -3,7 +3,12 @@ action=""
 action=" --enable"
 {%- endif %}
 
-su - {{ yb_user }} -c "mkdir -p {{ yb_home_dir }}/bin && chmod 0755 {{ yb_home_dir }}/bin"
+if [ "$SUDO_ACCESS" = "true" ]; then
+  su - {{ yb_user }} -c "mkdir -p {{ yb_home_dir }}/bin && chmod 0755 {{ yb_home_dir }}/bin"
+else
+  mkdir -p {{ yb_home_dir }}/bin && chmod 0755 {{ yb_home_dir }}/bin
+fi
+
 # node-agent/scripts directory.
 installer_script="{{ ynp_dir }}/../earlyoom-installer.sh"
 if [ ! -f "$installer_script" ]; then
@@ -11,5 +16,6 @@ if [ ! -f "$installer_script" ]; then
     # Remove me later.
     installer_script="{{ ynp_dir }}/../../bin/earlyoom-installer.sh"
 fi
-$installer_script $action --earlyoom_args \
+
+"$installer_script" $action --earlyoom_args \
     "{{ earlyoom_args }}" --yb_home_dir "{{ yb_home_dir }}"

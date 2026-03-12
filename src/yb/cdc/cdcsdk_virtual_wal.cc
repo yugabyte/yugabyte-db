@@ -114,7 +114,7 @@ DEFINE_test_flag(uint32, cdcsdk_vwal_getchanges_rpc_delay_ms, 0,
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 namespace yb::cdc {
 
@@ -253,7 +253,7 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
                            "to the polling list.";
   }
 
-  if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     oid_to_relfilenode_ = std::move(oid_to_relfilenode);
   }
 
@@ -1110,7 +1110,7 @@ Status CDCSDKVirtualWAL::AddRecordToVirtualWalPriorityQueue(
       auto unique_id = std::make_shared<CDCSDKUniqueRecordID>(
           CDCSDKUniqueRecordID(is_publication_refresh_record, record));
 
-      if (GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) &&
+      if (FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream &&
           virtual_wal_safe_time_.is_valid() &&
           unique_id->GetCommitTime() < virtual_wal_safe_time_.ToUint64()) {
         VLOG_WITH_PREFIX(3) << "Received a record with commit time lesser than virtual wal "
@@ -1187,7 +1187,7 @@ Result<TabletRecordInfoPair> CDCSDKVirtualWAL::FindConsistentRecord(
 }
 
 Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordID& popped_record) {
-  if (!GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream)) {
+  if (!FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) {
     return Status::OK();
   }
 
@@ -1212,14 +1212,14 @@ Status CDCSDKVirtualWAL::ValidateAndUpdateVWALSafeTime(const CDCSDKUniqueRecordI
 }
 
 Status CDCSDKVirtualWAL::UpdateRestartTimeIfRequired() {
-  if (!GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream)) {
+  if (!FLAGS_cdcsdk_update_restart_time_when_nothing_to_stream) {
     return Status::OK();
   }
 
   auto current_time = HybridTime::FromMicros(GetCurrentTimeMicros());
   if (last_restart_lsn_read_time_.is_valid() &&
       current_time.PhysicalDiff(last_restart_lsn_read_time_) <
-          MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_cdcsdk_update_restart_time_interval_secs))) {
+          MonoDelta::FromSeconds(FLAGS_cdcsdk_update_restart_time_interval_secs)) {
     return Status::OK();
   }
 
@@ -1499,14 +1499,14 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
   HybridTime hybrid_sum;
   if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
-        GetAtomicFlag(&FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros));
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddSeconds(
-        GetAtomicFlag(&FLAGS_cdcsdk_publication_list_refresh_interval_secs));
+        FLAGS_cdcsdk_publication_list_refresh_interval_secs);
   }
   DCHECK(hybrid_sum.ToUint64() > last_decided_pub_refresh_time.first);
 
-  bool should_apply = GetAtomicFlag(&FLAGS_cdcsdk_enable_dynamic_table_support);
+  bool should_apply = FLAGS_cdcsdk_enable_dynamic_table_support;
   if (should_apply) {
     pub_refresh_times.insert(hybrid_sum.ToUint64());
   }
@@ -1785,7 +1785,7 @@ bool CDCSDKVirtualWAL::DeterminePubRefreshFromMasterRecord(const RecordInfo& rec
   if (table_id.empty()) {
     return false;
   } else if (table_id == pg_class_table_id_) {
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table && CheckForTableRewriteOrDrop(record)) {
       LOG_WITH_PREFIX(INFO) << "Table rewrite detected, will trigger a publication refresh";
       return true;
     }

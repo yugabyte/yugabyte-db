@@ -13,6 +13,7 @@ import { NodeState } from '../redesign/helpers/dtos';
 export const MULTILINE_GFLAGS_ARRAY = [
   'ysql_hba_conf_csv',
   'ysql_ident_conf_csv',
+  'ycql_ident_conf_csv',
   'ysql_pg_conf_csv'
 ];
 
@@ -71,6 +72,7 @@ export const nodeInClusterStates = [
 export const MultilineGFlags = {
   YSQL_HBA_CONF_CSV: 'ysql_hba_conf_csv',
   YSQL_IDENT_CONF_CSV: 'ysql_ident_conf_csv',
+  YCQL_IDENT_CONF_CSV: 'ycql_ident_conf_csv',
   YSQL_PG_CONF_CSV: 'ysql_pg_conf_csv'
 };
 
@@ -521,7 +523,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     }
 
     for (let index = 0; index < attributes?.length; index++) {
-      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);
+      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS) ?? [];
       const attributeValue = attributeValues.join(CONST_VALUES.EQUALS);
 
       const hasNoAndStartQuote =

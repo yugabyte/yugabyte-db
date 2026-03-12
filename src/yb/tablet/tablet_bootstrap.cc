@@ -464,7 +464,7 @@ class TabletBootstrap {
         append_pool_(data.append_pool),
         allocation_pool_(data.allocation_pool),
         log_sync_pool_(data.log_sync_pool),
-        skip_wal_rewrite_(GetAtomicFlag(&FLAGS_skip_wal_rewrite)),
+        skip_wal_rewrite_(FLAGS_skip_wal_rewrite),
         test_hooks_(data.test_hooks) {
   }
 
@@ -510,12 +510,12 @@ class TabletBootstrap {
 
     std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
     HybridTime min_replay_txn_first_write_ht = HybridTime::kInvalid;
-    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
+    if (FLAGS_enable_flush_retryable_requests && data_.bootstrap_state_manager) {
       auto result = data_.bootstrap_state_manager->LoadFromDisk();
       if (result.ok()) {
         bootstrap_state_pb = std::move(*result);
 
-        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+        if (FLAGS_use_bootstrap_intent_ht_filter) {
           const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
           min_replay_txn_first_write_ht = bootstrap_state.GetMinReplayTxnFirstWriteTime();
         }
@@ -1124,15 +1124,16 @@ class TabletBootstrap {
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
       if (txn_status == TransactionStatus::APPLYING) {
-        auto apply_to_storages = docdb::StorageSet::All();
-        if (index <= flushed_op_ids.regular.index) {
-          apply_to_storages.ResetRegularDB();
+        docdb::StorageSet apply_to_storages;
+        if (index > flushed_op_ids.regular.index) {
+          apply_to_storages.SetRegularDB();
         }
         for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-          if (index <= flushed_op_ids.vector_indexes[idx].index) {
-            apply_to_storages.ResetVectorIndex(idx);
+          if (index > flushed_op_ids.vector_indexes[idx].index) {
+            apply_to_storages.SetVectorIndex(idx);
           }
         }
+
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //
@@ -1537,7 +1538,7 @@ class TabletBootstrap {
     // If skip_wal_rewrite is false, create a new segment and append each replayed entry to this
     // new log.
     RETURN_NOT_OK_PREPEND(
-        OpenLog(log::CreateNewSegment(!GetAtomicFlag(&FLAGS_skip_wal_rewrite))),
+        OpenLog(log::CreateNewSegment(!FLAGS_skip_wal_rewrite)),
           "Failed to open new log");
 
     log::SegmentSequence segments;
@@ -1546,7 +1547,7 @@ class TabletBootstrap {
     // If any cdc stream is active for this tablet, we will read WAL from beginning when
     // FLAGS_skip_wal_replay_from_beginning_with_cdc is set to false.
     bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
-    if (!GetAtomicFlag(&FLAGS_skip_wal_replay_from_beginning_with_cdc) &&
+    if (!FLAGS_skip_wal_replay_from_beginning_with_cdc &&
         should_skip_flushed_entries && tablet_->transaction_participant()) {
       if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
         should_skip_flushed_entries = false;
@@ -1742,9 +1743,10 @@ class TabletBootstrap {
     }
 
     auto apply_status = tablet_->ApplyRowOperations(&operation, apply_to_storages);
-    // Failure is regular case, since could happen because transaction was aborted, while
+    // Expiration is regular case, since could happen because transaction was aborted, while
     // replicating its intents.
-    LOG_IF(INFO, !apply_status.ok()) << "Apply operation failed: " << apply_status;
+    LOG_IF(FATAL, !apply_status.ok() && !IsTxnAborted(apply_status))
+        << "Apply operation failed: " << apply_status;
 
     tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
     return Status::OK();

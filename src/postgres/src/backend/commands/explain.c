@@ -867,7 +867,7 @@ static void
 YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 {
 	ListCell   *l;
-	const char *lock_mode;
+	const char *lock_mode = NULL;
 
 	if (!es->pstmt->rowMarks)
 		return;
@@ -887,11 +887,14 @@ YbExplainScanLocks(YbLockMechanism yb_lock_mechanism, ExplainState *es)
 		}
 	}
 
-	if (es->format == EXPLAIN_FORMAT_TEXT)
-		appendStringInfo(es->str, " (Locked %s)", lock_mode);
-	else
+	if (lock_mode != NULL)
 	{
-		ExplainPropertyText("Lock Type", lock_mode, es);
+		if (es->format == EXPLAIN_FORMAT_TEXT)
+			appendStringInfo(es->str, " (Locked %s)", lock_mode);
+		else
+		{
+			ExplainPropertyText("Lock Type", lock_mode, es);
+		}
 	}
 }
 
@@ -931,6 +934,34 @@ YbIsTimingNeeded(ExplainState *es, bool timing_set)
 
 	/* Else, use timing if the query needs it */
 	return es->analyze;
+}
+
+bool
+YbIsDebugMetricsCollectionNeeded(bool log_debug, bool log_dist)
+{
+	if (!log_debug)
+		return false;
+
+	/* YB: DIST is required for DEBUG option to be enabled. */
+	if (!log_dist)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option DEBUG requires DIST")));
+		return false;
+	}
+
+	/* YB: DEBUG option is disabled if non-deterministic fields are hidden. */
+	if (yb_explain_hide_non_deterministic_fields)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+						"disables EXPLAIN option DEBUG")));
+		return false;
+	}
+
+	return true;
 }
 
 static void
@@ -1062,14 +1093,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	if (yb_explain_hide_non_deterministic_fields && es->yb_debug)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-						"disables EXPLAIN option DEBUG")));
-		es->yb_debug = false;
-	}
+	es->yb_debug = YbIsDebugMetricsCollectionNeeded(es->yb_debug, es->rpc);
 
 	/* YB: check if timing is required */
 	es->timing = YbIsTimingNeeded(es, timing_set);

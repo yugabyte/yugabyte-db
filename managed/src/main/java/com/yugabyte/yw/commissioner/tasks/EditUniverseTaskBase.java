@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -109,6 +110,36 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     // saving the Universe fails. It is ok because the retry
     // will just fail.
     updateTaskDetailsInDB(taskParams());
+  }
+
+  protected void createComprehensivePrecheckTasks(Universe universe) {
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+      log.debug("Comprehensive prechecks are disabled, skipping.");
+      return;
+    }
+
+    Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
+    if (liveNodes.isEmpty()) {
+      log.debug("No live nodes found, skipping comprehensive prechecks.");
+      return;
+    }
+
+    log.info("Running comprehensive prechecks on {} live nodes", liveNodes.size());
+    createCheckSshConnectionTasks(liveNodes);
+
+    doInPrecheckSubTaskGroup(
+        "CheckServiceLiveness",
+        subTaskGroup -> {
+          for (NodeDetails node : liveNodes) {
+            CheckServiceLiveness.Params params = new CheckServiceLiveness.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = node.nodeName;
+            params.timeoutMs = 10000;
+            CheckServiceLiveness task = createTask(CheckServiceLiveness.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
   }
 
   protected Set<NodeDetails> getAddedMasters() {

@@ -26,6 +26,11 @@
 #include "executor/cypher_executor.h"
 #include "executor/cypher_utils.h"
 
+/* YB includes */
+#include "executor/ybModifyTable.h"
+#include "pg_yb_utils.h"
+#include "utils/age_global_graph.h"
+
 static void begin_cypher_delete(CustomScanState *node, EState *estate,
                                 int eflags);
 static TupleTableSlot *exec_cypher_delete(CustomScanState *node);
@@ -38,6 +43,8 @@ static void check_for_connected_edges(CustomScanState *node);
 static agtype_value *extract_entity(CustomScanState *node,
                                     TupleTableSlot *scanTupleSlot,
                                     int entity_position);
+static void yb_delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
+                             HeapTuple tuple);
 static void delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
                           HeapTuple tuple);
 
@@ -285,6 +292,16 @@ static void delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
     TM_Result delete_result;
     Buffer buffer;
 
+    if (IsYBRelation(resultRelInfo->ri_RelationDesc))
+    {
+        yb_delete_entity(estate, resultRelInfo, tuple);
+        YbCommandCounterIncrement();
+
+        /* invalidate the global graph cache */
+        yb_invalidate_GRAPH_global_contexts();
+        return;
+    }
+
     /* Find the physical tuple, this variable is coming from */
     saved_resultRels = estate->es_result_relations;
     estate->es_result_relations = &resultRelInfo;
@@ -351,6 +368,56 @@ static void delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
 
     ReleaseBuffer(buffer);
 
+    estate->es_result_relations = saved_resultRels;
+}
+
+/*
+ * YugabyteDB-specific delete path.
+ *
+ * YB relations don't use PostgreSQL's heap storage, so heap TIDs
+ * (t_self / ctid) are not valid. We cannot call heap_lock_tuple or
+ * heap_delete which require valid heap TIDs. Instead, YB handles
+ * locking internally in DocDB, and we delete using the tuple's ybctid.
+ */
+static void yb_delete_entity(EState *estate, ResultRelInfo *resultRelInfo,
+                             HeapTuple tuple)
+{
+    ResultRelInfo **saved_resultRels;
+    Relation rel = resultRelInfo->ri_RelationDesc;
+    TupleTableSlot *slot;
+
+    saved_resultRels = estate->es_result_relations;
+    estate->es_result_relations = &resultRelInfo;
+
+    ExecOpenIndices(resultRelInfo, false);
+
+    slot = ExecInitExtraTupleSlot(
+        estate, RelationGetDescr(rel), &TTSOpsHeapTuple);
+    ExecStoreHeapTuple(tuple, slot, false);
+    TABLETUPLE_YBCTID(slot) = HEAPTUPLE_YBCTID(tuple);
+
+    YBCExecuteDelete(rel, slot,
+                     NIL /* returning_columns */,
+                     true /* target_tuple_fetched */,
+                     YB_TRANSACTIONAL,
+                     false /* changingPart */,
+                     estate);
+
+    if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
+    {
+        Datum ybctid = YBCGetYBTupleIdFromSlot(slot);
+        ExecDeleteIndexTuples(resultRelInfo, ybctid, tuple, estate);
+    }
+
+    /*
+     * YB: Mark the current command ID as used so that the subsequent
+     * CommandCounterIncrement() actually advances the counter and
+     * refreshes snapshots.  Without this, CCI is a no-op and later
+     * scans may use a stale snapshot that cannot see this deletion.
+     */
+    (void) GetCurrentCommandId(true);
+
+    ExecCloseIndices(resultRelInfo);
     estate->es_result_relations = saved_resultRels;
 }
 

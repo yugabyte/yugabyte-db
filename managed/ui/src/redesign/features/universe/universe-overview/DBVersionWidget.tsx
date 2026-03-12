@@ -7,7 +7,8 @@ import { YBTooltip } from '../../../components';
 import { YBWidget } from '../../../../components/panels';
 import clsx from 'clsx';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
-import { DBUpgradeModal } from '../universe-actions/rollback-upgrade/DBUpgradeModal';
+import { DBUpgradeModal as LegacyDBUpgradeModal } from '../universe-actions/rollback-upgrade/DBUpgradeModal';
+import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
 import {
   getUniverseStatus,
@@ -26,12 +27,14 @@ import WarningExclamation from '../../../assets/warning-triangle.svg?img';
 interface DBVersionWidgetProps {
   higherVersionCount: number;
   isRollBackFeatureEnabled: boolean;
+  isCanaryUpgradeEnabled: boolean;
   failedTaskDetails: TaskObject;
 }
 
 export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   higherVersionCount,
   isRollBackFeatureEnabled,
+  isCanaryUpgradeEnabled,
   failedTaskDetails
 }) => {
   const { t } = useTranslation();
@@ -159,13 +162,24 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
           }
         />
       }
-      <DBUpgradeModal
-        open={openUpgradeModal}
-        onClose={() => {
-          setUpgradeModal(false);
-        }}
-        universeData={currentUniverse}
-      />
+      {openUpgradeModal &&
+        (isCanaryUpgradeEnabled ? (
+          <DbUpgradeModal
+            universeData={currentUniverse}
+            modalProps={{
+              open: openUpgradeModal,
+              onClose: () => setUpgradeModal(false)
+            }}
+          />
+        ) : (
+          <LegacyDBUpgradeModal
+            open={openUpgradeModal}
+            onClose={() => {
+              setUpgradeModal(false);
+            }}
+            universeData={currentUniverse}
+          />
+        ))}
     </div>
   );
 };

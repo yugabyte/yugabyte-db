@@ -65,6 +65,7 @@ namespace yb::pggate {
 
 class PgDmlRead;
 class PgFlushDebugContext;
+class PgGlobalViewRead;
 
 struct PgMemctxComparator {
   using is_transparent = void;
@@ -483,11 +484,11 @@ class PgApiImpl {
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
-  Status DmlBindRange(YbcPgStatement handle,
-                      Slice lower_bound,
-                      bool lower_bound_inclusive,
-                      Slice upper_bound,
-                      bool upper_bound_inclusive);
+  Status DmlApplyParallelRange(YbcPgStatement handle,
+                               Slice lower_bound,
+                               bool lower_bound_inclusive,
+                               Slice upper_bound,
+                               bool upper_bound_inclusive);
 
   Status DmlBindBounds(PgStatement* handle,
                        const Slice lower_bound,
@@ -870,6 +871,10 @@ class PgApiImpl {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+      size_t num_values);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   bool IsCronLeader() const;
@@ -885,6 +890,8 @@ class PgApiImpl {
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
+  Status NewGlobalViewRead(const char* query, PgGlobalViewRead** handle);
+
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
   //----------------------------------------------------------------------------------------------
@@ -897,7 +904,9 @@ class PgApiImpl {
   //----------------------------------------------------------------------------------------------
   // Table Locks.
   //----------------------------------------------------------------------------------------------
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status AcquireObjectLock(
+      const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
   auto TemporaryDisableReadTimeHistoryCutoff() {
     return pg_txn_manager_->TemporaryDisableReadTimeHistoryCutoff();

@@ -27,6 +27,7 @@ import (
 	"node-agent/ynp/module/provision/otelcol"
 	"node-agent/ynp/module/provision/pglogotelcol"
 	"node-agent/ynp/module/provision/rebootnode"
+	"node-agent/ynp/module/provision/rootsystemd"
 	"node-agent/ynp/module/provision/sshd"
 	"node-agent/ynp/module/provision/systemd"
 	"node-agent/ynp/module/provision/tailscale"
@@ -38,6 +39,7 @@ import (
 	"node-agent/ynp/module/provision/yugabyte"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -85,7 +87,7 @@ func (e *ScriptExitError) Unwrap() error {
 type ProvisionCommand struct {
 	ctx            context.Context
 	iniConfig      *config.INIConfig
-	args           config.Args
+	args           *config.Args
 	modules        map[string]config.Module
 	osVersion      string
 	osFamily       OSFamily
@@ -96,7 +98,7 @@ type ProvisionCommand struct {
 func NewProvisionCommand(
 	ctx context.Context,
 	iniConfig *config.INIConfig,
-	args config.Args,
+	args *config.Args,
 ) config.Command {
 	command := &ProvisionCommand{
 		ctx:       ctx,
@@ -123,6 +125,42 @@ func (pc *ProvisionCommand) Init() error {
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to load module: %v", err)
 		return err
+	}
+	return nil
+}
+
+// runPrechecks validates user privileges and version compatibility.
+func (pc *ProvisionCommand) runPrechecks() error {
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("Failed to get current user: %v", err)
+	}
+	expectedUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
+	if pc.args.NoRoot {
+		// Ensure user is the specific yb_user
+		if currentUser.Username != expectedUser {
+			return fmt.Errorf(
+				"--noroot mode must be run as '%s' user, not '%s'\n\n"+
+					"Please login as %s and run: ./node-provision.sh --noroot",
+				expectedUser, currentUser.Username, expectedUser)
+		}
+		util.FileLogger().
+			Infof(pc.ctx, "Running --noroot as correct user: %s", currentUser.Username)
+
+		// Version compatibility check
+		if err := pc.compareYnpVersion(false /*strict*/); err != nil {
+			return err
+		}
+	} else {
+		// Requirement: If --root is passed OR if neither flag is passed, user MUST be root (UID 0)
+		if currentUser.Uid != "0" {
+			return fmt.Errorf(
+				"Provisioning requires root privileges.\n"+
+					"Current user '%s' is not root. Please run with sudo or as the root user.\n"+
+					"If you intended to run without root, use the --noroot flag.",
+				currentUser.Username)
+		}
+		util.FileLogger().Infof(pc.ctx, "Running with root privileges.")
 	}
 	return nil
 }
@@ -165,6 +203,7 @@ func (pc *ProvisionCommand) RegisterModules() error {
 	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
+	pc.registerModule(rootsystemd.NewConfigureRootSystemd(modulesPath))
 
 	return nil
 }
@@ -219,7 +258,7 @@ func (pc *ProvisionCommand) RunPreflightChecks() error {
 	if err != nil {
 		return err
 	}
-	if err := pc.compareYnpVersion(); err != nil {
+	if err := pc.compareYnpVersion(true /*strict*/); err != nil {
 		return err
 	}
 	return pc.runScript("precheck", precheckScript)
@@ -235,7 +274,7 @@ func (pc *ProvisionCommand) ListModules() error {
 }
 
 func (pc *ProvisionCommand) Execute() error {
-	if err := pc.validateSpecificModules(); err != nil {
+	if err := pc.runPrechecks(); err != nil {
 		return err
 	}
 	runScript, precheckScript, err := pc.generateTemplate()
@@ -276,7 +315,10 @@ func (pc *ProvisionCommand) Execute() error {
 
 func (pc *ProvisionCommand) Cleanup() {}
 
-func (pc *ProvisionCommand) validateSpecificModules() error {
+// validateEnabledModules checks if the modules specified in the INI config are registered and valid.
+// A non-existing module can be registered as long as it is not consumed but it must exist
+// if it is referenced in the INI config for consumption.
+func (pc *ProvisionCommand) validateEnabledModules() error {
 	unknownModules := []string{}
 	for _, moduleName := range pc.args.SpecificModules {
 		if _, ok := pc.modules[moduleName]; !ok {
@@ -285,6 +327,24 @@ func (pc *ProvisionCommand) validateSpecificModules() error {
 	}
 	if len(unknownModules) > 0 {
 		return fmt.Errorf("unknown modules specified: %s", strings.Join(unknownModules, ", "))
+	}
+	// Go over all the enabled modules.
+	for _, key := range pc.iniConfig.Sections() {
+		if key == config.DefaultINISection {
+			// Default section is not a module, skip.
+			continue
+		}
+		module, ok := pc.modules[key]
+		if ok {
+			// Make sure the module is valid e.g template path is correct.
+			err := module.Validate()
+			if err != nil {
+				return fmt.Errorf("Validation failed for module %s: %v", module.Name(), err)
+			}
+		} else {
+			// Module defined in config.ini exists.
+			return fmt.Errorf("Module %s is defined in INI but not registered in the command", key)
+		}
 	}
 	return nil
 }
@@ -379,10 +439,13 @@ func (pc *ProvisionCommand) prepareGenerateTemplate() error {
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
 func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
-	allTemplates := make([]*config.RenderedTemplates, 0)
+	if err := pc.validateEnabledModules(); err != nil {
+		return "", "", err
+	}
 	if err := pc.prepareGenerateTemplate(); err != nil {
 		return "", "", err
 	}
+	allTemplates := make([]*config.RenderedTemplates, 0)
 	// Process in the order of sections in the ini file.
 	for _, key := range pc.iniConfig.Sections() {
 		if key == config.DefaultINISection {
@@ -390,13 +453,18 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 		}
 		module, ok := pc.modules[key]
 		if !ok {
-			util.FileLogger().Infof(pc.ctx, "Module not found: %s", key)
-			continue
+			return "", "", fmt.Errorf(
+				"Module %s is defined in INI but not registered in the command",
+				key,
+			)
 		}
 		if len(pc.args.SpecificModules) > 0 && !slices.Contains(pc.args.SpecificModules, key) {
+			util.FileLogger().
+				Infof(pc.ctx, "Skipping %s because it is not in the specific modules list", key)
 			continue
 		}
 		if len(pc.args.SkipModules) > 0 && slices.Contains(pc.args.SkipModules, key) {
+			util.FileLogger().Infof(pc.ctx, "Skipping %s because it is in the skip list", key)
 			continue
 		}
 		values := pc.iniConfig.SectionValue(key)
@@ -547,8 +615,6 @@ func (pc *ProvisionCommand) populateSudoCheck(f *os.File) {
 	fmt.Fprintf(f, "SUDO_ACCESS=\"false\"\n")
 	fmt.Fprintf(f, "if [ $(id -u) = 0 ]; then\n")
 	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
-	fmt.Fprintf(f, "elif sudo -n pwd >/dev/null 2>&1; then\n")
-	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
 	fmt.Fprintf(f, "fi\n")
 }
 
@@ -562,7 +628,7 @@ func (pc *ProvisionCommand) buildScript(
 	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
 		dir = tmp
 	}
-	f, err := os.CreateTemp(dir, "*.sh")
+	f, err := os.CreateTemp(dir, "tmp*")
 	if err != nil {
 		return "", err
 	}
@@ -735,41 +801,55 @@ func parseVersion(version string) ([3]int, error) {
 	return result, nil
 }
 
-func (pc *ProvisionCommand) compareYnpVersion() error {
+// compareYnpVersion compares the current YNP major version with the stored version.
+// In strict mode (preflight checks), missing file or values are errors.
+// In non-strict mode (prechecks), they are silently ignored.
+func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ybHomeDir == "" || versionStr == "" {
-		err := fmt.Errorf("yb_home_dir or version missing in context")
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+		if strict {
+			err := fmt.Errorf("yb_home_dir or version missing in context")
+			util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	currentYnpVersion, err := parseVersion(versionStr)
+	currentVersion, err := parseVersion(versionStr)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
-		return err
+		if strict {
+			util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	ynpVersionFile := ybHomeDir + "/ynp_version"
+	ynpVersionFile := filepath.Join(ybHomeDir, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
-		return err
-	}
-	storedYnpVersion, err := parseVersion(strings.TrimSpace(string(data)))
-	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
-		return err
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
+			return err
+		}
+		return nil
 	}
 
-	if currentYnpVersion[0] != storedYnpVersion[0] {
-		err := fmt.Errorf(
-			"The major versions are different. Current: %v, Stored: %v. Please run reprovision again on the node",
-			currentYnpVersion,
-			storedYnpVersion,
-		)
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+	storedVersion, err := parseVersion(strings.TrimSpace(string(data)))
+	if err != nil {
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
+			return err
+		}
+		return nil
+	}
+
+	if currentVersion[0] != storedVersion[0] {
+		return fmt.Errorf(
+			"Major version mismatch detected. Current: %d, Stored: %d",
+			currentVersion[0], storedVersion[0])
 	}
 	return nil
 }

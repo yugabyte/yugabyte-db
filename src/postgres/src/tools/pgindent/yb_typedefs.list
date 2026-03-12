@@ -279,11 +279,13 @@ YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgGlobalTabletsDescriptor
+YbcPgGlobalViewRead
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
+YbcPgKeyValue
 YbcPgLastKnownCatalogVersionInfo
 YbcPgLocalTabletsDescriptor
 YbcPgMemctx
@@ -326,6 +328,7 @@ YbcReadAfterCommitVisibilityEnum
 YbcReadHybridTime
 YbcReadPointHandle
 YbcRecordTempRelationDDL_hook_type
+YbcRemotePgExecResult
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
 YbcRpczEntry

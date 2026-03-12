@@ -416,7 +416,7 @@ write_systemd_service_file() {
   WorkingDirectory=$NODE_AGENT_HOME
   LimitCORE=infinity
   LimitNOFILE=1048576
-  LimitNPROC=12000
+  LimitNPROC=64000
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
@@ -440,7 +440,7 @@ EOF
   WorkingDirectory=$NODE_AGENT_HOME
   LimitCORE=infinity
   LimitNOFILE=1048576
-  LimitNPROC=12000
+  LimitNPROC=64000
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC

@@ -1312,6 +1312,16 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       UUID rootCA,
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt) {
+    return createKubernetesUniverseInternal(
+        customer, rootCA, enableNodeToNodeEncrypt, enableClientToNodeEncrypt, "2.28.0.0-b0");
+  }
+
+  private Universe createKubernetesUniverseInternal(
+      Customer customer,
+      UUID rootCA,
+      boolean enableNodeToNodeEncrypt,
+      boolean enableClientToNodeEncrypt,
+      String ybSoftwareVersion) {
     Universe u = ModelFactory.createUniverse(customer.getId());
     u.updateConfig(ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     u.save();
@@ -1323,11 +1333,199 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
           details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
           details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt =
               enableClientToNodeEncrypt;
-          details.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.28.0.0-b0";
+          details.getPrimaryCluster().userIntent.ybSoftwareVersion = ybSoftwareVersion;
           if (rootCA != null) {
             details.rootCA = rootCA;
           }
           universe.setUniverseDetails(details);
         });
+  }
+
+  // ==================== Cert-Manager Certificate Rotation Tests ====================
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerRootCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    // Use supported version for cert-manager cert rotation
+    Universe u = createKubernetesUniverseInternal(c, null, true, false, "2026.1.0.0-b1");
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = UUID.randomUUID();
+    params.rootAndClientRootCASame = true;
+
+    // Create certificate info with K8SCertManager type
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        params.rootCA,
+        c.getUuid(),
+        "test-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.K8SCertManager);
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.RootCert, capturedParams.rootCARotationType);
+    assertEquals(params.rootCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerUnsupportedVersion()
+      throws IOException, NoSuchAlgorithmException {
+    Customer c = ModelFactory.testCustomer();
+    // Use unsupported version for cert-manager cert rotation
+    Universe u = createKubernetesUniverseInternal(c, null, true, false, "2025.2.0.0-b0");
+
+    UUID certManagerRootCA = UUID.randomUUID();
+
+    // Create certificate info with K8SCertManager type
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "test.crt", "test-cert");
+    CertificateInfo.create(
+        certManagerRootCA,
+        c.getUuid(),
+        "test-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/test.crt",
+        CertConfigType.K8SCertManager);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = certManagerRootCA;
+    params.rootAndClientRootCASame = true;
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> handler.rotateCerts(params, c, u));
+
+    assertEquals(
+        "Certificate rotation cert manager managed certificates is not supported for this"
+            + " version. Please upgrade to a supported version.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerWithExistingCertManagerCert()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    UUID existingCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for existing cert-manager cert
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "existing.crt", "existing-cert");
+    CertificateInfo.create(
+        existingCertManagerCA,
+        c.getUuid(),
+        "existing-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/existing.crt",
+        CertConfigType.K8SCertManager);
+
+    // Use supported version and set existing cert-manager rootCA
+    Universe u =
+        createKubernetesUniverseInternal(c, existingCertManagerCA, true, true, "2026.1.0.0-b1");
+
+    UUID newCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for new cert-manager cert
+    TestHelper.createTempFile(certBasePath, "new.crt", "new-cert");
+    CertificateInfo.create(
+        newCertManagerCA,
+        c.getUuid(),
+        "new-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/new.crt",
+        CertConfigType.K8SCertManager);
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = newCertManagerCA;
+    params.rootAndClientRootCASame = true;
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.RootCert, capturedParams.rootCARotationType);
+    assertEquals(newCertManagerCA, capturedParams.rootCA);
+  }
+
+  @Test
+  public void testRotateCertsKubernetesCertManagerServerCertRotation()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID =
+        FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotateKubernetesUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Customer c = ModelFactory.testCustomer();
+    UUID existingCertManagerCA = UUID.randomUUID();
+
+    // Create certificate info for existing cert-manager cert
+    String certBasePath = TestHelper.TMP_PATH + "/" + UUID.randomUUID();
+    TestHelper.createTempFile(certBasePath, "existing.crt", "existing-cert");
+    CertificateInfo.create(
+        existingCertManagerCA,
+        c.getUuid(),
+        "existing-cert-manager-cert",
+        new Date(),
+        new Date(),
+        "privateKey",
+        certBasePath + "/existing.crt",
+        CertConfigType.K8SCertManager);
+
+    // Use supported version and set existing cert-manager rootCA
+    Universe u =
+        createKubernetesUniverseInternal(c, existingCertManagerCA, true, false, "2026.1.0.0-b1");
+
+    CertsRotateParams params = new CertsRotateParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.rootCA = existingCertManagerCA; // Same rootCA
+    params.selfSignedServerCertRotate = true;
+    params.rootAndClientRootCASame = true;
+
+    handler.rotateCerts(params, c, u);
+
+    ArgumentCaptor<CertsRotateParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.CertsRotateKubernetesUpgrade), paramsArgumentCaptor.capture());
+
+    CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
+    assertEquals(CertsRotateParams.CertRotationType.ServerCert, capturedParams.rootCARotationType);
   }
 }

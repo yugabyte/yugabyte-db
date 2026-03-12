@@ -1756,9 +1756,9 @@ public class OtelCollectorConfigGenerator {
           case BearerToken:
             OtelCollectorConfigFormat.BearerTokenAuthExtension bearerAuthExt =
                 new OtelCollectorConfigFormat.BearerTokenAuthExtension();
-            bearerAuthExt.setBearer_token(otlpConfig.getBearerToken().getToken());
+            bearerAuthExt.setToken(otlpConfig.getBearerToken().getToken());
 
-            authExtensionName = "bearertoken/" + exportTypeAndUUIDString;
+            authExtensionName = "bearertokenauth/" + exportTypeAndUUIDString;
             extensions.put(authExtensionName, bearerAuthExt);
 
             // Set the auth reference in the exporter
@@ -1921,10 +1921,11 @@ public class OtelCollectorConfigGenerator {
       case GCP_CLOUD_MONITORING:
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
           String encodedCredentials =
               Base64.getEncoder()
-                  .encodeToString(gcpCloudMonitoringConfig.getCredentials().toString().getBytes());
+                  .encodeToString(
+                      gcpCloudMonitoringConfig.getGcmCredentials().toString().getBytes());
           secretEnv.add(
               ImmutableMap.of(
                   "envName",

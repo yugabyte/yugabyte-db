@@ -99,7 +99,7 @@ tserver::TabletServerErrorPB_Code ErrorCode(TabletServerErrorPtr error);
 template <class Resp, class Req>
 inline bool CheckIfConsensusInfoUnexpectedlyMissing(const Req& request, const Resp& response) {
   if constexpr (tserver::HasTabletConsensusInfo<Resp>::value) {
-    if (GetAtomicFlag(&FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc)) {
+    if (FLAGS_TEST_always_return_consensus_info_for_succeeded_rpc) {
       // If that flag is set, we expect every successful RPC response (i.e., the response that comes
       // back has no error field) to have its tablet_consensus_info field filled in if the response
       // type has that field.

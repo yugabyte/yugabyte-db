@@ -42,6 +42,7 @@ yba [flags]
 * [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
 * [yba group](yba_group.md)	 - Manage YugabyteDB Anywhere groups
+* [yba ha](yba_ha.md)	 - Manage YugabyteDB Anywhere HA (High Availability) configuration
 * [yba host](yba_host.md)	 - Refer to YugabyteDB Anywhere host details
 * [yba ldap](yba_ldap.md)	 - Configure LDAP authentication for YBA
 * [yba login](yba_login.md)	 - Authenticate yba cli using email and password

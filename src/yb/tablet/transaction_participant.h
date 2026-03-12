@@ -278,7 +278,7 @@ class TransactionParticipant : public TransactionStatusManager {
   std::pair<uint64_t, uint64_t> GetNumFastModeTransactions();
 
  private:
-  Result<int64_t> RegisterRequest() override;
+  Result<int64_t> RegisterRequest(bool allow_when_closing) override;
   void UnregisterRequest(int64_t request) override;
 
   friend class FastModeTransactionScope;

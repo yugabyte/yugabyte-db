@@ -2173,10 +2173,10 @@ SchemaPtr RaftGroupMetadata::schema(const TableId& table_id) const {
   return table_info->SharedSchema();
 }
 
-std::shared_ptr<IndexMap> RaftGroupMetadata::index_map(const TableId& table_id) const {
+Result<std::shared_ptr<IndexMap>> RaftGroupMetadata::index_map(const TableId& table_id) const {
   DCHECK_NE(state_, kNotLoadedYet);
   const TableInfoPtr table_info =
-      table_id.empty() ? primary_table_info() : CHECK_RESULT(GetTableInfo(table_id));
+      table_id.empty() ? primary_table_info() : VERIFY_RESULT(GetTableInfo(table_id));
   return table_info->index_map;
 }
 

@@ -142,7 +142,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) = 0;
 
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;

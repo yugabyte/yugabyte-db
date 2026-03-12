@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
@@ -516,10 +517,26 @@ public class MetricQueryHelper {
    * <p>The return type is a set of labels for each metric and an array of time-stamped values
    */
   public ArrayList<MetricQueryResponse.Entry> queryDirect(String promQueryExpression) {
+    return queryDirect(promQueryExpression, null);
+  }
+
+  /**
+   * Same as {@link #queryDirect(String)} but evaluates the query at the given time. The time is
+   * passed as the 'time' parameter to the Prometheus /api/v1/query API (Unix timestamp in seconds).
+   *
+   * @param promQueryExpression PromQL expression
+   * @param time Evaluation time, or null for most recent
+   * @return Set of labels and values per series
+   */
+  public ArrayList<MetricQueryResponse.Entry> queryDirect(
+      String promQueryExpression, Instant time) {
     final String queryUrl = getPrometheusQueryUrl(METRICS_QUERY_PATH);
 
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
+    if (time != null) {
+      getParams.put("time", String.valueOf(time.getEpochSecond()));
+    }
     final JsonNode responseJson = getApiHelper().getRequest(queryUrl, getAuthHeaders(), getParams);
     final MetricQueryResponse metricResponse =
         Json.fromJson(responseJson, MetricQueryResponse.class);

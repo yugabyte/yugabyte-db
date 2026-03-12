@@ -16,7 +16,9 @@ type: docs
 
 YugabyteDB Aeon uses role-based access control (RBAC) to manage access to your YugabyteDB Aeon account. Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
 
+<!--
 <div style="position: relative; padding-bottom: calc(48.5% + 44px); height: 0;"><iframe src="https://app.supademo.com/embed/8qhuZOgCCzczVXY_5pydu" frameborder="0" webkitallowfullscreen="true" mozallowfullscreen="true" allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+-->
 
 YugabyteDB Aeon includes [built-in roles](#built-in-roles), and you can [define custom roles](#create-a-role) for team members to restrict access to specific account features. For information on assigning roles to users, refer to [Change a user's role](../manage-access/#change-a-user-s-role).
 

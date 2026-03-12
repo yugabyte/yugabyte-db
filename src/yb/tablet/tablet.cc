@@ -48,6 +48,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
@@ -389,14 +390,14 @@ class MetricsScope {
                rocksdb::Statistics& intentsdb_statistics) :
       MetricsScope(
           global_metrics, regulardb_statistics, intentsdb_statistics,
-          GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)) { }
+          FLAGS_batch_tablet_metrics_update) { }
 
   ~MetricsScope() {
     if (!IsBatchedMetricsUpdate()) {
       return;
     }
 
-    if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
+    if (FLAGS_dump_metrics_to_trace) {
       TraceScopedMetrics();
     }
 
@@ -459,7 +460,7 @@ class YSQLMetricsScope : public MetricsScope {
       return;
     }
 
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+    if (FLAGS_ysql_analyze_dump_metrics &&
         metrics_capture_ != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
       scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
       scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
@@ -744,7 +745,7 @@ Tablet::Tablet(const TabletInitData& data)
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
     intentsdb_statistics_ =
-        (GetAtomicFlag(&FLAGS_export_intentdb_metrics)
+        (FLAGS_export_intentdb_metrics
              ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
              : rocksdb::CreateDBStatistics(nullptr, nullptr, true));
 
@@ -1293,11 +1294,11 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
   // unintended cleanup of intent SST files.
   transaction_participant_->SetIntentRetainOpIdAndTime(
       metadata_->cdc_sdk_min_checkpoint_op_id(),
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
       /* min_start_ht_cdc_unstreamed_txns */ HybridTime::kInvalid);
   RETURN_NOT_OK(transaction_participant_->SetDB(
       doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
-  if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+  if (FLAGS_cdc_immediate_transaction_cleanup) {
     CleanupIntentFiles();
   }
   return Status::OK();
@@ -1407,7 +1408,7 @@ void Tablet::DoCleanupIntentFiles() {
   // transactions to have time larger than best_file_max_ht by calling
   // transaction_participant_->WaitMinRunningHybridTime outside of ScopedReadOperation.
   bool has_deletions_blocked_by_running_transations = false;
-  while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
+  while (FLAGS_cleanup_intents_sst_files) {
     auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (!scoped_read_operation.ok()) {
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Failed to acquire scoped read operation";
@@ -1449,7 +1450,7 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_start_ht_cdc_unstreamed_txns =
         transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
-    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) &&
+    if (FLAGS_cdc_immediate_transaction_cleanup &&
         metadata_->is_under_cdc_sdk_replication()) {
       if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
           min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
@@ -1857,10 +1858,8 @@ Status Tablet::WriteTransactionalBatch(
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS(
-        TryAgain,
-        Format("Transaction metadata missing: $0, looks like it was just aborted", transaction_id),
-        Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+    return CreateAbortedStatus(
+        "Transaction metadata missing: $0, looks like it was just aborted", transaction_id);
   }
 
   auto isolation_level = prepare_batch_data->first;
@@ -1878,7 +1877,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
@@ -2505,7 +2504,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 template <class Ids>
 Status Tablet::RemoveIntentsImpl(
     const RemoveIntentsData& data, RemoveReason reason, const Ids& ids) {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_skip_remove_intent))) {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_remove_intent)) {
     return Status::OK();
   }
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -2708,7 +2707,7 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
           << min_start_ht_cdc_unstreamed_txns;
       txn_participant->SetIntentRetainOpIdAndTime(
           cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
-      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      if (FLAGS_cdc_immediate_transaction_cleanup) {
         CleanupIntentFiles();
       }
     }
@@ -2732,7 +2731,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
 
   auto min_start_ht_cdc_unstreamed_txns = GetMinStartHTCDCUnstreamedTxns(log);
 
@@ -2783,7 +2782,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
   VLOG_WITH_PREFIX(1) << "Duration since last blocked: " << duration_since_last_blocked;
 
   if (duration_since_last_blocked >
-      GetAtomicFlag(&FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs)) {
+      FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
     if (log) {
@@ -3096,9 +3095,9 @@ struct BackfillParams {
   explicit BackfillParams(const CoarseTimePoint deadline, bool is_ysql)
       : start_time(CoarseMonoClock::Now()),
         deadline(deadline),
-        rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
-        batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
-    auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+        rate_per_sec(FLAGS_backfill_index_rate_rows_per_sec),
+        batch_size(FLAGS_backfill_index_write_batch_size) {
+    auto grace_margin_ms = FLAGS_backfill_index_timeout_grace_margin_ms;
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
       // To be safe, set it to twice that number or the default margin, whichever is higher.
@@ -3310,10 +3309,10 @@ void SleepToThrottleRate(
 
 }  // namespace
 
-Result<RequestScope> Tablet::CreateRequestScope() {
+Result<RequestScope> Tablet::CreateRequestScope(bool allow_when_closing) {
   RequestScope scope;
   if (transaction_participant_) {
-    return RequestScope::Create(transaction_participant_.get());
+    return RequestScope::Create(transaction_participant_.get(), allow_when_closing);
   }
   return scope;
 }

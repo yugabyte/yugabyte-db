@@ -2770,7 +2770,7 @@ void TabletSplitSingleServerITest::TestRetryableWrite() {
   auto peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
 
-  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+  if (FLAGS_enable_flush_retryable_requests) {
     // Wait retryable requests flushed to disk.
     ASSERT_OK(WaitFor([&] {
       return peer->TEST_HasBootstrapStateOnDisk();

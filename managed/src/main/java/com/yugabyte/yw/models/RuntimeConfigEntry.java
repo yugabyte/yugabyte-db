@@ -44,6 +44,10 @@ public class RuntimeConfigEntry extends Model {
     return idKey.getPath();
   }
 
+  public UUID getScopeUUID() {
+    return idKey.getScopeUUID();
+  }
+
   public String getValue() {
     return new String(this.value, StandardCharsets.UTF_8);
   }
@@ -60,6 +64,13 @@ public class RuntimeConfigEntry extends Model {
 
   public static List<RuntimeConfigEntry> getAll(UUID scope) {
     return findInScope.query().where().eq("scope_uuid", scope).findList();
+  }
+
+  public static List<RuntimeConfigEntry> getAll(Set<UUID> scopeUuids) {
+    if (scopeUuids == null || scopeUuids.isEmpty()) {
+      return List.of();
+    }
+    return find.query().where().in("scope_uuid", scopeUuids).findList();
   }
 
   @Deprecated

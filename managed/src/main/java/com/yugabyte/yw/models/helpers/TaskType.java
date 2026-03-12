@@ -453,6 +453,11 @@ public enum TaskType {
       CustomerTask.TaskType.Install,
       CustomerTask.TargetType.NodeAgent),
 
+  ProvisionUniverseNodes(
+      com.yugabyte.yw.commissioner.tasks.ProvisionUniverseNodes.class,
+      CustomerTask.TaskType.ProvisionUniverseNodes,
+      CustomerTask.TargetType.Universe),
+
   DeleteCustomerConfig(
       com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class,
       CustomerTask.TaskType.Delete,
@@ -817,6 +822,12 @@ public enum TaskType {
 
   UniverseUpdateSucceeded(
       com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded.class),
+
+  RegisterUniverseWithPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RegisterUniverseWithPaCollector.class),
+
+  UnregisterUniverseFromPaCollector(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UnregisterUniverseFromPaCollector.class),
 
   UpdateAndPersistGFlags(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags.class),
 
@@ -1234,6 +1245,9 @@ public enum TaskType {
 
   CheckNodeReachable(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeReachable.class),
 
+  CheckDbNodePortConnectivity(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity.class),
+
   SupportBundleComponentDownload(
       com.yugabyte.yw.commissioner.tasks.subtasks.SupportBundleComponentDownload.class),
 
@@ -1281,7 +1295,9 @@ public enum TaskType {
   CheckNodeDataDirDiskSpace(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
 
-  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
+  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class),
+
+  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class);
 
   private final Class<? extends ITask> taskClass;
 

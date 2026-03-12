@@ -169,7 +169,7 @@ func editClusterUtil(
 		}
 	}
 
-	deviceInfo, err := deviceInfoChanges(cmd, userIntent)
+	deviceInfo, err := deviceInfoChanges(cmd, &userIntent)
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
 	}
@@ -320,7 +320,7 @@ func editUserTags(cmd *cobra.Command, userTags map[string]string) (map[string]st
 
 func deviceInfoChanges(
 	cmd *cobra.Command,
-	userIntent ybaclient.UserIntent,
+	userIntent *ybaclient.UserIntent,
 ) (ybaclient.DeviceInfo, error) {
 	deviceInfo := userIntent.GetDeviceInfo()
 	instanceType, err := cmd.Flags().GetString("instance-type")

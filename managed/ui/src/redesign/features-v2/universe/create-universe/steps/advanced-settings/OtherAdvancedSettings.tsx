@@ -19,7 +19,9 @@ import {
   TimeSyncField,
   InstanceARNField,
   SystemDField,
-  AccessKeyField
+  AccessKeyField,
+  IPV6Field,
+  NetworkAcessField
 } from '../../fields';
 import {
   CreateUniverseContext,
@@ -77,11 +79,11 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
-        <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
-          {provider &&
-          provider?.code !== CloudType.kubernetes &&
-          databaseSettings?.ysql &&
-          databaseSettings?.ycql ? (
+        {provider &&
+        provider?.code !== CloudType.kubernetes &&
+        databaseSettings?.ysql &&
+        databaseSettings?.ycql ? (
+          <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
             <DeploymentPortsField
               disabled={false}
               providerCode={generalSettings?.providerConfiguration?.code}
@@ -89,10 +91,10 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
               ycql={databaseSettings?.ycql}
               enableConnectionPooling={databaseSettings?.enableConnectionPooling}
             />
-          ) : (
-            <></>
-          )}
-        </YBAccordion>
+          </YBAccordion>
+        ) : (
+          <></>
+        )}
         {provider?.code !== CloudType.kubernetes && (
           <YBAccordion titleContent={t('userTagsHeader')} sx={{ width: '100%' }}>
             <UserTagsField disabled={false} />
@@ -101,7 +103,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
       </Box>
       <StyledPanel>
         <StyledHeader>{t('additionalSettingsHeader')}</StyledHeader>
-        <StyledContent>
+        <StyledContent sx={{ gap: '16px' }}>
           {provider && provider?.code !== CloudType.kubernetes && (
             <TimeSyncField disabled={false} provider={provider} />
           )}
@@ -113,6 +115,8 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           )}
           {provider?.code === CloudType.aws && <InstanceARNField disabled={false} />}
           {provider?.code !== CloudType.kubernetes && <SystemDField disabled={false} />}
+          {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
+          {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
         </StyledContent>
       </StyledPanel>
     </FormProvider>

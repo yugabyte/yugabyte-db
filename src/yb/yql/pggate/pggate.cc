@@ -32,8 +32,8 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
-#include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
@@ -56,9 +56,9 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/range.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
-#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -69,6 +69,7 @@
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_function.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -82,6 +83,7 @@
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
+#include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -177,6 +179,66 @@ Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
   }
   return PgSelect::Make(
       pg_session, table_id, locality_info, MakeIndexQueryInfo(index_id, params));
+}
+
+std::vector<size_t> GetColIndexToInput(
+    const PgTableDescPtr& table_desc, size_t num_values, size_t num_total_columns) {
+  const auto& attr_num_map = table_desc->GetAttrNumMap();
+  // For each schema column index, the index in the user's key_values[] for that column.
+  std::vector<size_t> col_index_to_input(num_values);
+  if (num_values == num_total_columns) {
+    // Full row: remap from attnum-sorted order to schema column order.
+    for (size_t i = 0; i < num_values; ++i) {
+      col_index_to_input[attr_num_map[i].second] = i;
+    }
+  } else {
+    // Key-only / partial range: values already in schema key column order.
+    std::iota(col_index_to_input.begin(), col_index_to_input.end(), 0);
+  }
+  return col_index_to_input;
+}
+
+Result<std::vector<size_t>> ValidateAndGetColIndexToInput(
+    const PgTableDescPtr& table_desc, const Schema& schema, const YbcPgKeyValue* key_values,
+    size_t num_values) {
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_total_columns = schema.num_columns();
+
+  if (table_desc->IsIndex()) {
+    return STATUS(InvalidArgument,
+        "yb_get_tablet_for_key cannot be used on indexes.");
+  }
+  if (table_desc->IsColocated()) {
+    return STATUS(InvalidArgument,
+        "yb_get_tablet_for_key is not yet supported for colocated tables");
+  }
+  const bool is_range_partitioned = !table_desc->IsHashPartitioned();
+  bool is_full_primary_key = num_values == num_key_columns;
+  bool is_full_row = num_values == num_total_columns;
+  bool is_partial_range_key = (is_range_partitioned && num_values < num_key_columns);
+
+  if (!(is_full_primary_key || is_full_row || is_partial_range_key)) {
+    return STATUS_FORMAT(InvalidArgument,
+        "invalid number of values: got $0, expected $1 (primary key) or $2 (entire row)",
+        num_values, num_key_columns, num_total_columns);
+  }
+
+  auto col_index_to_input = GetColIndexToInput(table_desc, num_values, num_total_columns);
+  const size_t num_keys_to_use = std::min(num_values, num_key_columns);
+
+  for (size_t i = 0; i < num_keys_to_use; ++i) {
+    if (key_values[col_index_to_input[i]].is_null) {
+      return STATUS_FORMAT(InvalidArgument,
+          "NULL values are not allowed in primary key columns (column $0)", i + 1);
+    }
+    const auto& col = schema.column(i);
+    const auto& kv = key_values[col_index_to_input[i]];
+    if (kv.type_entity && kv.type_entity->type_oid != 0 && col.pg_type_oid() != 0 &&
+        kv.type_entity->type_oid != col.pg_type_oid()) {
+      return STATUS_FORMAT(InvalidArgument, "type mismatch on column $0", i + 1);
+    }
+  }
+  return col_index_to_input;
 }
 
 namespace get_statement_as::internal {
@@ -730,8 +792,8 @@ PgApiImpl::PgApiImpl(
       pg_session_(make_scoped_refptr<PgSession>(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_,
-          [&row_lock_buffer = explicit_row_lock_buffer_](auto marker) {
-            return OnPgSessionRunRWOperations(row_lock_buffer, marker);
+          [this](auto marker) {
+            return OnPgSessionRunRWOperations(explicit_row_lock_buffer_, marker);
           })),
       fk_reference_cache_(pg_session_, buffering_settings_),
       explicit_row_lock_buffer_(pg_session_) {
@@ -1443,10 +1505,10 @@ Status PgApiImpl::DmlBindHashCode(
   return Status::OK();
 }
 
-Status PgApiImpl::DmlBindRange(
+Status PgApiImpl::DmlApplyParallelRange(
     PgStatement* handle, Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound,
     bool upper_bound_inclusive) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).BindRange(
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).ApplyParallelRange(
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
@@ -1499,6 +1561,8 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx) {
+  RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
+  // TODO: Consider flushing FK reference intents also.
   return ResultToStatus(pg_session_->FlushBufferedOperations(dbg_ctx));
 }
 
@@ -2485,6 +2549,59 @@ Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata(bool loc
   return pg_client_.TabletsMetadata(local_only);
 }
 
+Result<std::string> PgApiImpl::GetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+    size_t num_values) {
+  auto table_desc = VERIFY_RESULT(
+      pg_session_->LoadTable(PgObjectId(database_oid, table_oid)));
+
+  const auto& schema = table_desc->schema();
+
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_hash_key_columns = schema.num_hash_key_columns();
+  auto col_index_to_input = VERIFY_RESULT(ValidateAndGetColIndexToInput(
+      table_desc, schema, key_values, num_values));
+  const size_t num_keys_to_use = std::min(num_values, num_key_columns);
+
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
+  hashed_components.reserve(num_hash_key_columns);
+  range_components.reserve(std::max(num_keys_to_use, num_hash_key_columns) - num_hash_key_columns);
+
+  std::string hash_compound;
+
+  for (size_t i = 0; i < num_keys_to_use; ++i) {
+    QLValuePB ql_value;
+    const auto& kv = key_values[col_index_to_input[i]];
+    DCHECK(kv.type_entity) << "Primary key column " << (i + 1)
+                           << " must have a supported type (type_entity is null)";
+    if (kv.type_entity) {
+      RETURN_NOT_OK(PgValueToPB(kv.type_entity, kv.datum, kv.is_null, &ql_value));
+    }
+    auto key_entry = dockv::KeyEntryValue::FromQLValuePB(
+      ql_value, schema.column(i).sorting_type());
+    if (i < num_hash_key_columns) {
+      hashed_components.push_back(std::move(key_entry));
+      AppendToKey(ql_value, &hash_compound);
+    } else {
+      range_components.push_back(std::move(key_entry));
+    }
+  }
+
+  dockv::DocKey doc_key;
+  if (num_hash_key_columns > 0) {
+    auto hash = YBPartition::HashColumnCompoundValue(hash_compound);
+    doc_key = dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
+  } else {
+    doc_key = dockv::DocKey(std::move(range_components));
+  }
+
+  auto table_id = PgObjectId(database_oid, table_oid).GetYbTableId();
+  auto partition_key = doc_key.Encode().ToStringBuffer();
+
+  return pg_client_.GetTabletForKey(table_id, partition_key);
+}
+
 Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
     return pg_client_.ServersMetrics();
 }
@@ -2548,8 +2665,13 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 // Table Locks.
 //------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  return pg_session_->AcquireObjectLock(lock_id, mode);
+Status PgApiImpl::AcquireObjectLock(
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return pg_session_->AcquireObjectLock(lock_id, mode, is_session_lock);
+}
+
+Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2595,6 +2717,21 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
       init_postgres_info.parallel_leader_session_id
           ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
     return result;
+}
+
+Status PgApiImpl::NewGlobalViewRead(const char* query, PgGlobalViewRead** handle) {
+  auto ts_info = VERIFY_RESULT(ListTabletServers());
+
+  std::vector<std::string> uuids;
+  uuids.reserve(ts_info.tablet_servers.size());
+  for (const auto& ts : ts_info.tablet_servers) {
+    uuids.push_back(ts.server.uuid);
+  }
+
+  auto read = std::make_unique<PgGlobalViewRead>(pg_client_, query, std::move(uuids));
+  *handle = read.get();
+  pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
+  return Status::OK();
 }
 
 } // namespace yb::pggate

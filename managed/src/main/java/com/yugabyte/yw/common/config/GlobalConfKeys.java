@@ -1670,6 +1670,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Max Number of Parallel cluster consistency checks",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> connectivityCheckParallelism =
+      new ConfKeyInfo<>(
+          "yb.health.connectivity_check_parallelism",
+          ScopeType.GLOBAL,
+          "Max Number of Parallel connectivity checks",
+          "Max Number of Parallel connectivity checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcGroupClaim =
       new ConfKeyInfo<>(
           "yb.security.oidc_group_claim",
@@ -1985,6 +1993,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " \\/some\\/path\\/.+",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> logWSRequests =
+      new ConfKeyInfo<>(
+          "yb.log.logWSRequests",
+          ScopeType.GLOBAL,
+          "Log WS Requests",
+          "When enabled, logs outgoing WS client request details (method, URL, proxy host) at debug"
+              + " level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowLocalLoginWithSso =
       new ConfKeyInfo<>(
           "yb.security.allow_local_login_with_sso",
@@ -2016,6 +2033,56 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Disable Platform HA Restore Transaction",
           "Disable running platform HA restore operations in a transaction",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // File Collection configs (Internal - for troubleshooting APIs)
+  public static final ConfKeyInfo<Duration> fileCollectionDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Download Timeout",
+          "Maximum time to wait for downloading collected files from all DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionNodeDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.node_download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Per-Node Download Timeout",
+          "Maximum time to wait for downloading collected files from a single DB node",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionCleanupTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.cleanup_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Cleanup Timeout",
+          "Maximum time to wait for cleaning up collected files from DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConnectivityMetricCollection =
+      new ConfKeyInfo<>(
+          "yb.metrics.enable_connectivity_metric_collection",
+          ScopeType.GLOBAL,
+          "Enable Connectivity Metric Collection",
+          "Enable connectivity metric collection for all universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_existing_duplicate_az",
+          ScopeType.GLOBAL,
+          "Allow Duplicates in Existing AZs",
+          "Allow duplicates in already existing availability zones",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

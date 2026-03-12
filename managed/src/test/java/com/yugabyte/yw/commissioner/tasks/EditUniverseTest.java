@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -209,6 +210,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    // Disable comprehensive prechecks (CheckSshConnection, CheckServiceLiveness) so task sequence
+    // assertions remain valid. Tests verify core EditUniverse behavior.
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    RuntimeConfigEntry.upsert(
+        onPremUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -231,8 +238,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(Boolean.TRUE);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
-      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
+      lenient().when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
@@ -240,8 +247,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
       ListLiveTabletServersResponse mockListLiveTabletServersResponse =
           mock(ListLiveTabletServersResponse.class);
-      when(mockListLiveTabletServersResponse.getTabletServers()).thenReturn(new ArrayList<>());
-      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
+      lenient()
+          .when(mockListLiveTabletServersResponse.getTabletServers())
+          .thenReturn(new ArrayList<>());
+      lenient()
+          .when(mockClient.listLiveTabletServers())
+          .thenReturn(mockListLiveTabletServersResponse);
     } catch (Exception e) {
       fail(e.getMessage());
     }
@@ -350,6 +361,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.creatingUser = defaultUser;
@@ -392,6 +405,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     Region.create(defaultProvider, "region-2", "region-2", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
     UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);

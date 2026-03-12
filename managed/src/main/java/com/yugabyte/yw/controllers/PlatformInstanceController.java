@@ -78,9 +78,10 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createInstance(UUID configUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     PlatformInstance instance =
         HighAvailabilityConfig.doWithLock(
-            configUUID,
+            haConfig.getClusterKey(),
             config -> {
               PlatformInstanceFormData formData =
                   parseJsonAndValidate(request, PlatformInstanceFormData.class);
@@ -150,8 +151,9 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           if (!config.isLocalLeader()) {
             throw new PlatformServiceException(
@@ -235,8 +237,9 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot promote while shutdown is in progress");
     }
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           Optional<PlatformInstance> instance = PlatformInstance.get(instanceUUID);
 

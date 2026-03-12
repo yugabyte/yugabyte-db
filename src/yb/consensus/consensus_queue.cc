@@ -490,7 +490,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
       auto ht_lease_expiration_micros = now_ht.GetPhysicalValueMicros() +
                                         FLAGS_ht_lease_duration_ms * 1000;
-      auto leader_lease_duration_ms = GetAtomicFlag(&FLAGS_leader_lease_duration_ms);
+      auto leader_lease_duration_ms = FLAGS_leader_lease_duration_ms;
       request->set_leader_lease_duration_ms(leader_lease_duration_ms);
       request->set_ht_lease_expiration(ht_lease_expiration_micros);
 
@@ -1851,7 +1851,7 @@ void PeerMessageQueue::NotifyObserversOfMajorityReplOpChangeTask(
     LockGuard lock(queue_lock_);
     if (!new_committed_op_id.empty() &&
         new_committed_op_id.index > queue_state_.committed_op_id.index &&
-        !GetAtomicFlag(&FLAGS_TEST_stop_committed_op_id_updation)) {
+        !FLAGS_TEST_stop_committed_op_id_updation) {
       queue_state_.committed_op_id = new_committed_op_id;
     }
     queue_state_.last_applied_op_id.MakeAtLeast(last_applied_op_id);

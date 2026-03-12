@@ -208,7 +208,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status AcquireObjectLock(
+      const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
   YbcReadPointHandle GetCurrentReadPoint() const {
     return pg_txn_manager_->GetCurrentReadPoint();
@@ -226,6 +228,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
   Status RestoreReadPoint(const TxnReadPoint& saved_read_point) {
     return pg_txn_manager_->RestoreReadPoint(saved_read_point);
+  }
+
+  Status EnsureReadPoint() {
+    return pg_txn_manager_->EnsureReadPoint();
   }
 
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);

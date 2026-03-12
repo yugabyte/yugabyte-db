@@ -24,6 +24,7 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -86,7 +87,7 @@ DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
     " check instead of JWT (if ycql_use_jwt_auth=true). This is a comma separated list.");
 TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
 
-DEFINE_NON_RUNTIME_string(ycql_jwt_options, "",
+DEFINE_NON_RUNTIME_string(ycql_jwt_conf, "",
     "The space-separated list of options to configure JWT authentication. "
     "The format is a list of 'key=value' pairs separated by space. "
     "Valid keys are:\n"
@@ -664,7 +665,7 @@ Status CQLServiceImpl::YCQLStatementStats(const tserver::PgYCQLStatementStatsReq
 }
 
 Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
-  auto jwt_options = StringSplit(FLAGS_ycql_jwt_options, ' ');
+  auto jwt_options = StringSplit(FLAGS_ycql_jwt_conf, ' ');
 
   for (const auto& option : jwt_options) {
     auto option_kv = StringSplit(option, '=');
@@ -672,15 +673,19 @@ Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
       return STATUS(InvalidArgument, "Invalid JWT option format");
     }
 
+    // Handle optional double quotes around the value.
+    std::string value = option_kv[1];
+    TrimString(&value, "\"");
+
     if (option_kv[0] == kJwtAuthJwksUrl) {
       DCHECK(jwks_url);
-      *jwks_url = option_kv[1];
+      *jwks_url = value;
     } else if (option_kv[0] == kJwtAudiences) {
-      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_audience_));
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_audience_));
     } else if (option_kv[0] == kJwtIssuers) {
-      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_issuers_));
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_issuers_));
     } else if (option_kv[0] == kJwtMatchingClaimKey) {
-      jwt_matching_claim_key_ = option_kv[1];
+      jwt_matching_claim_key_ = value;
     } else {
       return STATUS_FORMAT(InvalidArgument, "Unknown JWT option $0", option_kv[0]);
     }

@@ -923,8 +923,7 @@ YBCIsLegacyModeForCatalogOps() {
   //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
   //     the TransactionSnapshot's read time serial number.
   //
-  return !YBCIsObjectLockingEnabled() || yb_fallback_to_legacy_catalog_read_time ||
-         YBCIsInitDbModeEnvVarSet();
+  return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet();
 }
 
 bool YBCIsObjectLockingEnabled() {

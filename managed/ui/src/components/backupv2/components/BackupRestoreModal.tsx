@@ -16,7 +16,7 @@
 //
 
 import React, { FC, useState } from 'react';
-import { findIndex, has } from 'lodash';
+import { find, findIndex, has, isFunction, omit } from 'lodash';
 import { Alert, Col, Row } from 'react-bootstrap';
 import { IBackup, ITable, IUniverse, Keyspace_Table, Backup_States, ICommonBackupInfo } from '..';
 import { getKMSConfigs, restoreEntireBackup, fetchIncrementalBackup } from '../common/BackupAPI';
@@ -40,7 +40,6 @@ import { components } from 'react-select';
 import clsx from 'clsx';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { find, isFunction, omit } from 'lodash';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { AllowedTasks, TableType } from '../../../redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';

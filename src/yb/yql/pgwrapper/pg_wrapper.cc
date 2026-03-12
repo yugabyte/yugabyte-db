@@ -186,16 +186,16 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVola
     "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
-    "Push down strict inequality filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_is_not_null, kLocalVolatile, false, true,
-    "Push down IS NOT NULL condition filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_hash_batch_in, kLocalVolatile, false, true,
     "Enable batching of hash in queries.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
-    "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, true,
     "Enable the pg_locks view. This view provides information about the locks held by "
@@ -445,6 +445,20 @@ using namespace std::literals;  // NOLINT
 namespace yb {
 namespace pgwrapper {
 
+string FormatPgGFlagValue(const string& value, const string& type) {
+  if (type == "string") {
+    auto trimmed = boost::algorithm::trim_copy(value);
+    if (trimmed.size() >= 2 && trimmed.front() == '\'' && trimmed.back() == '\'') {
+      // Already single-quoted: pass through unchanged.
+      return value;
+    }
+    // Add single quotes and escape internal single quotes.
+    string escaped_value = boost::replace_all_copy(value, "'", "''");
+    return Format("'$0'", escaped_value);
+  }
+  return value;
+}
+
 namespace {
 
 Status WriteConfigFile(const string& path, const vector<string>& lines) {
@@ -594,7 +608,8 @@ void AppendPgGFlags(vector<string>* lines) {
     }
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
-    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+    lines->push_back(
+        Format("$0=$1", pg_variable_name, FormatPgGFlagValue(flag.current_value, flag.type)));
   }
 
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.

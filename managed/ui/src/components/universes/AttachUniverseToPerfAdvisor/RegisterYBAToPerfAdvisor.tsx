@@ -28,6 +28,7 @@ export const RegisterYBAToPerfAdvisor = ({
   timezone
 }: RegisterYBAToPerfAdvisorProps) => {
   const helperClasses = useStyles();
+
   const {
     data: perfAdvisorListData,
     isLoading: isPaListFetchLoading,

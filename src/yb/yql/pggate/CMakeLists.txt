@@ -50,6 +50,7 @@ set(PGGATE_SRCS
     pg_op.cc
     pg_operation_buffer.cc
     pg_perform_future.cc
+    pg_read_range.cc
     pg_sample.cc
     pg_select.cc
     pg_select_index.cc
@@ -62,6 +63,7 @@ set(PGGATE_SRCS
     pg_txn_manager.cc
     pg_value.cc
     pg_ybctid_reader.cc
+    pg_global_view_read.cc
     ybc_gflags.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)

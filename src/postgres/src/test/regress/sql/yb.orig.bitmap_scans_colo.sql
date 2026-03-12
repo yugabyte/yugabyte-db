@@ -122,11 +122,13 @@ SELECT * FROM simple AS tbl_1 JOIN simple AS tbl_2 ON tbl_1.ind_a = tbl_2.ind_a 
 \set query 'SELECT ind_a, ind_b FROM simple WHERE ind_a < 10 OR ind_a IS NULL OR ind_b < 15 ORDER BY k'
 :explain1run1
 
-SET yb_pushdown_is_not_null = false;
+-- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
+-- currently used during execution, not just planning.
+SET yb_test_skip_binding_scan_keys = true;
 
 :explain1run1
 
-RESET yb_pushdown_is_not_null;
+RESET yb_test_skip_binding_scan_keys;
 
 -- use Bitmap Scan to delete rows and validate their deletion
 \set query 'DELETE FROM simple WHERE ind_a IS NULL OR ind_b < 15'

@@ -242,10 +242,21 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
   }
 
   private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
-      List<String> allowedAudiences, String matchingClaimKey, String jwksUrl, String identConfCsv)
+      List<String> allowedAudiences, String matchingClaimKey, String jwksUrl, String identConfCsv,
+      boolean doubleQuoteInConf)
       throws Exception {
-    String issuersCsv = String.join(",", allowedIssuers);
-    String audiencesCsv = String.join(",", allowedAudiences);
+    String issuersCsv = doubleQuoteInConf
+        ? String.format("\"%s\"", String.join(",", allowedIssuers))
+        : String.join(",", allowedIssuers);
+    String audiencesCsv = doubleQuoteInConf
+        ? String.format("\"%s\"", String.join(",", allowedAudiences))
+        : String.join(",", allowedAudiences);
+    String jwksUrlValue = doubleQuoteInConf
+        ? String.format("\"%s\"", jwksUrl)
+        : jwksUrl;
+    String matchingClaimKeyValue = doubleQuoteInConf
+        ? String.format("\"%s\"", matchingClaimKey)
+        : matchingClaimKey;
 
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ycql_use_jwt_auth", "true");
@@ -256,11 +267,11 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
     StringBuilder jwtOptions = new StringBuilder();
     jwtOptions.append("jwt_issuers=").append(issuersCsv);
     jwtOptions.append(" jwt_audiences=").append(audiencesCsv);
-    jwtOptions.append(" jwt_jwks_url=").append(jwksUrl);
+    jwtOptions.append(" jwt_jwks_url=").append(jwksUrlValue);
     if (!matchingClaimKey.isEmpty()) {
-      jwtOptions.append(" jwt_matching_claim_key=").append(matchingClaimKey);
+      jwtOptions.append(" jwt_matching_claim_key=").append(matchingClaimKeyValue);
     }
-    flagMap.put("ycql_jwt_options", jwtOptions.toString());
+    flagMap.put("ycql_jwt_conf", jwtOptions.toString());
     if (!identConfCsv.isEmpty()) {
       flagMap.put("ycql_ident_conf_csv", identConfCsv);
     }
@@ -272,7 +283,8 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
   private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
       List<String> allowedAudiences, String matchingClaimKey, String jwksUrl) throws Exception {
     setJWTConfigAndRestartCluster(
-        allowedIssuers, allowedAudiences, matchingClaimKey, jwksUrl, "" /* identConfCsv */);
+        allowedIssuers, allowedAudiences, matchingClaimKey, jwksUrl, "" /* identConfCsv */,
+        false /* doubleQuoteInConf */);
   }
 
   private String configureMockJwksServer(MockWebServer server) throws IOException {
@@ -360,7 +372,8 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
 
       setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES,
           /* matchingClaimKey */ "email", serverUrl,
-          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"");
+          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"",
+          /* doubleQuoteInConf */ false);
 
       List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
         new ArrayList<Pair<JWSAlgorithm, String>>() {
@@ -409,12 +422,15 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
     try (MockWebServer server = new MockWebServer()) {
       String serverUrl = configureMockJwksServer(server);
 
-      setJWTConfigAndRestartCluster(
-          ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* matchingClaimKey */ "", serverUrl);
+      // Configure with double quotes in ycql_jwt_conf values to also test that we handle them
+      // correctly.
+      setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* matchingClaimKey */ "",
+          serverUrl, "" /* identConfCsv */, true /* doubleQuoteInConf */);
 
       session.execute("CREATE ROLE 'testuser1' WITH LOGIN = true");
 
       // Valid login just for sanity check.
+      // Also tests that login works with double quotes in ycql_jwt_conf values.
       String jwt = createJWT(JWSAlgorithm.RS256, jwks, RS256_KEYID, "testuser1",
           "oidc.issuer2.unsecured.example.com/4ffa94aa-2156-11ee-be56-0242ac120002/v2.0",
           "795c2b42-2156-11ee-be56-0242ac120002", ISSUED_AT_TIME, EXPIRATION_TIME, null);
@@ -542,7 +558,8 @@ public class TestJWTAuth extends BaseAuthenticationCQLTest {
 
       setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES,
           /* matchingClaimKey */ "groups", serverUrl,
-          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"");
+          /* identConfCsv */ "\"/^(.*)@example\\.com$ \\1\"",
+          /* doubleQuoteInConf */ false);
 
       List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
         new ArrayList<Pair<JWSAlgorithm, String>>() {

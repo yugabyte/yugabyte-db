@@ -58,6 +58,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -280,6 +281,10 @@ public class NodeInstance extends Model {
   }
 
   public static List<NodeInstance> listByCustomer(UUID customerUUID) {
+    return listByCustomer(customerUUID, null /* nodeIp */);
+  }
+
+  public static List<NodeInstance> listByCustomer(UUID customerUUID, @Nullable String nodeIp) {
     String nodeQuery =
         "select DISTINCT n.*"
             + " from node_instance n, availability_zone az, region r, provider p, customer c"
@@ -287,6 +292,9 @@ public class NodeInstance extends Model {
             + " r.provider_uuid = p.uuid and c.uuid = '"
             + customerUUID
             + "'";
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeQuery += " and n.node_details_json::jsonb->>'ip' = '" + nodeIp + "'";
+    }
     RawSql rawSql =
         RawSqlBuilder.unparsed(nodeQuery).columnMapping("node_uuid", "nodeUuid").create();
     Query<NodeInstance> query = DB.find(NodeInstance.class);

@@ -273,7 +273,7 @@ void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   // Execute the request (perhaps asynchronously).
   SetCurrentSession(call_->ql_session());
   request_ = std::move(request);
-  if (GetAtomicFlag(&FLAGS_ycql_enable_tracing_flag) && request_->trace_requested()) {
+  if (FLAGS_ycql_enable_tracing_flag && request_->trace_requested()) {
     call_->EnsureTraceCreated();
     call_->trace()->set_end_to_end_traces_requested(true);
   }

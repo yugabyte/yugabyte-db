@@ -105,7 +105,7 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
 
 #define MAYBE_LOG_ERROR_AND_RETURN_KEEP(result) { \
   if (!result.ok()) { \
-    if (num_errors_ < GetAtomicFlag(&FLAGS_intents_compaction_filter_max_errors_to_log)) { \
+    if (num_errors_ < FLAGS_intents_compaction_filter_max_errors_to_log) { \
       LOG_WITH_PREFIX(DFATAL) << StatusToString(result.status()); \
     } \
     num_errors_++; \
@@ -190,7 +190,7 @@ Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransac
 
   const uint64_t delta_micros = compaction_start_time_ - write_time;
   if (delta_micros <
-      GetAtomicFlag(&FLAGS_aborted_intent_cleanup_ms) * MonoTime::kMillisecondsPerSecond) {
+      FLAGS_aborted_intent_cleanup_ms * MonoTime::kMillisecondsPerSecond) {
     return std::nullopt;
   }
 
@@ -233,7 +233,7 @@ Result<std::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterExterna
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
   int64_t delta_micros = compaction_start_time_ - write_time_micros;
   if (delta_micros >
-      GetAtomicFlag(&FLAGS_external_intent_cleanup_secs) * MonoTime::kMicrosecondsPerSecond) {
+      FLAGS_external_intent_cleanup_secs * MonoTime::kMicrosecondsPerSecond) {
     return txn_id;
   }
   return std::nullopt;

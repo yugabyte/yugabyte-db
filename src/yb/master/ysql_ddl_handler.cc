@@ -681,7 +681,7 @@ Status CatalogManager::IsYsqlDdlVerificationDone(
     const IsYsqlDdlVerificationDoneRequestPB* req, IsYsqlDdlVerificationDoneResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
 
-  if (GetAtomicFlag(&FLAGS_TEST_hang_on_ddl_verification_progress)) {
+  if (FLAGS_TEST_hang_on_ddl_verification_progress) {
     TEST_SYNC_POINT("YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail");
   }
 

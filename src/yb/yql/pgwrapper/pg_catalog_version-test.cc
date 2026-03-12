@@ -2471,7 +2471,7 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
         "13515, 21, 216; 13515, 22, 96; 13515, 23, 216; 13515, 24, 360; 13515, 25, 192; "
         "13515, 26, 120; 13515, 27, 192; 13515, 28, 120; 13515, 29, 264; 13515, 30, 168; "
         "13515, 31, 144; 13515, 32, 192; 13515, 33, 120; 13515, 34, 96; 13515, 35, 120; "
-        "13515, 36, 216; 13515, 37, 96; 13515, 38, 192; 13515, 39, 240; 13515, 40, 168; "
+        "13515, 36, 216; 13515, 37, 96; 13515, 38, 48; 13515, 39, 240; 13515, 40, 168; "
         "13515, 41, 120; 13515, 42, 120; 13515, 43, 96"
       : "13515, 2, 10776";
   const string yugabyte_db_oid_str = Format("$0, ", yugabyte_db_oid);
@@ -3473,7 +3473,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections;
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 }
 
@@ -3492,7 +3492,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 2) + 1;
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 1) + 1;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3513,7 +3513,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // Because latest master catalog version is used to do prefetch when rebuilding
   // relcache init file, we see the same number of master RPCs regardless of
   // whether connection manager is used or not.
-  ASSERT_EQ(master_read_count_after - master_read_count_before, 7);
+  ASSERT_EQ(master_read_count_after - master_read_count_before, 6);
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3630,7 +3630,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
     const int num_rebuild_rpcs = 2;
 
     // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
-    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs + 1 * verify_count,
+    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
               master_read_count_after);
   } else {
     // Bounded staleness only applies when connection manager is used.

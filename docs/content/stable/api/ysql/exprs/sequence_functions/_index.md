@@ -2,7 +2,7 @@
 title: Sequence functions [YSQL]
 headerTitle: Sequence functions
 linkTitle: Sequence functions
-description: Functions operationg on sequences
+description: Functions operating on sequences
 menu:
   stable_api:
     identifier: sequence-functions

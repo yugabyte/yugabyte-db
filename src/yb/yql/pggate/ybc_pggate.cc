@@ -73,6 +73,7 @@
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/util/pg_wire.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -1478,10 +1479,10 @@ YbcStatus YBCPgDmlBindBounds(
       upper_bound_inclusive));
 }
 
-YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
-                            const char *lower_bound, size_t lower_bound_len,
-                            const char *upper_bound, size_t upper_bound_len) {
-  return ToYBCStatus(pgapi->DmlBindRange(
+YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
+                                     const char *lower_bound, size_t lower_bound_len,
+                                     const char *upper_bound, size_t upper_bound_len) {
+  return ToYBCStatus(pgapi->DmlApplyParallelRange(
     handle, Slice(lower_bound, lower_bound_len), true,
             Slice(upper_bound, upper_bound_len), false));
 }
@@ -2145,8 +2146,7 @@ uint64_t YBCPgGetInsertOnConflictKeyCount(void* state) {
 //--------------------------------------------------------------------------------------------------
 
 void YBCInitFlags() {
-  SetAtomicFlag(GetAtomicFlag(&FLAGS_pggate_num_connections_to_server),
-                &FLAGS_num_connections_to_server);
+  FLAGS_num_connections_to_server = FLAGS_pggate_num_connections_to_server;
 
   // TODO(neil) Init a gflag for "YB_PG_TRANSACTIONS_ENABLED" here also.
   // Mikhail agreed that this flag should just be initialized once at the beginning here.
@@ -3057,6 +3057,17 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
   return YBCStatusOK();
 }
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+    size_t num_values, const char** tablet_id) {
+  auto result = pgapi->GetTabletForKey(database_oid, table_oid, key_values, num_values);
+  if (!result.ok()) {
+    return ToYBCStatus(result.status());
+  }
+  *tablet_id = YBCPAllocStdString(*result);
+  return YBCStatusOK();
+}
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** servers_metrics_info, size_t* count) {
   const auto result = pgapi->ServersMetrics();
   if (!result.ok()) {
@@ -3243,8 +3254,13 @@ bool YBCPgHasExportedSnapshots() { return pgapi->HasExportedSnapshots(); }
 
 void YBCPgClearExportedTxnSnapshots() { pgapi->ClearExportedTxnSnapshots(); }
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode) {
-  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode));
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return ToYBCStatus(pgapi->AcquireObjectLock(lock_id, mode, is_session_lock));
+}
+
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all) {
+  return ToYBCStatus(pgapi->ReleaseSessionObjectLock(lock_id, release_all));
 }
 
 bool YBCPgYsqlMajorVersionUpgradeInProgress() {
@@ -3317,6 +3333,32 @@ YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOi
 
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
   return PgFlushDebugContext::YbcEndOfTopLevelStmt();
+}
+
+// ---------------------------------------------------------------------------
+// PgGlobalViewRead C API wrappers
+// ---------------------------------------------------------------------------
+
+YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(query, handle));
+}
+
+void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
+  handle->ResetScan();
+}
+
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {
+  return handle->ExecScan();
+}
+
+void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {
+  if (handle) {
+    PgMemctx::Destroy(handle);
+  }
+}
+
+bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle) {
+  return handle->is_eof();
 }
 
 } // extern "C"

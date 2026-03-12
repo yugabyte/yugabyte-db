@@ -41,12 +41,15 @@
     "yb_ysqlserver_new_connection_total,",
     "yb_ysqlserver_connection_over_limit_total,",
     "hybrid_clock_skew,",
-    "log_wal_size"
+    "log_wal_size,",
+    "server_uptime_ms,",
+    "rpc_inbound_calls_rejected_because_memory_pressure"
   ],
   "priority_regex": [
     "async_replication_[^_]+_lag_micros|majority_sst_files_rejections",
     "|follower_lag_ms|[^_]+_memory_pressure_rejections",
-    "|rocksdb_current_version_sst_files_size|log_wal_size"
+    "|rocksdb_current_version_sst_files_size|log_wal_size",
+    "|rpc_inbound_calls_rejected_because_memory_pressure"
   ],
   "show_help": "false"
 }

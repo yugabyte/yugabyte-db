@@ -104,6 +104,7 @@ YRPC_GENERATE(
   PROTO_FILES pg_client.proto)
 set(PG_CLIENT_YRPC_LIBS
   master_proto
+  tserver_service_proto
   yrpc)
 ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
@@ -317,6 +318,7 @@ set(TSERVER_DEPS
   yb_ash
   yb_client
   yb_pggate_flags
+  yb_pgresult_util
   yrpc
   ysql_upgrade
 )
@@ -350,6 +352,7 @@ set(TSERVER_MAIN_DEPS
     yb_process_wrapper
     yb_pgwrapper
     ysql_conn_mgr_wrapper
+    dist_rag_wrapper
     ${YB_BASE_LIBS})
 
 ADD_YB_LIBRARY(tserver_main_impl

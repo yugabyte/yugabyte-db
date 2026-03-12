@@ -7,7 +7,8 @@ import {
   K8NodeSpecField,
   K8VolumeInfoField,
   VolumeInfoField,
-  StorageTypeField
+  StorageTypeField,
+  AZOverridesField
 } from '../../fields';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import {
@@ -22,6 +23,7 @@ import {
 import {
   PROVIDER_FIELD,
   MASTER_PLACEMENT_FIELD,
+  PLACEMENTS_FIELD,
   DEVICE_INFO_FIELD,
   LINUX_VERSION_FIELD,
   ENABLE_EBS_CONFIG_FIELD
@@ -87,6 +89,11 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
     (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_EBS_VOLUME
   )?.value === 'true';
 
+  const enableAzOverridesK8s =
+    runtimeConfigs?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S
+    )?.value === 'true';
+
   //form context
   const { getValues, setValue } = useFormContext<UniverseFormData>();
   const { mode, clusterType, newUniverse, universeConfigureTemplate, isViewMode } = useContext(
@@ -100,6 +107,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const placements = useWatch({ name: PLACEMENTS_FIELD }) ?? [];
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
   const ebsEnabled = useWatch({ name: ENABLE_EBS_CONFIG_FIELD });
 
@@ -131,6 +139,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
               isEditMode={!isCreateMode}
               disableVolumeSize={isViewMode}
               maxVolumeCount={maxVolumeCount}
+              k8sOverrideEnabled={enableAzOverridesK8s && !isCreateMode}
             />
           </Box>
         </Box>
@@ -214,6 +223,13 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
                 getInstanceMetadataElement(false)}
             </Box>
           </Grid>
+          {enableAzOverridesK8s &&
+              provider?.code === CloudType.kubernetes &&
+              !isCreateMode && (
+                <Box mt={1} ml={2} width="100%">
+                  <AZOverridesField disabled={isViewMode} placements={placements} />
+                </Box>
+              )}
         </Grid>
 
         {/* Display storage type separately in case of GCP outside the Instance config container */}

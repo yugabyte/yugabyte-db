@@ -173,7 +173,11 @@ namespace {
 template <class Resp>
 void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   if (!status.ok()) {
-    StatusToPB(status, resp->mutable_status());
+    if constexpr (HasMemberFunction_status<Resp>::value) {
+      StatusToPB(status, resp->mutable_status());
+    } else {
+      StatusToPB(status, resp->mutable_error()->mutable_status());
+    }
   }
   context->RespondSuccess();
 }
@@ -1988,8 +1992,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         }
 
         // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-        // yet by the client. So treat it is as an inactive case.
-        if (!active_time) {
+        // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+        // tablet's entries are added for internal usage only, do not use them for checking if the
+        // stream is active.
+        if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
           continue;
         }
 
@@ -2022,12 +2028,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto last_active_time_micros = (it != stream_to_latest_active_time.end()) ? it->second : 0;
       auto is_stream_active =
           current_time - last_active_time_micros <=
-          1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+          1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
       auto expiration_threshold_micros =
-          static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+          static_cast<int64_t>(1000 * FLAGS_cdc_intent_retention_ms);
       int64_t idle_duration_micros;
       // If the active time has not been set yet implying no tables are present in the database
       // we use the consistent snapshot time to check if the slot/stream has expired or not
@@ -2173,8 +2179,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto active_time = entry.active_time;
 
       // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
+      // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+      // tablet's entries are added for internal usage only, do not use them for checking if the
+      // stream is active.
+      if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
         continue;
       }
 
@@ -2186,12 +2194,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
     *DCHECK_NOTNULL(active) =
         GetCurrentTimeMicros() - last_activity_time_micros <=
-        1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+        1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
 
     auto commit_idle_duration_micros =
         GetCurrentTimeMicros() - HybridTime(*record_id_commit_time_ht).GetPhysicalValueMicros();
     auto last_activity_idle_duration_micros = GetCurrentTimeMicros() - last_activity_time_micros;
-    auto expiration_threshold_micros = 1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms);
+    auto expiration_threshold_micros = 1000 * FLAGS_cdc_intent_retention_ms;
     *DCHECK_NOTNULL(expired) =
         (last_activity_time_micros == 0)
             ? (commit_idle_duration_micros > expiration_threshold_micros)
@@ -2701,6 +2709,15 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status GetTabletForKey(
+      const PgGetTabletForKeyRequestPB& req, PgGetTabletForKeyResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tablet_metadata = VERIFY_RESULT(
+        client().GetTabletsMetadata(req.table_id(), req.partition_key()));
+    resp->set_tablet_id(tablet_metadata[0].tablet_id());
+    return Status::OK();
+  }
+
   Status ServersMetrics(
       const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2860,6 +2877,37 @@ class PgClientServiceImpl::Impl : public SessionProvider {
             && last_analyze_qlvalue.value_case() == QLValuePB::kJsonbValue) {
             pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
         }
+    }
+    return Status::OK();
+  }
+
+  Status RemoteExec(
+      const PgRemoteExecRequestPB& req, PgRemoteExecResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& target_uuid = req.tserver_uuid();
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    client::internal::RemoteTabletServerPtr remote_tserver;
+    for (const auto& ts : remote_tservers) {
+      if (ts->permanent_uuid() == target_uuid) {
+        remote_tserver = ts;
+        break;
+      }
+    }
+    RSTATUS_DCHECK(
+        remote_tserver, IllegalState,
+        Format("Tserver $0 not found in live tserver list", target_uuid));
+
+    RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+    auto proxy = remote_tserver->proxy();
+    rpc::RpcController controller;
+    controller.set_deadline(context->GetClientDeadline());
+    auto s = proxy->PgRemoteExec(req, resp, &controller);
+
+    if (!s.ok() || resp->has_error()) {
+      auto error_status = s.ok() ? StatusFromPB(resp->error().status()) : s;
+      return error_status.CloneAndPrepend(Format(
+          "Failed to execute remote pg query ($0) on tserver $1",
+          req.query(), target_uuid));
     }
 
     return Status::OK();

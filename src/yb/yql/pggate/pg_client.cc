@@ -67,6 +67,11 @@ DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
    "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
    "and report it.");
 
+DEFINE_RUNTIME_int32(remote_pg_query_execution_rpc_timeout_ms, 15000,
+    "Timeout for RPCs of remote PG queries from PG to remote tserver "
+    "in milliseconds.");
+TAG_FLAG(remote_pg_query_execution_rpc_timeout_ms, advanced);
+
 DEFINE_test_flag(bool, emulate_op_lost_on_write, false,
     "Emulate lost of operation with serial_no by incrementing counter twice.");
 
@@ -78,7 +83,7 @@ DECLARE_bool(ysql_enable_db_catalog_version_mode);
 DECLARE_int32(ysql_yb_ash_sample_size);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -213,7 +218,7 @@ class PgTimeout {
   // This deadline is not applicable to heartbeats.
   CoarseTimePoint global_deadline_;
   // The timeout representing lock_timeout in postgres.
-  MonoDelta lock_timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
+  MonoDelta lock_timeout_;
 };
 } // namespace
 
@@ -515,7 +520,6 @@ struct PerformData : public PgClientData<tserver::LWPgPerformRequestPB,
       } else {
         operations[i]->set_response(&op_response);
       }
-      metrics.RecordRequestMetrics(op_response.metrics(), operations[i]->is_read());
       ++i;
     }
     return Status::OK();
@@ -565,6 +569,7 @@ Status DoProcessResponse(
     result.catalog_read_time = ReadHybridTime::FromPB(data.resp.catalog_read_time());
   }
   result.used_in_txn_limit = HybridTime::FromPB(data.resp.used_in_txn_limit_ht());
+  result.operations = std::move(data.operations);
   return Status::OK();
 }
 
@@ -621,7 +626,8 @@ static PggateRPC kDebugLogRPCs[] = {
   PggateRPC::kAcquireAdvisoryLock,
   PggateRPC::kReleaseAdvisoryLock,
   PggateRPC::kAcquireObjectLock,
-  PggateRPC::kTruncateTable
+  PggateRPC::kTruncateTable,
+  PggateRPC::kReleaseSessionObjectLock
 };
 
 class PgClient::Impl : public BigDataFetcher {
@@ -1085,7 +1091,7 @@ class PgClient::Impl : public BigDataFetcher {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id,
-      YbcObjectLockMode mode, std::optional<PgTablespaceOid> tablespace_oid) {
+      YbcObjectLockMode mode, bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
     object_locks_arena_.Reset(ResetMode::kKeepLast);
     tserver::LWPgAcquireObjectLockRequestPB req(&object_locks_arena_);
     req.set_session_id(session_id_);
@@ -1099,6 +1105,7 @@ class PgClient::Impl : public BigDataFetcher {
       lock_oid.set_tablespace_oid(*tablespace_oid);
     }
     req.set_lock_type(static_cast<tserver::ObjectLockMode>(mode));
+    req.set_is_session_lock(is_session_lock);
     auto method = [](auto* proxy, const auto& req, auto* resp, auto* controller, auto callback) {
       proxy->AcquireObjectLockAsync(req, resp, controller, std::move(callback));
     };
@@ -1676,7 +1683,7 @@ class PgClient::Impl : public BigDataFetcher {
       *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
       for (const auto& e : oid_to_relfilenode) {
         req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
       }
@@ -1730,7 +1737,7 @@ class PgClient::Impl : public BigDataFetcher {
       *req.add_table_id() = table_id.GetYbTableId();
     }
 
-    if (FLAGS_TEST_enable_table_rewrite_for_cdcsdk_table) {
+    if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
       for (const auto& e : oid_to_relfilenode) {
         req.mutable_oid_to_relfilenode()->emplace(e.first, e.second);
       }
@@ -1793,6 +1800,20 @@ class PgClient::Impl : public BigDataFetcher {
     return resp;
   }
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key) {
+    tserver::PgGetTabletForKeyRequestPB req;
+    req.set_table_id(table_id);
+    req.set_partition_key(partition_key);
+
+    tserver::PgGetTabletForKeyResponsePB resp;
+    RETURN_NOT_OK(DoSyncRPC(
+        &PgClientServiceProxy::GetTabletForKey, req, resp, PggateRPC::kGetTabletForKey));
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    return resp.tablet_id();
+  }
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics() {
     tserver::PgServersMetricsRequestPB req;
     tserver::PgServersMetricsResponsePB resp;
@@ -1835,6 +1856,30 @@ class PgClient::Impl : public BigDataFetcher {
     *oid = resp.table_oid();
     *relfilenode = resp.relfilenode();
     return Status::OK();
+  }
+
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& tserver_uuid) {
+    tserver::PgRemoteExecRequestPB req;
+    tserver::PgRemoteExecResponsePB resp;
+
+    req.set_query(std::string(query));
+    req.set_tserver_uuid(tserver_uuid);
+
+    const auto [deadline, _] = timeouts_.GetDeadlineAndTimeoutForRPC<void>(
+        CoarseMonoClock::now() +
+        MonoDelta::FromMilliseconds(FLAGS_remote_pg_query_execution_rpc_timeout_ms));
+
+    RETURN_NOT_OK(DoSyncRPC(&PgClientServiceProxy::RemoteExec,
+        req, resp, PggateRPC::kRemotePgExec, deadline));
+
+    RETURN_NOT_OK(ResponseStatus(resp));
+
+    if (resp.reached_size_limit()) {
+      LOG(WARNING) << "Reached max RPC size limit for remote pg exec query. "
+                      "Received truncated response.";
+    }
+    return resp;
   }
 
  private:
@@ -2168,8 +2213,8 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
 
 Status PgClient::AcquireObjectLock(
     tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-    std::optional<PgTablespaceOid> tablespace_oid) {
-  return impl_->AcquireObjectLock(options, lock_id, mode, tablespace_oid);
+    bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid) {
+  return impl_->AcquireObjectLock(options, lock_id, mode, is_session_lock, tablespace_oid);
 }
 
 Result<bool> PgClient::CheckIfPitrActive() {
@@ -2303,6 +2348,11 @@ Result<tserver::PgTabletsMetadataResponsePB> PgClient::TabletsMetadata(bool loca
   return impl_->TabletsMetadata(local_only);
 }
 
+Result<std::string> PgClient::GetTabletForKey(
+    const std::string& table_id, const std::string& partition_key) {
+  return impl_->GetTabletForKey(table_id, partition_key);
+}
+
 Result<tserver::PgServersMetricsResponsePB> PgClient::ServersMetrics() {
   return impl_->ServersMetrics();
 }
@@ -2316,6 +2366,11 @@ Result<int64_t> PgClient::GetCronLastMinute() { return impl_->GetCronLastMinute(
 Status PgClient::GetYbSystemTableInfo(
     PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
   return impl_->GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
+
+Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
+      std::string_view query, const std::string& tserver_uuid) {
+  return impl_->RemoteExec(query, tserver_uuid);
 }
 
 template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformData>;

@@ -1674,7 +1674,24 @@ Status ClusterLoadBalancer::RemoveReplica(
     return STATUS_FORMAT(
         NotFound, "Couldn't find tablet $0 to remove from ts $1", tablet_id, ts_uuid);
   }
-  RETURN_NOT_OK(SendRemoveReplica(tablet_opt->get(), ts_uuid, reason));
+  // If the replica is also the leader, first step it down and then remove.
+  if (state_->per_tablet_meta_[tablet_id].leader_uuid == ts_uuid) {
+    // Select a preferred leader based on leader affinity before stepping down.
+    TabletServerId preferred_leader = "";
+    if (FLAGS_cluster_balancer_stepdown_to_preferred_leader_on_remove) {
+      preferred_leader = SelectBestLeaderAfterStepdown(tablet_id, ts_uuid);
+    }
+    RETURN_NOT_OK(MoveLeader({
+        .tablet_id = tablet_id,
+        .from_ts = ts_uuid,
+        .to_ts = preferred_leader,
+        .to_ts_path = "",
+        .reason = reason,
+        .also_remove_replica = true,
+    }));
+  } else {
+    RETURN_NOT_OK(SendRemoveReplica(tablet_opt->get(), ts_uuid, reason));
+  }
   return state_->RemoveReplica(tablet_id, ts_uuid);
 }
 
@@ -1745,7 +1762,7 @@ Status ClusterLoadBalancer::MoveLeader(const LeaderMoveDetails& move_details) {
         move_details.tablet_id, move_details.from_ts, move_details.to_ts);
   }
   RETURN_NOT_OK(SendMoveLeader(
-      tablet_opt->get(), move_details.from_ts, /*should_remove_leader=*/false,
+      tablet_opt->get(), move_details.from_ts, move_details.also_remove_replica,
       move_details.reason, move_details.to_ts));
   return state_->MoveLeader(
       move_details.tablet_id, move_details.from_ts, move_details.to_ts, move_details.to_ts_path);
@@ -1914,16 +1931,6 @@ Status ClusterLoadBalancer::SendAddReplica(
 Status ClusterLoadBalancer::SendRemoveReplica(
     const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& reason) {
   auto l = tablet->LockForRead();
-  // If the replica is also the leader, first step it down and then remove.
-  if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-    // Select a preferred leader based on leader affinity before stepping down.
-    TabletServerId preferred_leader = "";
-    if (FLAGS_cluster_balancer_stepdown_to_preferred_leader_on_remove) {
-      preferred_leader = SelectBestLeaderAfterStepdown(tablet->id(), ts_uuid);
-    }
-    return SendMoveLeader(tablet, ts_uuid, /*should_remove_leader=*/true, reason,
-                          preferred_leader);
-  }
   SCHECK_EQ(
       state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
       IllegalState, "Sending duplicate remove replica task.");
@@ -1934,7 +1941,7 @@ Status ClusterLoadBalancer::SendRemoveReplica(
 
 Status ClusterLoadBalancer::SendMoveLeader(
     const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-    bool should_remove_leader, const std::string& reason,
+    bool also_remove_replica, const std::string& reason,
     const TabletServerId& new_leader_ts_uuid) {
   auto l = tablet->LockForRead();
   auto& actual_leader = state_->per_tablet_meta_[tablet->id()].leader_uuid;
@@ -1947,7 +1954,7 @@ Status ClusterLoadBalancer::SendMoveLeader(
       state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
       0U, IllegalState, "Sending duplicate leader stepdown task.");
   TrackTask(VERIFY_RESULT(catalog_manager_->ScheduleTryStepDownTask(
-      tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
+      tablet, l->pb.committed_consensus_state(), ts_uuid, also_remove_replica, epoch_,
       reason, new_leader_ts_uuid)));
   return Status::OK();
 }

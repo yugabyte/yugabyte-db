@@ -409,7 +409,7 @@ void Peer::SendNextRequest(RequestTriggerMode trigger_mode) {
   }
 
   TracePtr trace(Trace::CurrentTrace());
-  if (trace && GetAtomicFlag(&FLAGS_collect_update_consensus_traces)) {
+  if (trace && FLAGS_collect_update_consensus_traces) {
     update_request_->set_trace_requested(true);
   }
   // The minimum_viable_heartbeat_ represents the

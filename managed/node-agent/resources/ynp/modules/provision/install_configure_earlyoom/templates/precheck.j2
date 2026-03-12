@@ -1,6 +1,5 @@
 systemd_dir="{{yb_home_dir}}/.config/systemd/user"
 config_dir="{{yb_home_dir}}/bin"
-
 if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/system.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/system.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "PASS" \
@@ -8,9 +7,8 @@ if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/system.conf"; then
 else
     echo "[FAIL] DefaultLimitMEMLOCK is not set in /etc/systemd/system.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/system.conf" "FAIL" \
-        "DefaultLimitMEMLOCK is not set in /etc/systemd/system.conf"
+        "DefaultLimitMEMLOCK is not set in /etc/systemd/system.conf. Run with root provisioning first."
 fi
-
 if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/user.conf"; then
     echo "[PASS] DefaultLimitMEMLOCK is set in /etc/systemd/user.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/user.conf" "PASS" \
@@ -18,9 +16,8 @@ if grep -q "DefaultLimitMEMLOCK=500000" "/etc/systemd/user.conf"; then
 else
     echo "[FAIL] DefaultLimitMEMLOCK is not set in /etc/systemd/user.conf"
     add_result "DefaultLimitMEMLOCK in /etc/systemd/user.conf" "FAIL" \
-        "DefaultLimitMEMLOCK is not set in /etc/systemd/user.conf"
+        "DefaultLimitMEMLOCK is not set in /etc/systemd/user.conf. Run with root provisioning first."
 fi
-
 if [ ! -f "$systemd_dir"/earlyoom.service ]; then
     echo "Systemd unit earlyoom.service is not configured."
     add_result "Systemd Unit File Check" "FAIL" "Systemd unit earlyoom.service is not configured."
@@ -33,9 +30,13 @@ if [ ! -f "$config_dir"/earlyoom.config ]; then
 else
     add_result "Config File Check - earlyoom.config" "PASS" "Config file for earlyoom is found."
 fi
-
 {% if earlyoom_enable == 'True' %}
-    if su - {{ yb_user }} -c "systemctl --user is-active --quiet earlyoom"; then
+    if [ "$SUDO_ACCESS" = "true" ]; then
+        earlyoom_check="su - {{ yb_user }} -c 'systemctl --user is-active --quiet earlyoom'"
+    else
+        earlyoom_check="systemctl --user is-active --quiet earlyoom"
+    fi
+    if eval "$earlyoom_check"; then
         add_result "Service Status Check" "PASS" "Service earlyoom.service is running."
     else
         add_result "Service Status Check" "FAIL" "Service earlyoom.service is not running."

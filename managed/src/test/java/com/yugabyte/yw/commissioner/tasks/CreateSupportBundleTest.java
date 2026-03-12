@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
@@ -39,6 +40,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   private Universe universe;
   private Customer customer;
   protected RuntimeConfigFactory runtimeConfigFactory;
+  protected RuntimeConfGetter runtimeConfGetter;
 
   @Before
   public void setUp() {
@@ -46,6 +48,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();
+    this.runtimeConfGetter = mockBaseTaskDependencies.getConfGetter();
   }
 
   @After
@@ -67,7 +70,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     bundleData.startDate = startDate;
     bundleData.endDate = endDate;
     bundleData.components = EnumSet.allOf(ComponentType.class);
-    SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
+    SupportBundle supportBundle = SupportBundle.create(bundleData, universe, runtimeConfGetter);
     SupportBundleTaskParams bundleTaskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     try {

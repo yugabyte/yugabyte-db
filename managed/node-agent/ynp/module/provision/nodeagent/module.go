@@ -3,17 +3,14 @@
 package nodeagent
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"node-agent/model"
 	"node-agent/util"
 	"node-agent/ynp/config"
+	"node-agent/ynp/yba"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,81 +27,6 @@ func NewInstallNodeAgent(basePath string) config.Module {
 	return &InstallNodeAgent{
 		BaseModule: config.NewBaseModule(ModuleName, filepath.Join(basePath, "node_agent")),
 	}
-}
-
-func (m *InstallNodeAgent) getHeaders(token string) map[string]string {
-	return map[string]string{
-		"Accept":              "application/json",
-		"X-AUTH-YW-API-TOKEN": token,
-		"Content-Type":        "application/json",
-	}
-}
-
-func (m *InstallNodeAgent) getProviderURL(values map[string]any) string {
-	url := values["url"].(string)
-	customerUUID := values["customer_uuid"].(string)
-	providerName := values["provider_name"].(string)
-	return fmt.Sprintf("%s/api/v1/customers/%s/providers?name=%s", url, customerUUID, providerName)
-}
-
-func (m *InstallNodeAgent) getInstanceTypeURL(
-	ybaURL, customerUUID, providerUUID, code string,
-) string {
-	return fmt.Sprintf(
-		"%s/api/v1/customers/%s/providers/%s/instance_types/%s",
-		ybaURL,
-		customerUUID,
-		providerUUID,
-		code,
-	)
-}
-
-func (m *InstallNodeAgent) makeRequest(
-	url, method string,
-	headers map[string]string,
-	data interface{},
-	verifySSL bool,
-) ([]byte, int, error) {
-	var reqBody []byte
-	var err error
-	if data != nil {
-		reqBody, err = json.Marshal(data)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	client := &http.Client{}
-	if !verifySSL {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-		client.Transport = tr
-	}
-	var req *http.Request
-	if reqBody != nil {
-		req, err = http.NewRequest(method, url, bytes.NewBuffer(reqBody))
-	} else {
-		req, err = http.NewRequest(method, url, nil)
-	}
-	if err != nil {
-		return nil, 0, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return respBody, resp.StatusCode, fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
-	return respBody, resp.StatusCode, nil
 }
 
 func (m *InstallNodeAgent) generateProviderPayload(
@@ -291,24 +213,16 @@ func (m *InstallNodeAgent) generateAddNodePayload(values map[string]any) *model.
 	}
 }
 
-func (m *InstallNodeAgent) getProvider(values map[string]any) (*model.Provider, error) {
-	providerURL := m.getProviderURL(values)
+func (m *InstallNodeAgent) getProvider(
+	ctx context.Context,
+	values map[string]any,
+) (*model.Provider, error) {
 	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https") ||
-		config.GetBool(values, "skip_tls_verify", false)
-	headers := m.getHeaders(values["api_key"].(string))
-	resp, _, err := m.makeRequest(providerURL, "GET", headers, nil, skipTLSVerify)
-	if err != nil {
-		return nil, err
-	}
-	var providers []model.Provider
-	if err := json.Unmarshal(resp, &providers); err != nil {
-		return nil, err
-	}
-	if len(providers) == 0 {
-		return nil, util.ErrNotExist
-	}
-	return &providers[0], err
+	apiKey := values["api_key"].(string)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	customerUUID := values["customer_uuid"].(string)
+	providerName := values["provider_name"].(string)
+	return yba.GetProviderByName(ctx, ybaURL, apiKey, skipTlsVerify, customerUUID, providerName)
 }
 
 func (m *InstallNodeAgent) createInstanceIfNotExists(
@@ -316,24 +230,24 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	values map[string]any,
 	provider *model.Provider,
 ) error {
-	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https") ||
-		config.GetBool(values, "skip_tls_verify", false)
-	getInstanceTypeURL := m.getInstanceTypeURL(
-		values["url"].(string),
-		values["customer_uuid"].(string),
+	ybaUrl := values["url"].(string)
+	apiKey := values["api_key"].(string)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	customerUuid := values["customer_uuid"].(string)
+	instanceTypeName := values["instance_type_name"].(string)
+	_, err := yba.GetInstanceType(ctx,
+		ybaUrl,
+		apiKey,
+		skipTlsVerify,
+		customerUuid,
 		provider.Uuid,
-		values["instance_type_name"].(string),
+		instanceTypeName,
 	)
-	headers := m.getHeaders(values["api_key"].(string))
-	resp, status, err := m.makeRequest(getInstanceTypeURL, "GET", headers, nil, skipTLSVerify)
-	if err == nil && status == 200 {
-		var data interface{}
-		if err := json.Unmarshal(resp, &data); err == nil && data != nil {
-			return nil // instance type exists
-		}
+	if err == nil {
+		// Instance type already exists, no need to create.
+		return nil
 	}
-	if status == 400 || (err != nil && strings.Contains(err.Error(), "400")) {
+	if err == util.ErrNotExist {
 		util.ConsoleLogger().Info(ctx, "Instance type does not exist, creating it.")
 		instanceData, err := m.generateInstanceTypePayload(values)
 		if err != nil {
@@ -354,35 +268,24 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	}
 	return err
 }
-func (m *InstallNodeAgent) listProviderNodeInstancesURL(values map[string]any) string {
-	url := values["url"].(string)
+
+func (m *InstallNodeAgent) getProviderNodeInstances(
+	ctx context.Context,
+	values map[string]any,
+) ([]model.NodeInstance, error) {
+	ybaURL := values["url"].(string)
+	apiKey := values["api_key"].(string)
 	customerUUID := values["customer_uuid"].(string)
 	providerUUID := values["provider_id"].(string)
-	return fmt.Sprintf(
-		"%s/api/v1/customers/%s/providers/%s/nodes/list",
-		url,
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", false)
+	return yba.GetProviderNodeInstances(
+		ctx,
+		ybaURL,
+		apiKey,
+		skipTlsVerify,
 		customerUUID,
 		providerUUID,
 	)
-}
-
-func (m *InstallNodeAgent) getProviderNodeInstances(
-	values map[string]any,
-) ([]model.NodeInstance, error) {
-	providerNodesUrl := m.listProviderNodeInstancesURL(values)
-	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https") ||
-		config.GetBool(values, "skip_tls_verify", false)
-	headers := m.getHeaders(values["api_key"].(string))
-	resp, _, err := m.makeRequest(providerNodesUrl, "GET", headers, nil, skipTLSVerify)
-	if err != nil {
-		return nil, err
-	}
-	var instances []model.NodeInstance
-	if err := json.Unmarshal(resp, &instances); err != nil {
-		return nil, err
-	}
-	return instances, nil
 }
 
 func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
@@ -390,18 +293,19 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 	values map[string]any,
 	input *model.NodeDetails,
 ) (bool, error) {
-	instances, err := m.getProviderNodeInstances(values)
+	instances, err := m.getProviderNodeInstances(ctx, values)
 	if err != nil {
 		return false, err
 	}
 	for _, instance := range instances {
 		if instance.Details.IP == input.IP {
 			if instance.Details.Region != input.Region || instance.Details.Zone != input.Zone {
-				util.FileLogger().Errorf(ctx, "Node with IP %s already exists in different region/zone: %s/%s",
-					input.IP,
-					instance.Details.Region,
-					instance.Details.Zone,
-				)
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists in different region/zone: %s/%s",
+						input.IP,
+						instance.Details.Region,
+						instance.Details.Zone,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists in different region/zone: %s/%s",
 					input.IP,
@@ -410,10 +314,11 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 				)
 			}
 			if instance.Details.InstanceType != input.InstanceType {
-				util.FileLogger().Errorf(ctx, "Node with IP %s already exists with different instance type: %s",
-					input.IP,
-					instance.Details.InstanceType,
-				)
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance type: %s",
+						input.IP,
+						instance.Details.InstanceType,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists with different instance type: %s",
 					input.IP,
@@ -421,10 +326,11 @@ func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
 				)
 			}
 			if instance.InstanceName != input.InstanceName {
-				util.FileLogger().Errorf(ctx, "Node with IP %s already exists with different instance name: %s",
-					input.IP,
-					instance.InstanceName,
-				)
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance name: %s",
+						input.IP,
+						instance.InstanceName,
+					)
 				return false, fmt.Errorf(
 					"Node with IP %s already exists with different instance name: %s",
 					input.IP,
@@ -467,7 +373,7 @@ func (m *InstallNodeAgent) RenderTemplates(
 	}
 	m.cleanup(ctx, values)
 	nodeAgentEnabled := false
-	provider, err := m.getProvider(values)
+	provider, err := m.getProvider(ctx, values)
 	if err != nil && err != util.ErrNotExist {
 		return nil, err
 	}

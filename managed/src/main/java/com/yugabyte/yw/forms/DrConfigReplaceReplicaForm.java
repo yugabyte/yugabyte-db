@@ -1,9 +1,12 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.UUID;
 import javax.validation.Valid;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 import play.data.validation.Constraints.Required;
 
@@ -22,4 +25,9 @@ public class DrConfigReplaceReplicaForm {
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

@@ -60,6 +60,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
@@ -125,6 +126,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -2577,6 +2579,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
+              createDbNodePortConnectivityCheckTasksForCreatedNodes(universe, filteredNodes);
               createLocaleCheckTask(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createCheckGlibcTask(
@@ -2741,6 +2744,159 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         doValidateGFlags,
         installSoftwareParamsCustomizer,
         gflagsParamsCustomizer);
+  }
+
+  /**
+   * Create DB node port connectivity checks after node server setup so that connectivity is
+   * validated even when initial prechecks are not applicable (for example, non-onprem providers or
+   * first-time universe creation where there are no live nodes yet). For each source node, runs
+   * checks to one node in each AZ of its cluster (priority: Live, then ServerSetup,
+   * SoftwareInstalled, ToJoinCluster) to verify connectivity across the whole universe.
+   */
+  private void createDbNodePortConnectivityCheckTasksForCreatedNodes(
+      Universe universe, Collection<NodeDetails> sourceNodes) {
+    if (CollectionUtils.isEmpty(sourceNodes)) {
+      log.debug("Skipping DB node port connectivity check: no source nodes");
+      return;
+    }
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+      log.debug("Skipping DB node port connectivity check: comprehensive prechecks are disabled");
+      return;
+    }
+
+    Map<UUID, List<NodeDetails>> candidateNodesByAz =
+        taskParams().nodeDetailsSet.stream()
+            .filter(node -> node.azUuid != null)
+            .filter(node -> node.placementUuid != null)
+            .filter(
+                node ->
+                    node.state == NodeState.Live
+                        || node.state == NodeState.ServerSetup
+                        || node.state == NodeState.SoftwareInstalled
+                        || node.state == NodeState.ToJoinCluster
+                        || node.state == NodeState.ToBeAdded)
+            .collect(Collectors.groupingBy(node -> node.azUuid));
+
+    Map<UUID, NodeDetails> liveNodeByAz =
+        PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet).stream()
+            .filter(node -> node.azUuid != null)
+            .collect(
+                Collectors.toMap(
+                    node -> node.azUuid, Function.identity(), (first, second) -> first));
+
+    doInPrecheckSubTaskGroup(
+        "CheckDbNodePortConnectivity",
+        subTaskGroup -> {
+          for (NodeDetails sourceNode : sourceNodes) {
+            if (sourceNode.azUuid == null || sourceNode.placementUuid == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: missing azUuid or"
+                      + " placementUuid",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            // On-prem expands are already covered by precheck tasks against live nodes.
+            CloudType providerType = universe.getNodeDeploymentMode(sourceNode);
+            if (providerType == CloudType.onprem
+                && liveNodeByAz.containsKey(sourceNode.azUuid)
+                && !Objects.equals(
+                    liveNodeByAz.get(sourceNode.azUuid).nodeName, sourceNode.nodeName)) {
+              log.info(
+                  "Skipping DB node port connectivity check for node {}: on-prem expand already"
+                      + " covered by precheck against live node in AZ",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            Cluster cluster = taskParams().getClusterByUuid(sourceNode.placementUuid);
+            if (cluster == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: cluster not found for"
+                      + " placementUuid",
+                  sourceNode.nodeName);
+              continue;
+            }
+            PlacementInfo placement = cluster.getOverallPlacement();
+            if (placement == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: no placement for cluster",
+                  sourceNode.nodeName);
+              continue;
+            }
+            Set<UUID> azUuids = placement.getAllAZUUIDs();
+            if (CollectionUtils.isEmpty(azUuids)) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: no AZs in placement",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            List<NodeDetails> targetNodes = new ArrayList<>();
+            for (UUID azUuid : azUuids) {
+              List<NodeDetails> candidatesInAz =
+                  candidateNodesByAz.getOrDefault(azUuid, Collections.emptyList()).stream()
+                      .filter(node -> sourceNode.placementUuid.equals(node.placementUuid))
+                      .filter(node -> !Objects.equals(node.nodeName, sourceNode.nodeName))
+                      .collect(Collectors.toList());
+              if (candidatesInAz.isEmpty()) {
+                continue;
+              }
+              NodeDetails bestInAz =
+                  candidatesInAz.stream()
+                      .min(Comparator.comparingInt(n -> getConnectivityCheckPriority(n.state)))
+                      .orElse(null);
+              if (bestInAz != null) {
+                targetNodes.add(bestInAz);
+              }
+            }
+
+            if (targetNodes.isEmpty()) {
+              log.info(
+                  "Skipping DB node port connectivity check for node {}: no suitable target node in"
+                      + " any AZ",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = sourceNode.nodeName;
+            params.nodeUuid = sourceNode.nodeUuid;
+            params.azUuid = sourceNode.azUuid;
+            params.nodeDetailsSet = taskParams().nodeDetailsSet;
+            params.sourceNode = sourceNode;
+            params.targetNodes = targetNodes;
+
+            CheckDbNodePortConnectivity task = createTask(CheckDbNodePortConnectivity.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
+  }
+
+  /**
+   * Priority for choosing a target node for connectivity check (lower is better). Prefer Live, then
+   * ServerSetup, SoftwareInstalled, ToJoinCluster.
+   */
+  private static int getConnectivityCheckPriority(NodeDetails.NodeState state) {
+    if (state == null) {
+      return Integer.MAX_VALUE;
+    }
+    switch (state) {
+      case Live:
+        return 0;
+      case ServerSetup:
+        return 1;
+      case SoftwareInstalled:
+        return 2;
+      case ToJoinCluster:
+        return 3;
+      case ToBeAdded:
+        return 4;
+      default:
+        return Integer.MAX_VALUE;
+    }
   }
 
   /**

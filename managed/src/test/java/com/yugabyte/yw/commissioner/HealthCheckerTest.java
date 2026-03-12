@@ -40,6 +40,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -197,9 +198,10 @@ public class HealthCheckerTest extends FakeDBApplication {
             executorService,
             executorService,
             executorService,
+            executorService,
             mockFileHelperService,
             mockMaintenanceService,
-            null) {
+            app.injector().instanceOf(YBClientService.class)) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);

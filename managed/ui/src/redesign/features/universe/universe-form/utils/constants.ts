@@ -70,7 +70,8 @@ export const USER_TAGS_FIELD = 'instanceTags';
 
 //K8s overrides
 export const UNIVERSE_OVERRIDES_FIELD = 'universeOverrides';
-export const AZ_OVERRIDES_FIELD = 'azOverrides';
+export const AZ_OVERRIDES_FIELD = 'azOverrides'; // Helm: userIntent.azOverrides (YAML strings per AZ)
+export const K8S_AZ_OVERRIDES_FIELD = 'k8sAzOverrides'; // K8s: userIntent.userIntentOverrides.azOverrides (per-AZ volume/config)
 
 // ------------Universe Form Fields Path End------------
 
@@ -121,6 +122,7 @@ export const PRIMARY_FIELDS = [
   CUSTOMIZE_PORT_FIELD,
   UNIVERSE_OVERRIDES_FIELD,
   AZ_OVERRIDES_FIELD,
+  K8S_AZ_OVERRIDES_FIELD,
   MASTER_PLACEMENT_FIELD,
   CPU_ARCHITECTURE_FIELD,
   LINUX_VERSION_FIELD,

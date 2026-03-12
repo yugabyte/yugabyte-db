@@ -44,6 +44,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/async_util.h"
 
@@ -72,12 +73,14 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock)
 
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
@@ -288,7 +291,7 @@ class PgClient {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 
@@ -345,6 +348,9 @@ class PgClient {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   Status SetCronLastMinute(int64_t last_minute);
@@ -373,6 +379,9 @@ class PgClient {
   Status CancelTransaction(const unsigned char* transaction_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& tserver_uuid);
 
  private:
   class Impl;

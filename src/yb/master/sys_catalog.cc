@@ -600,7 +600,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
   retryable_requests.SetServerClock(master_->clock());
-  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+  retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;

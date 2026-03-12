@@ -162,7 +162,7 @@ class ClusterLoadBalancer {
   // If new_leader_ts_uuid is empty, a server will be picked by random to be the new leader.
   virtual Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      bool should_remove_leader, const std::string& reason,
+      bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid = "");
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
@@ -235,6 +235,8 @@ class ClusterLoadBalancer {
     TabletServerId to_ts;
     std::string to_ts_path;
     std::string reason;
+    // Whether to also remove the replica after stepping down the leader.
+    bool also_remove_replica = false;
   };
   // Move leaders load from a lower priority to a high priority TServers.
   // This is called before normal leader load balancing which balances load within each priority.

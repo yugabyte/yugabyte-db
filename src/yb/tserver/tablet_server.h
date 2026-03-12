@@ -488,7 +488,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
 
   std::atomic<bool> initted_{false};
 

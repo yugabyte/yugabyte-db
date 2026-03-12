@@ -846,6 +846,10 @@ static char *yb_xcluster_consistency_level_string;
 static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
 static bool yb_conn_mgr_modifying_defaults = false;
+bool		yb_test_skip_binding_scan_keys;
+static bool yb_bypass_cond_recheck;
+static bool yb_pushdown_is_not_null;
+static bool yb_pushdown_strict_inequality;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -2414,6 +2418,22 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_retry_after_non_atomic_commit", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Allow query layer retries of CALL/DO statements after an "
+						 "in-procedure COMMIT."),
+			gettext_noop("When enabled, the query layer will retry CALL and DO statements "
+						 "on conflict or read-restart errors even if the procedure or DO "
+						 "block has already performed a COMMIT. This can lead to "
+						 "re-execution of already-committed work (e.g., duplicate inserts) "
+						 "and is provided only as a compatibility option to revert to the "
+						 "old behavior. The default (off) is the safe behavior."),
+		},
+		&yb_enable_retry_after_non_atomic_commit,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_debug_log_docdb_requests", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Log the contents of all internal (protobuf) requests to DocDB."),
 			NULL,
@@ -2564,7 +2584,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("If true, strict inequality filters are pushed down."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
 		},
@@ -2575,7 +2595,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"yb_pushdown_is_not_null", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("If true, IS NOT NULL is pushed down."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
 		},
@@ -3022,12 +3042,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		{"yb_bypass_cond_recheck", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("If true then condition rechecking is bypassed at YSQL if the condition is bound to DocDB."),
+			gettext_noop("DEPRECATED: no-op."),
 			NULL,
 			GUC_EXPLAIN
 		},
 		&yb_bypass_cond_recheck,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_skip_binding_scan_keys", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("For YB scans, skip binding scan keys to pggate. "
+						 "ybgin and internal scans are not affected."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_EXPLAIN
+		},
+		&yb_test_skip_binding_scan_keys,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3817,19 +3849,14 @@ static struct config_bool ConfigureNamesBool[] =
 	 * (2) Disallow setting this GUC in the middle of a transaction.
 	 */
 	{
-		{"yb_fallback_to_legacy_catalog_read_time", PGC_USERSET, CUSTOM_OPTIONS,
+		{"yb_enable_concurrent_ddl", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("[This is an advanced flag, avoid using it unless recommened by Yugabyte"
-				"support.] If object locking is enabled, concurrent DDLs are allowed. This is done by "
-				"using the new mode for catalog reads and writes using PG's catalog snapshot. Set this "
-				"flag to true for falling back to the legacy mode which involves using pggate's catalog "
-				"read time for catalog reads when running a DML transaction (and) the transaction snapshot "
-				"for catalog reads and writes when running a DDL transaction. Concurrent DDLs will not be "
-				"supported if this flag is set. If object locking is disabled, only the legacy mode is "
-				"used."),
+				"support.] Use this flag to toggle support for concurrent DDLs. If object locking is disabled (i.e., "
+				"the gflag enable_object_locking_for_table_locks is set to false), concurrent DDLs are not supported."),
 			NULL
 		},
-		&yb_fallback_to_legacy_catalog_read_time,
-		true,
+		&yb_enable_concurrent_ddl,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3869,6 +3896,8 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{

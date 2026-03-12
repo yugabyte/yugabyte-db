@@ -230,6 +230,9 @@ public class UniverseCRUDHandler {
             || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
             || isKubernetesVolumeUpdate(cluster, currentCluster)
             || isKubernetesNodeSpecUpdate(cluster, currentCluster)
+            || (cluster.userIntent.providerType == Common.CloudType.kubernetes
+                && !isSameInstanceTypes(
+                    cluster.userIntent, currentCluster.userIntent, nodesInCluster))
             || cluster.userIntent.enableExposingService
                 != currentCluster.userIntent.enableExposingService;
 
@@ -649,7 +652,7 @@ public class UniverseCRUDHandler {
       }
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-      c.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+      c.validate(!cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
       // Enforce user tags.
       validateUserTags(customer, c.userIntent);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
@@ -733,6 +736,15 @@ public class UniverseCRUDHandler {
           c.userIntent.specificGFlags =
               SpecificGFlags.construct(c.userIntent.masterGFlags, c.userIntent.tserverGFlags);
         }
+      }
+
+      // Update device info in userIntent for Kubernetes
+      if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+        KubernetesUtil.applyVolumeChanges(
+            c.userIntent,
+            c.placementInfo,
+            taskParams.getPrimaryCluster().userIntent.universeOverrides,
+            taskParams.getPrimaryCluster().userIntent.azOverrides);
       }
     }
 
@@ -1026,6 +1038,8 @@ public class UniverseCRUDHandler {
               }
             }
           }
+          // Mark universe with volume migrated
+          universe.updateConfig(ImmutableMap.of(Universe.VOLUME_MIGRATED, Boolean.toString(true)));
           // Label the Kubernetes resources with universe name, zone
           // name. Done only for newly created universes.
           universe.updateConfig(
@@ -1250,16 +1264,27 @@ public class UniverseCRUDHandler {
       validateConsistency(primaryCluster, readOnlyCluster);
     }
 
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     TaskType taskType = TaskType.EditUniverse;
     if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       taskType = TaskType.EditKubernetesUniverse;
       notHelm2LegacyOrBadRequest(u);
       checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+      PlacementInfoUtil.applyK8sStsIndexIncrement(
+          primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
+      primaryCluster.userIntent.setUserIntentOverrides(
+          KubernetesUtil.generateVolumeOverridesForUserIntent(
+              primaryCluster.userIntent,
+              primaryCluster.placementInfo,
+              primaryCluster.userIntent.universeOverrides,
+              primaryCluster.userIntent.azOverrides,
+              PlacementInfoUtil.findRetainedAZs(
+                  primaryCluster.placementInfo,
+                  u.getUniverseDetails().getPrimaryCluster().placementInfo)));
     } else {
       mergeNodeExporterInfo(u, taskParams);
     }
-    PlacementInfoUtil.updatePlacementInfo(
-        taskParams.getNodesInCluster(primaryCluster.uuid), primaryCluster);
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Universe);
   }
 
@@ -1273,6 +1298,17 @@ public class UniverseCRUDHandler {
       taskType = TaskType.EditKubernetesUniverse;
       notHelm2LegacyOrBadRequest(u);
       checkHelmChartExists(cluster.userIntent.ybSoftwareVersion);
+      PlacementInfoUtil.applyK8sStsIndexIncrement(
+          cluster, taskParams.getNodesInCluster(cluster.uuid));
+      cluster.userIntent.setUserIntentOverrides(
+          KubernetesUtil.generateVolumeOverridesForUserIntent(
+              cluster.userIntent,
+              cluster.placementInfo,
+              u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
+              u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
+              PlacementInfoUtil.findRetainedAZs(
+                  cluster.placementInfo,
+                  u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo)));
     }
     return submitEditUniverse(customer, u, taskParams, taskType, CustomerTask.TargetType.Cluster);
   }
@@ -1568,7 +1604,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     addOnCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    addOnCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    addOnCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     addOnCluster.userIntent.enableNodeToNodeEncrypt =
         primaryCluster.userIntent.enableNodeToNodeEncrypt;
     addOnCluster.userIntent.enableClientToNodeEncrypt =
@@ -1652,7 +1689,8 @@ public class UniverseCRUDHandler {
         runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
     boolean isAuthEnforced = confGetter.getConfForScope(customer, CustomerConfKeys.isAuthEnforced);
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
-    readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
+    readOnlyCluster.validate(
+        !cloudEnabled, isAuthEnforced, taskParams.fipsEnabled, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
       SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
       if (primaryGFlags != null) {
@@ -2508,7 +2546,8 @@ public class UniverseCRUDHandler {
           String newInstanceType = newIntent.getInstanceTypeForNode(nodeDetails);
           String curInstanceType = curIntent.getInstanceTypeForNode(nodeDetails);
           // Verifying that instance type was not changed for existing nodes.
-          if (!Objects.equals(newInstanceType, curInstanceType)) {
+          if (!Objects.equals(newInstanceType, curInstanceType)
+              && curIntent.providerType != Common.CloudType.kubernetes) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(

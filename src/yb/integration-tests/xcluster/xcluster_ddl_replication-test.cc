@@ -175,16 +175,16 @@ class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTes
   void SetUp() override {
     auto original_value = FLAGS_ysql_pg_conf_csv;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
-        "$0$1yb_fallback_to_legacy_catalog_read_time=$2", original_value,
+        "$0$1yb_enable_concurrent_ddl=$2", original_value,
         original_value.empty() ? "" : ",", GetParam());
     XClusterDDLReplicationTest::SetUp();
   }
 };
 
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
 INSTANTIATE_TEST_CASE_P(
-    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
 
 TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
@@ -581,6 +581,33 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
       &producer_cluster_, producer_table_name.namespace_name(), producer_table_name.pgschema_name(),
       producer_table_name_new_user_str));
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
+}
+
+TEST_F(XClusterDDLReplicationTest, TableInNonDefaultSchema) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  // Create a table in a different schema and run DDLs on it while connected to the default schema.
+  const std::string kSchemaName = "other_schema";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+
+  const std::string kTableName = "test_tbl";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0.$1 (key int PRIMARY KEY)", kSchemaName, kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0.$1 VALUES (1)", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+
+  // Perform a table rewrite on the table to test recreating the table with the same name.
+  ASSERT_OK(producer_conn_->ExecuteFormat("TRUNCATE TABLE $0.$1", kSchemaName, kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0.$1 VALUES (2)", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+
+  // Also validate that connecting to this schema is also handled.
+  ASSERT_OK(producer_conn_->ExecuteFormat("SET search_path TO $0", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("TRUNCATE TABLE $0", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
 }
 
 TEST_F(XClusterDDLReplicationTest, CreateTableWithNonZeroLogicalCommitTime) {

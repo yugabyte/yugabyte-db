@@ -63,6 +63,7 @@ public class EditUniverse extends EditUniverseTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
+    createComprehensivePrecheckTasks(universe);
     prevState = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
     if (isFirstTry()) {
       configureTaskParams(universe);

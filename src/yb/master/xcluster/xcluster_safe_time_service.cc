@@ -85,7 +85,7 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     poll_strand_.emplace(master->messenger()->io_service());
     poller_.Start(
         master->messenger()->scheduler(),
-        GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs) * 1s);
+        FLAGS_xcluster_safe_time_update_interval_secs * 1s);
   }
 }
 

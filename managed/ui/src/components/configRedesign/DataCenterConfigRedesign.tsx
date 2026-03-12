@@ -35,12 +35,11 @@ import { YBErrorIndicator } from '../common/indicators';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
-import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
+import { api, regionMetadataQueryKey, runtimeConfigQueryKey } from '../../redesign/helpers/api';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { PerfAdvisorOverview } from '../../redesign/features/PerfAdvisor/PerfAdvisorOverview';
 import { fetchGlobalRunTimeConfigs } from '../../api/admin';
-import { runtimeConfigQueryKey } from '../../redesign/helpers/api';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 interface ReactRouterProps {

@@ -64,7 +64,7 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
 
-Use the [pg_upgrade](https://www.postgresql.org/docs/15/pgupgrade.html) tool provided with v2.25.1.0 to make sure your cluster is compatible with the new version.
+Use the [pg_upgrade](https://www.postgresql.org/docs/15/pgupgrade.html) tool provided with v2025.2 and later (in the `postgres/bin` directory) to make sure your cluster is compatible with the new version.
 
 Use the `--check` option as follows:
 

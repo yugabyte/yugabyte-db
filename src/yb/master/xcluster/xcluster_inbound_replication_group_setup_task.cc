@@ -885,7 +885,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     const client::YBTableInfo& source_table_info) {
   bool is_ysql_table = source_table_info.table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   if (parent_task_->data_.transactional &&
-      !GetAtomicFlag(&FLAGS_TEST_allow_ycql_transactional_xcluster) && !is_ysql_table) {
+      !FLAGS_TEST_allow_ycql_transactional_xcluster && !is_ysql_table) {
     return STATUS_FORMAT(
         NotSupported, "Transactional replication is not supported for non-YSQL tables: $0",
         source_table_info.table_name.ToString());

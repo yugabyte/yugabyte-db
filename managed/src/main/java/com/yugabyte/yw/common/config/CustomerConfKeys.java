@@ -258,4 +258,33 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           "Enables Earlyoom Installation on Nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableAzOverridesK8s =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_az_overrides_k8s",
+          ScopeType.CUSTOMER,
+          "Enable AZ overrides for K8s universes",
+          "When enabled, allows editing asymmetric K8s universes and configuring "
+              + "AZ-specific volume size, volume count, and storage class for tserver and master",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationEnabled =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.enabled",
+          ScopeType.CUSTOMER,
+          "Enable PA Collector auto-registration on universe creation",
+          "When enabled, newly created universes are automatically registered with the "
+              + "first PA Collector for the customer.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> paAutoRegistrationAdvancedObservability =
+      new ConfKeyInfo<>(
+          "yb.pa.auto_registration.advanced_observability",
+          ScopeType.CUSTOMER,
+          "Enable advanced observability for PA auto-registration",
+          "When PA auto-registration is enabled, also enable advanced observability "
+              + "(metrics export to Prometheus) for the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

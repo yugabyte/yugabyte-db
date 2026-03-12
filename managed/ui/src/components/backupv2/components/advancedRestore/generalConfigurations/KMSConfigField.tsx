@@ -7,11 +7,10 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import Select from 'react-select';
+import Select, { components } from 'react-select';
 import { useQuery } from 'react-query';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { components } from 'react-select';
 import { find } from 'lodash';
 import { Box, makeStyles } from '@material-ui/core';
 import { YBLabel } from '../../../../common/descriptors';

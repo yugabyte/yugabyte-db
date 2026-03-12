@@ -642,7 +642,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             new HashMap<>(), Collections.singletonMap("log_max_seconds_to_retain", "86333"));
     universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
 
-    CommissionerBaseTest.setPausePosition(22);
+    CommissionerBaseTest.setPausePosition(25);
     GFlagsUpgradeParams gFlagsUpgradeParams =
         getUpgradeParams(
             universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, GFlagsUpgradeParams.class);

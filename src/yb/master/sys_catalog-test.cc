@@ -802,8 +802,8 @@ TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
 // Test the tasks tracker in catalog manager.
 TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   // Configure number of tasks flag and keep time flag.
-  SetAtomicFlag(100, &FLAGS_tasks_tracker_num_tasks);
-  SetAtomicFlag(100, &FLAGS_tasks_tracker_keep_time_multiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_num_tasks) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_keep_time_multiplier) = 100;
 
   unique_ptr<TestTableLoader> loader(new TestTableLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -842,7 +842,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   ASSERT_EQ(master_->catalog_manager()->GetRecentTasks().size(), FLAGS_tasks_tracker_num_tasks);
 
   // Set keep time flag to small multiple of the wait interval.
-  SetAtomicFlag(1, &FLAGS_tasks_tracker_keep_time_multiplier);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tasks_tracker_keep_time_multiplier) = 1;
 
   // Wait for background task to run (length of two wait intervals).
   usleep(2 * (1000 * FLAGS_catalog_manager_bg_task_wait_ms));

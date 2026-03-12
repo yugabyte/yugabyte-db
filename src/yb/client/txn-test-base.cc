@@ -79,11 +79,11 @@ int32_t ValueForTransactionAndIndex(size_t transaction, size_t index, const Writ
 }
 
 void SetIgnoreApplyingProbability(double value) {
-  SetAtomicFlag(value, &FLAGS_TEST_transaction_ignore_applying_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = value;
 }
 
 void SetDisableHeartbeatInTests(bool value) {
-  SetAtomicFlag(value, &FLAGS_transaction_disable_heartbeat_in_tests);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_disable_heartbeat_in_tests) = value;
 }
 
 void DisableApplyingIntents() {
@@ -101,8 +101,8 @@ void CommitAndResetSync(YBTransactionPtr *txn) {
 }
 
 void DisableTransactionTimeout() {
-  SetAtomicFlag(std::numeric_limits<double>::max(),
-                &FLAGS_transaction_max_missed_heartbeat_periods);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) =
+      std::numeric_limits<double>::max();
 }
 
 template <class MiniClusterType>

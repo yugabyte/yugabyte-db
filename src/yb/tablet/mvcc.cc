@@ -255,7 +255,7 @@ std::string SafeTimeWithSource::ToString() const {
 MvccManager::MvccManager(std::string prefix, server::ClockPtr clock)
     : prefix_(std::move(prefix)),
       clock_(std::move(clock)) {
-  auto op_trace_num_items = GetAtomicFlag(&FLAGS_TEST_mvcc_op_trace_num_items);
+  auto op_trace_num_items = FLAGS_TEST_mvcc_op_trace_num_items;
   if (op_trace_num_items > 0) {
     op_trace_ = std::make_unique<MvccManager::MvccOpTrace>(op_trace_num_items);
   }

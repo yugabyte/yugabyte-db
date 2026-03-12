@@ -1642,7 +1642,7 @@ TEST_F(XClusterTestTransactionalOnly, CleanupAbortedTransactions) {
       MonoDelta::FromSeconds(kRpcTimeout), "Consumer cluster created intents"));
   ASSERT_OK(consumer_cluster()->FlushTablets());
   // Then, set timeout to 0 and make sure we do cleanup on the next compaction.
-  SetAtomicFlag(0, &FLAGS_external_intent_cleanup_secs);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_external_intent_cleanup_secs) = 0;
   ASSERT_OK(InsertIntentsOnProducer(session, kNumRecordsPerBatch, kNumRecordsPerBatch * 2));
   // Wait for records to be replicated.
   ASSERT_OK(WaitFor(
@@ -2396,7 +2396,7 @@ TEST_P(XClusterTest, ApplyOperationsRandomFailures) {
   ASSERT_OK(CorrectlyPollingAllTablets(5));
   ASSERT_OK(CorrectlyPollingAllTablets(producer_cluster(), 3));
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   // Write 1000 entries to each cluster.
   Status t1_s, t2_s;
@@ -3327,10 +3327,10 @@ TEST_F_EX(XClusterTest, LeaderFailoverTest, XClusterTestNoParam) {
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of
   // flags so disable FLAGS_enable_log_retention_by_op_idx for the duration of the flush instead.
-  SetAtomicFlag(false, &FLAGS_enable_log_retention_by_op_idx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
   SleepFor(2s * kTimeMultiplier);
   ASSERT_OK(FlushProducerTabletsAndGCLog());
-  SetAtomicFlag(true, &FLAGS_enable_log_retention_by_op_idx);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
 
   // Failback to old tserver.
   ASSERT_OK(itest::LeaderStepDown(new_ts, consumer_tablet_id, old_ts, kTimeout));

@@ -11,10 +11,12 @@
 // under the License.
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+
+#include <gtest/gtest.h>
+
 #include <cstddef>
 #include <map>
 #include <vector>
-#include <gtest/gtest.h>
 
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -787,7 +789,7 @@ Status CDCSDKYsqlTest::SplitTablet(const TabletId& tablet_id, PostgresMiniCluste
 }
 
 Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>>
-  CDCSDKYsqlTest::SetUpCluster() {
+CDCSDKYsqlTest::SetUpCluster() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
   RETURN_NOT_OK(SetUpWithParams(3, 1, false));
   auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -2637,6 +2639,35 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
       MonoDelta::FromSeconds(60), timeout_msg));
 }
 
+void CDCSDKYsqlTest::VerifyTabletIdsInCdcStateForStream(
+    const xrepl::StreamId& stream_id,
+    const std::unordered_set<TabletId>& expected_tablet_ids,
+    const std::string& timeout_msg) {
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  Status s;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_set<TabletId> seen_tablet_ids;
+        auto table_range = VERIFY_RESULT(
+            cdc_state_table.GetTableRange(
+                CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+        for (auto row_result : table_range) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          if (row.key.stream_id != stream_id || !row.key.colocated_table_id.empty()) {
+            continue;
+          }
+          if (*row.checkpoint == OpId::Max()) {
+            continue;
+          }
+          seen_tablet_ids.insert(row.key.tablet_id);
+        }
+        RETURN_NOT_OK(s);
+        return seen_tablet_ids == expected_tablet_ids;
+      },
+      MonoDelta::FromSeconds(60), timeout_msg));
+}
+
 Status CDCSDKYsqlTest::ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id) {
   CHECK(!FLAGS_enable_load_balancing);
 
@@ -2747,7 +2778,7 @@ Status CDCSDKYsqlTest::FlushTable(const TableId& table_id) {
 }
 
 Status CDCSDKYsqlTest::WaitForPostApplyMetadataWritten(size_t expected_num_transactions) {
-  if (!GetAtomicFlag(&FLAGS_cdc_write_post_apply_metadata)) {
+  if (!FLAGS_cdc_write_post_apply_metadata) {
     return Status::OK();
   }
   size_t num_intents = 0;
@@ -4553,8 +4584,8 @@ namespace {
 
 template <typename Functor>
 concept StatusFunctor =
-    std::invocable<Functor> &&
-    std::convertible_to<std::invoke_result_t<Functor>, Status>;
+std::invocable<Functor> &&
+std::convertible_to<std::invoke_result_t<Functor>, Status>;
 
 template <StatusFunctor Functor>
 Status RetryOnInternalError(Functor&& functor, MonoDelta timeout, const std::string& wait_message) {
@@ -4574,7 +4605,7 @@ Status RetryOnInternalError(Functor&& functor, MonoDelta timeout, const std::str
   return Status::OK();
 }
 
-} // namespace
+}  // namespace
 
 Status CDCSDKYsqlTest::WaitForFlushTables(
     const std::vector<TableId>& table_ids, bool add_indexes, int timeout_secs, bool is_compaction) {
@@ -4944,5 +4975,5 @@ Status CDCSDKYsqlTest::GetIntentEntriesAndSSTFileCountForTablet(
   return Status::OK();
 }
 
-} // namespace cdc
-} // namespace yb
+}  // namespace cdc
+}  // namespace yb

@@ -37,10 +37,6 @@ bool yb_ignore_pg_class_oids = true;
 
 bool yb_ignore_relfilenode_ids = true;
 
-bool yb_pushdown_strict_inequality = true;
-
-bool yb_pushdown_is_not_null = true;
-
 bool yb_enable_pg_locks = true;
 
 bool yb_pg_locks_integrate_advisory_locks = true;
@@ -156,6 +152,6 @@ bool yb_disable_pg_snapshot_mgmt_in_repeatable_read = false;
 
 bool enable_object_locking_infra = true;
 
-bool yb_fallback_to_legacy_catalog_read_time = true;
+bool yb_enable_concurrent_ddl = false;
 
 bool yb_enable_ddl_savepoint_infra = true;

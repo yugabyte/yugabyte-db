@@ -280,7 +280,7 @@ class Certificates extends Component {
           <MenuItem
             onClick={() => {
               this.setState({
-                associatedUniverses: [...payload?.universeDetails],
+                associatedUniverses: [...(payload?.universeDetails ?? [])],
                 isVisibleModal: true
               });
             }}

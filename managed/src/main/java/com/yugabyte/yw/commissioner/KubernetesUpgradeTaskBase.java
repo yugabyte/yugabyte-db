@@ -381,7 +381,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .build(),
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
-          useExistingServerCert);
+          useExistingServerCert,
+          null /* skipAZs */);
     }
 
     if (upgradeTservers) {
@@ -409,7 +410,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .build(),
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
-          useExistingServerCert);
+          useExistingServerCert,
+          null /* skipAZs */);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -459,7 +461,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
                 .build(),
             ysqlMajorVersionUpgradeState,
             rootCAUUID,
-            useExistingServerCert);
+            useExistingServerCert,
+            null /* skipAZs */);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -495,7 +498,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .build(),
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
-          useExistingServerCert);
+          useExistingServerCert,
+          null /* skipAZs */);
     }
   }
 

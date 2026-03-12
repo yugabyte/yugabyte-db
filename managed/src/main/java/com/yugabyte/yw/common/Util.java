@@ -973,6 +973,25 @@ public class Util {
   }
 
   /**
+   * Validates that a custom linux_user is not specified for manual on-prem provisioned universes.
+   * Manual on-prem node agents run as yugabyte user and cannot switch to other users.
+   *
+   * @param linuxUser The linux user specified in the request
+   * @param universe The target universe
+   * @throws PlatformServiceException if validation fails
+   */
+  public static void validateLinuxUserForOnPrem(String linuxUser, Universe universe) {
+    if (StringUtils.isNotBlank(linuxUser)
+        && !NodeManager.YUGABYTE_USER.equals(linuxUser)
+        && isOnPremManualProvisioning(universe)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot specify custom linux_user for manual on-prem provisioned universes. "
+              + "Node agent runs as yugabyte user and cannot switch users.");
+    }
+  }
+
+  /**
    * @param ybServerPackage
    * @return pair of string containing osType and archType of ybc-server-package
    */

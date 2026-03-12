@@ -2185,8 +2185,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // following the protocol's default mechanism.
   Result<std::shared_ptr<AsyncTryStepDown>> ScheduleTryStepDownTask(
       const TabletInfoPtr& tablet, const consensus::ConsensusStatePB& cstate,
-      const std::string& change_config_ts_uuid, bool should_remove, const LeaderEpoch& epoch,
-      const std::string& reason, const std::string& new_leader_ts_uuid = "");
+      const std::string& change_config_ts_uuid, bool also_remove_replica,
+      const LeaderEpoch& epoch, const std::string& reason,
+      const std::string& new_leader_ts_uuid = "");
 
   // Start a task to change the config to remove a certain voter because the specified tablet is
   // over-replicated.
@@ -2289,6 +2290,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
       REQUIRES_SHARED(mutex_);
+
+  // Returns true, if there exists atleast one stream which uses pub refresh mechanism (detected by
+  // the absence / false value of the field detect_publication_changes_implicitly in stream
+  // metadata).
+  // Should be called only for tables residing in DB with logical replication streams.
+  bool IsTablePartOfCDCStreamUsingPubRefresh(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   bool IsPitrActive();
 
@@ -3127,7 +3134,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time)
       EXCLUDES(mutex_);
 
-  bool CDCSDKAllowTableRewrite(const TableId& table_id, bool is_truncate_request) const
+  Status CDCSDKAllowTableRewrite(const TableId& table_id, bool is_truncate_request) const
       REQUIRES_SHARED(mutex_);
 
   Status RemoveTabletEntriesInCDCState(

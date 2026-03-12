@@ -123,7 +123,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
 
   void SetUp() override {
     // To prevent automatic creation of the transaction status table.
-    SetAtomicFlag(false, &FLAGS_enable_ysql);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
     ASSERT_NO_FATALS(QLDmlTestBase::SetUp());
 
@@ -346,7 +346,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   // Used only when table is transactional.
   const double kTransactionalWriteProbability = 0.5;
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
   std::optional<TransactionManager> txn_manager;

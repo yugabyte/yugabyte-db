@@ -3,10 +3,15 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.SetUniverseReplicationEnabledResponse;
@@ -15,10 +20,18 @@ import org.yb.client.YBClient;
 @Slf4j
 public class SetReplicationPaused extends XClusterConfigTaskBase {
 
+  private final RuntimeConfGetter confGetter;
+  private final YbClientConfigFactory ybClientConfigFactory;
+
   @Inject
   protected SetReplicationPaused(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      RuntimeConfGetter confGetter,
+      YbClientConfigFactory ybClientConfigFactory) {
     super(baseTaskDependencies, xClusterUniverseService);
+    this.confGetter = confGetter;
+    this.ybClientConfigFactory = ybClientConfigFactory;
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -57,7 +70,17 @@ public class SetReplicationPaused extends XClusterConfigTaskBase {
     }
 
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+    Duration pauseRpcTimeout =
+        confGetter.getConfForScope(targetUniverse, UniverseConfKeys.xclusterPauseRpcTimeout);
+
+    YbClientConfig clientConfig =
+        this.ybClientConfigFactory.create(
+            targetUniverse.getMasterAddresses(),
+            targetUniverse.getCertificateNodetoNode(),
+            pauseRpcTimeout.toMillis(),
+            pauseRpcTimeout.toMillis(),
+            pauseRpcTimeout.toMillis());
+    try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       SetUniverseReplicationEnabledResponse resp =
           client.setUniverseReplicationEnabled(
               xClusterConfig.getReplicationGroupName(), !taskParams().pause /* active */);

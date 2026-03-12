@@ -411,12 +411,12 @@ public class TelemetryProviderService {
     if (gcpProviders.size() > 1) {
       GCPCloudMonitoringConfig firstGCPConfig =
           (GCPCloudMonitoringConfig) gcpProviders.get(0).getConfig();
-      JsonNode firstCredentials = firstGCPConfig.getCredentials();
+      JsonNode firstCredentials = firstGCPConfig.getGcmCredentials();
 
       for (int i = 1; i < gcpProviders.size(); i++) {
         GCPCloudMonitoringConfig currentConfig =
             (GCPCloudMonitoringConfig) gcpProviders.get(i).getConfig();
-        JsonNode currentCredentials = currentConfig.getCredentials();
+        JsonNode currentCredentials = currentConfig.getGcmCredentials();
 
         if (!java.util.Objects.equals(firstCredentials, currentCredentials)) {
           allCredentialsConsistent = false;

@@ -7,25 +7,42 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
+import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
+import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.slf4j.Logger;
@@ -37,9 +54,17 @@ public class CallHomeManager {
   ConfigHelper configHelper;
 
   @Inject private RuntimeConfGetter confGetter;
+  @Inject private RuntimeConfService runtimeConfService;
+  @Inject private AlertConfigurationService alertConfigurationService;
+  @Inject private AlertService alertService;
+  @Inject private AlertChannelService alertChannelService;
+  @Inject private AlertDestinationService alertDestinationService;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
+
+  // include alerts from a day ago
+  private static final Duration CALLHOME_ALERT_PERIOD = Duration.ofDays(1);
 
   // Get timestamp from clock to make testing easier
   Clock clock = Clock.systemUTC();
@@ -116,6 +141,8 @@ public class CallHomeManager {
     payload.put("email", Users.getAllEmailDomainsForCustomer(c.getUuid()));
     payload.put("creation_date", c.getCreationDate().toString());
 
+    addAlertMetadata(payload, c);
+
     // k8s operator info
     ObjectNode operatorInfo = Json.newObject();
     operatorInfo.put("enabled", confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled));
@@ -126,11 +153,16 @@ public class CallHomeManager {
     // Build universe details json
     List<UniverseResp> universes =
         c.getUniverses().stream().map(u -> new UniverseResp(u)).collect(Collectors.toList());
+    Set<UUID> universeUuids =
+        universes.stream().map(u -> u.universeUUID).collect(Collectors.toSet());
 
     payload.set("universes", Json.toJson(universes));
     // Build provider details json
     ArrayNode providers = Json.newArray();
+    Set<UUID> providerUuids = new HashSet<>();
     for (Provider p : Provider.getAll(c.getUuid())) {
+      providerUuids.add(p.getUuid());
+
       ObjectNode provider = Json.newObject();
       provider.put("provider_uuid", p.getUuid().toString());
       provider.put("code", p.getCode());
@@ -146,6 +178,9 @@ public class CallHomeManager {
       providers.add(provider);
     }
     payload.set("providers", providers);
+
+    // runtime_config json
+    payload.set("runtime_config", buildRuntimeConfigPayload(c, providerUuids, universeUuids));
 
     ArrayNode tasks = Json.newArray();
     List<CustomerTask> customerTasks = CustomerTask.findNewerThan(c, CALLHOME_TASK_PERIOD);
@@ -243,5 +278,79 @@ public class CallHomeManager {
         provider.put("public_cloud_credential_type", type.toString());
       }
     }
+  }
+
+  private ArrayNode buildRuntimeConfigPayload(
+      Customer c, Set<UUID> providerUuids, Set<UUID> universeUuids) {
+    Set<UUID> scopeUuids = new HashSet<>(providerUuids);
+    scopeUuids.addAll(universeUuids);
+    scopeUuids.add(c.getUuid());
+    scopeUuids.add(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID);
+
+    List<RuntimeConfigEntry> allEntries = runtimeConfService.getRuntimeConfigEntries(scopeUuids);
+
+    Set<String> customerOverriddenPaths =
+        allEntries.stream()
+            .filter(e -> c.getUuid().equals(e.getScopeUUID()))
+            .map(RuntimeConfigEntry::getPath)
+            .collect(Collectors.toSet());
+
+    List<RuntimeConfigEntry> filteredEntries =
+        allEntries.stream()
+            .filter(
+                e ->
+                    !(ScopedRuntimeConfig.GLOBAL_SCOPE_UUID.equals(e.getScopeUUID())
+                        && customerOverriddenPaths.contains(e.getPath())))
+            .collect(Collectors.toList());
+
+    ArrayNode runtimeConfigEntries = (ArrayNode) Json.toJson(filteredEntries);
+
+    for (int i = 0; i < runtimeConfigEntries.size(); i++) {
+      ObjectNode obj = (ObjectNode) runtimeConfigEntries.get(i);
+
+      UUID scopeUuid = UUID.fromString(obj.path("scopeUUID").asText());
+
+      String scopeType;
+      if (ScopedRuntimeConfig.GLOBAL_SCOPE_UUID.equals(scopeUuid)) {
+        scopeType = "GLOBAL";
+      } else if (c.getUuid().equals(scopeUuid)) {
+        scopeType = "CUSTOMER";
+      } else if (providerUuids.contains(scopeUuid)) {
+        scopeType = "PROVIDER";
+      } else {
+        scopeType = "UNIVERSE";
+      }
+      obj.put("scope_type", scopeType);
+
+      String path = obj.path("path").asText();
+      if (CommonUtils.isSensitiveField(path)) {
+        obj.put("value", RedactingService.SECRET_REPLACEMENT);
+      }
+    }
+
+    return runtimeConfigEntries;
+  }
+
+  private void addAlertMetadata(ObjectNode payload, Customer c) {
+    List<AlertConfiguration> alertConfigurations =
+        alertConfigurationService.listByCustomerUuid(c.getUuid());
+    payload.set("alert_policies", Json.toJson(alertConfigurations));
+
+    List<AlertDestination> alertDestinations = alertDestinationService.listByCustomer(c.getUuid());
+    payload.set("alert_destinations", Json.toJson(alertDestinations));
+
+    ArrayNode allChannels = Json.newArray();
+    for (AlertChannel ch : alertChannelService.list(c.getUuid())) {
+      ObjectNode one = Json.newObject();
+      one.put("uuid", ch.getUuid().toString());
+      one.put("type", ch.getParams().getChannelType().toString());
+      one.put("name", ch.getName());
+      allChannels.add(one);
+    }
+    payload.set("alert_notification_channels", allChannels);
+
+    Instant cutoff = clock.instant().minus(CALLHOME_ALERT_PERIOD);
+    List<Alert> alerts = alertService.listByCustomerSince(c.getUuid(), Date.from(cutoff));
+    payload.set("alert_list", Json.toJson(alerts));
   }
 }

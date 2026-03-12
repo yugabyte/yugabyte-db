@@ -420,15 +420,13 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     ObjectNode payload = objectMapper.createObjectNode();
     payload.put("name", provider.getMetadata().getName());
     payload.put("code", "kubernetes");
-    String providerNamespace = provider.getMetadata().getNamespace();
     addProviderLevelCloudInfoToPayload(
         payload, objectMapper.valueToTree(provider.getSpec().getCloudInfo()));
-    addRegionsToPayload(
-        payload, objectMapper.valueToTree(provider.getSpec().getRegions()), providerNamespace);
+    addRegionsToPayload(payload, objectMapper.valueToTree(provider.getSpec().getRegions()));
     return payload;
   }
 
-  private void addRegionsToPayload(ObjectNode payload, JsonNode regions, String providerNamespace) {
+  private void addRegionsToPayload(ObjectNode payload, JsonNode regions) {
     if (regions == null || !regions.isArray() || regions.isEmpty()) {
       log.warn("Regions are null, not an array, or empty. Skipping.");
       return;
@@ -450,10 +448,6 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
           JsonNode cloudInfo = zone.get("cloudInfo");
           if (cloudInfo != null && cloudInfo.isObject()) {
             ObjectNode cloudInfoNode = (ObjectNode) cloudInfo;
-            if (cloudInfoNode.get("kubeNamespace") == null
-                || cloudInfoNode.get("kubeNamespace").asText().isEmpty()) {
-              cloudInfoNode.put("kubeNamespace", providerNamespace);
-            }
             addZoneLevelCloudInfoToPayload(zoneNode, cloudInfoNode);
           }
         }

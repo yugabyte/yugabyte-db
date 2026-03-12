@@ -264,6 +264,68 @@
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
       },
+      "dbUpgrade": {
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
+          "dbVersionStep": {
+            "stepTitle": "Database Version",
+            "stepDescription": "What database version do you want to upgrade to?",
+            "currentVersion": "Current Version",
+            "targetVersion": "Target Version",
+            "runPreupgradeCheck": "Run Pre-upgrade Check",
+            "upgradeInfoCard": {
+              "ysqlMajorVersionUpgrade": "YSQL Major Upgrade",
+              "ysqlMajorVersionUpgradeInfo": "This major upgrade upgrades your cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "upgradeInfo": "Upgrades the cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "finalizationRequired": "Finalization required",
+              "finalizationRequiredTooltip": "After upgrading, you must finalize the upgrade to complete the process. Until finalized, some features may be restricted.",
+              "rollbackAvailable": "<bold>Rollback available</bold> — Until finalization (back to v{{currentVersion}})",
+              "rollbackAvailableAnytime": "<bold>Rollback available</bold> — Anytime after upgrade (back to v{{currentVersion}})",
+              "temporaryRestrictions": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlocked": "DDLs and <underline>some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlocked": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is completed.",
+              "someOperationsBlockedFinalization": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "clusterMayHaveSlowerPerformance": "The cluster may have slower performance.",
+              "learnMoreAboutUpgrade": "Learn more about the upgrade"
+            }
+          },
+          "upgradeMethodStep": {
+            "stepTitle": "Upgrade Method",
+            "express": {
+              "title": "Express upgrade",
+              "description": "Runs straight through; rollback is only allowed after the upgrade is completed."
+            },
+            "canary": {
+              "title": "Canary upgrade",
+              "tag": "Advanced",
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities."
+            },
+            "upgradePace": {
+              "title": "Upgrade Pace",
+              "rolling": "Rolling upgrade",
+              "concurrent": "Concurrent upgrade of all nodes.",
+              "maxNodesPerBatch": "Max nodes per batch:",
+              "waitBetweenBatches": "Wait between batches:",
+              "seconds": "seconds"
+            },
+            "validationError": {
+              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number.",
+              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
+              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}."
+            },
+            "recommendationLabel": "Recommendation",
+            "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
+          },
+          "submitLabel": {
+            "next": "Next",
+            "upgrade": "Upgrade"
+          },
+          "toast": {
+            "dbUpgradeInitiated": "Database upgrade initiated",
+            "dbUpgradeFailed": "Database upgrade request failed"
+          }
+        }
+      },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
@@ -338,8 +400,16 @@
         "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
         "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
         "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
-        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
-        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
+        "enableAdvancedObservability": "Enable Advanced Observability",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilitySuccess": "Successfully enabled Advanced Observability for the universe",
+        "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
+        "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilitySuccess": "Successfully disabled Advanced Observability for the universe",
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -573,11 +643,13 @@
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
         "identConfLocal": "map-name idp-user/group/role database-username",
+        "ycqlIdentConfLocal": "idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
         "pgConfDescription": "CSV formatted line represented list of postgres setting assignments.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
-        "identConfPostgreSQL": "PostgreSQL. ",
-        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfPostgreSQL": "PostgreSQL",
+        "identConfDescriptionSecond": ". Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "ycqlIdentConfDescriptionSecond": " except the omission of the map-name. Enter each mapping as a new row, comprising the external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
         "readLess": "Read Less",
@@ -600,6 +672,18 @@
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
+      },
+      "azOverrides": {
+        "modalTitle": "AZ Resource Overrides",
+        "sectionTitle": "Availability Zone Overrides",
+        "editAZOverrides": "Edit AZ Overrides",
+        "addStorageOverrides": "Add Storage Overrides",
+        "editStorageOverrides": "Edit storage overrides",
+        "addAZ": "Add AZ",
+        "addAnotherAZ": "Add Another AZ",
+        "availabilityZone": "Availability Zone",
+        "volumeCount": "Volume count",
+        "volumeSizeGib": "Volume size (Gib)"
       },
       "instanceConfig": {
         "assignPublicIP": "Assign Public IP",
@@ -626,6 +710,7 @@
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
+        "storageClass": "Storage Class",
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
@@ -2904,6 +2989,9 @@
       "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
+      "splunkTokenTooltip": "Indicate this is the Splunk HEC token and where to generate it",
+      "splunkURLTooltip": "Clarify required format (include protocol and port, e.g., https://<host>:8088)",
+      "splunkURLPlaceholder": "https://<host>:8088/services/collector/event",
       "endpointURL": "Endpoint URL",
       "source": "Source (Optional)",
       "sourceType": "Source Type (Optional)",
@@ -3703,7 +3791,15 @@
         },
         "accessKeyLabel": "Access Key",
         "accessKeyRequired": "Access Key is required",
-        "arnField": "Instance Profile ARN"
+        "arnField": "Instance Profile ARN",
+        "ipv6Field": {
+          "label": "Enable IPV6",
+          "subText": "Use IPV6 networking for connections between the DB servers."
+        },
+        "networkAccessField": {
+          "label": "Enable Public Network Access",
+          "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",

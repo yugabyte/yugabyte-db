@@ -96,7 +96,8 @@ void delete_graph(const Name graph_name)
                  errmsg("graph \"%s\" does not exist", NameStr(*graph_name))));
     }
 
-    CatalogTupleDelete(ag_graph, &tuple->t_self);
+    /* YB: pass full tuple instead of &tuple->t_self for YB catalog delete */
+    CatalogTupleDelete(ag_graph, tuple);
 
     systable_endscan(scan_desc);
     table_close(ag_graph, RowExclusiveLock);

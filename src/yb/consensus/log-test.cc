@@ -37,7 +37,6 @@
 #include <vector>
 
 #include <boost/function.hpp>
-
 #include <glog/stl_logging.h>
 
 #include "yb/common/schema_pbutil.h"
@@ -1437,6 +1436,30 @@ TEST_F(LogTest, TestReadReplicatesWithOnlyPartialMemory) {
   ASSERT_NE(repls.size(), kSequenceLength);
   ASSERT_GE(repls.size(), 2);
 
+}
+
+// Regression test for GH-30437: max_bytes_to_read=0 must be treated as a real limit,
+// not as kNoSizeLimit. Before the fix, the condition (max_bytes_to_read <= 0) caused 0
+// to bypass the size check entirely, reading all entries without limit.
+TEST_F(LogTest, TestReadReplicatesInRangeWithZeroMaxBytes) {
+  const int kSequenceLength = 10;
+
+  BuildLog();
+  OpIdPB op_id;
+  op_id.set_term(1);
+  op_id.set_index(1);
+  ASSERT_OK(AppendNoOps(&op_id, kSequenceLength));
+
+  auto* reader = ASSERT_RESULT(log_->GetLogReader());
+  ReplicateMsgs replica_messages;
+  int64_t starting_op_segment_seq_num;
+  ASSERT_OK(reader->ReadReplicatesInRange(
+      /*starting_at=*/1, kSequenceLength, /*max_bytes_to_read=*/0, log::ObeyMemoryLimit::kFalse,
+      &replica_messages, &starting_op_segment_seq_num));
+  // The "at least one" guarantee means we always read 1 entry even if the size limit is 0,
+  // but we must not read all entries as the old buggy code did.
+  ASSERT_EQ(1, replica_messages.size());
+  ASSERT_EQ(1, replica_messages[0]->id().index());
 }
 
 TEST_F(LogTest, AllocateSegmentAndRollOver) {

@@ -236,7 +236,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
   }
   Started();
 
-  download_retryable_requests_ = GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
+  download_retryable_requests_ = FLAGS_enable_flush_retryable_requests &&
       resp.has_retryable_requests_file_flushed() && resp.retryable_requests_file_flushed();
 
   remote_tablet_data_state_ = resp.superblock().tablet_data_state();

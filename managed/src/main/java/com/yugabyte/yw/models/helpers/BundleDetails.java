@@ -105,6 +105,12 @@ public class BundleDetails {
     PROM_CHUNK
   }
 
+  /** How to export Prometheus metrics in support bundle: PromQL query_range vs Remote Read API. */
+  public enum PromExportType {
+    PROMQL,
+    REMOTE_READ
+  }
+
   public EnumSet<ComponentType> components;
 
   @ApiModelProperty(value = "Max number of most recent cores to collect (if any)", required = false)
@@ -126,6 +132,12 @@ public class BundleDetails {
       example = "2022-12-12T13:07:18Z")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date promDumpEndDate;
+
+  @ApiModelProperty(value = "Specifies Prom Dump metrics format.")
+  public PrometheusMetricsFormat promMetricsFormat;
+
+  @ApiModelProperty(value = "Specifies Prom Dump metrics step in seconds.")
+  public Integer promMetricsStepSec;
 
   @ApiModelProperty(
       value = "List of exports to be included in the prometheus dump",
@@ -164,6 +176,8 @@ public class BundleDetails {
       long maxCoreFileSize,
       Date promDumpStartDate,
       Date promDumpEnDate,
+      PrometheusMetricsFormat promMetricsFormat,
+      int promMetricsStepSec,
       EnumSet<PrometheusMetricsType> prometheusMetricsTypes,
       Date paDumpStartDate,
       Date paDumpEndDate,
@@ -173,6 +187,8 @@ public class BundleDetails {
     this.maxCoreFileSize = maxCoreFileSize;
     this.promDumpStartDate = promDumpStartDate;
     this.promDumpEndDate = promDumpEnDate;
+    this.promMetricsFormat = promMetricsFormat;
+    this.promMetricsStepSec = promMetricsStepSec;
     this.prometheusMetricsTypes = prometheusMetricsTypes;
     this.paDumpStartDate = paDumpStartDate;
     this.paDumpEndDate = paDumpEndDate;

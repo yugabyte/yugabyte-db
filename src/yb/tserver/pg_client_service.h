@@ -84,11 +84,13 @@ class TserverXClusterContextIf;
     (ListSlotEntries) \
     (ListReplicationSlots) \
     (ReadSequenceTuple) \
+    (RemoteExec) \
     (ReserveOids) \
     (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (ServersMetrics) \
     (TabletsMetadata) \
+    (GetTabletForKey) \
     (TabletServerCount) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
@@ -103,6 +105,7 @@ class TserverXClusterContextIf;
     (ImportTxnSnapshot) \
     (ClearExportedTxnSnapshots) \
     (GetYbSystemTableInfo) \
+    (ReleaseSessionObjectLock) \
     /**/
 
 #define YB_PG_CLIENT_TRIVIAL_METHODS \

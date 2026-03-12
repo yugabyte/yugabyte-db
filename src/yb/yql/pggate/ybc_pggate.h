@@ -567,9 +567,9 @@ YbcStatus YBCPgDmlBindBounds(
     uint64_t upper_bound_ybctid, bool upper_bound_inclusive);
 
 // For parallel scan only, limit fetch to specified range of ybctids
-YbcStatus YBCPgDmlBindRange(YbcPgStatement handle,
-                            const char *lower_bound, size_t lower_bound_len,
-                            const char *upper_bound, size_t upper_bound_len);
+YbcStatus YBCPgDmlApplyParallelRange(YbcPgStatement handle,
+                                     const char *lower_bound, size_t lower_bound_len,
+                                     const char *upper_bound, size_t upper_bound_len);
 
 YbcStatus YBCPgDmlAddRowUpperBound(YbcPgStatement handle, int n_col_values,
                                     YbcPgExpr *col_values, bool is_inclusive);
@@ -1011,6 +1011,11 @@ YbcStatus YBCLocalTablets(YbcPgLocalTabletsDescriptor** tablets, size_t* count);
 
 YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* count);
 
+YbcStatus YBCGetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid,
+    const YbcPgKeyValue* key_values, size_t num_values,
+    const char** tablet_id);
+
 YbcStatus YBCServersMetrics(YbcPgServerMetricsInfo** serverMetricsInfo, size_t* count);
 
 YbcStatus YBCDatabaseClones(YbcPgDatabaseCloneInfo** databaseClones, size_t* count);
@@ -1043,7 +1048,9 @@ YbcStatus YBCPgImportSnapshot(const char* snapshot_id, YbcPgTxnSnapshot* snapsho
 bool YBCPgHasExportedSnapshots();
 void YBCPgClearExportedTxnSnapshots();
 
-YbcStatus YBCAcquireObjectLock(YbcObjectLockId lock_id, YbcObjectLockMode mode);
+YbcStatus YBCAcquireObjectLock(
+    YbcObjectLockId lock_id, YbcObjectLockMode mode, bool is_session_lock);
+YbcStatus YBCReleaseSessionObjectLock(YbcObjectLockId lock_id, bool release_all);
 
 // Indicates if the YB universe is in the process of a YSQL major version upgrade (e.g., pg11 to
 // pg15). This will return true before any process has been upgraded to the new version, and will
@@ -1076,6 +1083,16 @@ YbcFlushDebugContext YBCMakeFlushDebugContextSwithToDbCatalogVersionMode(YbcPgOi
 YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt();
 YbcStatus YBCQueryAutoAnalyze(
     YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
+
+// ---------------------------------------------------------------------------
+// PgGlobalViewRead: scan interface for federated YugabyteDB global views.
+// ---------------------------------------------------------------------------
+
+YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle);
+void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
+bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
 
 #ifdef __cplusplus
 }  // extern "C"

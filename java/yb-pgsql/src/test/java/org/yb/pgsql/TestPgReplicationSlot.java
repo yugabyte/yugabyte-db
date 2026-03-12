@@ -80,9 +80,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
-        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG2");
-    flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
@@ -93,8 +90,6 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put(
-      "vmodule", "cdc_service=4,cdcsdk_producer=4");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
@@ -125,6 +120,36 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try (Statement statement = conn2.createStatement()) {
       statement.execute("select pg_drop_replication_slot('test_slot')");
     }
+  }
+
+  @Test
+  public void createStreamAndDropSlot() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR TABLE test_table");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'hello')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName("test_slot")
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "test_pub")
+        .start();
+
+    receiveMessage(stream, 4);
+    stream.close();
+    replConnection.dropReplicationSlot("test_slot");
+    conn.close();
   }
 
   @Test
@@ -969,21 +994,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     tserverFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    tserverFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    tserverFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    tserverFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     masterFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    masterFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    masterFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    masterFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
     restartClusterWithFlags(masterFlags, tserverFlags);
   }

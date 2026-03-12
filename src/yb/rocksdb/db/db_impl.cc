@@ -5065,7 +5065,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
     db_iter->SetIterUnderDBIter(internal_iter);
 
-    if (yb::GetAtomicFlag(&FLAGS_rocksdb_use_logging_iterator)) {
+    if (FLAGS_rocksdb_use_logging_iterator) {
       return new TransitionLoggingIteratorWrapper(db_iter, LogPrefix());
     }
     return db_iter;
