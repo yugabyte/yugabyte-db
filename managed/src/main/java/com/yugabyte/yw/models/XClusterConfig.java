@@ -1313,4 +1313,17 @@ public class XClusterConfig extends Model {
   public int hashCode() {
     return this.uuid != null ? this.uuid.hashCode() : 0;
   }
+
+  public static List<XClusterConfig> getByUuids(Collection<UUID> uuids) {
+    if (uuids == null || uuids.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return find.query()
+        .fetch("tables")
+        .fetch("drConfig")
+        .fetch("pitrConfigs")
+        .where()
+        .in("uuid", uuids)
+        .findList();
+  }
 }
