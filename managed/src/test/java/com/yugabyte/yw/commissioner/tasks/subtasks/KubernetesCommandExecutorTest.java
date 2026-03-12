@@ -157,7 +157,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
             new InstanceType.InstanceTypeDetails());
     defaultUserIntent = getTestUserIntent(defaultRegion, defaultProvider, instanceType, numNodes);
     defaultUserIntent.replicationFactor = 3;
-    defaultUserIntent.dedicatedNodes = true;
+    ApiUtils.configureDedicatedMasterFields(defaultUserIntent);
     defaultUserIntent.masterGFlags = new HashMap<>();
     defaultUserIntent.tserverGFlags = new HashMap<>();
     defaultUserIntent.universeName = "demo-universe";
