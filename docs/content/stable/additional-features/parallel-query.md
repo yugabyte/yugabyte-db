@@ -44,10 +44,16 @@ For more information, refer to [How Parallel Query Works](https://www.postgresql
 
 ## Enable parallel query
 
-To enable parallel query, set the following parameters:
+To enable parallel query in v2025.2.2 or later, set the following parameters:
 
 - yb_enable_parallel_append: `true`.
+- yb_parallel_range_rows: a value other than 0 (10000 recommended).
 - yb_enable_parallel_scan_colocated, yb_enable_parallel_scan_hash_sharded, and/or yb_enable_parallel_scan_range_sharded: `true`.
+
+To enable parallel query in v2025.2.1 and earlier, set the following parameters:
+
+- yb_enable_parallel_append: `true`.
+- enable_parallel_append: `true` (the default).
 - yb_parallel_range_rows: a value other than 0 (10000 recommended).
 
 Parallel append is also enabled with the [cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/) (CBO). When you set CBO to `on`, parallel append is enabled as follows:
