@@ -895,6 +895,7 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 
 		if (slot_for_array)
 		{
+			pgstat_drop_replslot(slot_for_array);
 			slot_for_array->in_use = false;
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}
