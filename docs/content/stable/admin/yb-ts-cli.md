@@ -91,11 +91,11 @@ Compact the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* *tablet-id*: The identifier of the tablet to compact.
 
 ### compact_vector_index
 
@@ -104,12 +104,12 @@ Trigger compaction of [vector indexes](../../additional-features/pg-extensions/e
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet_id> [<vector_index_id1> <vector_index_id2> ...]
+yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet-id> [<vector-index-id1> <vector-index-id2> ...]
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet that contains the vector index(es).
-* *vector_index_id1*, *vector_index_id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
+* *tablet-id*: The identifier of the tablet that contains the vector index(es).
+* *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
 
 ### count_intents
 
@@ -137,30 +137,30 @@ yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 
 ### delete_tablet
 
-Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
+Deletes the tablet with the specified tablet ID (`tablet-id`) and reason.
 
 **Syntax**
 
 ```sh
-yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet-id> "<reason-string>"
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 * *reason-string*: Text string providing information on why the tablet was deleted.
 
 ### dump_tablet
 
-Dump, or export, the specified tablet ID (`tablet_id`).
+Dump, or export, the specified tablet ID (`tablet-id`).
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 
 ### flush_all_tablets
 
@@ -181,11 +181,11 @@ Flush the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* *tablet-id*: The identifier of the tablet to flush.
 
 ### list_tablets
 
@@ -218,12 +218,12 @@ Trigger a remote bootstrap of a tablet from another tablet server to the specifi
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source-host> <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
-* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
-* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+* *source-host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet-id*: The identifier of the tablet to trigger a remote bootstrap for.
 
 See [Manual remote bootstrap of failed peer](/stable/troubleshoot/cluster/replace_failed_peers/) for example usage.
 
