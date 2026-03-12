@@ -749,15 +749,15 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
     first_iteration = false;
 
-    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
-    row_key = row_key_.AsSlice();
-
-    if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+    if (has_bound_key_ && is_forward_scan_ == (key_data.key.compare(bound_key_) >= 0)) {
       VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
               << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
+
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
+    row_key = row_key_.AsSlice();
 
     VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(row_key);
 
