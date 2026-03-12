@@ -29,6 +29,7 @@ type Args struct {
 	SpecificModules []string
 	SkipModules     []string
 	ConfigFile      string
+	ConfigIniFile   string
 	PreflightCheck  bool
 	YnpConfig       map[string]map[string]any
 	DryRun          bool
@@ -37,10 +38,40 @@ type Args struct {
 	Root            bool
 }
 
+// YnpConfigPathValue retrieves a value from the YNP config based on the provided dotted path.
+func (args *Args) YnpConfigPathValue(path string) (any, error) {
+	// Path is like "yba.url" or "yba.skip_tls_verify".
+	keys := strings.Split(path, ".")
+	if len(keys) < 2 {
+		return nil, fmt.Errorf("Path must be at least two levels, separated by dots: %s", path)
+	}
+	currentMap := args.YnpConfig[keys[0]]
+	keys = keys[1:]
+	for i, key := range keys {
+		if value, ok := currentMap[key]; !ok {
+			return nil, fmt.Errorf(
+				"Invalid path: %s. Key %s not found in %+v",
+				path,
+				key,
+				currentMap,
+			)
+		} else if i == len(keys)-1 {
+			// Terminal key, return the value.
+			return value, nil
+		} else if m, ok := value.(map[string]any); ok {
+			currentMap = m
+		} else {
+			return nil, fmt.Errorf("Invalid path: %s. Expected map at key %s, found %+v", path, key, value)
+		}
+	}
+	return nil, fmt.Errorf("Invalid path: %s", path)
+}
+
 // Module represents a YNP module.
 type Module interface {
 	BasePath() string // Base path of the module.
 	Name() string     // Name of the module.
+	Validate() error  // Validates the module configuration.
 	RenderTemplates(ctx context.Context, values map[string]any) (*RenderedTemplates, error)
 }
 
@@ -126,6 +157,14 @@ func NewBaseModule(name, basePath string) *BaseModule {
 		basePath: basePath,
 		name:     name, // Name of the module for resources e.g jinja files folder.
 	}
+}
+
+func (bm *BaseModule) Validate() error {
+	basePath := bm.BasePath()
+	if _, err := os.Stat(basePath); os.IsNotExist(err) {
+		return fmt.Errorf("Base path %s does not exist for module %s", basePath, bm.Name())
+	}
+	return nil
 }
 
 func (bm *BaseModule) RenderTemplates(
@@ -272,7 +311,12 @@ func GenerateConfigINI(
 	ctx context.Context,
 	args *Args,
 ) (*INIConfig, error) {
-	configTemplate := filepath.Join(args.YnpBasePath, "configs/config.j2")
+	var configTemplate string
+	if filepath.IsAbs(args.ConfigIniFile) {
+		configTemplate = args.ConfigIniFile
+	} else {
+		configTemplate = filepath.Join(args.YnpBasePath, args.ConfigIniFile)
+	}
 	configPath := filepath.Join(args.YnpBasePath, "configs/config.ini")
 	ynpValues := map[string]any{
 		"ynp_config":     args.YnpConfig,

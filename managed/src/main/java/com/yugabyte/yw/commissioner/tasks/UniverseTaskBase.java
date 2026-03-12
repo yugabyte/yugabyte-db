@@ -280,7 +280,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResumeUniverse,
           TaskType.PauseXClusterUniverses,
           TaskType.ResumeXClusterUniverses,
-          TaskType.DecommissionNode);
+          TaskType.DecommissionNode,
+          TaskType.ProvisionUniverseNodes);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -309,6 +310,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
+          TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
@@ -1335,6 +1337,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe;
   }
 
+  public SubTaskGroup getUpdateParentTaskParamsTask(Consumer<TaskInfo> taskInfoConsumer) {
+    SubTaskGroup updateParentTaskParamsSubTaskGroup =
+        createSubTaskGroup("UpdateParentTaskParams")
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    UpdateParentTaskParams.Params params = new UpdateParentTaskParams.Params();
+    params.setTaskInfoConsumer(taskInfoConsumer);
+    UpdateParentTaskParams task = createTask(UpdateParentTaskParams.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    updateParentTaskParamsSubTaskGroup.addSubTask(task);
+    return updateParentTaskParamsSubTaskGroup;
+  }
+
   public SubTaskGroup getAnsibleConfigureYbcServerTasks(
       AnsibleConfigureServers.Params params, Universe universe) {
     String subGroupDescription =
@@ -1952,12 +1967,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPersistResizeNodeTask(
       UserIntent newUserIntent, UUID clusterUUID, boolean onlyPersistDeviceInfo) {
+    return createPersistResizeNodeTask(
+        newUserIntent,
+        clusterUUID,
+        onlyPersistDeviceInfo,
+        null /* skipMasterAZs */,
+        null /* skipTserverAZs */);
+  }
+
+  public SubTaskGroup createPersistResizeNodeTask(
+      UserIntent newUserIntent,
+      UUID clusterUUID,
+      boolean onlyPersistDeviceInfo,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newUserIntent = newUserIntent;
     params.clusterUUID = clusterUUID;
     params.onlyPersistDeviceInfo = onlyPersistDeviceInfo;
+    params.skipMasterAZs = skipMasterAZs;
+    params.skipTserverAZs = skipTserverAZs;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

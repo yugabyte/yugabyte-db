@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
@@ -17,9 +18,14 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.FullMoveParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume;
+import com.yugabyte.yw.common.KubernetesFullMoveReplicas;
+import com.yugabyte.yw.common.KubernetesFullMoveReplicas.KubernetesFullMoveReplica;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -30,6 +36,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -38,19 +45,26 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -347,25 +361,26 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
-    // Update disk size if there is a change
-    boolean tserverDiskSizeChanged =
-        !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
-    boolean masterDiskSizeChanged =
-        !(curIntent.masterDeviceInfo == null)
-            && !curIntent.masterDeviceInfo.volumeSize.equals(newIntent.masterDeviceInfo.volumeSize);
-    if (tserverDiskSizeChanged || masterDiskSizeChanged) {
-      if (tserverDiskSizeChanged) {
-        log.info(
-            "Creating task for tserver disk size change from {} to {}",
-            curIntent.deviceInfo.volumeSize,
-            newIntent.deviceInfo.volumeSize);
-      }
-      if (masterDiskSizeChanged) {
-        log.info(
-            "Creating task for master disk size change from {} to {}",
-            curIntent.masterDeviceInfo.volumeSize,
-            newIntent.masterDeviceInfo.volumeSize);
-      }
+    Map<UUID, Set<NodeDetails>> mastersToAddAzMap =
+        getPodsToAdd(newPlacement, curPlacement, ServerType.MASTER, isMultiAZ, isReadOnlyCluster);
+    Map<UUID, Set<NodeDetails>> mastersToRemoveAzMap =
+        getPodsToRemove(
+            newPlacement, curPlacement, ServerType.MASTER, universe, isMultiAZ, isReadOnlyCluster);
+    Map<UUID, Set<NodeDetails>> tserversToAddAzMap =
+        getPodsToAdd(newPlacement, curPlacement, ServerType.TSERVER, isMultiAZ, isReadOnlyCluster);
+    Map<UUID, Set<NodeDetails>> tserversToRemoveAzMap =
+        getPodsToRemove(
+            newPlacement, curPlacement, ServerType.TSERVER, universe, isMultiAZ, isReadOnlyCluster);
+
+    Set<UUID> fullMoveMasterAZs =
+        Sets.intersection(mastersToAddAzMap.keySet(), mastersToRemoveAzMap.keySet());
+    Set<UUID> fullMoveTserverAZs =
+        Sets.intersection(tserversToAddAzMap.keySet(), tserversToRemoveAzMap.keySet());
+
+    Map<UUID, Pair<Boolean, Boolean>> azToDiskSizeChangeMap =
+        canResizeDisk(
+            curPlacement, newPlacement, newIntent, curIntent, taskParams().nodeDetailsSet);
+    if (!azToDiskSizeChangeMap.isEmpty()) {
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
@@ -376,9 +391,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newNamingStyle,
           universe.isYbcEnabled(),
           ybcManager.getStableYbcVersion(),
-          tserverDiskSizeChanged,
-          masterDiskSizeChanged,
-          supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */);
+          azToDiskSizeChangeMap,
+          supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */,
+          fullMoveMasterAZs,
+          fullMoveTserverAZs);
     }
 
     boolean restartAllPods = false;
@@ -421,42 +437,52 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         restartAllPods = true;
       }
     }
-    Set<NodeDetails> mastersToAdd =
-        getPodsToAdd(
-            newPlacement.masters,
-            curPlacement.masters,
-            ServerType.MASTER,
-            isMultiAZ,
-            isReadOnlyCluster);
-    Set<NodeDetails> mastersToRemove =
-        getPodsToRemove(
-            newPlacement.masters,
-            curPlacement.masters,
-            ServerType.MASTER,
-            universe,
-            isMultiAZ,
-            isReadOnlyCluster);
-    Set<NodeDetails> tserversToAdd =
-        getPodsToAdd(
-            newPlacement.tservers,
-            curPlacement.tservers,
-            ServerType.TSERVER,
-            isMultiAZ,
-            isReadOnlyCluster);
-    Set<NodeDetails> tserversToRemove =
-        getPodsToRemove(
-            newPlacement.tservers,
-            curPlacement.tservers,
-            ServerType.TSERVER,
-            universe,
-            isMultiAZ,
-            isReadOnlyCluster);
 
     PlacementInfo activeZones = new PlacementInfo();
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
     }
 
+    // There are 2 cases to handle:
+    // 1. When net new AZ is added/deleted: Pods in these AZs are only in ToBeAdded/ToBeDeleted
+    //    state. For this, we will follow the "handle all in once" strategy. This means, all pods
+    //    are created once, we wait for data migration, finally all pods are removed at once.
+    // 2. For full move case: Pods in these AZs are in both ToBeAdded/ToBeDeleted state.
+    //    This means, the existing pods should be removed and should be replaced by new pods. Note
+    //    that the number of pods to be removed and re-added can be distinct, and the full move
+    // logic
+    //    handles this case. The full move logic supports batching.
+
+    // The flow in general is:
+    //  1. Add non-full move master pods( AZs not undergoing full move ).
+    //  2. Full move:
+    //        a. Perform full move on master pods( AZs undergoing full move ).
+    //        b. Perform full move on tserver pods( adding new + deleting old pods ).
+    //        c. Perform data migration, master address update, deleting old pods for AZs
+    //           undergoing full move.
+    //  4. Add non-full move tserver pods.
+    //  5. Data migration.
+    //  6. Delete old pods.
+
+    // Non-full move AZs handling
+    BiFunction<Map<UUID, Set<NodeDetails>>, Set<UUID>, Set<NodeDetails>>
+        nonFullMoveAZsPodsBiFunction =
+            (podsToAzMap, skipAZs) ->
+                podsToAzMap.entrySet().stream()
+                    .filter(e -> CollectionUtils.isEmpty(skipAZs) || !skipAZs.contains(e.getKey()))
+                    .flatMap(e -> e.getValue().stream())
+                    .collect(Collectors.toSet());
+    Set<NodeDetails> mastersToAdd =
+        nonFullMoveAZsPodsBiFunction.apply(mastersToAddAzMap, fullMoveMasterAZs);
+    Set<NodeDetails> mastersToRemove =
+        nonFullMoveAZsPodsBiFunction.apply(mastersToRemoveAzMap, fullMoveMasterAZs);
+    Set<NodeDetails> tserversToAdd =
+        nonFullMoveAZsPodsBiFunction.apply(tserversToAddAzMap, fullMoveTserverAZs);
+    Set<NodeDetails> tserversToRemove =
+        nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, fullMoveTserverAZs);
+
+    masterAddressesChanged =
+        CollectionUtils.isNotEmpty(mastersToAdd) || CollectionUtils.isNotEmpty(fullMoveMasterAZs);
     if (!mastersToAdd.isEmpty()) {
       // Bring up new masters and update the configs.
       // No need to check mastersToRemove as total number of masters is invariant.
@@ -465,25 +491,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // storing a filtered list of uninitialized masters. Note: 'mastersToAdd'
       // is not modified directly to maintain control flow for downstream code.
 
-      Set<NodeDetails> newMasters = new HashSet<>(mastersToAdd); // Make a copy
-      // Filter the copy only on a retry.
-      if (!isFirstTry()) {
-        Set<NodeDetails> toRemove = new HashSet<>();
-        for (NodeDetails node : newMasters) {
-          if (node.cloudInfo == null) {
-            // We didn't even bring this node up yet,
-            // so no need to check ChangeMasterConfigDone.
-            continue;
-          }
-          String ipToUse = node.cloudInfo.private_ip;
-          boolean alreadyAdded = isChangeMasterConfigDone(universe, node, true, ipToUse);
-          if (alreadyAdded) {
-            toRemove.add(node);
-          }
-        }
-        newMasters.removeAll(toRemove);
-      }
-      masterAddressesChanged = true;
+      Set<NodeDetails> newMasters = filterMastersToAdd(mastersToAdd, universe);
       // Start new masters in shell mode with empty masterAddresses.
       startNewPods(
           universe.getName(),
@@ -496,11 +504,83 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           false /* enableYbc */,
           /* Use previous gflags checksum only if can use and no pod restart is required */
-          supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */);
+          supportsNonRestartGflagsUpgrade && !restartAllPods /* usePreviousGflagsChecksum */,
+          fullMoveMasterAZs);
 
       // Update master addresses to the latest required ones,
       // We use the original unfiltered mastersToAdd which is determined from pi.
       createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
+    }
+
+    if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)
+        || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
+      if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
+        // Ybc is not present on master-only nodes currently
+        createFullMoveTasks(
+            universe,
+            curPlacement,
+            newPlacement,
+            fullMoveTserverAZs,
+            fullMoveMasterAZs,
+            ServerType.MASTER,
+            curIntent,
+            newIntent,
+            isReadOnlyCluster,
+            newNamingStyle,
+            masterAddresses,
+            false /* enableYbc */,
+            null /* ybcSoftwareVersion */);
+      }
+      if (CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
+        createFullMoveTasks(
+            universe,
+            curPlacement,
+            newPlacement,
+            fullMoveTserverAZs,
+            fullMoveMasterAZs,
+            ServerType.TSERVER,
+            curIntent,
+            newIntent,
+            isReadOnlyCluster,
+            newNamingStyle,
+            masterAddresses,
+            universe.isYbcEnabled(),
+            ybcManager.getStableYbcVersion());
+      }
+      if (CollectionUtils.isNotEmpty(fullMoveMasterAZs) || !mastersToAdd.isEmpty()) {
+        BiFunction<Map<UUID, Set<NodeDetails>>, Set<UUID>, Set<NodeDetails>>
+            fullMoveAZsPodsBiFunction =
+                (podsToAzMap, filterAZs) ->
+                    podsToAzMap.entrySet().stream()
+                        .filter(e -> filterAZs.contains(e.getKey()))
+                        .flatMap(e -> e.getValue().stream())
+                        .collect(Collectors.toSet());
+        Set<NodeDetails> fullMoveMastersToAdd =
+            fullMoveAZsPodsBiFunction.apply(mastersToAddAzMap, fullMoveMasterAZs);
+        Set<NodeDetails> fullMoveMastersToRemove =
+            fullMoveAZsPodsBiFunction.apply(mastersToRemoveAzMap, fullMoveMasterAZs);
+        Set<NodeDetails> fullMoveTserversToAdd =
+            fullMoveAZsPodsBiFunction.apply(tserversToAddAzMap, fullMoveTserverAZs);
+        Set<NodeDetails> fullMoveTserversToRemove =
+            fullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, fullMoveTserverAZs);
+        Set<UUID> skipMasterAZs =
+            Sets.difference(newPlacement.placementInfo.getAllAZUUIDs(), fullMoveMasterAZs);
+        Set<UUID> skipTserverAZs =
+            Sets.difference(newPlacement.placementInfo.getAllAZUUIDs(), fullMoveTserverAZs);
+        // Create master address update task for all full move AZ pods.
+        createMasterAddressesUpdateTask(
+            universe.getUniverseUUID(),
+            newCluster,
+            newPlacement,
+            masterAddresses,
+            fullMoveMastersToAdd,
+            fullMoveMastersToRemove,
+            fullMoveTserversToAdd,
+            fullMoveTserversToRemove,
+            skipMasterAZs,
+            skipTserverAZs,
+            false /* includeUniverseNodes */);
+      }
     }
 
     // If master address changed and cannot use non-restart flow,
@@ -523,7 +603,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           /* Use previous gflags checksum only if can use and no pod restart is required */
           supportsNonRestartGflagsUpgrade
-              && !(restartAllPods || instanceTypeChanged) /* usePreviousGflagsChecksum */);
+              && !(restartAllPods || instanceTypeChanged) /* usePreviousGflagsChecksum */,
+          fullMoveTserverAZs);
 
       if (universe.isYbcEnabled()) {
         if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
@@ -600,7 +681,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */);
+          null /* rootCAUUID */,
+          fullMoveMasterAZs);
 
       upgradePodsTask(
           universe.getName(),
@@ -618,7 +700,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */);
+          null /* rootCAUUID */,
+          fullMoveTserverAZs);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -636,19 +719,33 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           ybcManager.getStableYbcVersion(),
           PodUpgradeParams.DEFAULT,
           null /* ysqlMajorVersionUpgradeState */,
-          null /* rootCAUUID */);
+          null /* rootCAUUID */,
+          fullMoveTserverAZs);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
+      // Here, skipMasters and skipTservers refer to nodes where master address change
+      // should not apply. It should include all removed nodes( irrespective of full move/edit ).
+      Set<NodeDetails> skipMasters =
+          mastersToRemoveAzMap.entrySet().stream()
+              .flatMap(e -> e.getValue().stream())
+              .collect(Collectors.toSet());
+      Set<NodeDetails> skipTservers =
+          tserversToRemoveAzMap.entrySet().stream()
+              .flatMap(e -> e.getValue().stream())
+              .collect(Collectors.toSet());
       createMasterAddressesUpdateTask(
           universe.getUniverseUUID(),
           newCluster,
           newPlacement,
           masterAddresses,
           mastersToAdd,
-          mastersToRemove,
+          skipMasters,
           tserversToAdd,
-          tserversToRemove);
+          skipTservers,
+          fullMoveMasterAZs,
+          fullMoveTserverAZs,
+          true /* includeUniverseNodes */);
     }
 
     // If tservers have been removed, check if some deployments need to be completely
@@ -669,7 +766,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newNamingStyle,
           universe.isYbcEnabled(),
           /* Will use checksum after last modification, so safe to use */
-          supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */);
+          supportsNonRestartGflagsUpgrade /* usePreviousGflagsChecksum */,
+          fullMoveTserverAZs);
+    }
+
+    // Clear blacklist
+    if (!tserversToRemove.isEmpty() || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
       Duration sleepBeforeStart =
           confGetter.getConfForScope(
               universe, UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear);
@@ -677,10 +779,13 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         createWaitForDurationSubtask(universe, sleepBeforeStart)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
+      // Clear blacklist for all pods
+      Set<NodeDetails> removedTservers =
+          nonFullMoveAZsPodsBiFunction.apply(tserversToRemoveAzMap, null /* fullMoveAZs */);
 
       createModifyBlackListTask(
               null /* addNodes */,
-              new ArrayList<>(tserversToRemove) /* removeNodes */,
+              new ArrayList<>(removedTservers) /* removeNodes */,
               false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
@@ -691,18 +796,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         KubernetesCommandExecutor.CommandType.POD_INFO,
         newPI,
         isReadOnlyCluster);
-    if (!tserversToAdd.isEmpty()) {
+    if (!tserversToAdd.isEmpty() || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
       installThirdPartyPackagesTaskK8s(
           universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS, taskParams());
     }
 
-    if (!mastersToAdd.isEmpty()) {
+    if (masterAddressesChanged) {
       // Update the master addresses on the target universes whose source universe belongs to
       // this task.
       createXClusterConfigUpdateMasterAddressesTask();
     }
 
-    return !mastersToAdd.isEmpty();
+    return masterAddressesChanged;
   }
 
   private void validateEditParams(Cluster newCluster, Cluster curCluster) {
@@ -719,6 +824,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       log.error(msg);
       throw new IllegalArgumentException(msg);
     }
+  }
+
+  private Set<NodeDetails> filterMastersToAdd(Set<NodeDetails> mastersToAdd, Universe universe) {
+    Set<NodeDetails> newMasters = new HashSet<>(mastersToAdd);
+    // Filter the copy only on a retry.
+    if (!isFirstTry()) {
+      Set<NodeDetails> toRemove = new HashSet<>();
+      for (NodeDetails node : newMasters) {
+        if (node.cloudInfo == null) {
+          // We didn't even bring this node up yet,
+          // so no need to check ChangeMasterConfigDone.
+          continue;
+        }
+        String ipToUse = node.cloudInfo.private_ip;
+        boolean alreadyAdded = isChangeMasterConfigDone(universe, node, true, ipToUse);
+        if (alreadyAdded) {
+          toRemove.add(node);
+        }
+      }
+      newMasters.removeAll(toRemove);
+    }
+    return newMasters;
   }
 
   /*
@@ -764,7 +891,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Set<NodeDetails> mastersToAdd,
       Set<NodeDetails> mastersToRemove,
       Set<NodeDetails> tserversToAdd,
-      Set<NodeDetails> tserversToRemove) {
+      Set<NodeDetails> tserversToRemove,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs,
+      boolean includeUniverseNodes) {
     Supplier<String> masterAddressesSupplier = () -> masterAddresses;
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Cluster curPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -780,8 +910,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     Set<NodeDetails> tserversToModify =
         Stream.concat(
                 tserversToAdd.stream(),
-                universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
-                    .filter(n -> n.isTserver))
+                includeUniverseNodes
+                    ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
+                        .filter(n -> n.isTserver)
+                    : Stream.empty())
             .filter(n -> !tserversToRemove.contains(n))
             .collect(Collectors.toSet());
     if (!isReadOnlyCluster) {
@@ -796,33 +928,43 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          ybcManager.getStableYbcVersion());
+          ybcManager.getStableYbcVersion(),
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */,
+          skipMasterAZs,
+          skipTserverAZs);
 
       Set<NodeDetails> mastersToModify =
           Stream.concat(
                   mastersToAdd.stream(),
-                  universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
-                      .filter(n -> n.isMaster))
+                  includeUniverseNodes
+                      ? universe.getUniverseDetails().getNodesInCluster(newCluster.uuid).stream()
+                          .filter(n -> n.isMaster)
+                      : Stream.empty())
               .filter(n -> !mastersToRemove.contains(n))
               .collect(Collectors.toSet());
       // Set flag in memory for master
-      createSetFlagInMemoryTasks(
-          mastersToModify,
-          ServerType.MASTER,
-          (node, params) -> {
-            params.force = true;
-            params.updateMasterAddrs = true;
-            params.masterAddrsOverride = masterAddressesSupplier;
-          });
+      if (CollectionUtils.isNotEmpty(mastersToModify)) {
+        createSetFlagInMemoryTasks(
+            mastersToModify,
+            ServerType.MASTER,
+            (node, params) -> {
+              params.force = true;
+              params.updateMasterAddrs = true;
+              params.masterAddrsOverride = masterAddressesSupplier;
+            });
+      }
       // Set flag in memory for tserver
-      createSetFlagInMemoryTasks(
-          tserversToModify,
-          ServerType.TSERVER,
-          (node, params) -> {
-            params.force = true;
-            params.updateMasterAddrs = true;
-            params.masterAddrsOverride = masterAddressesSupplier;
-          });
+      if (CollectionUtils.isNotEmpty(tserversToModify)) {
+        createSetFlagInMemoryTasks(
+            tserversToModify,
+            ServerType.TSERVER,
+            (node, params) -> {
+              params.force = true;
+              params.updateMasterAddrs = true;
+              params.masterAddrsOverride = masterAddressesSupplier;
+            });
+      }
     } else {
       upgradePodsNonRestart(
           universe.getName(),
@@ -835,17 +977,23 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().useNewHelmNamingStyle,
           isReadOnlyCluster,
           universe.isYbcEnabled(),
-          ybcManager.getStableYbcVersion());
+          ybcManager.getStableYbcVersion(),
+          null /* ysqlMajorVersionUpgradeState */,
+          null /* rootCAUUID */,
+          skipMasterAZs,
+          skipTserverAZs);
 
       // Set flag in memory for tserver
-      createSetFlagInMemoryTasks(
-          tserversToModify,
-          ServerType.TSERVER,
-          (node, params) -> {
-            params.force = true;
-            params.updateMasterAddrs = true;
-            params.masterAddrsOverride = masterAddressesSupplier;
-          });
+      if (CollectionUtils.isNotEmpty(tserversToModify)) {
+        createSetFlagInMemoryTasks(
+            tserversToModify,
+            ServerType.TSERVER,
+            (node, params) -> {
+              params.force = true;
+              params.updateMasterAddrs = true;
+              params.masterAddrsOverride = masterAddressesSupplier;
+            });
+      }
     }
   }
 
@@ -862,7 +1010,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       KubernetesPlacement newPlacement,
       KubernetesPlacement currPlacement,
       boolean enableYbc,
-      boolean usePreviousGflagsChecksum) {
+      boolean usePreviousGflagsChecksum,
+      Set<UUID> skipAZs) {
     createPodsTask(
         universeName,
         newPlacement,
@@ -872,7 +1021,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         activeZones,
         isReadOnlyCluster,
         enableYbc,
-        usePreviousGflagsChecksum);
+        usePreviousGflagsChecksum,
+        skipAZs);
 
     createSingleKubernetesExecutorTask(
         universeName,
@@ -890,6 +1040,690 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     createSwamperTargetUpdateTask(false /* removeFile */);
   }
 
+  /**
+   * Create subtasks for full move operation within AZs. This supports batched full move for tserver
+   * pods.
+   *
+   * <p>Creates the following subtasks for each batch iteration (for both MASTER and TSERVER):
+   *
+   * <ul>
+   *   <li>Full Move Helm Upgrade - Creates new pods via helm upgrade with full move params
+   *   <li>Wait for Pods (Pre-Delete) - Waits for pods to be ready before deletion
+   *   <li>Check Node Safe to Delete - Validates nodes are safe to delete
+   *   <li>Pod Delete Helm Upgrade - Deletes old pods via helm upgrade
+   *   <li>Wait for Pods (Post-Delete) - Waits for pods after deletion
+   *   <li>POD_INFO - Updates pod information
+   *   <li>Transfer XCluster Certs - Copies certificates for xcluster replication
+   *   <li>Wait for Servers - Waits for servers to be ready
+   *   <li>Swamper Target Update - Updates monitoring targets
+   * </ul>
+   *
+   * <p>Additional subtasks for MASTER:
+   *
+   * <ul>
+   *   <li>Move Master Tasks - Updates master configuration (add/remove masters)
+   * </ul>
+   *
+   * <p>Additional subtasks for TSERVER:
+   *
+   * <ul>
+   *   <li>Install YBC - Installs YBC on newly added pods (if YBC is enabled)
+   *   <li>Wait for YBC Server - Waits for YBC server to be ready
+   *   <li>Placement Info Task - Updates blacklist on master leader
+   *   <li>Wait for Data Move - Waits for data migration to complete
+   *   <li>Wait for Load Balance - Waits for load balancing (if configured)
+   * </ul>
+   *
+   * <p>Final subtasks (after all batches):
+   *
+   * <ul>
+   *   <li>Final Helm Upgrade - Applies new placement and device info to new StatefulSet
+   *   <li>Garbage Collect Master Volumes - Deletes unused master PVCs (MASTER only, primary cluster
+   *       only)
+   * </ul>
+   *
+   * @param universe The universe being edited
+   * @param curPlacement Current Kubernetes placement configuration
+   * @param newPlacement New Kubernetes placement configuration
+   * @param tsFullMoveAZs Set of AZ UUIDs undergoing full move for tservers
+   * @param masterFullMoveAZs Set of AZ UUIDs undergoing full move for masters
+   * @param serverType Server type (MASTER or TSERVER)
+   * @param curIntent Current user intent
+   * @param newIntent New user intent
+   * @param isReadOnlyCluster Whether this is a read-only cluster
+   * @param newNamingStyle Whether to use new helm naming style
+   * @param masterAddresses Master addresses string
+   * @param enableYbc Whether YBC is enabled
+   * @param ybcSoftwareVersion YBC software version
+   */
+  protected void createFullMoveTasks(
+      Universe universe,
+      KubernetesPlacement curPlacement,
+      KubernetesPlacement newPlacement,
+      Set<UUID> tsFullMoveAZs,
+      Set<UUID> masterFullMoveAZs,
+      ServerType serverType,
+      UserIntent curIntent,
+      UserIntent newIntent,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      String masterAddresses,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
+    String universeName = universe.getName();
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+    }
+    UUID clusterUUID =
+        isReadOnlyCluster ? taskParams().getReadOnlyClusters().get(0).uuid : primaryCluster.uuid;
+    String providerStr =
+        isReadOnlyCluster
+            ? taskParams().getReadOnlyClusters().get(0).userIntent.provider
+            : primaryCluster.userIntent.provider;
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerStr));
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+    String nodePrefix = taskParams().nodePrefix;
+
+    Map<UUID, Integer> serversToUpdate =
+        (serverType == ServerType.TSERVER ? newPlacement.tservers : newPlacement.masters)
+            .entrySet().stream()
+                .filter(
+                    e ->
+                        (serverType == ServerType.TSERVER ? tsFullMoveAZs : masterFullMoveAZs)
+                            .contains(e.getKey()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    Map<String, Object> universeOverrides =
+        HelmUtils.convertYamlToMap(primaryCluster.userIntent.universeOverrides);
+    Map<String, String> azsOverrides = primaryCluster.userIntent.azOverrides;
+
+    int batchSize = 0; // Batch size for master will be 0
+    if (serverType == ServerType.TSERVER) {
+      batchSize =
+          runtimeConfigFactory
+              .forUniverse(getUniverse())
+              .getInt(UniverseConfKeys.fullMoveRollBatchSize.getKey());
+    }
+
+    // Map of <Integer, SubTaskGroup> and <Integer, List> is done to add support
+    // for grouping various subtasks in such a way that we can support batching.
+    // All same index items will be grouped in the same SubTaskGroup kind.
+    Map<Integer, List<NodeDetails>> serversToAddPerSubtaskGroupMap = new HashMap<>();
+    Map<Integer, List<NodeDetails>> serversToRemovePerSubtaskGroupMap = new HashMap<>();
+    Map<Integer, List<String>> podNamesToAddPerSubtaskGroupMap = new HashMap<>();
+    Map<Integer, List<String>> podNamesToRemovePerSubtaskGroupMap = new HashMap<>();
+    Map<Integer, SubTaskGroup> fullMoveSubTaskGroupsMap = new HashMap<>();
+    Map<Integer, SubTaskGroup> podsDeleteSubTaskGroupsMap = new HashMap<>();
+    Map<Integer, SubTaskGroup> waitForPodsPreDeleteSubTaskGroupsMap = new HashMap<>();
+    Map<Integer, SubTaskGroup> waitForPodsPostDeleteSubTaskGroupsMap = new HashMap<>();
+    SubTaskGroup pvcDeletes =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.VOLUME_DELETE_SHELL_MODE_MASTER
+                .getSubTaskGroupName());
+    pvcDeletes.setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+    SubTaskGroup helmUpgrades =
+        createSubTaskGroup(
+            KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName());
+    helmUpgrades.setSubTaskGroupType(SubTaskGroupType.HelmUpgrade);
+
+    // Only generate the list of subtasks and pods to add/remove in each iteration across AZs.
+    // Adding to running task is done later as we need to handle group some subtasks together.
+    // Flow for subtasks generation:
+    //  1. For each AZ:
+    //        a. Run replicas iterator which returns pods to remove from old STS, add to new STS.
+    //        b. Create full move params from pods to add( do not remove pods yet ).
+    //        c. Add full move subtask to current index. Add same index subtasks will run together.
+    //        d. Collect pods to add, pods to remove in this interation to be used later.
+    //        e. Create subtask to delete pods in batch.
+    //  2. After collecting all batched pods, all pods belonging to same index across AZs are
+    //     processed together. This means, they will either be added to same subtask: Master change
+    //     config, WaitForYbcServer, CheckNodeSafeToDelete etc OR they will be put in the same
+    //     SubTaskGroup to be processed in parallel( Full Move, HelmUpgrade to delete etc ).
+    for (Entry<UUID, Integer> entry : serversToUpdate.entrySet()) {
+      UUID azUUID = entry.getKey();
+      String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+
+      String azOverridesStr = "";
+      if (azsOverrides != null) {
+        azOverridesStr = azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+      }
+      Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+
+      int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
+      int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
+
+      int currNumMasters = curPlacement.masters.getOrDefault(azUUID, 0);
+      int currNumTservers = curPlacement.tservers.getOrDefault(azUUID, 0);
+
+      PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
+      PlacementAZ oldPlacementAZ = curPlacement.placementInfo.findByAZUUID(azUUID);
+
+      // The DISK logic( params handling ) below is predicated on the fact that master is
+      // handled first
+      Integer tsOldDiskSize = null, masterOldDiskSize = null;
+      if (taskParams().getClusterByUuid(clusterUUID).getOriginalDiskSize() != null) {
+        int oldTsSize =
+            taskParams()
+                .getClusterByUuid(clusterUUID)
+                .getOriginalDiskSize()
+                .get(azUUID)
+                .get(ServerType.TSERVER);
+        int oldMasterSize =
+            taskParams()
+                .getClusterByUuid(clusterUUID)
+                .getOriginalDiskSize()
+                .get(azUUID)
+                .get(ServerType.MASTER);
+        // Disk size( this needs special handling as we persist new disk size if resize
+        // is combined with full move )
+        if (serverType == ServerType.MASTER) {
+          // For MASTER case: current STS should continue to use old disk size for master
+          // and for Tserver: use Old disk size if the AZ has to undergo full move
+          // for Tserver.
+          masterOldDiskSize = oldMasterSize;
+          if (CollectionUtils.isNotEmpty(tsFullMoveAZs) && tsFullMoveAZs.contains(azUUID)) {
+            tsOldDiskSize = oldTsSize;
+          }
+        } else {
+          // For TSERVER case: always use new disk size for master.
+          // For Tserver: use old disk size for current STS
+          tsOldDiskSize = oldTsSize;
+        }
+      }
+
+      Map<String, String> config = newPlacement.configs.get(azUUID);
+
+      int index = 0, masterPartition = 0, tserverPartition = 0;
+
+      for (KubernetesFullMoveReplica replicas :
+          KubernetesFullMoveReplicas.iterable(
+              batchSize,
+              oldPlacementAZ,
+              newPlacementAZ,
+              serverType,
+              (part, sIndex) ->
+                  KubernetesUtil.getPodName(
+                      part,
+                      azCode,
+                      serverType,
+                      nodePrefix,
+                      isMultiAz,
+                      newNamingStyle,
+                      universeName,
+                      isReadOnlyCluster,
+                      sIndex),
+              (part, sIndex) ->
+                  KubernetesUtil.getKubernetesNodeName(
+                      part, azCode, serverType, isMultiAz, isReadOnlyCluster, sIndex))) {
+
+        // If current batch is already processed in previous run, we need to skip it
+        int savedBatchIndex =
+            serverType == ServerType.TSERVER
+                ? taskParams().getClusterByUuid(clusterUUID).getCurrentTsFullMoveBatchIndex()
+                : taskParams().getClusterByUuid(clusterUUID).getCurrentMasterFullMoveBatchIndex();
+        if (savedBatchIndex >= index) {
+          index++;
+          continue;
+        }
+
+        // For deviceInfo params:
+        // useNewMasterDeviceInfo: True for TSERVER, false for MASTER serverType, as for TSERVER
+        // masters have been moved to new device Info.
+        // useNewTserverDeviceInfo: False if TSERVER, true if MASTER and TSERVER is not undergoing
+        // full move. This is same for full move subtask and batch pods delete subtask.
+        boolean useNewMasterDeviceInfo = serverType == ServerType.TSERVER ? true : false;
+        boolean useNewTserverDeviceInfo =
+            serverType == ServerType.TSERVER
+                ? false
+                : CollectionUtils.isEmpty(tsFullMoveAZs) || !tsFullMoveAZs.contains(azUUID);
+
+        FullMoveParams moveParams = new FullMoveParams();
+        // Add full move subtask if new node added in this iteration
+        if (CollectionUtils.isNotEmpty(replicas.newNodeList)) {
+          // Master replicas will anyways be added together as batchSize will be 0.
+          moveParams.masterReplicas = newPlacementAZ.replicationFactor;
+          moveParams.tsReplicas = serverType == ServerType.TSERVER ? replicas.newReplicas : 0;
+          moveParams.masterStsEndIndex = newPlacementAZ.masterStsIndex;
+          moveParams.masterStsStartIndex =
+              serverType == ServerType.TSERVER
+                  ? newPlacementAZ.masterStsIndex
+                  : oldPlacementAZ.masterStsIndex;
+          moveParams.tsStsEndIndex =
+              serverType == ServerType.TSERVER
+                  ? newPlacementAZ.tsStsIndex
+                  : oldPlacementAZ.tsStsIndex;
+          moveParams.tsStsStartIndex = oldPlacementAZ.tsStsIndex;
+          moveParams.tsPartition = serverType == ServerType.TSERVER ? replicas.newReplicas : 0;
+          moveParams.masterPartition = newPlacementAZ.replicationFactor;
+
+          // For full move temp PlacementInfo, we don't need stsIndex as
+          // stsIndex comes from moveOp( full move params ).
+          PlacementInfo tempPI = new PlacementInfo();
+          PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
+              serverType == ServerType.TSERVER ? replicas.prevOldReplicas : currNumTservers;
+          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
+              serverType == ServerType.TSERVER ? newNumMasters : currNumMasters;
+
+          // partition
+          masterPartition =
+              serverType == ServerType.TSERVER ? newNumMasters : oldPlacementAZ.replicationFactor;
+          tserverPartition =
+              serverType == ServerType.TSERVER ? replicas.prevOldReplicas : currNumTservers;
+
+          KubernetesCommandExecutor fullMoveSubTask =
+              createFullMoveSubTask(
+                  isReadOnlyCluster,
+                  provider.getUuid(),
+                  azCode,
+                  universeName,
+                  universeOverrides,
+                  azOverrides,
+                  serverType == ServerType.TSERVER ? masterAddresses : "",
+                  primaryCluster.userIntent.ybSoftwareVersion,
+                  config,
+                  tempPI,
+                  masterPartition,
+                  tserverPartition,
+                  serverType,
+                  enableYbc,
+                  ybcSoftwareVersion,
+                  masterOldDiskSize /* oldMasterDiskSize */,
+                  tsOldDiskSize /* oldTserverDiskSize */,
+                  useNewMasterDeviceInfo,
+                  useNewTserverDeviceInfo,
+                  moveParams);
+          if (!fullMoveSubTaskGroupsMap.containsKey(index)) {
+            fullMoveSubTaskGroupsMap.put(
+                index,
+                createSubTaskGroup(
+                        KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName())
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning));
+          }
+          fullMoveSubTaskGroupsMap.get(index).addSubTask(fullMoveSubTask);
+
+          // Add wait for pods before pods delete
+          int podsToWaitFor =
+              (serverType == ServerType.TSERVER ? newNumMasters : currNumTservers)
+                  + replicas.newReplicas
+                  + replicas.prevOldReplicas;
+          if (!waitForPodsPreDeleteSubTaskGroupsMap.containsKey(index)) {
+            waitForPodsPreDeleteSubTaskGroupsMap.put(
+                index,
+                createSubTaskGroup(
+                        KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName())
+                    .setSubTaskGroupType(SubTaskGroupType.Provisioning));
+          }
+          waitForPodsPreDeleteSubTaskGroupsMap
+              .get(index)
+              .addSubTask(
+                  createKubernetesCheckPodNumTask(
+                      universeName,
+                      KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
+                      azCode,
+                      config,
+                      podsToWaitFor,
+                      isReadOnlyCluster));
+        }
+
+        if (CollectionUtils.isNotEmpty(replicas.oldNodeList)) {
+          // pod delete params
+          PlacementInfo tempPI = new PlacementInfo();
+          PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
+              serverType == ServerType.TSERVER ? replicas.oldReplicas : currNumTservers;
+          tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
+              serverType == ServerType.TSERVER ? newNumMasters : replicas.oldReplicas;
+          // partition
+          masterPartition = serverType == ServerType.TSERVER ? newNumMasters : replicas.oldReplicas;
+          tserverPartition =
+              serverType == ServerType.TSERVER ? replicas.oldReplicas : currNumTservers;
+
+          KubernetesCommandExecutor podDeleteSubtask =
+              createKubernetesExecutorTaskForServerType(
+                  universeName,
+                  CommandType.HELM_UPGRADE,
+                  tempPI,
+                  azCode,
+                  serverType == ServerType.TSERVER ? masterAddresses : "",
+                  primaryCluster.userIntent.ybSoftwareVersion,
+                  serverType,
+                  config,
+                  masterPartition,
+                  tserverPartition,
+                  universeOverrides,
+                  azOverrides,
+                  isReadOnlyCluster,
+                  enableYbc,
+                  false /* usePreviousGflagsChecksum */,
+                  false /* namespacedServiceReleaseOwner */,
+                  null /* ysqlMajorVersionUpgradeState */,
+                  moveParams,
+                  masterOldDiskSize /* oldMasterDiskSize */,
+                  tsOldDiskSize /* oldTserverDiskSize */,
+                  useNewMasterDeviceInfo,
+                  useNewTserverDeviceInfo);
+
+          if (!podsDeleteSubTaskGroupsMap.containsKey(index)) {
+            podsDeleteSubTaskGroupsMap.put(
+                index,
+                createSubTaskGroup(
+                        KubernetesCommandExecutor.CommandType.HELM_UPGRADE.getSubTaskGroupName())
+                    .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers));
+          }
+          podsDeleteSubTaskGroupsMap.get(index).addSubTask(podDeleteSubtask);
+
+          // Add wait for pods after pods delete
+          int podsToWaitFor =
+              (serverType == ServerType.TSERVER ? newNumMasters : currNumTservers)
+                  + replicas.newReplicas
+                  + replicas.oldReplicas;
+          if (!waitForPodsPostDeleteSubTaskGroupsMap.containsKey(index)) {
+            waitForPodsPostDeleteSubTaskGroupsMap.put(
+                index,
+                createSubTaskGroup(
+                        KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS.getSubTaskGroupName())
+                    .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers));
+          }
+          waitForPodsPostDeleteSubTaskGroupsMap
+              .get(index)
+              .addSubTask(
+                  createKubernetesCheckPodNumTask(
+                      universeName,
+                      KubernetesCheckNumPod.CommandType.WAIT_FOR_PODS,
+                      azCode,
+                      config,
+                      podsToWaitFor,
+                      isReadOnlyCluster));
+        }
+
+        // Add nodes to add
+        if (CollectionUtils.isNotEmpty(replicas.newNodeList)) {
+          if (!serversToAddPerSubtaskGroupMap.containsKey(index)) {
+            serversToAddPerSubtaskGroupMap.put(index, new ArrayList<>());
+          }
+          serversToAddPerSubtaskGroupMap.get(index).addAll(replicas.newNodeList);
+        }
+        // Add pods to add
+        if (CollectionUtils.isNotEmpty(replicas.newPodNames)) {
+          if (!podNamesToAddPerSubtaskGroupMap.containsKey(index)) {
+            podNamesToAddPerSubtaskGroupMap.put(index, new ArrayList<>());
+          }
+          podNamesToAddPerSubtaskGroupMap.get(index).addAll(replicas.newPodNames);
+        }
+
+        // Add nodes to remove
+        if (CollectionUtils.isNotEmpty(replicas.oldNodeList)) {
+          if (!serversToRemovePerSubtaskGroupMap.containsKey(index)) {
+            serversToRemovePerSubtaskGroupMap.put(index, new ArrayList<>());
+          }
+          serversToRemovePerSubtaskGroupMap.get(index).addAll(replicas.oldNodeList);
+        }
+        // Add pods to remove
+        if (CollectionUtils.isNotEmpty(replicas.oldPodNames)) {
+          if (!podNamesToRemovePerSubtaskGroupMap.containsKey(index)) {
+            podNamesToRemovePerSubtaskGroupMap.put(index, new ArrayList<>());
+          }
+          podNamesToRemovePerSubtaskGroupMap.get(index).addAll(replicas.oldPodNames);
+        }
+        index++;
+      }
+
+      // Helm upgrade finally to apply new Placement and device info to new STS
+      // and make start == end index
+      PlacementInfo tempPI = new PlacementInfo();
+      PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
+          serverType == ServerType.TSERVER ? newNumTservers : currNumTservers;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+          newPlacementAZ.masterStsIndex;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+          serverType == ServerType.TSERVER ? newPlacementAZ.tsStsIndex : oldPlacementAZ.tsStsIndex;
+      // For disk params:
+      // useNewMasterDeviceInfo: Should be true as this helm upgrade is after moving masters.
+      // useNewTserverDeviceInfo: True if TSERVER. For MASTER, true if TSERVER does not go via
+      // full move, otherwise false.
+      boolean useNewMasterDeviceInfo = true;
+      boolean useNewTserverDeviceInfo =
+          serverType == ServerType.TSERVER
+              ? true
+              : CollectionUtils.isEmpty(tsFullMoveAZs) || !tsFullMoveAZs.contains(azUUID);
+      helmUpgrades.addSubTask(
+          createKubernetesExecutorTaskForServerType(
+              universeName,
+              CommandType.HELM_UPGRADE,
+              tempPI,
+              azCode,
+              serverType == ServerType.TSERVER ? masterAddresses : "",
+              primaryCluster.userIntent.ybSoftwareVersion,
+              serverType,
+              config,
+              newPlacementAZ.replicationFactor /* masterPartition */,
+              serverType == ServerType.TSERVER
+                  ? newPlacementAZ.numNodesInAZ
+                  : currNumTservers /* tserverPartition */,
+              universeOverrides,
+              azOverrides,
+              isReadOnlyCluster,
+              enableYbc,
+              false /* usePreviousGflagsChecksum */,
+              false /* namespacedServiceReleaseOwner */,
+              null /* ysqlMajorVersionUpgradeState */,
+              null /* moveParams */,
+              null /* oldMasterDiskSize */,
+              serverType == ServerType.TSERVER ? null : tsOldDiskSize /* oldTserverDiskSize */,
+              useNewMasterDeviceInfo,
+              useNewTserverDeviceInfo));
+
+      // Garbage collect master volumes for deleted pods
+      if (!isReadOnlyCluster && serverType == ServerType.MASTER) {
+        pvcDeletes.addSubTask(
+            garbageCollectMasterVolumes(
+                universeName,
+                nodePrefix,
+                azCode,
+                config,
+                newPlacementAZ.replicationFactor,
+                isReadOnlyCluster,
+                newNamingStyle,
+                universe.getUniverseUUID()));
+      }
+    }
+
+    // Handle subtasks flow and add to running task
+    int subTaskGroupsSize =
+        Integer.max(
+            fullMoveSubTaskGroupsMap.keySet().size(), podsDeleteSubTaskGroupsMap.keySet().size());
+    int startIndex =
+        Integer.min(
+            Collections.min(
+                CollectionUtils.isEmpty(fullMoveSubTaskGroupsMap.keySet())
+                    ? Set.of(0)
+                    : fullMoveSubTaskGroupsMap.keySet()),
+            Collections.min(
+                CollectionUtils.isEmpty(podsDeleteSubTaskGroupsMap.keySet())
+                    ? Set.of(0)
+                    : podsDeleteSubTaskGroupsMap.keySet()));
+    for (int i = startIndex; i < startIndex + subTaskGroupsSize; i++) {
+      log.debug("Handling full move batch: {}", i);
+      // Add helm upgrade task
+      if (fullMoveSubTaskGroupsMap.containsKey(i)) {
+        getRunnableTask().addSubTaskGroup(fullMoveSubTaskGroupsMap.get(i));
+      }
+      // Add wait for pods after adding pods
+      if (waitForPodsPreDeleteSubTaskGroupsMap.containsKey(i)) {
+        getRunnableTask().addSubTaskGroup(waitForPodsPreDeleteSubTaskGroupsMap.get(i));
+      }
+
+      List<NodeDetails> serversToAdd =
+          serversToAddPerSubtaskGroupMap.getOrDefault(i, new ArrayList<>());
+      List<NodeDetails> serversToRemove =
+          serversToRemovePerSubtaskGroupMap.getOrDefault(i, new ArrayList<>());
+
+      // Common tasks between master and tserver
+      Consumer<List<NodeDetails>> commonTasks =
+          (toAdd) -> {
+            if (CollectionUtils.isNotEmpty(toAdd)) {
+              PlacementInfo activeZones = new PlacementInfo();
+              for (UUID currAZs : curPlacement.configs.keySet()) {
+                PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
+              }
+              createSingleKubernetesExecutorTask(
+                  universeName,
+                  KubernetesCommandExecutor.CommandType.POD_INFO,
+                  activeZones,
+                  isReadOnlyCluster);
+              createTransferXClusterCertsCopyTasks(
+                  toAdd, getUniverse(), SubTaskGroupType.ConfigureUniverse);
+              createWaitForServersTasks(toAdd, serverType)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+              createSwamperTargetUpdateTask(false /* removeFile */);
+            }
+          };
+
+      if (serverType == ServerType.MASTER) {
+        Set<NodeDetails> mastersToAdd = filterMastersToAdd(new HashSet<>(serversToAdd), universe);
+        commonTasks.accept(new ArrayList<>(mastersToAdd));
+        // For masters, add change config task
+        if (CollectionUtils.isNotEmpty(serversToAdd)
+            || CollectionUtils.isNotEmpty(serversToRemove)) {
+          createMoveMasterTasks(serversToAdd, serversToRemove);
+        }
+      } else {
+        // Tserver case
+        commonTasks.accept(serversToAdd);
+        // Install YBC on all newly added pods
+        if (universe.isYbcEnabled() && CollectionUtils.isNotEmpty(serversToAdd)) {
+          if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()) {
+            installYbcOnThePods(
+                new HashSet<>(serversToAdd),
+                isReadOnlyCluster,
+                ybcManager.getStableYbcVersion(),
+                isReadOnlyCluster
+                    ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
+                    : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags,
+                newPlacement);
+          } else {
+            log.debug("Skipping configure YBC as 'useYBDBInbuiltYbc' is enabled");
+          }
+          createWaitForYbcServerTask(serversToAdd);
+        }
+        if (CollectionUtils.isNotEmpty(serversToRemove)) {
+          // Update the blacklist servers on master leader.
+          createPlacementInfoTask(serversToRemove, taskParams().clusters)
+              .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+          // If the tservers have been removed, move the data.
+          createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+        }
+        if (CollectionUtils.isNotEmpty(serversToAdd)
+            && confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)) {
+          // If tservers have been added, we wait for the load to balance.
+          createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+        }
+      }
+
+      // We are concatenating streams so passing as any server type is fine
+      if (CollectionUtils.isNotEmpty(serversToRemove)) {
+        createCheckNodeSafeToDeleteTasks(
+            universe.getUniverseUUID(),
+            new HashSet<>(serversToRemove),
+            new HashSet<>() /* tserversToRemove */);
+      }
+      // Add pod delete tasks
+      if (podsDeleteSubTaskGroupsMap.containsKey(i)) {
+        getRunnableTask().addSubTaskGroup(podsDeleteSubTaskGroupsMap.get(i));
+      }
+      // Add wait for pods after deleting pods
+      if (waitForPodsPostDeleteSubTaskGroupsMap.containsKey(i)) {
+        getRunnableTask().addSubTaskGroup(waitForPodsPostDeleteSubTaskGroupsMap.get(i));
+      }
+      // Save the current batch index to taskParams for retryability
+      getRunnableTask()
+          .addSubTaskGroup(createPersistFullMoveBatchInTaskParams(i, clusterUUID, serverType));
+    }
+    // Add final helm upgrades( to start using new values with new STS index )
+    if (helmUpgrades.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(helmUpgrades);
+    }
+    // Delete non required PVCs
+    if (pvcDeletes.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(pvcDeletes);
+    }
+  }
+
+  /**
+   * Check if volume size changed for any AZs. We will skip AZs which are going through full move(
+   * i.e. deviceInfo other than volume size changed )
+   *
+   * @param curPlacement
+   * @param newPlacement
+   * @param newIntent
+   * @param curIntent
+   * @param nodeDetailsSet
+   * @return Map of az UUID and corresponding pair of boolean indicating whether (tserver, master)
+   *     volume size changed
+   */
+  protected Map<UUID, Pair<Boolean, Boolean>> canResizeDisk(
+      KubernetesPlacement curPlacement,
+      KubernetesPlacement newPlacement,
+      UserIntent newIntent,
+      UserIntent curIntent,
+      Set<NodeDetails> nodeDetailsSet) {
+    Map<UUID, Pair<Boolean, Boolean>> azServerTypeVolumeSizeChangedMap = new HashMap<>();
+    Set<UUID> newAzUUIDs = newPlacement.placementInfo.getAllAZUUIDs();
+    Iterator<PlacementAZ> azIter = curPlacement.placementInfo.azStream().iterator();
+    while (azIter.hasNext()) {
+      boolean tserverDiskSizeChanged = false, masterDiskSizeChanged = false;
+      DeviceInfo oldDeviceInfo, newDeviceInfo;
+      PlacementAZ az = azIter.next();
+      if (!newAzUUIDs.contains(az.uuid)) {
+        continue;
+      }
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
+        tserverDiskSizeChanged = true;
+        log.info(
+            "Creating task for tserver disk size change from {} to {} for AZ {}",
+            oldDeviceInfo.volumeSize,
+            newDeviceInfo.volumeSize,
+            az.name);
+      }
+      oldDeviceInfo = curIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      newDeviceInfo = newIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      if (oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo)) {
+        masterDiskSizeChanged = true;
+        log.info(
+            "Creating task for master disk size change from {} to {} for AZ {}",
+            oldDeviceInfo.volumeSize,
+            newDeviceInfo.volumeSize,
+            az.name);
+      }
+      if (tserverDiskSizeChanged || masterDiskSizeChanged) {
+        azServerTypeVolumeSizeChangedMap.put(
+            az.uuid, new Pair<>(tserverDiskSizeChanged, masterDiskSizeChanged));
+      }
+    }
+    return azServerTypeVolumeSizeChangedMap;
+  }
+
+  // Save full move batch index for correct retryability
+  private SubTaskGroup createPersistFullMoveBatchInTaskParams(
+      int index, UUID clusterUUID, ServerType serverType) {
+    Consumer<TaskInfo> taskInfoConsumer =
+        tf -> {
+          if (serverType == ServerType.TSERVER) {
+            taskParams().getClusterByUuid(clusterUUID).setCurrentTsFullMoveBatchIndex(index);
+          } else {
+            taskParams().getClusterByUuid(clusterUUID).setCurrentMasterFullMoveBatchIndex(index);
+          }
+          tf.setTaskParams(Json.toJson(taskParams()));
+        };
+    return getUpdateParentTaskParamsTask(taskInfoConsumer);
+  }
+
   protected void createResizeDiskTask(
       String universeName,
       KubernetesPlacement placement,
@@ -900,9 +1734,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle,
       boolean enableYbc,
       String ybcSoftwareVersion,
-      boolean tserverDiskSizeChanged,
-      boolean masterDiskSizeChanged,
-      boolean usePreviousGflagsChecksum) {
+      Map<UUID, Pair<Boolean, Boolean>> azToDiskSizeChangeMap,
+      boolean usePreviousGflagsChecksum,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs) {
     // For non-restart way of master addresses change, we get the previous STS
     // gflags checksum value. For disk resize case, if STS is deleted and task fails,
     // need to have the checksum value available.
@@ -911,20 +1746,22 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // persist cert checksum in task params for non-restart pods upgrade.
       persistCertChecksumInTaskParams(universeName);
     }
-    if (masterDiskSizeChanged && !isReadOnlyCluster) {
-      createResizeDiskTask(
-          universeName,
-          placement,
-          masterAddresses,
-          userIntent,
-          isReadOnlyCluster,
-          newNamingStyle,
-          enableYbc,
-          ybcSoftwareVersion,
-          usePreviousGflagsChecksum,
-          ServerType.MASTER);
+    if (CollectionUtils.isNotEmpty(skipTserverAZs) || CollectionUtils.isNotEmpty(skipMasterAZs)) {
+      persistOriginalDiskSizeInTaskParams(clusterUUID);
     }
-    if (tserverDiskSizeChanged) {
+    BiFunction<Map<UUID, Pair<Boolean, Boolean>>, Predicate<Pair<Boolean, Boolean>>, Set<UUID>>
+        diskSizeChangeAZs =
+            (azDSMap, testCond) ->
+                azDSMap.entrySet().stream()
+                    .filter(e -> testCond.test(e.getValue()))
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toSet());
+    Set<UUID> masterChangeAZs =
+        diskSizeChangeAZs.apply(azToDiskSizeChangeMap, p -> p.getSecond() == true);
+    Set<UUID> tserverChangeAZs =
+        diskSizeChangeAZs.apply(azToDiskSizeChangeMap, p -> p.getFirst() == true);
+
+    if (CollectionUtils.isNotEmpty(masterChangeAZs) && !isReadOnlyCluster) {
       createResizeDiskTask(
           universeName,
           placement,
@@ -935,10 +1772,28 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           usePreviousGflagsChecksum,
-          ServerType.TSERVER);
+          ServerType.MASTER,
+          skipMasterAZs,
+          skipTserverAZs);
+    }
+    if (CollectionUtils.isNotEmpty(tserverChangeAZs)) {
+      createResizeDiskTask(
+          universeName,
+          placement,
+          masterAddresses,
+          userIntent,
+          isReadOnlyCluster,
+          newNamingStyle,
+          enableYbc,
+          ybcSoftwareVersion,
+          usePreviousGflagsChecksum,
+          ServerType.TSERVER,
+          skipMasterAZs,
+          skipTserverAZs);
     }
     // persist the disk size changes to the universe
-    createPersistResizeNodeTask(userIntent, clusterUUID, true /* onlyPersistDeviceInfo */);
+    createPersistResizeNodeTask(
+        userIntent, clusterUUID, true /* onlyPersistDeviceInfo */, skipMasterAZs, skipTserverAZs);
   }
 
   /**
@@ -955,7 +1810,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion,
       boolean usePreviousGflagsChecksum,
-      ServerType serverType) {
+      ServerType serverType,
+      Set<UUID> masterFullMoveAZs,
+      Set<UUID> tserverFullMoveAZs) {
     Cluster newCluster =
         isReadOnlyCluster
             ? taskParams().getReadOnlyClusters().get(0)
@@ -975,17 +1832,20 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     // 2. Patch PVC to new disk size
     // 3. Run helm upgrade so that new StatefulSet is created with updated disk size.
     // The newly created statefulSet also claims the already running pods.
-    String newDiskSizeGi =
-        String.format(
-            "%dGi",
-            serverType == ServerType.TSERVER
-                ? userIntent.deviceInfo.volumeSize
-                : userIntent.masterDeviceInfo.volumeSize);
     String softwareVersion = userIntent.ybSoftwareVersion;
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
 
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+      UUID azUUID = entry.getKey();
+      Set<UUID> skipAZs = serverType == ServerType.TSERVER ? tserverFullMoveAZs : masterFullMoveAZs;
+      if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+        continue;
+      }
+      String newDiskSizeGi =
+          String.format(
+              "%dGi",
+              userIntent.getDeviceInfoForAz(azUUID, serverType == ServerType.MASTER).volumeSize);
 
       // Subtask groups( ignore Errors is false by default )
       SubTaskGroup validateExpansion =
@@ -1010,7 +1870,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               KubernetesPostExpansionCheckVolume.getSubTaskGroupName(),
               SubTaskGroupType.PostUpdateValidations);
 
-      UUID azUUID = entry.getKey();
       String azName =
           PlacementInfoUtil.isMultiAZ(provider)
               ? AvailabilityZone.getOrBadRequest(azUUID).getCode()
@@ -1085,8 +1944,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 null /* previousGflagsChecksumMap */,
                 false /* usePreviousCertChecksum */,
                 null /* previousCertChecksum */,
-                false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */,
+                false /* useNewMasterDeviceInfo */,
+                false /* useNewTserverDeviceInfo */,
                 null /* ysqlMajorVersionUpgradeState */,
                 null /* rootCAUUID */));
         // Add subtask to pvcExpand subtask group
@@ -1113,8 +1972,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
                 null /* previousGflagsChecksumMap */,
                 false /* usePreviousCertChecksum */,
                 null /* previousCertChecksum */,
-                false /* useNewMasterDiskSize */,
-                false /* useNewTserverDiskSize */,
+                false /* useNewMasterDeviceInfo */,
+                false /* useNewTserverDeviceInfo */,
                 null /* ysqlMajorVersionUpgradeState */,
                 null /* rootCAUUID */));
       }
@@ -1139,6 +1998,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Master and Tserver partition are equal to num_pods for PVC recreate helm upgrade.
       // They will be reset on next rolling upgrade for both server types.
       // This is to prevent unexpected restarts due to diverged values.
+      boolean useNewMasterDeviceInfo =
+          serverType == ServerType.TSERVER
+              ? CollectionUtils.isEmpty(masterFullMoveAZs) || !masterFullMoveAZs.contains(azUUID)
+              : true;
+      boolean useNewTserverDeviceInfo = serverType == ServerType.TSERVER ? true : false;
       helmUpgrade.addSubTask(
           getSingleKubernetesExecutorTaskForServerTypeTask(
               universeName,
@@ -1162,8 +2026,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               previousGflagsChecksumMap,
               usePreviousCertChecksum,
               certChecksum,
-              true /* useNewMasterDiskSize */,
-              serverType == ServerType.TSERVER ? true : false /* useNewTserverDiskSize */,
+              useNewMasterDeviceInfo,
+              useNewTserverDeviceInfo,
               null /* ysqlMajorVersionUpgradeState */,
               null /* rootCAUUID */));
       // Add subtask to postExpansionValidate subtask group
@@ -1291,6 +2155,31 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (Cluster newCluster : taskParams().clusters) {
       newCluster.setCertChecksum(certChecksum);
     }
+    TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
+  }
+
+  protected void persistOriginalDiskSizeInTaskParams(UUID clusterUUID) {
+    Cluster cluster = getUniverse().getCluster(clusterUUID);
+    if (MapUtils.isNotEmpty(taskParams().getClusterByUuid(cluster.uuid).getOriginalDiskSize())) {
+      return;
+    }
+
+    Map<UUID, Map<ServerType, Integer>> originalDiskSizeMap = new HashMap<>();
+    cluster.placementInfo.getAllAZUUIDs().stream()
+        .forEach(
+            azUUID -> {
+              Map<ServerType, Integer> diskSizes = new HashMap<>();
+              diskSizes.put(
+                  ServerType.MASTER,
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, true /* idDedicatedMaster */)
+                      .volumeSize);
+              diskSizes.put(
+                  ServerType.TSERVER,
+                  cluster.userIntent.getDeviceInfoForAz(azUUID, false /* idDedicatedMaster */)
+                      .volumeSize);
+              originalDiskSizeMap.put(azUUID, diskSizes);
+            });
+    taskParams().getClusterByUuid(cluster.uuid).setOriginalDiskSize(originalDiskSizeMap);
     TaskInfo.updateInTxn(getUserTaskUUID(), tf -> tf.setTaskParams(Json.toJson(taskParams())));
   }
 

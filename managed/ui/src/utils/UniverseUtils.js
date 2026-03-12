@@ -523,7 +523,7 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     }
 
     for (let index = 0; index < attributes?.length; index++) {
-      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);
+      const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS) ?? [];
       const attributeValue = attributeValues.join(CONST_VALUES.EQUALS);
 
       const hasNoAndStartQuote =

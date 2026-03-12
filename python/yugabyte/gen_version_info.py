@@ -92,6 +92,27 @@ def get_git_sha1(git_repo_dir: str) -> Optional[str]:
         return None
 
 
+def get_ynp_version(managed_dir: str) -> Optional[str]:
+    """Extract YNP version from the config.j2 template file."""
+    config_path = os.path.join(
+        managed_dir, "node-agent", "resources", "ynp", "configs", "config.j2")
+    if not os.path.isfile(config_path):
+        logging.warning("YNP config file not found at: %s", config_path)
+        return None
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                match = re.match(r'^version\s*=\s*(\S+)', line)
+                if match:
+                    return match.group(1)
+        logging.warning("No version found in YNP config file: %s", config_path)
+        return None
+    except IOError as ex:
+        logging.warning("Failed to read YNP config file %s: %s", config_path, ex)
+        return None
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -101,6 +122,7 @@ def main() -> int:
     parser.add_argument("--build-type", help="Set build type", type=str)
     parser.add_argument("--git-hash", help="Set git hash", type=str)
     parser.add_argument("output_path", help="Output file to be generated.", type=str)
+    parser.add_argument("--yba-mode", help="Enable YBA-specific metadata", type=str)
     args = parser.parse_args()
 
     output_path = args.output_path
@@ -205,6 +227,15 @@ def main() -> int:
             "minimum_yba_version": min_yba_version,
             "ysql_major_version": "15",
             }
+    if args.yba_mode and args.yba_mode.lower() == "true":
+        if not git_repo_dir:
+            raise RuntimeError("YBA mode requires a valid git repository root")
+        managed_dir = os.path.join(git_repo_dir, "managed")
+        ynp_version = get_ynp_version(managed_dir)
+        if not ynp_version:
+            raise RuntimeError("YNP version not found in managed dir: {}".format(managed_dir))
+        logging.info("YNP version: %s", ynp_version)
+        data["ynp_version"] = ynp_version
 
     # Record our glibc version.  This doesn't apply to mac/darwin.
     if os_platform == 'linux':

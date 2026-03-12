@@ -563,14 +563,19 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys, ScanKey orderbys
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc	ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
-									  scan->xs_want_itup, nscankeys, scankey,
-									  scan->yb_scan_plan, scan->yb_rel_pushdown,
-									  scan->yb_idx_pushdown, scan->yb_aggrefs,
-									  scan->yb_distinct_prefixlen,
-									  scan->yb_exec_params,
-									  false /* is_internal_scan */ ,
-									  scan->fetch_ybctids_only);
+	YbScanDesc ybScan = YbBeginScan(scan->heapRelation,
+									scan->indexRelation,
+									scan->xs_want_itup,
+									nscankeys,
+									scankey,
+									scan->yb_scan_plan,
+									scan->yb_rel_pushdown,
+									scan->yb_idx_pushdown,
+									scan->yb_aggrefs,
+									scan->yb_distinct_prefixlen,
+									scan->yb_exec_params,
+									false,	/* is_internal_scan */
+									scan->fetch_ybctids_only);
 
 	/* For LSM indexes, we either recheck all rows or no rows. */
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);

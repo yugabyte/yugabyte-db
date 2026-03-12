@@ -14,6 +14,7 @@ import {
   UniverseNamespace,
   YBPSuccess
 } from './dtos';
+import type { YbdbRelease } from '../features/universe/universe-actions/software-upgrade/dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
@@ -211,6 +212,11 @@ export const telemetryProviderQueryKey = {
   ALL: ['telemetryProvider'],
   list: () => [...telemetryProviderQueryKey.ALL, 'list'],
   detail: (telemetryProviderId: string) => [...telemetryProviderQueryKey.ALL, telemetryProviderId]
+};
+
+export const dbReleaseQueryKey = {
+  ALL: ['dbRelease'],
+  list: () => [...dbReleaseQueryKey.ALL, 'list']
 };
 
 // --------------------------------------------------------------------------------------
@@ -652,6 +658,11 @@ class ApiService {
   getDBVersions = (): Promise<string[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  getDbReleases = (): Promise<YbdbRelease[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release`;
+    return axios.get<YbdbRelease[]>(requestUrl).then((response) => response.data);
   };
 
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {

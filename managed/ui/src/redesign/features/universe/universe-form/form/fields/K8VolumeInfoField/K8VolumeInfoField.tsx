@@ -31,13 +31,15 @@ interface K8VolumeInfoFieldProps {
   disableVolumeSize: boolean;
   isEditMode: boolean;
   maxVolumeCount: number;
+  k8sOverrideEnabled?: boolean;
 }
 
 export const K8VolumeInfoField = ({
   isMaster,
   disableVolumeSize,
   isEditMode,
-  maxVolumeCount
+  maxVolumeCount,
+  k8sOverrideEnabled = false
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -46,9 +48,9 @@ export const K8VolumeInfoField = ({
 
   // watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
-  const fieldValue = isMaster
-    ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
-    : useWatch({ name: DEVICE_INFO_FIELD });
+  const tserverDeviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
+  const masterDeviceInfo = useWatch({ name: MASTER_DEVICE_INFO_FIELD });
+  const fieldValue = isMaster ? masterDeviceInfo : tserverDeviceInfo;
   const UPDATE_FIELD = isMaster ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
   // To set value based on master or tserver field in dedicated mode
   const INSTANCE_TYPE_UPDATE_FIELD = isMaster ? MASTER_INSTANCE_TYPE_FIELD : INSTANCE_TYPE_FIELD;
@@ -83,6 +85,9 @@ export const K8VolumeInfoField = ({
     const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
     setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
+  const onStorageClassChanged = (value: string) => {
+    setValue(UPDATE_FIELD, { ...fieldValue, storageClass: value as any });
+  };
 
   return (
     <Controller
@@ -110,7 +115,7 @@ export const K8VolumeInfoField = ({
                       <YBInput
                         type="number"
                         fullWidth
-                        disabled={isEditMode}
+                        disabled={isEditMode && !k8sOverrideEnabled}
                         inputProps={{
                           min: 1,
                           'data-testid': `K8VolumeInfoField-${nodeTypeTag}-VolumeInput`
@@ -144,6 +149,23 @@ export const K8VolumeInfoField = ({
                     </span>
                   </Box>
                 </Box>
+                {k8sOverrideEnabled && (
+                  <Box display="flex" mt={2}>
+                    <YBLabel dataTestId={`K8VolumeInfoField-${nodeTypeTag}-StorageClassLabel`}>
+                      {t('universeForm.instanceConfig.storageClass')}
+                    </YBLabel>
+                    <Box flex={1} className={classes.volumeInfoTextField} width={'100%'}>
+                      <YBInput
+                        fullWidth
+                        inputProps={{
+                          'data-testid': `K8VolumeInfoField-${nodeTypeTag}-StorageClassInput`
+                        }}
+                        value={fieldValue?.storageClass ?? 'standard'}
+                        onChange={(event) => onStorageClassChanged(event.target.value)}
+                      />
+                    </Box>
+                  </Box>
+                )}
               </Box>
             </Grid>
           </Grid>

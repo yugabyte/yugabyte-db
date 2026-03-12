@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -42,6 +43,7 @@ import org.apache.commons.collections4.CollectionUtils;
 public class ProviderValidator extends BaseBeanValidator {
 
   private final Map<String, ProviderFieldsValidator> providerValidatorMap = new HashMap<>();
+  private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
   public ProviderValidator(
@@ -52,6 +54,7 @@ public class ProviderValidator extends BaseBeanValidator {
       RuntimeConfGetter runtimeConfGetter,
       ConfigHelper configHelper) {
     super(beanValidator);
+    this.runtimeConfGetter = runtimeConfGetter;
     this.providerValidatorMap.put(
         CloudType.aws.toString(),
         new AWSProviderValidator(beanValidator, awsCloudImpl, runtimeConfGetter));
@@ -75,6 +78,13 @@ public class ProviderValidator extends BaseBeanValidator {
       log.debug("Skipping AZ validation because there are no regions specified");
       return;
     }
+    boolean allowExistingDuplicateAz =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.allowExistingDuplicateAz);
+    List<AvailabilityZone> requestedZones =
+        requestedProvider.getRegions().stream()
+            .filter(r -> CollectionUtils.isNotEmpty(r.getZones()))
+            .flatMap(r -> r.getZones().stream())
+            .collect(Collectors.toList());
     // Get all the existing zones from the existing provider.
     Map<UUID, AvailabilityZone> existingZones =
         existingProvider == null
@@ -82,20 +92,31 @@ public class ProviderValidator extends BaseBeanValidator {
             : existingProvider.getAllRegions().stream()
                 .flatMap(r -> r.getAllZones().stream())
                 .collect(Collectors.toMap(AvailabilityZone::getUuid, Function.identity()));
-    List<AvailabilityZone> requestedZones =
-        requestedProvider.getRegions().stream()
-            .filter(r -> CollectionUtils.isNotEmpty(r.getZones()))
-            .flatMap(r -> r.getZones().stream())
-            .collect(Collectors.toList());
     List<AvailabilityZone> modifiedOrAddedZones = new ArrayList<>();
+    Set<String> requestedAddedZoneCodes = new HashSet<>();
     for (AvailabilityZone az : requestedZones) {
-      AvailabilityZone existingAz = az.getUuid() == null ? null : existingZones.get(az.getUuid());
-      if (existingAz == null) {
-        // AZ is added.
-        modifiedOrAddedZones.add(az);
-      } else if (!existingAz.getCode().equals(az.getCode())) {
-        // AZ code is modified.
-        modifiedOrAddedZones.add(az);
+      if (allowExistingDuplicateAz) {
+        // Existing AZ duplicates are allowed, but newly added AZs must be unique.
+        // AZ UUID is needed to detect if it is new or old.
+        AvailabilityZone existingAz = az.getUuid() == null ? null : existingZones.get(az.getUuid());
+        if (existingAz == null) {
+          // AZ is added.
+          modifiedOrAddedZones.add(az);
+        } else if (!existingAz.getCode().equals(az.getCode())) {
+          // AZ code is modified.
+          modifiedOrAddedZones.add(az);
+        }
+      } else {
+        // No duplicate is allowed at all.
+        if (requestedAddedZoneCodes.contains(az.getCode())) {
+          String errMsg =
+              String.format(
+                  "Duplicate AZ code %s. AZ code must be unique for a provider", az.getCode());
+          log.error(errMsg);
+          throw new PlatformServiceException(BAD_REQUEST, errMsg);
+        } else {
+          requestedAddedZoneCodes.add(az.getCode());
+        }
       }
     }
     validateAvailabiltyZone(modifiedOrAddedZones, existingProvider);
@@ -130,7 +151,9 @@ public class ProviderValidator extends BaseBeanValidator {
       if (existingZoneCodes.contains(newZone.getCode())) {
         String errMsg =
             String.format(
-                "Duplicate AZ code %s. AZ code must be unique for a provider", newZone.getCode());
+                "Duplicate AZ code %s. AZ code must be unique for a provider. Make sure to set"
+                    + " 'uuid' field for the existing AZs",
+                newZone.getCode());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
       }

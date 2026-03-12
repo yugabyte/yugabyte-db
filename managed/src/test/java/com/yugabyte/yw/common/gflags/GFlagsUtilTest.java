@@ -80,7 +80,7 @@ public class GFlagsUtilTest extends FakeDBApplication {
         new UniverseDefinitionTaskParams.UserIntent();
     assertFalse(userIntent.enableNodeToNodeEncrypt);
     assertFalse(userIntent.enableYSQLAuth);
-    assertTrue(userIntent.enableYEDIS);
+    assertFalse(userIntent.enableYEDIS);
     GFlagsUtil.syncGflagsToIntent(
         ImmutableMap.of(GFlagsUtil.USE_NODE_TO_NODE_ENCRYPTION, "false"), userIntent);
     assertFalse(userIntent.enableNodeToNodeEncrypt);

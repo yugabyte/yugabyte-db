@@ -717,7 +717,12 @@ public class ApiUtils {
       boolean isMultiAz) {
     NodeDetails node =
         KubernetesUtil.getKubernetesNodeName(
-            partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
+            partition,
+            zone,
+            isMaster ? ServerType.MASTER : ServerType.TSERVER,
+            isMultiAz,
+            false,
+            0);
     node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;

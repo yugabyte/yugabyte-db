@@ -392,6 +392,9 @@ public class CustomerTask extends Model {
     @EnumValue("Install")
     Install,
 
+    @EnumValue("ProvisionUniverseNodes")
+    ProvisionUniverseNodes,
+
     @EnumValue("MasterFailover")
     MasterFailover,
 
@@ -616,6 +619,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case ProvisionUniverseNodes:
+          return completed ? "Provisioned Universe Nodes" : "Provisioning Universe Nodes";
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         case MasterFailover:

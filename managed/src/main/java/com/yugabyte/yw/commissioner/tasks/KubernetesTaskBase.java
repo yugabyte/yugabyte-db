@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedSer
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckNumPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.FullMoveParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import java.io.IOException;
 import java.time.Duration;
@@ -200,7 +202,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         activeZones,
         isReadOnlyCluster,
         enableYbc,
-        false /* usePreviousGflagsChecksum */);
+        false /* usePreviousGflagsChecksum */,
+        null /* skipAZs */);
   }
 
   public void createPauseKubernetesUniverseTasks(String universeName) {
@@ -360,7 +363,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       PlacementInfo activeZones,
       boolean isReadOnlyCluster,
       boolean enableYbc,
-      boolean usePreviousGflagsChecksum) {
+      boolean usePreviousGflagsChecksum,
+      @Nullable Set<UUID> skipAZs) {
     String ybSoftwareVersion;
     Cluster primaryCluster;
 
@@ -438,6 +442,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
+      if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+        log.debug("Skipping create pods task for AZ {}", azUUID);
+        continue;
+      }
+
       if (!newPlacement.masters.containsKey(azUUID) && serverType == ServerType.MASTER) {
         continue;
       }
@@ -454,8 +463,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       int newNumMasters = newPlacement.masters.getOrDefault(azUUID, 0);
       int newNumTservers = newPlacement.tservers.getOrDefault(azUUID, 0);
 
+      PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = newNumTservers;
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+          newPlacementAZ.masterStsIndex;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+          newPlacementAZ.tsStsIndex;
 
       if (edit) {
         currNumMasters = currPlacement.masters.getOrDefault(azUUID, 0);
@@ -639,7 +653,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null,
         PodUpgradeParams.DEFAULT,
         null /* ysqlMajorVersionUpgradeState */,
-        null /* rootCAUUID */);
+        null /* rootCAUUID */,
+        null /* skipAZs */);
   }
 
   public void upgradePodsNonRolling(
@@ -692,12 +707,19 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               ServerType sType = serverEntry.getValue();
               PlacementInfo tempPI = new PlacementInfo();
               PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+              String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+              PlacementAZ placementAZ = placement.placementInfo.findByAZUUID(azUUID);
+
               int numTservers = placement.tservers.getOrDefault(azUUID, 0);
               int numMasters = placement.masters.getOrDefault(azUUID, 0);
               tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numTservers;
               tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
                   numMasters;
-              String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+                  placementAZ.masterStsIndex;
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+                  placementAZ.tsStsIndex;
+
               Map<String, String> config = placement.configs.get(azUUID);
               String azOverridesStr =
                   azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
@@ -741,8 +763,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null /* previousGflagsChecksumMap */,
                       false /* usePreviousCertChecksum */,
                       null /* previousCertChecksum */,
-                      false, /* useNewMasterDiskSize */
-                      false /* useNewTserverDiskSize */,
+                      false, /* useNewMasterDeviceInfo */
+                      false /* useNewTserverDeviceInfo */,
                       ysqlMajorVersionUpgradeState,
                       null /* rootCAUUID */));
 
@@ -758,7 +780,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                     newNamingStyle,
                     universeName,
                     isReadOnlyCluster,
-                    config);
+                    config,
+                    placementAZ.tsStsIndex);
                 waitForAllServerTypePodsTask(
                     masterNodes,
                     waitForPodsLive,
@@ -770,7 +793,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                     newNamingStyle,
                     universeName,
                     isReadOnlyCluster,
-                    config);
+                    config,
+                    placementAZ.masterStsIndex);
               } else if (sType.equals(ServerType.MASTER)) {
                 waitForAllServerTypePodsTask(
                     masterNodes,
@@ -783,7 +807,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                     newNamingStyle,
                     universeName,
                     isReadOnlyCluster,
-                    config);
+                    config,
+                    placementAZ.masterStsIndex);
               } else if (sType.equals(ServerType.TSERVER)) {
                 waitForAllServerTypePodsTask(
                     tserverNodes,
@@ -796,7 +821,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                     newNamingStyle,
                     universeName,
                     isReadOnlyCluster,
-                    config);
+                    config,
+                    placementAZ.tsStsIndex);
               }
               // When changing strategy back to Rolling, we need to keep partition for
               // server which was "not" upgraded to num_pods, as keeping partition to 0
@@ -840,8 +866,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null /* previousGflagsChecksumMap */,
                       false /* usePreviousCertChecksum */,
                       null /* previousCertChecksum */,
-                      false, /* useNewMasterDiskSize */
-                      false /* useNewTserverDiskSize */,
+                      false, /* useNewMasterDeviceInfo */
+                      false /* useNewTserverDeviceInfo */,
                       ysqlMajorVersionUpgradeState,
                       null /* rootCAUUID */));
             });
@@ -943,6 +969,40 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String ybcSoftwareVersion,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
+    upgradePodsNonRestart(
+        universeName,
+        placement,
+        masterAddresses,
+        serverType,
+        softwareVersion,
+        universeOverridesStr,
+        azsOverrides,
+        newNamingStyle,
+        isReadOnlyCluster,
+        enableYbc,
+        ybcSoftwareVersion,
+        ysqlMajorVersionUpgradeState,
+        rootCAUUID,
+        new HashSet<>() /* skipMasterAZs */,
+        new HashSet<>() /* skipTserverAZs */);
+  }
+
+  public void upgradePodsNonRestart(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      UUID rootCAUUID,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -967,13 +1027,25 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             serverEntry -> {
               UUID azUUID = serverEntry.getKey();
               ServerType sType = serverEntry.getValue();
+              Set<UUID> skipAZs =
+                  new HashSet<>(serverType == ServerType.TSERVER ? skipTserverAZs : skipMasterAZs);
+              if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+                log.debug("Skipping upgrade pods task for AZ {}", azUUID);
+                return;
+              }
               PlacementInfo tempPI = new PlacementInfo();
               PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+              PlacementAZ placementAZ = placement.placementInfo.findByAZUUID(azUUID);
+
               int numTservers = placement.tservers.getOrDefault(azUUID, 0);
               int numMasters = placement.masters.getOrDefault(azUUID, 0);
               tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numTservers;
               tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
                   numMasters;
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+                  placementAZ.masterStsIndex;
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+                  placementAZ.tsStsIndex;
               String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
               Map<String, String> config = placement.configs.get(azUUID);
               String azOverridesStr =
@@ -1044,7 +1116,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean newNamingStyle,
       String universeName,
       boolean isReadOnlyCluster,
-      Map<String, String> config) {
+      Map<String, String> config,
+      int stsIndex) {
     for (int podIndex = 0; podIndex <= numPods - 1; podIndex++) {
       String podName =
           KubernetesUtil.getPodName(
@@ -1055,10 +1128,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
               isMultiAz,
               newNamingStyle,
               universeName,
-              isReadOnlyCluster);
+              isReadOnlyCluster,
+              stsIndex);
       NodeDetails node =
           KubernetesUtil.getKubernetesNodeName(
-              podIndex, azCode, serverType, isMultiAz, isReadOnlyCluster);
+              podIndex, azCode, serverType, isMultiAz, isReadOnlyCluster, stsIndex);
       waitForPodsLive.addSubTask(
           getKubernetesWaitForPodTask(
               universeName,
@@ -1087,7 +1161,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String ybcSoftwareVersion,
       PodUpgradeParams podUpgradeParams,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
-      UUID rootCAUUID) {
+      UUID rootCAUUID,
+      Set<UUID> skipAZs) {
     upgradePodsTask(
         universeName,
         newPlacement,
@@ -1105,7 +1180,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         podUpgradeParams,
         ysqlMajorVersionUpgradeState,
         rootCAUUID,
-        false /* useExistingServerCert */);
+        false /* useExistingServerCert */,
+        skipAZs);
   }
 
   public void upgradePodsTask(
@@ -1125,7 +1201,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       PodUpgradeParams podUpgradeParams,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID,
-      boolean useExistingServerCert) {
+      boolean useExistingServerCert,
+      Set<UUID> skipAZs) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
       primaryCluster =
@@ -1172,6 +1249,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       UUID azUUID = entry.getKey();
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
+      if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+        log.debug("Skipping upgrade pods task for AZ {}", azUUID);
+        continue;
+      }
+
       PlacementInfo tempPI = new PlacementInfo();
       PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
 
@@ -1193,14 +1275,23 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
+      PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = newNumTservers;
       tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor = newNumMasters;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+          newPlacementAZ.masterStsIndex;
+      tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+          newPlacementAZ.tsStsIndex;
 
       Map<String, String> config = newPlacement.configs.get(azUUID);
       String azOverridesStr =
           azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
       Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
       Set<ServerType> serverTypes = Collections.singleton(serverType);
+      int stsIndex =
+          serverType == ServerType.TSERVER
+              ? newPlacementAZ.tsStsIndex
+              : newPlacementAZ.masterStsIndex;
 
       for (KubernetesPartitions.KubernetesPartition partition :
           KubernetesPartitions.iterable(
@@ -1219,10 +1310,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       isMultiAz,
                       newNamingStyle,
                       universeName,
-                      isReadOnlyCluster),
+                      isReadOnlyCluster,
+                      stsIndex),
               (part) ->
                   KubernetesUtil.getKubernetesNodeName(
-                      part, azCode, serverType, isMultiAz, isReadOnlyCluster))) {
+                      part, azCode, serverType, isMultiAz, isReadOnlyCluster, stsIndex))) {
 
         final List<NodeDetails> nodeList = partition.nodeList;
         final List<String> podNames = partition.podNames;
@@ -1268,8 +1360,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null /* previousGflagsChecksumMap */,
                       false /* usePreviousCertChecksum */,
                       null /* previousCertChecksum */,
-                      false /* useNewMasterDiskSize */,
-                      false /* useNewTserverDiskSize */,
+                      false /* useNewMasterDeviceInfo */,
+                      false /* useNewTserverDeviceInfo */,
                       ysqlMajorVersionUpgradeState,
                       null /* rootCAUUID */),
               commandType.getSubTaskGroupName(),
@@ -1373,9 +1465,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         isReadOnlyCluster,
         newNamingStyle,
         enableYbc,
-        false /* usePreviousGflagsChecksum */);
+        false /* usePreviousGflagsChecksum */,
+        null /* skipAZs */);
   }
 
+  // Pod deletion subtasks for non-full move edit oprations
+  // Note: Pods delete for K8s full move case is handled separately in its own set of subtasks
   public void deletePodsTask(
       String universeName,
       KubernetesPlacement currPlacement,
@@ -1387,7 +1482,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       boolean newNamingStyle,
       boolean enableYbc,
-      boolean usePreviousGflagsChecksum) {
+      boolean usePreviousGflagsChecksum,
+      Set<UUID> skipAZs) {
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (primaryCluster == null) {
@@ -1434,6 +1530,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
       Map<String, String> config = entry.getValue();
 
+      if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
+        log.debug("Skipping delete pods task for AZ {}", azUUID);
+        continue;
+      }
+
       // If the new placement also has the AZ, we need to scale down. But if there
       // was a change in the instance type, the updateRemainingPod itself would have taken care
       // of the deployments' scale down.
@@ -1448,10 +1549,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       if (keepDeployment) {
         PlacementInfo tempPI = new PlacementInfo();
         PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+
+        PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ =
             newPlacement.tservers.get(azUUID);
         tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
             newPlacement.masters.getOrDefault(azUUID, 0);
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).masterStsIndex =
+            newPlacementAZ.masterStsIndex;
+        tempPI.cloudList.get(0).regionList.get(0).azList.get(0).tsStsIndex =
+            newPlacementAZ.tsStsIndex;
 
         String azOverridesStr =
             azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
@@ -1535,28 +1642,58 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   }
 
   /*
-  Sends a collection of all the pods that need to be added.
+  Sends a Map of all the pods that need to be added.
   */
-  public static Set<NodeDetails> getPodsToAdd(
-      Map<UUID, Integer> newPlacement,
-      Map<UUID, Integer> currPlacement,
+  public static Map<UUID, Set<NodeDetails>> getPodsToAdd(
+      KubernetesPlacement newPlacement,
+      KubernetesPlacement currPlacement,
       ServerType serverType,
       boolean isMultiAz,
       boolean isReadCluster) {
 
-    Set<NodeDetails> podsToAdd = new HashSet<>();
-    for (Entry<UUID, Integer> entry : newPlacement.entrySet()) {
+    Map<UUID, Set<NodeDetails>> podsToAdd = new HashMap<>();
+    Map<UUID, Integer> newAzToReplicasMap =
+        (serverType == ServerType.TSERVER) ? newPlacement.tservers : newPlacement.masters;
+    Map<UUID, Integer> oldAzToReplicasMap = null;
+    if (currPlacement != null) {
+      oldAzToReplicasMap =
+          (serverType == ServerType.TSERVER) ? currPlacement.tservers : currPlacement.masters;
+    }
+    for (Entry<UUID, Integer> entry : newAzToReplicasMap.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = AvailabilityZone.get(azUUID).getCode();
       int numNewReplicas = entry.getValue();
       int numCurrReplicas = 0;
-      if (currPlacement != null) {
-        numCurrReplicas = currPlacement.getOrDefault(azUUID, 0);
+      if (oldAzToReplicasMap != null) {
+        numCurrReplicas = oldAzToReplicasMap.getOrDefault(azUUID, 0);
       }
-      for (int i = numCurrReplicas; i < numNewReplicas; i++) {
+      int startPartition = numCurrReplicas;
+      int endPartition = numNewReplicas;
+      PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
+      int newStsIndex =
+          serverType == ServerType.TSERVER
+              ? newPlacementAZ.tsStsIndex
+              : newPlacementAZ.masterStsIndex;
+      if (oldAzToReplicasMap != null && oldAzToReplicasMap.containsKey(azUUID)) {
+        PlacementAZ oldPlacementAZ = currPlacement.placementInfo.findByAZUUID(azUUID);
+        int oldStsIndex =
+            serverType == ServerType.TSERVER
+                ? oldPlacementAZ.tsStsIndex
+                : oldPlacementAZ.masterStsIndex;
+        // For full move case, all new pods are to be added
+        if (newStsIndex != oldStsIndex) {
+          startPartition = 0;
+        }
+      }
+      Set<NodeDetails> azNodes = new HashSet<>();
+      for (int i = startPartition; i < endPartition; i++) {
         NodeDetails node =
-            KubernetesUtil.getKubernetesNodeName(i, azCode, serverType, isMultiAz, isReadCluster);
-        podsToAdd.add(node);
+            KubernetesUtil.getKubernetesNodeName(
+                i, azCode, serverType, isMultiAz, isReadCluster, newStsIndex);
+        azNodes.add(node);
+      }
+      if (CollectionUtils.isNotEmpty(azNodes)) {
+        podsToAdd.put(azUUID, azNodes);
       }
     }
     return podsToAdd;
@@ -1565,29 +1702,59 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
   /*
   Sends a collection of all the pods that need to be removed.
   */
-  public static Set<NodeDetails> getPodsToRemove(
-      Map<UUID, Integer> newPlacement,
-      Map<UUID, Integer> currPlacement,
+  public static Map<UUID, Set<NodeDetails>> getPodsToRemove(
+      KubernetesPlacement newPlacement,
+      KubernetesPlacement currPlacement,
       ServerType serverType,
       Universe universe,
       boolean isMultiAz,
       boolean isReadCluster) {
-    Set<NodeDetails> podsToRemove = new HashSet<>();
-    for (Entry<UUID, Integer> entry : currPlacement.entrySet()) {
+    Map<UUID, Set<NodeDetails>> podsToRemove = new HashMap<>();
+    Map<UUID, Integer> newAzToReplicasMap =
+        (serverType == ServerType.TSERVER) ? newPlacement.tservers : newPlacement.masters;
+    Map<UUID, Integer> oldAzToReplicasMap =
+        (serverType == ServerType.TSERVER) ? currPlacement.tservers : currPlacement.masters;
+    for (Entry<UUID, Integer> entry : oldAzToReplicasMap.entrySet()) {
       UUID azUUID = entry.getKey();
       String azCode = AvailabilityZone.get(azUUID).getCode();
       int numCurrReplicas = entry.getValue();
-      int numNewReplicas = newPlacement.getOrDefault(azUUID, 0);
-      for (int i = numCurrReplicas - 1; i >= numNewReplicas; i--) {
+      int numNewReplicas = 0;
+      if (newAzToReplicasMap != null) {
+        numNewReplicas = newAzToReplicasMap.getOrDefault(azUUID, 0);
+      }
+      int startPartition = numCurrReplicas;
+      int endPartition = numNewReplicas;
+      PlacementAZ oldPlacementAZ = currPlacement.placementInfo.findByAZUUID(azUUID);
+      int oldStsIndex =
+          serverType == ServerType.TSERVER
+              ? oldPlacementAZ.tsStsIndex
+              : oldPlacementAZ.masterStsIndex;
+      if (newAzToReplicasMap.containsKey(azUUID)) {
+        PlacementAZ newPlacementAZ = newPlacement.placementInfo.findByAZUUID(azUUID);
+        int newStsIndex =
+            serverType == ServerType.TSERVER
+                ? newPlacementAZ.tsStsIndex
+                : newPlacementAZ.masterStsIndex;
+        // For full move case, all current pods are removed
+        if (newStsIndex != oldStsIndex) {
+          endPartition = 0;
+        }
+      }
+      Set<NodeDetails> azNodes = new HashSet<>();
+      for (int i = startPartition - 1; i >= endPartition; i--) {
         NodeDetails node =
-            KubernetesUtil.getKubernetesNodeName(i, azCode, serverType, isMultiAz, isReadCluster);
+            KubernetesUtil.getKubernetesNodeName(
+                i, azCode, serverType, isMultiAz, isReadCluster, oldStsIndex);
         NodeDetails universeNode = universe.getNode(node.nodeName);
         // This node can be null if we are coming here on a retry.
         // This means node has already been removed from the universe so we will not find in
         // podInfos that we have collected the last time round.
         if (universeNode != null) {
-          podsToRemove.add(universeNode);
+          azNodes.add(universeNode);
         }
+      }
+      if (CollectionUtils.isNotEmpty(azNodes)) {
+        podsToRemove.put(azUUID, azNodes);
       }
     }
     return podsToRemove;
@@ -1960,7 +2127,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         enableYbc,
         usePreviousGflagsChecksum,
         namespacedServiceReleaseOwner,
-        null /* ysqlMajorVersionUpgradeState */);
+        null /* ysqlMajorVersionUpgradeState */,
+        null /* moveParams */,
+        null /* oldMasterDiskSize */,
+        null /* oldTserverDiskSize */,
+        false /* useNewMasterDeviceInfo */,
+        false /* useNewTserverDeviceInfo */);
   }
 
   // Create and return the Kubernetes Executor task for deployment of a k8s universe.
@@ -1981,7 +2153,12 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       boolean usePreviousGflagsChecksum,
       boolean namespacedServiceReleaseOwner,
-      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState) {
+      YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
+      FullMoveParams moveParams,
+      @Nullable Integer oldMasterDiskSize,
+      @Nullable Integer oldTserverDiskSize,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     Cluster primaryCluster = taskParams().getPrimaryCluster();
@@ -2045,6 +2222,16 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
+    // full move for AZs runs after disk resize, set params accordingly
+    if (oldMasterDiskSize != null) {
+      params.oldMasterDiskSize = oldMasterDiskSize;
+    }
+    if (oldTserverDiskSize != null) {
+      params.oldTsDiskSize = oldTserverDiskSize;
+    }
+    params.fullMoveParams = moveParams;
+    params.useNewMasterDeviceInfo = useNewMasterDeviceInfo;
+    params.useNewTserverDeviceInfo = useNewTserverDeviceInfo;
 
     // Since create universe is running helm installs in parallel
     // we need to make sure only one enables namespaced service to prevent
@@ -2052,6 +2239,91 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     if (namespacedServiceReleaseOwner && commandType == CommandType.HELM_INSTALL) {
       params.createNamespacedService = true;
     }
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    return task;
+  }
+
+  protected KubernetesCommandExecutor createFullMoveSubTask(
+      boolean isReadOnlyCluster,
+      UUID providerUUID,
+      String az,
+      String universeName,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      PlacementInfo pi,
+      int masterPartition,
+      int tserverPartition,
+      ServerType serverType,
+      boolean enableYbc,
+      String ybcSoftwareVersion,
+      @Nullable Integer oldMasterDiskSize,
+      @Nullable Integer oldTserverDiskSize,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo,
+      FullMoveParams fullMoveParams) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+    params.providerUUID = providerUUID;
+    params.commandType = CommandType.HELM_UPGRADE;
+    params.universeDetails = taskParams();
+    params.universeConfig = universe.getConfig();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.azCode = az;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
+    params.universeOverrides = universeOverrides;
+    params.azOverrides = azOverrides;
+    params.universeName = universeName;
+
+    if (masterAddresses != null) {
+      params.masterAddresses = masterAddresses;
+    }
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    if (pi != null) {
+      params.placementInfo = pi;
+    }
+    if (config != null) {
+      params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              az,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    // master and tserver partition for active AZ
+    params.masterPartition = masterPartition;
+    params.tserverPartition = tserverPartition;
+    params.serverType = serverType;
+    params.isReadOnlyCluster = isReadOnlyCluster;
+    params.setEnableYbc(enableYbc);
+    params.setYbcSoftwareVersion(ybcSoftwareVersion);
+    params.usePreviousGflagsChecksum = false;
+    params.usePreviousCertChecksum = false;
+    params.useNewMasterDeviceInfo = useNewMasterDeviceInfo;
+    params.useNewTserverDeviceInfo = useNewTserverDeviceInfo;
+    // full move for AZs runs after disk resize, set params accordingly
+    if (oldMasterDiskSize != null) {
+      params.oldMasterDiskSize = oldMasterDiskSize;
+    }
+    if (oldTserverDiskSize != null) {
+      params.oldTsDiskSize = oldTserverDiskSize;
+    }
+    params.fullMoveParams = fullMoveParams;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;
@@ -2307,8 +2579,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             previousGflagsChecksumMap,
             false /* usePreviousCertChecksum */,
             null /* previousCertChecksum */,
-            false /* useNewMasterDiskSize */,
-            false /* useNewTserverDiskSize */,
+            false /* useNewMasterDeviceInfo */,
+            false /* useNewTserverDeviceInfo */,
             ysqlMajorVersionUpgradeState,
             rootCAUUID,
             useExistingServerCert));
@@ -2356,8 +2628,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         null /* previousGflagsChecksumMap */,
         false /* usePreviousCertChecksum */,
         null /* previousCertChecksum */,
-        false, /* useNewMasterDiskSize */
-        false /* useNewTserverDiskSize */,
+        false, /* useNewMasterDeviceInfo */
+        false /* useNewTserverDeviceInfo */,
         null /* ysqlMajorVersionUpgradeState */,
         null /* rootCAUUID */);
   }
@@ -2384,8 +2656,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksumMap,
       boolean usePreviousCertChecksum,
       String previousCertChecksum,
-      boolean useNewMasterDiskSize,
-      boolean useNewTserverDiskSize,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID) {
     return getSingleKubernetesExecutorTaskForServerTypeTask(
@@ -2410,8 +2682,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         previousGflagsChecksumMap,
         usePreviousCertChecksum,
         previousCertChecksum,
-        useNewMasterDiskSize,
-        useNewTserverDiskSize,
+        useNewMasterDeviceInfo,
+        useNewTserverDeviceInfo,
         ysqlMajorVersionUpgradeState,
         rootCAUUID,
         false /* useExistingServerCert */);
@@ -2439,8 +2711,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       Map<ServerType, String> previousGflagsChecksumMap,
       boolean usePreviousCertChecksum,
       String previousCertChecksum,
-      boolean useNewMasterDiskSize,
-      boolean useNewTserverDiskSize,
+      boolean useNewMasterDeviceInfo,
+      boolean useNewTserverDeviceInfo,
       YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState,
       UUID rootCAUUID,
       boolean useExistingServerCert) {
@@ -2473,21 +2745,40 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.universeConfig = universe.getConfig();
     } else if (commandType == CommandType.HELM_UPGRADE) {
       params.universeConfig = universe.getConfig();
-      if (useNewMasterDiskSize || useNewTserverDiskSize) {
+      if (useNewMasterDeviceInfo || useNewTserverDeviceInfo) {
         // Only update the deviceInfo all other things remain same
         params.universeDetails = universe.getUniverseDetails();
-        if (useNewTserverDiskSize) {
+        if (useNewTserverDeviceInfo) {
           if (isReadOnlyCluster) {
             params.universeDetails.getReadOnlyClusters().get(0).userIntent.deviceInfo =
                 taskParams().getReadOnlyClusters().get(0).userIntent.deviceInfo;
+            params
+                .universeDetails
+                .getReadOnlyClusters()
+                .get(0)
+                .userIntent
+                .setUserIntentOverrides(
+                    taskParams().getReadOnlyClusters().get(0).userIntent.getUserIntentOverrides());
           } else {
             params.universeDetails.getPrimaryCluster().userIntent.deviceInfo =
                 taskParams().getPrimaryCluster().userIntent.deviceInfo;
+            params
+                .universeDetails
+                .getPrimaryCluster()
+                .userIntent
+                .setUserIntentOverrides(
+                    taskParams().getPrimaryCluster().userIntent.getUserIntentOverrides());
           }
         }
-        if (useNewMasterDiskSize) {
+        if (useNewMasterDeviceInfo) {
           params.universeDetails.getPrimaryCluster().userIntent.masterDeviceInfo =
               taskParams().getPrimaryCluster().userIntent.masterDeviceInfo;
+          params
+              .universeDetails
+              .getPrimaryCluster()
+              .userIntent
+              .setUserIntentOverrides(
+                  taskParams().getPrimaryCluster().userIntent.getUserIntentOverrides());
         }
       } else {
         params.universeDetails = taskParams();
@@ -2530,8 +2821,8 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.previousGflagsChecksumMap = previousGflagsChecksumMap;
     params.usePreviousCertChecksum = usePreviousCertChecksum;
     params.previousCertChecksum = previousCertChecksum;
-    params.useNewMasterDiskSize = useNewMasterDiskSize;
-    params.useNewTserverDiskSize = useNewTserverDiskSize;
+    params.useNewMasterDeviceInfo = useNewMasterDeviceInfo;
+    params.useNewTserverDeviceInfo = useNewTserverDeviceInfo;
     params.rootCA = rootCAUUID;
     params.useExistingServerCert = useExistingServerCert;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
@@ -2689,6 +2980,10 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = true; /* using true always */
     params.usePreviousCertChecksum = true /* use true always */;
+    params.useNewMasterDeviceInfo = true;
+    params.useNewTserverDeviceInfo = true;
+    params.useNewTserverDeviceInfo = true;
+    params.useNewMasterDeviceInfo = true;
     params.rootCA = rootCAUUID;
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
@@ -2855,45 +3150,64 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
       Set<NodeDetails> tserversToDelete =
           getPodsToRemove(
-              newPlacement.tservers,
-              curPlacement.tservers,
-              ServerType.TSERVER,
-              universe,
-              isMultiAZ,
-              isReadOnlyCluster);
+                  newPlacement,
+                  curPlacement,
+                  ServerType.TSERVER,
+                  universe,
+                  isMultiAZ,
+                  isReadOnlyCluster)
+              .values()
+              .stream()
+              .flatMap(nDSet -> nDSet.stream())
+              .collect(Collectors.toSet());
 
       Set<NodeDetails> mastersToDelete =
           getPodsToRemove(
-              newPlacement.masters,
-              curPlacement.masters,
-              ServerType.MASTER,
-              universe,
-              isMultiAZ,
-              isReadOnlyCluster);
+                  newPlacement,
+                  curPlacement,
+                  ServerType.MASTER,
+                  universe,
+                  isMultiAZ,
+                  isReadOnlyCluster)
+              .values()
+              .stream()
+              .flatMap(nDSet -> nDSet.stream())
+              .collect(Collectors.toSet());
 
       if (CollectionUtils.isEmpty(tserversToDelete) && CollectionUtils.isEmpty(mastersToDelete)) {
         log.debug("No pods to be removed");
       }
 
-      DeviceInfo taskDeviceInfo = newCluster.userIntent.deviceInfo;
-      DeviceInfo existingDeviceInfo = currCluster.userIntent.deviceInfo;
-      if (taskDeviceInfo == null
-          || existingDeviceInfo == null
-          || (Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
-              && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
-        log.debug("No change in the volume configuration");
-        tserverChanged = CollectionUtils.isNotEmpty(tserversToDelete);
+      boolean masterVolumeChanged = false, tserverVolumeChanged = false;
+      for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
+        DeviceInfo taskDeviceInfo =
+            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+        DeviceInfo existingDeviceInfo =
+            currCluster.userIntent.getDeviceInfoForAz(
+                entry.getKey(), false /* isDedicatedMaster */);
+        if (taskDeviceInfo != null
+            && existingDeviceInfo != null
+            && !(Objects.equals(taskDeviceInfo.numVolumes, existingDeviceInfo.numVolumes)
+                && Objects.equals(taskDeviceInfo.volumeSize, existingDeviceInfo.volumeSize))) {
+          log.debug("Volume config changed for AZ {} for tserver", entry.getKey());
+          tserverVolumeChanged = true;
+        }
+        DeviceInfo taskMasterDeviceInfo =
+            newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+        DeviceInfo existingMasterDeviceInfo =
+            currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+        if (taskMasterDeviceInfo != null
+            && existingMasterDeviceInfo != null
+            && !(Objects.equals(
+                    taskMasterDeviceInfo.numVolumes, existingMasterDeviceInfo.numVolumes)
+                && Objects.equals(
+                    taskMasterDeviceInfo.volumeSize, existingMasterDeviceInfo.volumeSize))) {
+          log.debug("Volume config changed for AZ {} for master", entry.getKey());
+          masterVolumeChanged = true;
+        }
       }
-      DeviceInfo taskMasterDeviceInfo = newCluster.userIntent.masterDeviceInfo;
-      DeviceInfo existingMasterDeviceInfo = currCluster.userIntent.masterDeviceInfo;
-      if (taskMasterDeviceInfo == null
-          || existingMasterDeviceInfo == null
-          || (Objects.equals(taskMasterDeviceInfo.numVolumes, existingMasterDeviceInfo.numVolumes)
-              && Objects.equals(
-                  taskMasterDeviceInfo.volumeSize, existingMasterDeviceInfo.volumeSize))) {
-        log.debug("No change in the master volume configuration");
-        masterChanged = CollectionUtils.isNotEmpty(mastersToDelete);
-      }
+      masterChanged = masterVolumeChanged || CollectionUtils.isNotEmpty(mastersToDelete);
+      tserverChanged = tserverVolumeChanged || CollectionUtils.isNotEmpty(tserversToDelete);
 
       if (!masterChanged && !tserverChanged) {
         return;

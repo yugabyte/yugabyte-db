@@ -396,10 +396,7 @@ class TransactionParticipant::Impl
     if (WasTransactionRecentlyRemoved(metadata.transaction_id) ||
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
       RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
-      auto status = STATUS_EC_FORMAT(
-          TryAgain, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-          "Transaction was recently aborted: $0", metadata.transaction_id);
-      return status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+      return CreateAbortedStatus("Transaction was recently aborted: $0", metadata.transaction_id);
     }
     VLOG_WITH_PREFIX(4) << "Create new transaction: " << metadata.transaction_id;
 
@@ -520,9 +517,7 @@ class TransactionParticipant::Impl
     if (!lock_and_iterator.found()) {
       return lock_and_iterator.did_txn_deadlock()
                  ? lock_and_iterator.deadlock_status
-                 : STATUS(
-                       TryAgain, Format("Unknown transaction, could be recently aborted: $0", id),
-                       Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+                 : CreateAbortedStatus("Unknown transaction, could be recently aborted: $0", id);
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -998,12 +993,16 @@ class TransactionParticipant::Impl
         // TODO(wait-queues): Consider signaling before replicating the transaction update.
         wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
       }
-      auto apply_state = applier_.ApplyIntents(data);
+      if (data.apply_to_storages.Any()) {
+        auto apply_state = applier_.ApplyIntents(data);
 
-      VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
-                          << apply_state.ToString();
+        VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
+                            << apply_state.ToString();
 
-      RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+      } else if (!data.sealed) {
+        return ProcessCleanup(data, CleanupType::kImmediate);
+      }
     }
 
     NotifyApplied(data);
@@ -1521,8 +1520,7 @@ class TransactionParticipant::Impl
         // before the update RPC is received.
         YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
             << "Request to unknown transaction " << transaction_id;
-        return STATUS_EC_FORMAT(
-            Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
+        return CreateExpiredStatus(
             "Transaction $0 expired or aborted by a conflict", transaction_id);
       }
 
@@ -1650,6 +1648,19 @@ class TransactionParticipant::Impl
     }
 
     std::lock_guard lock(mutex_);
+
+    // For the existing transaction we should continue to use its mode.
+    auto it = transactions_.find(id);
+    if (it != transactions_.end()) {
+      VLOG_WITH_PREFIX(4) << "Found the metadata for the transaction " << id
+                          << " metadata:" << (**it).metadata();
+      if (IsFastMode((**it).metadata())) {
+        const auto idx =
+            isolation == IsolationLevel::SERIALIZABLE_ISOLATION ? kSIModeIdx : kRRRCModeIdx;
+        return FastModeTransactionScope(shared_from_this(), idx);
+      }
+      return FastModeTransactionScope();
+    }
 
     // Check the fast-mode counters to make a decision.
     switch (isolation) {
@@ -2340,13 +2351,7 @@ class TransactionParticipant::Impl
       .status_tablet = data.state.tablets().front().ToBuffer(),
       .apply_to_storages = data.apply_to_storages,
     };
-    if (data.apply_to_storages.Any()) {
-      return ProcessApply(apply_data);
-    }
-    if (!data.sealed) {
-      return ProcessCleanup(apply_data, CleanupType::kImmediate);
-    }
-    return Status::OK();
+    return ProcessApply(apply_data);
   }
 
   Status ReplicatedAborted(const TransactionId& id, const ReplicatedData& data) {

@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Typography } from '@material-ui/core';
+import { Typography, makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBTooltip } from '../../redesign/components';
 
@@ -7,7 +7,6 @@ import { I18N_KEY_PREFIX_XCLUSTER_TERMS, XClusterTableStatus } from './constants
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 
 import { usePillStyles } from '../../redesign/styles/styles';
-import { makeStyles } from '@material-ui/core';
 
 interface XClusterTableStatusProps {
   status: XClusterTableStatus;

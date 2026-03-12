@@ -33,6 +33,7 @@
 #include "yb/tablet/operations/write_operation.h"
 
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.messages.h"
 
@@ -135,7 +136,9 @@ HybridTime WriteOperation::WriteHybridTime() const {
 }
 
 bool IsTxnAborted(const Status& status) {
-  return PgsqlError(status) == YBPgErrorCode::YB_PG_YB_TXN_ABORTED;
+  auto txn_error = TransactionError::ValueFromStatus(status);
+  return txn_error == TransactionErrorCode::kDeadlock ||
+         txn_error == TransactionErrorCode::kAborted;
 }
 
 }  // namespace yb::tablet

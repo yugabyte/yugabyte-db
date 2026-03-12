@@ -453,6 +453,11 @@ public enum TaskType {
       CustomerTask.TaskType.Install,
       CustomerTask.TargetType.NodeAgent),
 
+  ProvisionUniverseNodes(
+      com.yugabyte.yw.commissioner.tasks.ProvisionUniverseNodes.class,
+      CustomerTask.TaskType.ProvisionUniverseNodes,
+      CustomerTask.TargetType.Universe),
+
   DeleteCustomerConfig(
       com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig.class,
       CustomerTask.TaskType.Delete,
@@ -1290,7 +1295,9 @@ public enum TaskType {
   CheckNodeDataDirDiskSpace(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeDataDirDiskSpace.class),
 
-  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class);
+  OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class),
+
+  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class);
 
   private final Class<? extends ITask> taskClass;
 

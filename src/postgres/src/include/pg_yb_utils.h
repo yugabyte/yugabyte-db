@@ -113,7 +113,8 @@ extern void YbSetNewCatalogVersion(uint64_t new_version);
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
 extern void YbResetLogicalClientCacheVersion();
 
-extern void SendLogicalClientCacheVersionToFrontend();
+extern void YbSendLogicalClientCacheVersionToFrontend();
+extern void YbSendMasterLogicalClientVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 

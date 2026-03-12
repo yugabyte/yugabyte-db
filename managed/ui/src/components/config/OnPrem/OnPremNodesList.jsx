@@ -2,11 +2,10 @@
 
 import { Component } from 'react';
 import { Tooltip } from '@material-ui/core';
-import { Row, Col } from 'react-bootstrap';
+import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray, SubmissionError } from 'redux-form';
 import { Link, withRouter } from 'react-router';
-import { DropdownButton, MenuItem } from 'react-bootstrap';
 
 import { YBConfirmModal } from '../../modals';
 import InstanceTypeForRegion from '../OnPrem/wizard/InstanceTypeForRegion';

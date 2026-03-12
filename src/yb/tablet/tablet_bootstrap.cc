@@ -1124,15 +1124,16 @@ class TabletBootstrap {
       bool write_op_has_transaction) {
     if (op_type == consensus::UPDATE_TRANSACTION_OP) {
       if (txn_status == TransactionStatus::APPLYING) {
-        auto apply_to_storages = docdb::StorageSet::All();
-        if (index <= flushed_op_ids.regular.index) {
-          apply_to_storages.ResetRegularDB();
+        docdb::StorageSet apply_to_storages;
+        if (index > flushed_op_ids.regular.index) {
+          apply_to_storages.SetRegularDB();
         }
         for (size_t idx = 0; idx != flushed_op_ids.vector_indexes.size(); ++idx) {
-          if (index <= flushed_op_ids.vector_indexes[idx].index) {
-            apply_to_storages.ResetVectorIndex(idx);
+          if (index > flushed_op_ids.vector_indexes[idx].index) {
+            apply_to_storages.SetVectorIndex(idx);
           }
         }
+
         // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
         // before they are replicated to the CDC destination.
         //

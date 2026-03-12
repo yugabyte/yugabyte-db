@@ -557,19 +557,19 @@ YbTidNext(TidScanState *node)
 			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 			slot = node->ss.ss_ScanTupleSlot;
 		}
-		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-							  NULL, /* index */
-							  false,	/* xs_want_itup */
-							  0,	/* nkeys */
-							  NULL, /* key */
-							  (Scan *) plan,
-							  rel_pushdown,
-							  NULL, /* idx_pushdown */
-							  node->yb_tss_aggrefs,
-							  0,	/* distinct_prefixlen */
-							  &estate->yb_exec_params,
-							  false,	/* is_internal_scan */
-							  false);	/* fetch_ybctids_only */
+		ybScan = YbBeginScan(node->ss.ss_currentRelation,
+							 NULL,	/* index */
+							 false,	/* xs_want_itup */
+							 0,	/* nkeys */
+							 NULL,	/* keys */
+							 (Scan *) plan,
+							 rel_pushdown,
+							 NULL,	/* idx_pushdown */
+							 node->yb_tss_aggrefs,
+							 0,	/* distinct_prefixlen */
+							 &estate->yb_exec_params,
+							 false,	/* is_internal_scan */
+							 false);	/* fetch_ybctids_only */
 		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
 		ybScan->rs_base.rs_flags = SO_TYPE_TIDSCAN;
 		node->ss.ss_currentScanDesc = (TableScanDesc) ybScan;

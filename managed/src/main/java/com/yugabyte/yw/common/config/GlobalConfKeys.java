@@ -2077,4 +2077,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable connectivity metric collection for all universes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_existing_duplicate_az",
+          ScopeType.GLOBAL,
+          "Allow Duplicates in Existing AZs",
+          "Allow duplicates in already existing availability zones",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

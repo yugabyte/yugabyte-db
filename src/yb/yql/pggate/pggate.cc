@@ -792,8 +792,8 @@ PgApiImpl::PgApiImpl(
       pg_session_(make_scoped_refptr<PgSession>(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_,
-          [&row_lock_buffer = explicit_row_lock_buffer_](auto marker) {
-            return OnPgSessionRunRWOperations(row_lock_buffer, marker);
+          [this](auto marker) {
+            return OnPgSessionRunRWOperations(explicit_row_lock_buffer_, marker);
           })),
       fk_reference_cache_(pg_session_, buffering_settings_),
       explicit_row_lock_buffer_(pg_session_) {
@@ -1561,6 +1561,8 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx) {
+  RETURN_NOT_OK(Flush(explicit_row_lock_buffer_));
+  // TODO: Consider flushing FK reference intents also.
   return ResultToStatus(pg_session_->FlushBufferedOperations(dbg_ctx));
 }
 

@@ -90,6 +90,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
         performPrecheck(currentNode);
       }
     }
+    createComprehensivePrecheckTasks(universe);
     addBasicPrecheckTasks();
   }
 

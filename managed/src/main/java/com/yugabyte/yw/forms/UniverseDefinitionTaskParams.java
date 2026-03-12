@@ -457,6 +457,25 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
     private CapacityReservationState capacityReservationState;
 
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved pre-disk size")
+    private Map<UUID, Map<ServerType, Integer>> originalDiskSize;
+
+    // Current batch index for full move operations in Kubernetes universes.
+    // Used for retryability to resume from the correct batch.
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved full move batch index for TS")
+    private int currentTsFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Saved full move batch index for Master")
+    private int currentMasterFullMoveBatchIndex = -1;
+
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter
     @Setter
@@ -777,6 +796,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return result;
     }
+
+    public boolean allNull() {
+      return Stream.of(this.getDeviceInfo(), this.getInstanceType()).allMatch(Objects::isNull);
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
+    }
   }
 
   // TODO: We can migrate masterDeviceInfo, masterInstanceType here
@@ -825,6 +854,41 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               this.getInstanceType())
           .allMatch(Objects::isNull);
     }
+
+    @JsonIgnore
+    public void updatePerProcess(
+        ServerType serverType, Consumer<PerProcessDetails> perProcessConsumer) {
+      if (perProcess == null) {
+        perProcess = new HashMap<>();
+      }
+      perProcess.compute(
+          serverType,
+          (k, v) -> {
+            if (v == null) {
+              v = new PerProcessDetails();
+            }
+            perProcessConsumer.accept(v);
+            if (v != null && v.allNull()) {
+              v = null;
+            }
+            return v;
+          });
+      if (perProcess.containsKey(serverType) && perProcess.get(serverType) == null) {
+        perProcess.remove(serverType);
+      }
+      if (MapUtils.isEmpty(perProcess)) {
+        perProcess = null;
+      }
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setPerProcess(null);
+      this.setCgroupSize(null);
+      this.setProxyConfig(null);
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
+    }
   }
 
   @ApiModel(
@@ -866,7 +930,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               v = new AZOverrides();
             }
             azOverridesConsumer.accept(v);
-            if (v.allNull()) {
+            if (v != null && v.allNull()) {
               v = null;
             }
             return v;
@@ -1333,20 +1397,33 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      if (dedicatedNodes
-          && masterDeviceInfo != null
-          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
+      return getDeviceInfoForAz(
+          nodeDetails.getAzUuid(), nodeDetails.dedicatedTo == ServerType.MASTER);
+    }
+
+    public DeviceInfo getDeviceInfoForAz(UUID azUUID, boolean isDedicatedMaster) {
+      if (dedicatedNodes && masterDeviceInfo != null && isDedicatedMaster) {
+        OverridenDetails overridenDetails =
+            getOverridenDetails(UniverseTaskBase.ServerType.MASTER, azUUID);
+        if (overridenDetails.getDeviceInfo() != null) {
+          JsonNode original = Json.toJson(masterDeviceInfo);
+          JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+          log.debug(
+              "Getting overriden master device info {} for az {}", Json.toJson(overriden), azUUID);
+
+          CommonUtils.deepMerge(original, overriden);
+          log.debug("Master device info after merging {}", original);
+
+          return Json.fromJson(original, DeviceInfo.class);
+        }
         return masterDeviceInfo;
       }
       OverridenDetails overridenDetails =
-          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
       if (overridenDetails.getDeviceInfo() != null) {
         JsonNode original = Json.toJson(deviceInfo);
         JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overriden),
-            nodeDetails.getAzUuid());
+        log.debug("Getting overriden device info {} for az {}", Json.toJson(overriden), azUUID);
 
         CommonUtils.deepMerge(original, overriden);
         log.debug("Device info after merging {}", original);
@@ -1354,6 +1431,62 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
+    }
+
+    public void updateAZVolumeOverrides(
+        UserIntent other, Set<UUID> azs, Set<UUID> skipAZs, boolean isDedicatedMaster) {
+      ServerType serverType = isDedicatedMaster ? ServerType.MASTER : ServerType.TSERVER;
+      UserIntentOverrides otherOverridesClone =
+          other.userIntentOverrides == null
+              ? new UserIntentOverrides()
+              : other.userIntentOverrides.clone();
+      if (otherOverridesClone.getAzOverrides() == null) {
+        otherOverridesClone.setAzOverrides(new HashMap<>());
+      }
+
+      UserIntentOverrides originalOverridesClone =
+          this.getUserIntentOverrides() == null
+              ? new UserIntentOverrides()
+              : this.getUserIntentOverrides().clone();
+
+      azs.stream()
+          .filter(azUUID -> CollectionUtils.isEmpty(skipAZs) || !skipAZs.contains(azUUID))
+          .forEach(
+              azUUID -> {
+                Consumer<AZOverrides> applyChangesConsumer =
+                    (azO) -> {
+                      DeviceInfo deviceInfo = null;
+                      if (otherOverridesClone.getAzOverrides() != null
+                          && otherOverridesClone.getAzOverrides().get(azUUID) != null) {
+                        AZOverrides azOverrides = otherOverridesClone.getAzOverrides().get(azUUID);
+                        if (azOverrides.getDeviceInfo() != null) {
+                          deviceInfo = azOverrides.getDeviceInfo();
+                        }
+
+                        Consumer<PerProcessDetails> perProcessConsumer =
+                            (perProc) -> {
+                              DeviceInfo perProcDeviceInfo = null;
+                              if (azOverrides.getPerProcess() != null
+                                  && azOverrides.getPerProcess().containsKey(serverType)) {
+                                if (azOverrides.getPerProcess().get(serverType).getDeviceInfo()
+                                    != null) {
+                                  perProcDeviceInfo =
+                                      azOverrides.getPerProcess().get(serverType).getDeviceInfo();
+                                }
+                                perProc.setDeviceInfo(perProcDeviceInfo);
+                              } else {
+                                perProc.reset();
+                              }
+                            };
+                        azO.updatePerProcess(serverType, perProcessConsumer);
+                        azO.setDeviceInfo(deviceInfo);
+                      } else {
+                        azO.reset();
+                      }
+                    };
+                originalOverridesClone.updateAZOverride(azUUID, applyChangesConsumer);
+              });
+      this.setUserIntentOverrides(originalOverridesClone);
     }
 
     public ProxyConfig getProxyConfig(@Nullable UUID azUUID) {

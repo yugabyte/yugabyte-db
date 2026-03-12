@@ -35,9 +35,8 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
 
   public String LOGICAL_CLIENT_VERSION_TABLE = "pg_yb_logical_client_version";
 
-  public String createLogicalClientSelectQuery(String database) {
-    return "SELECT current_version FROM " + LOGICAL_CLIENT_VERSION_TABLE +
-        " where db_oid IN (SELECT oid FROM pg_database WHERE datname = '" + database + "')";
+  public String createLogicalClientSelectQuery() {
+    return "SELECT current_version FROM " + LOGICAL_CLIENT_VERSION_TABLE;
   }
 
   @Test
@@ -47,7 +46,7 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
             .connect();
         Statement statement = connection.createStatement()) {
 
-        String query = createLogicalClientSelectQuery("yugabyte");
+        String query = createLogicalClientSelectQuery();
         List<Row> rows = getRowList(statement, query);
 
         assertEquals(rows.size(), 1);
@@ -70,23 +69,6 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
     }
   }
 
-  @Test
-  public void testCreateDropDatabase() throws Exception {
-    try (Connection connection = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-        Statement statement = connection.createStatement()) {
-
-        statement.execute("CREATE DATABASE new_db");
-        List<Row> rows = getRowList(statement, createLogicalClientSelectQuery("new_db"));
-        assertEquals(rows.size(), 1);
-
-        statement.execute("DROP DATABASE new_db");
-        rows = getRowList(statement, createLogicalClientSelectQuery("new_db"));
-        assertEquals(rows.size(), 0);
-      }
-   }
-
   // Two logical connections are created named c1 and c2 that will execute txns
   // on same backend B1. Even if c2 has executed "ALTER ROLE SET" command to bump
   // the logical cient version in pg_yb_logical_client_version table, the backend B1
@@ -103,7 +85,7 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
         Statement s1 = c1.createStatement();
         Statement s2 = c2.createStatement()) {
 
-      String query = createLogicalClientSelectQuery("yugabyte");
+      String query = createLogicalClientSelectQuery();
       List<Row> rows = getRowList(s1, query);
 
       assertEquals(rows.size(), 1);
@@ -143,7 +125,7 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
         Statement s1 = c1.createStatement();
         Statement s2 = c2.createStatement()) {
 
-      String query = createLogicalClientSelectQuery("yugabyte");
+      String query = createLogicalClientSelectQuery();
       List<Row> rows = getRowList(s1, query);
 
       assertEquals(rows.size(), 1);
@@ -164,55 +146,6 @@ public class TestLogicalClientVersion extends BaseYsqlConnMgr {
 
       // connect to backend of higher version.
       s1.execute("SELECT 1");
-    }
-  }
-
-  // - Consider two logical connections c1 and c2 are made
-  // - c2 bump the logical client version by "ALTER ROLE SET" command
-  // - New connection c3 is made with bumped up version number = 2
-  // - This would invalidate older logical client connection c1 and c2
-  // - Next query that c1 or c2 will try to execute will cause connection close
-  @Test
-  public void testNewLogicalConnectionWithBumpedUpVersion() throws Exception {
-    enableVersionMatchingAndRestartCluster(false);
-    try (Connection c1 = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-        Connection c2 = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-        Statement s1 = c1.createStatement();
-        Statement s2 = c2.createStatement()) {
-
-      String query = createLogicalClientSelectQuery("yugabyte");
-      List<Row> rows = getRowList(s1, query);
-
-      assertEquals(rows.size(), 1);
-      Row ver = rows.get(0);
-      Long old_version = rows.get(0).getLong(0);
-
-      s1.execute("SELECT 1");
-      s2.execute("ALTER ROLE yugabyte SET timezone = 'GMT'");
-
-      rows = getRowList(s2, query);
-      assertEquals(rows.size(), 1);
-      Long new_version = rows.get(0).getLong(0);
-      assertEquals((long)new_version, (long)old_version+1);
-
-      try (
-        Connection c3 = getConnectionBuilder()
-            .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
-            .connect();
-        Statement s3 = c3.createStatement()
-      ) {
-        s3.execute("SELECT 1");
-      }
-      assertThrows(
-          "Old Logical connection",
-           SQLException.class, () -> s1.execute("SELECT 1"));
-      assertThrows(
-          "Old Logical connection",
-           SQLException.class, () -> s2.execute("SELECT 1"));
     }
   }
 }

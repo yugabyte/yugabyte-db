@@ -5,7 +5,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import { useState } from 'react';
-import JsYaml from 'js-yaml';
+import { load as loadYaml } from 'js-yaml';
 import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
@@ -35,6 +35,7 @@ import {
 } from '../configureRegion/ConfigureK8sRegionModal';
 import {
   KUBERNETES_PROVIDER_OPTIONS,
+  K8S_FORM_MAPPERS,
   QUAY_IMAGE_REGISTRY,
   REDHAT_IMAGE_REGISTRY
 } from './constants';
@@ -56,7 +57,6 @@ import { YBLoading } from '../../../../common/indicators';
 import { api, suggestedKubernetesConfigQueryKey } from '../../../../../redesign/helpers/api';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { adaptSuggestedKubernetesConfig } from './utils';
-import { K8S_FORM_MAPPERS } from './constants';
 import {
   K8sAvailabilityZoneMutation,
   K8sPullSecretFile,
@@ -172,9 +172,7 @@ export const K8sProviderCreateForm = ({
         : '';
 
       // Type cast is required since JsYaml.load doesn't know the type of the input file
-      const kubernetesPullSecretYAML = JsYaml.load(
-        kubernetesPullSecretContent
-      ) as K8sPullSecretFile;
+      const kubernetesPullSecretYAML = loadYaml(kubernetesPullSecretContent) as K8sPullSecretFile;
       providerPayload = {
         code: ProviderCode.KUBERNETES,
         name: formValues.providerName,

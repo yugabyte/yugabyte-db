@@ -210,7 +210,7 @@ export const handleFormSubmitServerError = (
       });
     } else {
       const keyArr = key?.split('[');
-      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1]).split(']')[0]}]`;
+      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1] ?? '').split(']')[0]}]`;
       const prevError = get(formMethods.formState.errors, topLevelKey);
 
       formMethods.setError(topLevelKey, {

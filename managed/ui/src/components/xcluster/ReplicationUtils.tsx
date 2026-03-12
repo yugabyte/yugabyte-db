@@ -34,9 +34,8 @@ import {
   universeQueryKey
 } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
+import { SortOrder, UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
-import { SortOrder } from '../../redesign/helpers/constants';
 import {
   compareYBSoftwareVersions,
   compareYBSoftwareVersionsWithReleaseTrack,

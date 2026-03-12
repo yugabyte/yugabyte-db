@@ -3425,24 +3425,6 @@ yb_index_backfill(Relation heapRelation,
 	 */
 	Assert(indexRelation->rd_rel->relpersistence != RELPERSISTENCE_UNLOGGED);
 
-	/*
-	 * Update heap and index pg_class rows
-	 * TODO(jason): properly update reltuples.  They can't be set here because
-	 * this backfill func is called for each backfill chunk request from
-	 * master, and we need some way to sum up the tuple numbers.  We also don't
-	 * even collect stats properly for heapRelation anyway, at the moment.
-	 */
-	index_update_stats(heapRelation,
-					   true,
-					   -1);
-
-	index_update_stats(indexRelation,
-					   false,
-					   -1);
-
-	/* Make the updated catalog row versions visible */
-	CommandCounterIncrement();
-
 	/* Roll back any GUC changes executed by index functions */
 	AtEOXact_GUC(false, save_nestlevel);
 

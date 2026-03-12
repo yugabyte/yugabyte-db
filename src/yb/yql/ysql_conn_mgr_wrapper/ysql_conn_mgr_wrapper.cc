@@ -248,13 +248,6 @@ Status YsqlConnMgrWrapper::Start() {
                 FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode);
 
   proc_->SetEnv(
-      "YB_YSQL_CONN_MGR_VERSION_MATCHING", FLAGS_ysql_conn_mgr_version_matching ? "true" : "false");
-
-  proc_->SetEnv(
-      "YB_YSQL_CONN_MGR_VERSION_MATCHING_CONNECT_HIGHER_VERSION",
-      FLAGS_ysql_conn_mgr_version_matching_connect_higher_version ? "true" : "false");
-
-  proc_->SetEnv(
       "YB_YSQL_CONN_MGR_MAX_QUERY_SIZE", std::to_string(FLAGS_ysql_conn_mgr_max_query_size));
 
   proc_->SetEnv(

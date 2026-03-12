@@ -309,24 +309,19 @@ extern void YbApplyPrimaryPushdown(YbcPgStatement dml,
 extern void YbApplySecondaryIndexPushdown(YbcPgStatement dml,
 										  const YbPushdownExprs *pushdown);
 
-/*
- * The ybc_idx API is used to process the following SELECT.
- *   SELECT data FROM heapRelation WHERE rowid IN
- *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
- */
-extern YbScanDesc ybcBeginScan(Relation relation,
-							   Relation index,
-							   bool xs_want_itup,
-							   int nkeys,
-							   ScanKey key,
-							   Scan *pg_scan_plan,
-							   YbPushdownExprs *rel_pushdown,
-							   YbPushdownExprs *idx_pushdown,
-							   List *aggrefs,
-							   int distinct_prefixlen,
-							   YbcPgExecParameters *exec_params,
-							   bool is_internal_scan,
-							   bool fetch_ybctids_only);
+extern YbScanDesc YbBeginScan(Relation table,
+							  Relation index,
+							  bool xs_want_itup,
+							  int nkeys,
+							  ScanKey keys,
+							  Scan *pg_scan_plan,
+							  YbPushdownExprs *rel_pushdown,
+							  YbPushdownExprs *idx_pushdown,
+							  List *aggrefs,
+							  int distinct_prefixlen,
+							  YbcPgExecParameters *exec_params,
+							  bool is_internal_scan,
+							  bool fetch_ybctids_only);
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);

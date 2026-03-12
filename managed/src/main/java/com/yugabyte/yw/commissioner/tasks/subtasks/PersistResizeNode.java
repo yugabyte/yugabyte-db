@@ -32,6 +32,8 @@ public class PersistResizeNode extends UniverseTaskBase {
     public UserIntent newUserIntent;
     public UUID clusterUUID;
     public boolean onlyPersistDeviceInfo;
+    public Set<UUID> skipMasterAZs;
+    public Set<UUID> skipTserverAZs;
   }
 
   protected Params taskParams() {
@@ -114,6 +116,16 @@ public class PersistResizeNode extends UniverseTaskBase {
                     .filter(n -> n.isMaster)
                     .forEach(node -> node.lastVolumeUpdateTime = now);
               }
+
+              // Update AZ volume overrides
+              Set<UUID> azUUIDs = cluster.placementInfo.getAllAZUUIDs();
+              userIntent.updateAZVolumeOverrides(
+                  newUserIntent, azUUIDs, taskParams().skipMasterAZs, true /* isDedicatedMaster */);
+              userIntent.updateAZVolumeOverrides(
+                  newUserIntent,
+                  azUUIDs,
+                  taskParams().skipTserverAZs,
+                  false /* isDedicatedMaster */);
 
               for (NodeDetails nodeDetails : nodesInCluster) {
                 nodeDetails.disksAreMountedByUUID = true;

@@ -93,6 +93,7 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -248,8 +249,8 @@ YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version)
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set local catalog version: %" PRIu64,
-						yb_catalog_cache_version)));
+				(errmsg("set db %u local catalog version: %" PRIu64,
+						MyDatabaseId, yb_catalog_cache_version)));
 }
 
 void
@@ -259,8 +260,8 @@ YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 }
 
-void
-SendLogicalClientCacheVersionToFrontend()
+static void
+yb_send_logical_client_version_to_frontend(int64_t logical_client_version)
 {
 	StringInfoData buf;
 
@@ -269,19 +270,31 @@ SendLogicalClientCacheVersionToFrontend()
 
 	/* Use 'r' for a YB_PARAMETER_STATUS message */
 	pq_beginmessage(&buf, 'r');
-	pq_sendstring(&buf, "yb_logical_client_version");	/* Key */
-	char		yb_logical_client_cache_version_str[16];
+	pq_sendstring(&buf, YB_LOGICAL_CLIENT_VERSION_STR); /* Key */
+	char yb_logical_client_cache_version_str[16];
 
 	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
-			 yb_logical_client_cache_version);
-	pq_sendstring(&buf, yb_logical_client_cache_version_str);	/* Value */
+			 logical_client_version);
+	pq_sendstring(&buf, yb_logical_client_cache_version_str); /* Value */
 	/* No flags are needed for this variable */
-	pq_sendbyte(&buf, 0);		/* flags */
+	pq_sendbyte(&buf, 0); /* flags */
 
 	pq_endmessage(&buf);
 
 	/* Ensure the message is sent to the frontend */
 	pq_flush();
+}
+
+void
+YbSendLogicalClientCacheVersionToFrontend()
+{
+	yb_send_logical_client_version_to_frontend(yb_logical_client_cache_version);
+}
+
+void
+YbSendMasterLogicalClientVersionToFrontend()
+{
+	yb_send_logical_client_version_to_frontend(YbGetMasterLogicalClientVersion());
 }
 
 void
@@ -297,8 +310,8 @@ YbSetNewCatalogVersion(uint64_t new_version)
 	yb_new_catalog_version = new_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set new catalog version: %" PRIu64,
-						yb_new_catalog_version)));
+				(errmsg("set db %u new catalog version: %" PRIu64,
+						MyDatabaseId, yb_new_catalog_version)));
 }
 
 void
@@ -4436,7 +4449,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
 				YbIsClientYsqlConnMgr() &&
 				YbIncrementMasterLogicalClientVersionTableEntry())
+			{
 				elog(LOG, "Logical client version incremented");
+				YbSendMasterLogicalClientVersionToFrontend();
+			}
 		}
 
 		if (prev_ProcessUtility)

@@ -3896,6 +3896,8 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_pg_stat_statements_docdb_metrics,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{

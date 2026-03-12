@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { AxiosError, AxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 
 export const IN_DEVELOPMENT_MODE = import.meta.env.DEV;
 

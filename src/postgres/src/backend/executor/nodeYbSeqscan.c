@@ -92,19 +92,19 @@ YbSeqNext(YbSeqScanState *node)
 		YbPushdownExprs *yb_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
 
-		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-							  NULL, /* index */
-							  false,	/* xs_want_itup */
-							  0,	/* nkeys */
-							  NULL, /* key */
-							  (Scan *) plan,
-							  yb_pushdown,	/* rel_pushdown */
-							  NULL, /* idx_pushdown */
-							  node->aggrefs,
-							  0,	/* distinct_prefixlen */
-							  &estate->yb_exec_params,
-							  false,	/* is_internal_scan */
-							  false);	/* fetch_ybctids_only */
+		ybScan = YbBeginScan(node->ss.ss_currentRelation,
+							 NULL,	/* index */
+							 false,	/* xs_want_itup */
+							 0,	/* nkeys */
+							 NULL,	/* keys */
+							 (Scan *) plan,
+							 yb_pushdown,	/* rel_pushdown */
+							 NULL,	/* idx_pushdown */
+							 node->aggrefs,
+							 0,	/* distinct_prefixlen */
+							 &estate->yb_exec_params,
+							 false,	/* is_internal_scan */
+							 false);	/* fetch_ybctids_only */
 		ybScan->pscan = node->pscan;
 		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
 		ybScan->rs_base.rs_flags = SO_TYPE_SEQSCAN;

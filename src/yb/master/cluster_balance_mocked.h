@@ -78,7 +78,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
   Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      bool should_remove_leader, const std::string& reason,
+      bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid) override {
     return Status::OK();
   }

@@ -48,6 +48,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
@@ -1857,10 +1858,8 @@ Status Tablet::WriteTransactionalBatch(
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS(
-        TryAgain,
-        Format("Transaction metadata missing: $0, looks like it was just aborted", transaction_id),
-        Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+    return CreateAbortedStatus(
+        "Transaction metadata missing: $0, looks like it was just aborted", transaction_id);
   }
 
   auto isolation_level = prepare_batch_data->first;

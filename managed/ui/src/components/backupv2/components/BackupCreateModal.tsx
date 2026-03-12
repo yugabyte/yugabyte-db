@@ -7,8 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useMemo, useState } from 'react';
-import { FC } from 'react';
+import React, { FC, useMemo, useState } from 'react';
 import { YBModalForm } from '../../common/forms';
 import * as Yup from 'yup';
 import { Col, Row } from 'react-bootstrap';

@@ -8,7 +8,7 @@
  */
 
 import { Field, FieldArray, FormikValues } from 'formik';
-import _ from 'lodash';
+import _, { flatten, isEmpty, uniq, uniqBy } from 'lodash';
 import React, { FC, useState } from 'react';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
@@ -17,7 +17,6 @@ import { OptionTypeBase } from 'react-select';
 import { Col, Row } from 'react-bootstrap';
 import { IStorageProviders } from '../IStorageConfigs';
 import { YBLabelledMultiEntryInput } from '../../../../common/forms/fields/YBMultiEntryInput';
-import { flatten, isEmpty, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery } from 'react-query';
 import {
   addCustomerConfig,

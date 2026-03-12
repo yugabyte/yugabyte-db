@@ -72,7 +72,7 @@ uv sync
     {
         "mcpServers": {
             "yugabytedb-mcp": {
-                "command": "uv",
+                "command": "/Users/<username>/.local/bin/uv",
                 "args": [
                     "--directory",
                     "/path/to/cloned/yugabytedb-mcp-server/",

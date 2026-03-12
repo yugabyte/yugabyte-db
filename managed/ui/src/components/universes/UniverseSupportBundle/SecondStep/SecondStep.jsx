@@ -10,8 +10,7 @@ import { formatBytes } from '@app/utils/Formatters';
 
 import { YBLoading } from '../../../common/indicators';
 import { YBButton, YBCheckBox } from '../../../common/forms/fields';
-import { YBButton as YBRedesignedButton } from '../../../../redesign/components';
-import { YBInput, YBLabel } from '../../../../redesign/components';
+import { YBButton as YBRedesignedButton, YBInput, YBLabel } from '../../../../redesign/components';
 import { DateTimePicker } from 'react-widgets';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
@@ -319,10 +318,10 @@ export const updateOptions = (
         payloadObj = { ...payloadObj, promQueries };
       }
       if (prometheusMetricsParams.promDumpDownSample) {
-        if (prometheusMetricsParams.stepPromDumpSecs != null) {
+        if (prometheusMetricsParams.stepPromDumpSecs !== null || prometheusMetricsParams.stepPromDumpSecs !== undefined) {
           payloadObj = { ...payloadObj, stepPromDumpSecs: prometheusMetricsParams.stepPromDumpSecs };
         }
-        if (prometheusMetricsParams.batchDurationPromDumpMins != null) {
+        if (prometheusMetricsParams.batchDurationPromDumpMins !== null || prometheusMetricsParams.batchDurationPromDumpMins !== undefined) {
           payloadObj = {
             ...payloadObj,
             batchDurationPromDumpMins: prometheusMetricsParams.batchDurationPromDumpMins

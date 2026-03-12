@@ -37,6 +37,7 @@ void od_router_init(od_router_t *router, od_global_t *global)
 	router->global = global;
 
 	router->router_err_logger = od_err_logger_create_default();
+	router->yb_max_logical_client_version = 0;
 }
 
 static inline int od_router_immed_close_server_cb(od_server_t *server,
@@ -236,7 +237,10 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	od_list_t *expire_list = argv[0];
 	int *count = argv[1];
 	uint64_t *now_us = argv[2];
+
+	/* YB: */
 	int jitter = route->rule->yb_jitter_time == 0 ? 0 : rand() % route->rule->yb_jitter_time;
+	od_instance_t *instance = server->global->instance;
 
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
@@ -246,8 +250,9 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		goto expire_server;
 
 	if (!server->offline) {
-		/* Expire server if is marked for closing */
-		if (server->marked_for_close)
+		/* YB: Expire server if is marked for closing or we're past its expiry time */
+		if (server->yb_marked_for_close ||
+		    *now_us >= server->yb_expiry_time_us)
 			goto expire_server;
 
 		/* advance idle time for 1 sec */
@@ -323,6 +328,108 @@ int od_router_expire(od_router_t *router, od_list_t *expire_list)
 	void *argv[] = { expire_list, &count, &now_us };
 	od_router_foreach(router, od_router_expire_cb, argv);
 	return count;
+}
+
+static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
+							  void **argv)
+{
+	uint64_t now_us = *(uint64_t *)argv[0];
+	uint64_t ttl_us = UINT64_C(1000) * (/* ttl_ms */ *(int *)argv[1]);
+	int64_t new_logical_client_version = *(int64_t *)argv[2];
+	od_instance_t *instance = server->global->instance;
+	od_debug(
+		&instance->logger, "lcv expire", NULL, server,
+		"now_us=%lu, ttl_us=%lu, new_logical_client_version=%ld, server_lcv=%d",
+		now_us, ttl_us, new_logical_client_version,
+		server->yb_logical_client_version);
+
+	/* We should be getting a larger LCV here, but be defensive in further checks */
+	assert(server->yb_logical_client_version <= new_logical_client_version);
+
+	/*
+	 * Nothing to be done for this server as it's already on latest LCV. assert statements
+	 * are compiled out in release builds, so we do this defensive check for safety.
+	 */
+	if (server->yb_logical_client_version >= new_logical_client_version)
+		return 0;
+
+	if (ttl_us == 0) {
+		server->yb_marked_for_close = true;
+		od_debug(&instance->logger, "lcv expire", NULL, server,
+			 "marking server for close, server lcv=%d, new lcv=%d",
+			 server->yb_logical_client_version,
+			 new_logical_client_version);
+	} else if (server->yb_expiry_time_us == UINT64_MAX) {
+		/*
+		 * server could already have expiry time due to some previous ALTER's TTL so we
+		 * don't modify that. The backend will expire before our TTL anyway.
+		 */
+		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
+		od_debug(
+			&instance->logger, "lcv expire", NULL, server,
+			"setting expiry time for server, server lcv=%d, new lcv=%d, expiry_time_us=%lu",
+			server->yb_logical_client_version,
+			new_logical_client_version, server->yb_expiry_time_us);
+	}
+
+	return 0;
+}
+
+static inline int yb_od_router_expire_stale_lcv_route_cb(od_route_t *route,
+							 void **argv)
+{
+	od_route_lock(route);
+	od_server_pool_foreach(&route->server_pool, OD_SERVER_IDLE,
+			       yb_od_router_expire_stale_lcv_server_cb, argv);
+	od_server_pool_foreach(&route->server_pool, OD_SERVER_ACTIVE,
+			       yb_od_router_expire_stale_lcv_server_cb, argv);
+	od_route_unlock(route);
+	return 0;
+}
+
+void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
+					   int64_t new_logical_client_version)
+{
+	od_instance_t *instance = router->global->instance;
+
+	bool larger_lcv_found;
+	while (true) {
+		int64_t max_logical_client_version = od_atomic_u64_of(
+			&router->yb_max_logical_client_version);
+		larger_lcv_found =
+			new_logical_client_version > max_logical_client_version;
+		if (!larger_lcv_found)
+			return;
+
+		/* Atomically update to this LCV, try again if some other thread updated this */
+		if (od_atomic_u64_cas(&router->yb_max_logical_client_version,
+				      max_logical_client_version,
+				      new_logical_client_version) !=
+		    (uint64_t)max_logical_client_version)
+			continue;
+
+		od_debug(
+			&instance->logger, "lcv check", NULL, NULL,
+			"Found logical client version %ld greater than current max version %ld",
+			new_logical_client_version, max_logical_client_version);
+		break;
+	}
+
+	/* Early exit if we are not going to close older backends */
+	if (instance->config.yb_alter_guc_stale_backend_ttl_ms == -1) {
+		od_debug(&instance->logger, "lcv check", NULL, NULL,
+			 "Skipping stale LCV server expiration, ttl_ms is -1");
+		return;
+	}
+
+	uint64_t now_us = machine_time_us();
+	void *argv[] = {
+		&now_us,
+		&instance->config.yb_alter_guc_stale_backend_ttl_ms,
+		&new_logical_client_version,
+	};
+
+	od_router_foreach(router, yb_od_router_expire_stale_lcv_route_cb, argv);
 }
 
 /* Mark the route as inactive for the provided db oid or user oid */
@@ -886,28 +993,40 @@ od_router_status_t od_router_attach(od_router_t *router,
 
 	od_debug(&instance->logger, "router-attach", client_for_router, NULL,
 		 "client_for_router logical client version = %d",
-		 client_for_router->logical_client_version);
+		 client_for_router->yb_logical_client_version);
 
 	for (;;) {
-		if (version_matching) {
-
+		/*
+		 * YB: Do version matching if required, and don't do it for internal clients
+		 * (used for authentication) since LCV doesn't make sense for them
+		 */
+		if (instance->config.yb_alter_guc_adoption_strategy !=
+			    YB_GUC_ADOPTION_FLUCTUATING &&
+		    client_for_router->type == OD_POOL_CLIENT_EXTERNAL) {
 			server = yb_od_server_pool_idle_version_matching(
 				&route->server_pool,
-				client_for_router->logical_client_version,
-				version_matching_connect_higher_version);
+				client_for_router->yb_logical_client_version,
+				instance->config.yb_alter_guc_adoption_strategy);
 
 			if (server)
 				goto attach;
-			else if (route->max_logical_client_version >
-					 client_for_router->logical_client_version &&
-				 !version_matching_connect_higher_version) {
+
+			/* TODO: What if there is an active server with the same version as client? */
+			int64_t max_logical_client_version = od_atomic_u64_of(
+				&router->yb_max_logical_client_version);
+			if (instance->config.yb_alter_guc_adoption_strategy ==
+				    YB_GUC_ADOPTION_CONNECTION_STATIC &&
+			    max_logical_client_version >
+				    client_for_router
+					    ->yb_logical_client_version) {
 				od_debug(
 					&instance->logger, "router-attach",
 					client_for_router, NULL,
-					"old logical client, need to disconect, "
-					"max_logical_client_version of pool = %d, and version of client = %d",
-					route->max_logical_client_version,
-					client_for_router->logical_client_version);
+					"old logical client, need to disconect, max_logical_client_version"
+					" = %d, and version of client = %d",
+					max_logical_client_version,
+					client_for_router
+						->yb_logical_client_version);
 				od_route_unlock(route);
 				return OD_ROUTER_ERROR;
 			}
@@ -923,8 +1042,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 			    (od_server_pool_total(&route->server_pool) >=
 			     route->rule->min_pool_size))
 				goto attach;
-		}
-		else {
+		} else {
 			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
 			if (server)
@@ -1233,6 +1351,16 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 */
 	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
 	       sizeof(server->yb_unnamed_prep_stmt_client_id));
+
+	uint64_t now_us = machine_time_us();
+	bool server_expired = now_us >= server->yb_expiry_time_us;
+	if (server_expired)
+		od_debug(
+			&instance->logger, "router-detach", NULL, server,
+			"server crossed expiry time, will be closed. time now = %" PRIu64
+			", server expiry time = %" PRIu64,
+			now_us, server->yb_expiry_time_us);
+
 	/*
 	 * Drop the server connection if:
 	 * 	a. Server gets OFFLINE.
@@ -1243,10 +1371,10 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 *  c. Client connection is a logical or physical replication connection
 	 *     (but NOT a control connection).
 	 *  d. It took too long to reset state on the server.
+	 *  e. The current time exceeded server's expiry time
 	 */
-	if (od_likely(!server->offline) &&
-		!server->yb_sticky_connection &&
-		!server->reset_timeout) {
+	if (od_likely(!server->offline) && !server->yb_sticky_connection &&
+	    !server->reset_timeout && !server_expired) {
 		od_instance_t *instance = server->global->instance;
 		if ((route->id.physical_rep || route->id.logical_rep) &&
 		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {

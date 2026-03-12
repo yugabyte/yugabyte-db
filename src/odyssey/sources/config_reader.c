@@ -156,6 +156,8 @@ typedef enum {
 	OD_YB_MAX_POOLS,
 	OD_YB_JITTER_TIME,
 	OD_TEST_YB_AUTH_DELAY_MS,
+	OD_YB_ALTER_GUC_ADOPTION_STRATEGY,
+	OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS,
 } od_lexeme_t;
 
 static od_keyword_t od_config_keywords[] = {
@@ -338,6 +340,10 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 	od_keyword("TEST_yb_auth_delay_ms", OD_TEST_YB_AUTH_DELAY_MS),
+	od_keyword("yb_alter_guc_adoption_strategy",
+		   OD_YB_ALTER_GUC_ADOPTION_STRATEGY),
+	od_keyword("yb_alter_guc_stale_backend_ttl_ms",
+		   OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS),
 
 	{ 0, 0, 0 },
 };
@@ -346,6 +352,13 @@ static od_keyword_t od_role_keywords[] = {
 	od_keyword("admin", OD_RULE_ROLE_ADMIN),
 	od_keyword("stat", OD_RULE_ROLE_STAT),
 	od_keyword("notallow", OD_RULE_ROLE_NOTALLOW),
+	{ 0, 0, 0 },
+};
+
+od_keyword_t yb_od_alter_guc_adoption_strategy_keywords[] = {
+	od_keyword("fluctuating", YB_GUC_ADOPTION_FLUCTUATING),
+	od_keyword("gradual", YB_GUC_ADOPTION_GRADUAL),
+	od_keyword("connection_static", YB_GUC_ADOPTION_CONNECTION_STATIC),
 	{ 0, 0, 0 },
 };
 
@@ -2017,6 +2030,30 @@ static int od_config_reader_hba_import(od_config_reader_t *config_reader)
 	return rc;
 }
 
+static bool
+yb_od_config_reader_alter_guc_adoption(od_config_reader_t *reader,
+				       enum yb_od_alter_guc_adoption *value)
+{
+	od_token_t token;
+	int rc;
+	rc = od_parser_next(&reader->parser, &token);
+	if (rc != OD_PARSER_KEYWORD)
+		goto error;
+	od_keyword_t *keyword;
+	keyword = od_keyword_match(yb_od_alter_guc_adoption_strategy_keywords,
+				   &token);
+	if (keyword == NULL)
+		goto error;
+	*value = keyword->id;
+	return true;
+error:
+	od_parser_push(&reader->parser, &token);
+	od_config_reader_error(
+		reader, &token,
+		"expected 'fluctuating/gradual/connection_static'");
+	return false;
+}
+
 static int od_config_reader_parse(od_config_reader_t *reader,
 				  od_extention_t *extentions)
 {
@@ -2495,6 +2532,22 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_TEST_YB_AUTH_DELAY_MS:
 			if (!od_config_reader_number(
 				    reader, &config->TEST_yb_auth_delay_ms)) {
+				goto error;
+			}
+			continue;
+		/* yb_alter_guc_adoption_strategy */
+		case OD_YB_ALTER_GUC_ADOPTION_STRATEGY:
+			if (!yb_od_config_reader_alter_guc_adoption(
+				    reader,
+				    &config->yb_alter_guc_adoption_strategy)) {
+				goto error;
+			}
+			continue;
+		/* yb_alter_guc_stale_backend_ttl_ms */
+		case OD_YB_ALTER_GUC_STALE_BACKEND_TTL_MS:
+			if (!od_config_reader_number(
+				    reader,
+				    &config->yb_alter_guc_stale_backend_ttl_ms)) {
 				goto error;
 			}
 			continue;

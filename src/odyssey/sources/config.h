@@ -24,6 +24,12 @@ struct od_config_listen {
 	od_list_t link;
 };
 
+enum yb_od_alter_guc_adoption {
+	YB_GUC_ADOPTION_FLUCTUATING,
+	YB_GUC_ADOPTION_GRADUAL,
+	YB_GUC_ADOPTION_CONNECTION_STATIC,
+};
+
 struct od_config {
 	int daemonize;
 	int priority;
@@ -87,6 +93,8 @@ struct od_config {
 	int yb_optimized_session_parameters;
 	int yb_max_pools;
 	int TEST_yb_auth_delay_ms;
+	enum yb_od_alter_guc_adoption yb_alter_guc_adoption_strategy;
+	int yb_alter_guc_stale_backend_ttl_ms;
 };
 
 void od_config_init(od_config_t *);

@@ -264,6 +264,68 @@
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
       },
+      "dbUpgrade": {
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
+          "dbVersionStep": {
+            "stepTitle": "Database Version",
+            "stepDescription": "What database version do you want to upgrade to?",
+            "currentVersion": "Current Version",
+            "targetVersion": "Target Version",
+            "runPreupgradeCheck": "Run Pre-upgrade Check",
+            "upgradeInfoCard": {
+              "ysqlMajorVersionUpgrade": "YSQL Major Upgrade",
+              "ysqlMajorVersionUpgradeInfo": "This major upgrade upgrades your cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "upgradeInfo": "Upgrades the cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "finalizationRequired": "Finalization required",
+              "finalizationRequiredTooltip": "After upgrading, you must finalize the upgrade to complete the process. Until finalized, some features may be restricted.",
+              "rollbackAvailable": "<bold>Rollback available</bold> — Until finalization (back to v{{currentVersion}})",
+              "rollbackAvailableAnytime": "<bold>Rollback available</bold> — Anytime after upgrade (back to v{{currentVersion}})",
+              "temporaryRestrictions": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlocked": "DDLs and <underline>some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlocked": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is completed.",
+              "someOperationsBlockedFinalization": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "clusterMayHaveSlowerPerformance": "The cluster may have slower performance.",
+              "learnMoreAboutUpgrade": "Learn more about the upgrade"
+            }
+          },
+          "upgradeMethodStep": {
+            "stepTitle": "Upgrade Method",
+            "express": {
+              "title": "Express upgrade",
+              "description": "Runs straight through; rollback is only allowed after the upgrade is completed."
+            },
+            "canary": {
+              "title": "Canary upgrade",
+              "tag": "Advanced",
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities."
+            },
+            "upgradePace": {
+              "title": "Upgrade Pace",
+              "rolling": "Rolling upgrade",
+              "concurrent": "Concurrent upgrade of all nodes.",
+              "maxNodesPerBatch": "Max nodes per batch:",
+              "waitBetweenBatches": "Wait between batches:",
+              "seconds": "seconds"
+            },
+            "validationError": {
+              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number.",
+              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
+              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}."
+            },
+            "recommendationLabel": "Recommendation",
+            "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
+          },
+          "submitLabel": {
+            "next": "Next",
+            "upgrade": "Upgrade"
+          },
+          "toast": {
+            "dbUpgradeInitiated": "Database upgrade initiated",
+            "dbUpgradeFailed": "Database upgrade request failed"
+          }
+        }
+      },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
@@ -611,6 +673,18 @@
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
       },
+      "azOverrides": {
+        "modalTitle": "AZ Resource Overrides",
+        "sectionTitle": "Availability Zone Overrides",
+        "editAZOverrides": "Edit AZ Overrides",
+        "addStorageOverrides": "Add Storage Overrides",
+        "editStorageOverrides": "Edit storage overrides",
+        "addAZ": "Add AZ",
+        "addAnotherAZ": "Add Another AZ",
+        "availabilityZone": "Availability Zone",
+        "volumeCount": "Volume count",
+        "volumeSizeGib": "Volume size (Gib)"
+      },
       "instanceConfig": {
         "assignPublicIP": "Assign Public IP",
         "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
@@ -636,6 +710,7 @@
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
+        "storageClass": "Storage Class",
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",

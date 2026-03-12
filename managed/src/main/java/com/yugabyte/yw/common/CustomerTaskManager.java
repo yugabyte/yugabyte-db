@@ -49,6 +49,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
@@ -886,6 +887,9 @@ public class CustomerTaskManager {
         break;
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
+        break;
+      case ProvisionUniverseNodes:
+        taskParams = Json.fromJson(oldTaskParams, ProvisionUniverseNodesParams.class);
         break;
       case KubernetesToggleImmutableYbc:
         taskParams = Json.fromJson(oldTaskParams, KubernetesToggleImmutableYbcParams.class);

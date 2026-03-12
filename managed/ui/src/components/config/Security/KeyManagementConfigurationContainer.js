@@ -6,7 +6,10 @@ import {
   fetchCustomerConfigs,
   fetchCustomerConfigsResponse,
   fetchCustomerRunTimeConfigs,
-  fetchCustomerRunTimeConfigsResponse
+  fetchCustomerRunTimeConfigsResponse,
+  fetchHostInfo,
+  fetchHostInfoSuccess,
+  fetchHostInfoFailure
 } from '../../../actions/customers';
 import {
   createKMSProviderConfig,
@@ -22,11 +25,6 @@ import {
 import { fetchTaskProgress, fetchTaskProgressResponse } from '../../../actions/tasks';
 import { toast } from 'react-toastify';
 import { handleCACertErrMsg } from '../../customCACerts';
-import {
-  fetchHostInfo,
-  fetchHostInfoSuccess,
-  fetchHostInfoFailure
-} from '../../../actions/customers';
 
 const mapStateToProps = (state) => {
   return {

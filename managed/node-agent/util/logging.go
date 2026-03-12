@@ -160,6 +160,11 @@ func InitCustomAppLogger(
 	return fileLogger
 }
 
+// Returns true if console logger is set up.
+func IsConsoleLoggerSetup() bool {
+	return consoleLogger != nil
+}
+
 // Returns the file logger.
 func FileLogger() AppLogger {
 	onceFileLogger.Do(func() {
