@@ -1516,6 +1516,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval at which the XCluster Metrics Scheduler runs",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterMasterAddressSyncInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_master_address_sync_interval",
+          ScopeType.GLOBAL,
+          "XCluster Master Address Sync Interval",
+          "Interval at which the XCluster Master Address Sync Scheduler runs to keep"
+              + " source master addresses up to date on target universe replication groups",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientMaxUnavailableRetries =
       new ConfKeyInfo<>(
           "ybc.client_settings.max_unavailable_retries",
