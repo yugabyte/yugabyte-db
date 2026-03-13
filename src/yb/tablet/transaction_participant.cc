@@ -993,12 +993,16 @@ class TransactionParticipant::Impl
         // TODO(wait-queues): Consider signaling before replicating the transaction update.
         wait_queue_->SignalCommitted(data.transaction_id, data.commit_ht);
       }
-      auto apply_state = applier_.ApplyIntents(data);
+      if (data.apply_to_storages.Any()) {
+        auto apply_state = applier_.ApplyIntents(data);
 
-      VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
-                          << apply_state.ToString();
+        VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
+                            << apply_state.ToString();
 
-      RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+        RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
+      } else if (!data.sealed) {
+        return ProcessCleanup(data, CleanupType::kImmediate);
+      }
     }
 
     NotifyApplied(data);
@@ -2348,13 +2352,7 @@ class TransactionParticipant::Impl
       .status_tablet = data.state.tablets().front().ToBuffer(),
       .apply_to_storages = data.apply_to_storages,
     };
-    if (data.apply_to_storages.Any()) {
-      return ProcessApply(apply_data);
-    }
-    if (!data.sealed) {
-      return ProcessCleanup(apply_data, CleanupType::kImmediate);
-    }
-    return Status::OK();
+    return ProcessApply(apply_data);
   }
 
   Status ReplicatedAborted(const TransactionId& id, const ReplicatedData& data) {
