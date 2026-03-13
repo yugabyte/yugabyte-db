@@ -139,6 +139,9 @@ Status TabletVectorIndexes::Open(const docdb::ConsensusFrontier* frontier)
 
 Status TabletVectorIndexes::CreateIndex(
     const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
+  VLOG_WITH_FUNC(2)
+      << "index_table: " << index_table.ToString() << " indexed_table: "
+      << indexed_table->ToString() << " bootstrap: " << bootstrap;
   std::lock_guard lock(vector_indexes_mutex_);
   return DoCreateIndex(index_table, indexed_table, bootstrap);
 }
@@ -477,6 +480,7 @@ void TabletVectorIndexes::FillMaxPersistentOpIds(
   if (!list) {
     return;
   }
+  out.clear();
   for (const auto& vector_index : *list) {
     out.push_back(MaxPersistentOpIdForDb(vector_index.get(), invalid_if_no_new_data));
   }
@@ -507,6 +511,7 @@ docdb::DocVectorIndexPtr TabletVectorIndexes::RemoveTableFromList(const TableId&
 }
 
 Status TabletVectorIndexes::Remove(const TableId& table_id) {
+  VLOG_WITH_FUNC(2) << "table_id: " << table_id;
   if (!has_vector_indexes_.load()) {
     return Status::OK();
   }
