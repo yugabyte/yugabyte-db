@@ -324,7 +324,7 @@ YbctidListEval(TidScanState *tidstate)
 	int			numYbctids;
 	ListCell   *l;
 
-	ybScan = (YbScanDesc) tidstate->ss.ss_currentScanDesc;
+	ybScan = tidstate->ss.ss_currentScanDesc->ybscan;
 	Assert(ybScan);
 	Assert(IsYBRelation(tidstate->ss.ss_currentRelation));
 
@@ -535,16 +535,18 @@ YbTidNext(TidScanState *node)
 	TupleTableSlot *slot;
 	ExprContext *econtext;
 	MemoryContext oldcontext;
+	TableScanDesc tsdesc;
 	YbScanDesc	ybScan;
 
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * Initialize the scandesc upon the first invocation.
 	 */
-	if (node->ss.ss_currentScanDesc == NULL)
+	if (tsdesc == NULL)
 	{
 		TidScan    *plan = (TidScan *) node->ss.ps.plan;
 		YbPushdownExprs *rel_pushdown =
@@ -557,26 +559,32 @@ YbTidNext(TidScanState *node)
 			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
 			slot = node->ss.ss_ScanTupleSlot;
 		}
-		ybScan = YbBeginScan(node->ss.ss_currentRelation,
-							 NULL,	/* index */
-							 false,	/* xs_want_itup */
-							 0,	/* nkeys */
-							 NULL,	/* keys */
-							 (Scan *) plan,
-							 rel_pushdown,
-							 NULL,	/* idx_pushdown */
-							 node->yb_tss_aggrefs,
-							 0,	/* distinct_prefixlen */
-							 &estate->yb_exec_params,
-							 false,	/* is_internal_scan */
-							 false);	/* fetch_ybctids_only */
-		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
-		ybScan->rs_base.rs_flags = SO_TYPE_TIDSCAN;
-		node->ss.ss_currentScanDesc = (TableScanDesc) ybScan;
+
+		node->ss.ss_currentScanDesc = tsdesc =
+			palloc(sizeof(TableScanDescData));
+		tsdesc->rs_rd = node->ss.ss_currentRelation;
+		tsdesc->rs_snapshot = estate->es_snapshot;
+		tsdesc->rs_nkeys = 0;
+		tsdesc->rs_key = NULL;
+		tsdesc->rs_flags = SO_TYPE_TIDSCAN;
+		tsdesc->rs_parallel = NULL;
+		tsdesc->ybscan = ybScan = YbBeginScan(tsdesc->rs_rd,
+											  NULL,	/* index */
+											  false,	/* xs_want_itup */
+											  tsdesc->rs_nkeys,
+											  tsdesc->rs_key,
+											  (Scan *) plan,
+											  rel_pushdown,
+											  NULL,	/* idx_pushdown */
+											  node->yb_tss_aggrefs,
+											  0,	/* distinct_prefixlen */
+											  &estate->yb_exec_params,
+											  false,	/* is_internal_scan */
+											  false);	/* fetch_ybctids_only */
 		YbctidListEval(node);
 	}
 	else
-		ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
+		ybScan = tsdesc->ybscan;
 
 	/* Need to execute the request */
 	if (!ybScan->is_exec_done)
