@@ -1013,14 +1013,15 @@ bool PgTxnManager::TryAcquireObjectLock(
 
 Status PgTxnManager::AcquireObjectLock(
     SetupPerformOptionsAccessorTag tag,
-    const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
+    bool is_session_lock) {
   RETURN_NOT_OK(CalculateIsolation(
       false /* read_only, doesn't matter */,
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
   RETURN_NOT_OK(SetupPerformOptions(tag, &options));
-  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode));
+  RETURN_NOT_OK(client_->AcquireObjectLock(&options, lock_id, mode, is_session_lock));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());
   return Status::OK();
 }

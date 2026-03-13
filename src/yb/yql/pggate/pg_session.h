@@ -299,7 +299,9 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   Status ReleaseAdvisoryLock(const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode);
   Status ReleaseAllAdvisoryLocks(uint32_t db_oid);
 
-  Status AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode);
+  Status AcquireObjectLock(
+      const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
+  Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
   // Returns current PostgreSQL replication origin id for this backend session (0 if unset).
   uint16_t GetSessionReplicationOriginId() const;

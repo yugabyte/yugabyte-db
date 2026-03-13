@@ -1026,6 +1026,7 @@ typedef enum {
   // Lock acquisition
   YB_ACQUIRE_ADVISORY_LOCK,
   YB_ACQUIRE_OBJECT_LOCK,
+  YB_RELEASE_SESSION_OBJECT_LOCK,
 
   // Functions, stored procedures and utilities
   YB_UNBATCHABLE_SQL_STMT_IN_SQL_FUNCTION,

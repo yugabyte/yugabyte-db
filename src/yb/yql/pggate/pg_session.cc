@@ -793,6 +793,8 @@ std::string PgSession::FlushReasonToString(const YbcFlushDebugContext& debug_con
     // Lock acquisition
     case YbcFlushReason::YB_ACQUIRE_OBJECT_LOCK:
       return Format("before acquiring lock on $0", debug_context.strarg1);
+    case YbcFlushReason::YB_RELEASE_SESSION_OBJECT_LOCK:
+      return Format("before releasing session lock on $0", debug_context.strarg1);
     case YbcFlushReason::YB_ACQUIRE_ADVISORY_LOCK:
       return Format("before acquiring lock on $0", debug_context.strarg1);
 
@@ -1407,7 +1409,8 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
 }
 
-Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+Status PgSession::AcquireObjectLock(
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
   if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
@@ -1419,7 +1422,8 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
   }
 
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
-  if (fastpath_lock_type && pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
+  if (!is_session_lock && fastpath_lock_type &&
+      pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
@@ -1432,11 +1436,43 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
   }
 
   return pg_txn_manager_->AcquireObjectLock(
-      VERIFY_RESULT(FlushBufferedOperations(debug_context)), lock_id, mode);
+      VERIFY_RESULT(FlushBufferedOperations(debug_context)), lock_id, mode, is_session_lock);
 }
 
 uint16_t PgSession::GetSessionReplicationOriginId() const {
   return pg_callbacks_.GetSessionReplicationOriginId();
+}
+
+Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+    return Status::OK();
+  }
+  tserver::PgReleaseSessionObjectLockRequestPB req;
+  auto& options = *req.mutable_options();
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+      false /* read_only, doesn't matter */,
+      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
+      IsLocalObjectLockOp(false)));
+  std::string lock_id_str;
+  YbcFlushDebugContext debug_context {};
+  debug_context.reason = YbcFlushReason::YB_RELEASE_SESSION_OBJECT_LOCK;
+  if (yb_debug_log_docdb_requests) {
+    lock_id_str = ToString(lock_id);
+    debug_context.strarg1 = lock_id_str.c_str();
+  }
+  RETURN_NOT_OK(SetupPerformOptions(
+      VERIFY_RESULT(FlushBufferedOperations(debug_context)),
+      &options));
+  if (release_all) {
+    options.clear_active_sub_transaction_id();
+  } else {
+    auto& lock_oid = *req.mutable_lock_oid();
+    lock_oid.set_database_oid(lock_id.db_oid);
+    lock_oid.set_relation_oid(lock_id.relation_oid);
+    lock_oid.set_object_oid(lock_id.object_oid);
+    lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
+  }
+  return pg_client_.ReleaseSessionObjectLock(&req, CoarseTimePoint());
 }
 
 YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(
