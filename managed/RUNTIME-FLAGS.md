@@ -159,6 +159,7 @@
 | "Allow users to enable or disable connection pooling" | "yb.universe.allow_connection_pooling" | "GLOBAL" | "If this flag is enabled, user will be able to enable/disable connection pooling on universes." | "Boolean" |
 | "XCluster Sync Scheduler Interval" | "yb.xcluster.xcluster_sync_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Sync Scheduler runs" | "Duration" |
 | "XCluster Metrics Scheduler Interval" | "yb.xcluster.xcluster_metrics_scheduler_interval" | "GLOBAL" | "Interval at which the XCluster Metrics Scheduler runs" | "Duration" |
+| "XCluster Master Address Sync Interval" | "yb.xcluster.xcluster_master_address_sync_interval" | "GLOBAL" | "Interval at which the XCluster Master Address Sync Scheduler runs to keep source master addresses up to date on target universe replication groups" | "Duration" |
 | "Max retries on UNAVAILABLE status" | "ybc.client_settings.max_unavailable_retries" | "GLOBAL" | "Max client side retries when server returns UNAVAILABLE status" | "Integer" |
 | "Wait( in milliseconds ) between each retries on UNAVAILABLE status" | "ybc.client_settings.wait_each_unavailable_retry_ms" | "GLOBAL" | "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE status" | "Integer" |
 | "Wait( in milliseconds ) for YB-Controller RPC response" | "ybc.client_settings.deadline_ms" | "GLOBAL" | "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side DEADLINE_EXCEEDED" | "Integer" |
