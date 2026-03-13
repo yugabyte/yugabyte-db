@@ -158,6 +158,7 @@
 #include "catalog/pg_namespace_d.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
+#include "postmaster/bgworker_internals.h"
 #include "postmaster/interrupt.h"
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
@@ -629,6 +630,7 @@ static void ybInsertPendingNotifiesToTable(void);
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
 static void ybStartNotifsPollerBgWorker(void);
+static void ybCleanupListenState(void);
 static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
 static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
@@ -1355,8 +1357,8 @@ Exec_ListenPreCommit(void)
 	if (ybIsFirstListenerOnNode)
 	{
 		/*
-		 * YB note: The first listener in the node creates the replication and
-		 * starts the 'notifications poller' bg worker.
+		 * YB note: The first listener in the node creates the replication slot
+		 * and starts the 'notifications poller' bg worker.
 		 */
 		ybCreateNotifsReplicationSlot();
 		ybStartNotifsPollerBgWorker();
@@ -1473,6 +1475,9 @@ IsListeningOn(const char *channel)
 /*
  * Remove our entry from the listeners array when we are no longer listening
  * on any channel.  NB: must not fail if we're already not listening.
+ *
+ * YB note: Any changes to state cleanup logic here will likely need to be
+ * applied to YbCleanupListenStateForProc() as well.
  */
 static void
 asyncQueueUnregister(void)
@@ -1505,43 +1510,113 @@ asyncQueueUnregister(void)
 	}
 	QUEUE_NEXT_LISTENER(MyBackendId) = InvalidBackendId;
 
-	if (QUEUE_FIRST_LISTENER == InvalidBackendId)
-	{
-		/*
-		 * YB note: The last listener in the node terminates the 'notifications
-		 * poller' bg worker and drops the replication slot.
-		 *
-		 * The bg worker handle is only in shared memory after successful
-		 * initialization (see ybStartNotifsPollerBgWorker). Use init_status
-		 * to check. The replication slot may also not exist if startup failed
-		 * partway through, so use yb_if_exists for the slot drop.
-		 */
-
-		bool		found;
-		YbNotifsPollerShmemData *yb_poller_data =
-			ybShmemNotifsPollerData(&found);
-
-		if (found &&
-			yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
-		{
-			BackgroundWorkerHandle *shm_handle =
-				ybShmemNotifsPollerBgwHandle(&found);
-
-			Assert(found);
-			TerminateBackgroundWorker(shm_handle);
-			memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
-		}
-
-		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
-							 /* nowait = */ true,
-							 /* yb_force = */ true,
-							 /* yb_if_exists = */ true);
-	}
+	/*
+	 * YB: YB-speicific LISTEN state cleanup.
+	 */
+	ybCleanupListenState();
 
 	LWLockRelease(NotifyQueueLock);
 
 	/* mark ourselves as no longer listed in the global array */
 	amRegisteredListener = false;
+}
+
+/*
+ * Clean up the state (asyncQueueControl, notifications poller bg task) when a
+ * listening backend crashes. This function is called by the postmaster. It is
+ * derived from asyncQueueUnregister().
+ */
+void
+YbCleanupListenStateForProc(PGPROC *proc)
+{
+	Assert(MyProcPid == PostmasterPid);
+
+	Assert(proc->backendId);
+
+	BackendId	backendId = proc->backendId;
+
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	bool		cleanupNeeded = QUEUE_BACKEND_PID(backendId) == proc->pid;
+
+	LWLockRelease(NotifyQueueLock);
+	if (!cleanupNeeded)
+		return;
+
+	/*
+	 * Need exclusive lock here to manipulate list links.
+	 */
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	/* Mark our entry as invalid */
+	QUEUE_BACKEND_PID(backendId) = InvalidPid;
+	QUEUE_BACKEND_DBOID(backendId) = InvalidOid;
+	/* and remove it from the list */
+	if (QUEUE_FIRST_LISTENER == backendId)
+		QUEUE_FIRST_LISTENER = QUEUE_NEXT_LISTENER(backendId);
+	else
+	{
+		for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+		{
+			if (QUEUE_NEXT_LISTENER(i) == backendId)
+			{
+				QUEUE_NEXT_LISTENER(i) = QUEUE_NEXT_LISTENER(backendId);
+				break;
+			}
+		}
+	}
+	QUEUE_NEXT_LISTENER(backendId) = InvalidBackendId;
+
+	/*
+	 * YB: YB-speicific LISTEN state cleanup.
+	 */
+	ybCleanupListenState();
+
+	LWLockRelease(NotifyQueueLock);
+}
+
+/*
+ * Perform YB-specific LISTEN state clean up.
+ *
+ * If there are no listening backends left on the node, terminate the
+ * 'notifications poller' bg worker and replication slot.
+ *
+ * Caller must hold exclusive NotifyQueueLock.
+ *
+ * When this function is called by postmaster, it is not possible to drop the
+ * replication slot (pggate is not available) and BackgroundWorkerStateChange()
+ * needs to be explicity called (postmaster cannot signal itself).
+ */
+static void
+ybCleanupListenState(void)
+{
+	/* Nothing to do if there are listening backends on this node.  */
+	if (QUEUE_FIRST_LISTENER != InvalidBackendId)
+		return;
+
+	bool		amPostmaster = MyProcPid == PostmasterPid;
+	bool		found;
+	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
+
+	if (found && yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
+	{
+		BackgroundWorkerHandle *shm_handle =
+			ybShmemNotifsPollerBgwHandle(&found);
+
+		Assert(found);
+		TerminateBackgroundWorker(shm_handle);
+		if (amPostmaster)
+			BackgroundWorkerStateChange(false);
+		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
+	}
+
+	/*
+	 * The replication slot may also not exist if startup failed
+	 * partway through, so use yb_if_exists for the slot drop.
+	 */
+	if (!amPostmaster)
+		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
+							 /* nowait = */ true,
+							 /* yb_force = */ true,
+							 /* yb_if_exists = */ true);
 }
 
 /*
