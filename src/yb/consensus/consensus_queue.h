@@ -300,7 +300,7 @@ class PeerMessageQueue {
 
   // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer.
   // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
-  const TrackedPeer* FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
+  Result<const TrackedPeer*> FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
       REQUIRES(queue_lock_);
 
   // Increment failed_bootstrap_attempts_from_non_leader for the given peer. The method should only
@@ -594,7 +594,7 @@ class PeerMessageQueue {
 
   std::pair<int64_t, int64_t> GetCommittedAndMajorityReplicatedIndex();
 
-  int64_t GetStartOpIdIndex(int64_t start_index);
+  Result<int64_t> GetStartOpIdIndex(int64_t start_index);
 
   void TEST_WaitForNotificationToFinish();
 
