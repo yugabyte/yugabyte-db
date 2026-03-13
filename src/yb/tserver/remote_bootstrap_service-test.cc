@@ -358,7 +358,8 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
 
   // Fetch the local data.
   log::SegmentSequence local_segments;
-  ASSERT_OK(tablet_peer_->log()->GetLogReader()->GetSegmentsSnapshot(&local_segments));
+  ASSERT_OK(ASSERT_RESULT(tablet_peer_->log()->GetLogReader())
+      ->GetSegmentsSnapshot(&local_segments));
 
   uint64_t first_seg_seqno = (*local_segments.begin())->header().sequence_number();
 
