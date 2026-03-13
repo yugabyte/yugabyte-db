@@ -34,6 +34,7 @@ public class TestPgRegressPgAsync extends BasePgRegressTestPorted {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     BasePgListenNotifyTest.addListenNotifyFlags(flagMap);
+    flagMap.put("cdc_max_virtual_wal_per_tserver", "10");
     return flagMap;
   }
 
