@@ -2026,4 +2026,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Maximum time to wait for node agent to restart after an upgrade",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_existing_duplicate_az",
+          ScopeType.GLOBAL,
+          "Allow Duplicates in Existing AZs",
+          "Allow duplicates in already existing availability zones",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
