@@ -453,77 +453,85 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 --
 -- test unsatisfiable conditions
 --
+SET yb_test_skip_binding_scan_keys = true;
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k <= 1 AND k = 2);'
 :query
                            QUERY PLAN                           
 ----------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
-   ->  Bitmap Index Scan on simple_pkey (actual rows=0 loops=1)
+   Storage Recheck Cond: (k = 2)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+   ->  Bitmap Index Scan on simple_pkey (actual rows=1 loops=1)
          Index Cond: (k = 2)
          Storage Index Filter: (k <= 1)
          Storage Table Read Requests: 1
-         Storage Table Read Ops: 1
-         Storage Table Rows Scanned: 1
-(7 rows)
+         Storage Table Read Ops: 3
+         Storage Table Rows Scanned: 10
+(11 rows)
 
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;'
 :query
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
    Storage Recheck Cond: (((k = 1) AND (k = 2)) OR (ind_b = 0))
    Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  BitmapOr (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on simple_pkey (actual rows=1 loops=1)
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on simple_pkey (actual rows=10 loops=1)
                Index Cond: ((k = 1) AND (k = 2))
                Storage Table Read Requests: 1
-               Storage Table Read Ops: 1
-               Storage Table Rows Scanned: 1
-         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
+               Storage Table Read Ops: 3
+               Storage Table Rows Scanned: 10
+         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=10 loops=1)
                Index Cond: (ind_b = 0)
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-(15 rows)
+               Storage Index Rows Scanned: 10
+(16 rows)
 
 \set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a <= 1 AND ind_a = 2);'
 :query
-                             QUERY PLAN                              
----------------------------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=0 loops=1)
    Storage Recheck Cond: ((ind_a <= 1) AND (ind_a = 2))
    Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 10
+   ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
          Index Cond: ((ind_a <= 1) AND (ind_a = 2))
          Storage Index Read Requests: 1
          Storage Index Read Ops: 1
-         Storage Index Rows Scanned: 1
+         Storage Index Rows Scanned: 10
 (10 rows)
 
 \set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;'
 :query
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  YB Bitmap Table Scan on simple (actual rows=1 loops=1)
    Storage Recheck Cond: (((ind_a = 2) AND (ind_a = 2)) OR (ind_b = 0))
    Storage Table Read Requests: 1
-   Storage Table Read Ops: 1
-   Storage Table Rows Scanned: 1
-   ->  BitmapOr (actual rows=1 loops=1)
-         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=1 loops=1)
+   Storage Table Read Ops: 3
+   Storage Table Rows Scanned: 10
+   ->  BitmapOr (actual rows=10 loops=1)
+         ->  Bitmap Index Scan on simple_ind_a_idx (actual rows=10 loops=1)
                Index Cond: ((ind_a = 2) AND (ind_a = 2))
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-               Storage Index Rows Scanned: 1
-         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=0 loops=1)
+               Storage Index Rows Scanned: 10
+         ->  Bitmap Index Scan on simple_ind_b_idx (actual rows=10 loops=1)
                Index Cond: (ind_b = 0)
                Storage Index Read Requests: 1
                Storage Index Read Ops: 1
-(15 rows)
+               Storage Index Rows Scanned: 10
+(16 rows)
 
+RESET yb_test_skip_binding_scan_keys;
 --
 -- #21793: test row compare expressions
 --
@@ -1376,7 +1384,7 @@ $$ AS query \gset
 --------------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
    Storage Recheck Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
          Index Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
 (4 rows)
 
@@ -1386,7 +1394,7 @@ $$ AS query \gset
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = ANY ('{2,5,6}'::integer[])))
 (6 rows)
 
@@ -1408,7 +1416,7 @@ $$ AS query \gset
 --------------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
    Storage Recheck Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
          Index Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
 (4 rows)
 
@@ -1418,7 +1426,7 @@ $$ AS query \gset
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=1 loops=1)
          Storage Recheck Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=3 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
                Index Cond: ((int4_col = ANY ('{2,5,6}'::integer[])) AND (int4_col < 3))
 (6 rows)
 
@@ -1440,7 +1448,7 @@ $$ AS query \gset
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
    Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (4 rows)
 
@@ -1450,7 +1458,7 @@ $$ AS query \gset
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (6 rows)
 
@@ -1471,7 +1479,7 @@ $$ AS query \gset
 ------------------------------------------------------------------------------
  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
    Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
-   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+   ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
          Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (4 rows)
 
@@ -1481,7 +1489,7 @@ $$ AS query \gset
    ->  YB Bitmap Table Scan on recheck_test t (actual rows=0 loops=1)
          Storage Recheck Cond: ((int4_col < 3) AND (int4_col = 5))
          Partial Aggregate: true
-         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=1 loops=1)
+         ->  Bitmap Index Scan on recheck_test_int4_col_idx (actual rows=0 loops=1)
                Index Cond: ((int4_col < 3) AND (int4_col = 5))
 (6 rows)
 

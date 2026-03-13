@@ -40,6 +40,7 @@
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
 extern bool yb_test_skip_binding_scan_keys;
+extern bool yb_enable_advanced_index_cond_fold;
 
 /*
  * In fact, only initial fetch uses the default size, we estimate the number

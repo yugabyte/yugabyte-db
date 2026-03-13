@@ -1159,3 +1159,21 @@ select * from s join r on a = y;
 
 
 drop table r, s;
+
+-- Test BNL join with IN + inequality on the same column.
+SET yb_bnl_batch_size = 1024;
+CREATE TABLE t_bnl_outer(v int, primary key(v asc));
+CREATE TABLE t_bnl_inner(k int, x int, primary key(k asc));
+INSERT INTO t_bnl_outer SELECT i FROM generate_series(1, 5) i;
+INSERT INTO t_bnl_inner SELECT i, i % 3 FROM generate_series(1, 20) i;
+ANALYZE t_bnl_outer, t_bnl_inner;
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
+/*+ YbBatchedNL(o i) Leading((o i)) */
+SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
+-- test yb_enable_advanced_index_cond_fold flag off
+SET yb_enable_advanced_index_cond_fold = off;
+EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF)
+/*+ YbBatchedNL(o i) Leading((o i)) */
+SELECT * FROM t_bnl_outer o JOIN t_bnl_inner i ON o.v = i.k WHERE i.k >= 3;
+RESET yb_enable_advanced_index_cond_fold;
+DROP TABLE t_bnl_outer, t_bnl_inner;

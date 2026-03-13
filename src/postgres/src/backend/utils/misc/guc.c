@@ -854,6 +854,7 @@ static char *yb_read_time_string;
 static char *yb_neg_catcache_ids_string;
 static bool yb_conn_mgr_modifying_defaults = false;
 bool		yb_test_skip_binding_scan_keys;
+bool		yb_enable_advanced_index_cond_fold;
 static bool yb_bypass_cond_recheck;
 static bool yb_pushdown_is_not_null;
 static bool yb_pushdown_strict_inequality;
@@ -3079,6 +3080,21 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_bypass_cond_recheck,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_advanced_index_cond_fold", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable advanced folding of same-column index "
+						 "conditions, including tightening inequality "
+						 "bounds across scan keys, intersecting IN "
+						 "arrays, and detecting additional contradictions "
+						 "at bind time."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_advanced_index_cond_fold,
 		true,
 		NULL, NULL, NULL
 	},

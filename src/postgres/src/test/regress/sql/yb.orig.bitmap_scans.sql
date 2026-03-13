@@ -81,7 +81,7 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 --
 -- test unsatisfiable conditions
 --
-
+SET yb_test_skip_binding_scan_keys = true;
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k <= 1 AND k = 2);'
 :query
 \set query ':explain :Q1 SELECT * FROM simple WHERE (k = 1 AND k = 2) OR ind_b = 0;'
@@ -90,6 +90,7 @@ SELECT COUNT(*) FROM simple WHERE ind_a = 2 OR (ind_b < 10 AND ind_b % 2 = 0);
 :query
 \set query ':explain :Q1 SELECT * FROM simple WHERE (ind_a = 2 AND ind_a = 2) OR ind_b = 0;'
 :query
+RESET yb_test_skip_binding_scan_keys;
 
 --
 -- #21793: test row compare expressions

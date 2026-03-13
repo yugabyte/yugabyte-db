@@ -61,6 +61,8 @@ YbCatalogModificationAspects
 YbCatalogVersionType
 YbChildScan
 YbChildScanData
+YbColFoldState
+YbColFoldType
 YbCommandInfo
 YbConcurrencyContext
 YbCostModel
