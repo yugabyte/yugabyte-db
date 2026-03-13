@@ -539,6 +539,7 @@ void ThreadMgr::RenderThreadCategoryRows(const ThreadCategory& category, std::st
       } else {
         symbolized = thread.stack_trace.status().message().ToBuffer();
       }
+      symbolized = EscapeForHtmlToString(symbolized);
       active_out = output + std::to_underlying(group);
     }
 
