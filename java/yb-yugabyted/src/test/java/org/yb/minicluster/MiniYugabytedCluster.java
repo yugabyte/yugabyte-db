@@ -5,6 +5,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -188,6 +189,17 @@ public class MiniYugabytedCluster implements AutoCloseable {
      */
     public List<HostAndPort> getMasterHostPorts() {
         return yugabytedMasterHostAndPorts;
+    }
+
+    public List<InetSocketAddress> getPostgresContactPoints() {
+        if (ysqlPort == null) {
+            return Collections.emptyList();
+        }
+        List<InetSocketAddress> result = new ArrayList<>();
+        for (HostAndPort hp : yugabytedMasterHostAndPorts) {
+            result.add(new InetSocketAddress(hp.getHost(), ysqlPort));
+        }
+        return result;
     }
 
     /**
