@@ -34,10 +34,13 @@ struct LockData {
   ObjectLockOwner object_lock_owner;
   TabletId status_tablet;
   MonoTime start_time;
+  TransactionId background_transaction_id = TransactionId::Nil();
   StdStatusCallback callback;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(key_to_lock, deadline, object_lock_owner, status_tablet, start_time);
+    return YB_STRUCT_TO_STRING(
+        key_to_lock, deadline, object_lock_owner, status_tablet, start_time,
+        background_transaction_id);
   }
 };
 
@@ -76,6 +79,10 @@ class ObjectLockManager {
 
   // Release all locks held against the given object_lock_owner.
   TxnBlockedTableLockRequests Unlock(const ObjectLockOwner& object_lock_owner);
+
+  // Unlock specific objects for the given owner, used for session object locks.
+  void UnlockObjectsForSession(
+      const TransactionId& txn, DetermineKeysToLockResult<ObjectLockManager>&& key_to_unlock);
 
   void Poll();
 
