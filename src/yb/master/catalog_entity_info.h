@@ -929,6 +929,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
 
+  std::vector<std::pair<int, TransactionId>> GetDdlTxnsWaitingForSchemaVersion() const;
+
   void AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
       int schema_version, const TransactionId& txn) EXCLUDES(lock_);
 

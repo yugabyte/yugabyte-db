@@ -30,6 +30,7 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(yb_enable_read_committed_isolation);
+DECLARE_int32(TEST_ysql_ddl_atomicity_alter_table_request_delay_ms);
 
 namespace yb::pgwrapper {
 
@@ -242,6 +243,68 @@ TEST_F(PgDdlTransactionTest, TestReadCommittedTxnDdlDisabled) {
   // The column 'new_col' should also exist in the table 'foo'.
   ASSERT_OK(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
   ASSERT_OK(conn.Execute("INSERT INTO foo (id, new_col) VALUES (1, 42)"));
+}
+
+class PgDdlTransactionMiniClusterTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+};
+
+TEST_F(PgDdlTransactionMiniClusterTest, TestWaitForSchemaVersionAfterRollback) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE foo (id SERIAL PRIMARY KEY)"));
+  auto foo_table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", "foo"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_ddl_atomicity_alter_table_request_delay_ms) = 5000;
+
+  // Required ordering of operations to get SCHEMA_VERSION_MISMATCH:
+  // 1. Background verification task (ysql_ddl_verification_task) should call
+  // YsqlDdlTxnCompleteCallback and process the ALTER by clearing the verification state on foo but
+  // not yet sent the ALTER TABLE request to the tablet servers to rollback the schema.
+  // 2. ReportYsqlDdlTxnStatus should be sent and it will observe the cleared verification state on
+  // foo, incorrectly (bug) assume that the table is no longer under verification and call
+  // RemoveDdlTransactionState.
+  // 3. ROLLBACK command returns to the client (bug).
+  //
+  // Now there is a race between the SELECT query and the ALTER request to the tablet servers.
+  // With the right timing, the SELECT query can first observe the schema version 1 for table 'foo'
+  // but later observe the schema version 2 when read is happening on DocDB if the schema bump
+  // happens in between.
+  // Note that this ordering cannot be reproduced by sync points because then the test will hang
+  // forever with the bug fix. This is because with the fix, the ROLLBACK will never return unless
+  // the schema version bump happens while we need the SELECT to start execution before the schema
+  // version bump. Hence, we inject a delay to hit the race condition.
+  SyncPoint::GetInstance()->LoadDependency({
+    {
+      "CatalogManager::YsqlDdlTxnAlterTableHelper:AfterClearYsqlDdlTxnState",
+      "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus"
+    },
+    {
+      "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus",
+      "CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable"
+    },
+    {
+      "CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable",
+      "CatalogManager::YsqlDdlTxnAlterTableHelper:SendAlterTableRequestInternal"
+    }
+  });
+  SyncPoint::GetInstance()->ClearTrace();
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("ALTER TABLE foo ADD COLUMN new_col INT"));
+  ASSERT_OK(conn.Execute("ROLLBACK"));
+
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(conn.Fetch("SELECT * FROM foo"));
+  }
+
+  SyncPoint::GetInstance()->DisableProcessing();
 }
 
 class PgDdlSavepointMiniClusterTest : public PgMiniTestBase,
