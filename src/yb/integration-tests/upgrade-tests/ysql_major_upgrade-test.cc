@@ -120,6 +120,15 @@ TEST_F(YsqlMajorUpgradeTest, CheckVersion) {
 
 TEST_F(YsqlMajorUpgradeTest, SimpleTableUpgrade) { ASSERT_OK(TestUpgradeWithSimpleTable()); }
 
+TEST_F(YsqlMajorUpgradeTest, YsqlNotEnabled) {
+  auto old_flag = FLAGS_enable_ysql;
+  FLAGS_enable_ysql = false;
+  auto status = client_->UpgradeYsql();
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "YSQL is not enabled");
+  FLAGS_enable_ysql = old_flag;
+}
+
 TEST_F(YsqlMajorUpgradeTest, SimpleTableRollback) {
   ASSERT_OK(TestRollbackWithSimpleTable());
 
