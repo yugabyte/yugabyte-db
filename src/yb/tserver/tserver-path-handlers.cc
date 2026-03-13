@@ -42,6 +42,8 @@
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/xrepl_stream_stats.h"
 
+#include "yb/common/version_info.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -56,7 +58,6 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
 
-#include "yb/server/html_print_helper.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/maintenance_manager.h"
@@ -71,13 +72,13 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
+
+#include "yb/util/flags.h"
+#include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/url-coding.h"
-#include "yb/common/version_info.h"
-#include "yb/util/flags.h"
 
 using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;

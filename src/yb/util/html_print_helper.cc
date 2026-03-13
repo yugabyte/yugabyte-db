@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/server/html_print_helper.h"
+#include "yb/util/html_print_helper.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 
@@ -71,9 +71,9 @@ function sortTable(table_id, n) {
     return;
   }
 
-  const tbody = table.tBodies[0];
-  const rows = new Array(...tbody.children);
-  const header_row = rows.shift();
+  const tbodies = new Array(...table.children);
+  const thead = tbodies.shift();
+  const header_row = thead.children[0];
 
   const asc = !header_row.getElementsByTagName("TH")[n].innerHTML.includes(asc_symb);
 
@@ -89,54 +89,60 @@ function sortTable(table_id, n) {
   }
 
   let all_number = true;
-  for (const row of rows) {
-    all_number = all_number && typeof castIfNumber(row.children[n].innerText) == 'number';
+  for (const tbody of tbodies) {
+    const sort_row = tbody.children[0];
+    all_number = all_number && typeof castIfNumber(sort_row.children[n].innerText) == 'number';
   }
 
+  let compare_text;
   if (all_number) {
-    rows.sort((x, y) => {
-      const cmpX = castIfNumber(x.children[n].innerText);
-      const cmpY = castIfNumber(y.children[n].innerText);
+    compare_text = (x, y) => {
+      const cmpX = castIfNumber(x);
+      const cmpY = castIfNumber(y);
 
       return asc ? cmpX - cmpY : cmpY - cmpX;
-    });
+    };
   } else {
-    rows.sort((x, y) => {
-      const cmpX = normalizeString(x.children[n].innerText);
-      const cmpY = normalizeString(y.children[n].innerText);
+    compare_text = (x, y) => {
+      const cmpX = normalizeString(x);
+      const cmpY = normalizeString(y);
 
       return (asc ? 1 : -1) * cmpX.localeCompare(cmpY);
-    });
+    };
   }
+  tbodies.sort((x, y) => {
+    const tdX = x.children[0].children[n];
+    const tdY = y.children[0].children[n];
+    const sortX = +tdX.getAttribute('data-sort');
+    const sortY = +tdY.getAttribute('data-sort');
+    if (sortX != sortY) {
+      return asc ? sortX - sortY : sortY - sortX;
+    }
+    return compare_text(tdX.innerText, tdY.innerText);
+  });
 
-  tbody.replaceChildren(header_row, ...rows);
+  table.replaceChildren(thead, ...tbodies);
 }
 
 function filterTableFunction(input_id, table_id) {
-  var filter = document.getElementById(input_id).value.toLowerCase();
-  var table = document.getElementById(table_id);
-  var tr = table.getElementsByTagName("tr");
-  for (var i = 0; i < tr.length; i++) {
-    if (tr[i].getElementsByTagName("th").length > 0) {
-     // Ignore header rows.
-      continue;
-    }
-    var row = tr[i].getElementsByTagName("td");
-    var found = false;
-    for (const td of row) {
-      if (td) {
-        var value = td.textContent || td.innerText;
-        if (value.toLowerCase().indexOf(filter) > -1) {
-          found = true;
-          break;
-        }
+  const filter = document.getElementById(input_id).value.toLowerCase();
+  const table = document.getElementById(table_id);
+  const tbodies = table.querySelectorAll("tbody");
+  for (const tbody of tbodies) {
+    const tds = tbody.querySelectorAll("td");
+    let found = false;
+    for (const td of tds) {
+      const value = td.textContent || td.innerText;
+      if (value.toLowerCase().indexOf(filter) > -1) {
+        found = true;
+        break;
       }
     }
 
     if(found) {
-      tr[i].style.display = "";
+      tbody.style.display = "";
     } else {
-      tr[i].style.display = "none";
+      tbody.style.display = "none";
     }
   }
 }
@@ -149,7 +155,7 @@ function filterTableFunction(input_id, table_id) {
 // HtmlPrintHelper
 // ================================================================================
 
-HtmlPrintHelper::HtmlPrintHelper(std::stringstream& output) : output_(output) {}
+HtmlPrintHelper::HtmlPrintHelper(std::ostream& output) : output_(output) {}
 
 HtmlPrintHelper::~HtmlPrintHelper() {
   if (has_tables_) {
@@ -181,7 +187,7 @@ HtmlFieldsetScope HtmlPrintHelper::CreateFieldset(const std::string& name) {
 // ================================================================================
 
 HtmlTablePrintHelper::HtmlTablePrintHelper(
-    std::stringstream& output, std::string table_name, std::vector<std::string> column_names,
+    std::ostream& output, std::string table_name, std::vector<std::string> column_names,
     std::vector<HtmlTableCellAlignment> column_alignment)
     : output_(output), table_name_(std::move(table_name)), column_names_(std::move(column_names)),
       column_alignment_(std::move(column_alignment)) {
@@ -190,20 +196,14 @@ HtmlTablePrintHelper::HtmlTablePrintHelper(
 
 HtmlTablePrintHelper::~HtmlTablePrintHelper() {}
 
-HtmlTablePrintHelper::TableRow& HtmlTablePrintHelper::AddRow() {
-  table_rows_.emplace_back();
-  return table_rows_.back();
+HtmlTablePrintHelper::TableRowSet& HtmlTablePrintHelper::AddRowSet() {
+  table_row_sets_.emplace_back();
+  return table_row_sets_.back();
 }
 
-void HtmlTablePrintHelper::TableRow::AddColumn(const char* cell_value) {
-  column_values_.emplace_back(cell_value);
-}
-
-void HtmlTablePrintHelper::TableRow::AddColumn(const std::string& cell_value) {
-  AddColumn(cell_value.c_str());
-}
-void HtmlTablePrintHelper::TableRow::AddColumn(bool cell_value) {
-  AddColumn(cell_value ? "true" : "false");
+HtmlTablePrintHelper::TableRow& HtmlTablePrintHelper::TableRowSet::AddRow() {
+  rows_.emplace_back();
+  return rows_.back();
 }
 
 void HtmlTablePrintHelper::Print() {
@@ -217,7 +217,7 @@ void HtmlTablePrintHelper::Print() {
   output_ << "<table class='table table-striped' id='" << table_name_
           << "' style='border: solid; border-width: thin;padding: 10px 10px;border-color:  "
              "#a8a8a8;'>\n";
-  output_ << "<tr>";
+  output_ << "<thead><tr>";
 
   // Print the table header row.
   uint32 _header_cnt = 0;
@@ -227,21 +227,27 @@ void HtmlTablePrintHelper::Print() {
     ++_header_cnt;
   }
 
-  output_ << "</tr>\n";
+  output_ << "</tr></thead>\n";
 
-  // Print the table rows.
-  for (const auto& row : table_rows_) {
-    DCHECK_EQ(row.column_values_.size(), column_names_.size());
-    output_ << "<tr>";
-    for (size_t i = 0; i < row.column_values_.size(); ++i) {
-      std::string column_alignment_str;
-      if (i < column_alignment_.size()) {
-        column_alignment_str = ColumnAlignmentToHtmlAttr(column_alignment_[i]);
+  for (const auto& row_set : table_row_sets_) {
+    output_ << "<tbody>";
+    for (const auto& row : row_set.rows_) {
+      output_ << "<tr>";
+      for (size_t i = 0; i < row.column_values_.size(); ++i) {
+        const auto& column_value = row.column_values_[i];
+        output_ << "<td";
+        if (i < column_alignment_.size()) {
+          output_ << " " << ColumnAlignmentToHtmlAttr(column_alignment_[i]);
+        }
+        if (column_value.rowspan > 1) {
+          output_ << " rowspan=" << column_value.rowspan;
+        }
+        output_ << " data-sort=" << column_value.sort_order;
+        output_ << ">" << column_value.value << "</td>";
       }
-      output_ << Format("<td $0>", column_alignment_str);
-      output_ << row.column_values_[i] << "</td>";
+      output_ << "</tr>";
     }
-    output_ << "</tr>\n";
+    output_ << "</tbody>\n";
   }
 
   output_ << "</table>\n";
@@ -261,7 +267,7 @@ static constexpr auto kFieldsetLegendStart =
 static constexpr auto kFieldsetLegendEnd = "</legend>\n";
 }  // namespace
 
-HtmlFieldsetScope::HtmlFieldsetScope(std::stringstream& output, const std::string& name)
+HtmlFieldsetScope::HtmlFieldsetScope(std::ostream& output, const std::string& name)
     : output_(output) {
   output_ << kFieldsetStart;
   output_ << kFieldsetLegendStart << name << kFieldsetLegendEnd;
