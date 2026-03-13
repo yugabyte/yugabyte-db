@@ -24,7 +24,7 @@
 
 namespace yb::pggate {
 
-PgSelectIndex::PgSelectIndex(const PgSession::ScopedRefPtr& pg_session)
+PgSelectIndex::PgSelectIndex(const PgSessionPtr& pg_session)
     : PgSelect(pg_session) {
 }
 
@@ -55,7 +55,7 @@ Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+    const PgSessionPtr& pg_session, const PgObjectId& index_id,
     const YbcPgTableLocalityInfo& locality_info,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};

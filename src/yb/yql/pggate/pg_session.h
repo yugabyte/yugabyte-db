@@ -63,14 +63,13 @@ struct PgSessionRunOptions {
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
-class PgSession final : public RefCountedThreadSafe<PgSession> {
+class PgSession final : public std::enable_shared_from_this<PgSession> {
+  class PrivateTag {};
  public:
-  // Public types.
-  using ScopedRefPtr = PgSessionPtr;
   using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
 
-  // Constructors.
   PgSession(
+      PrivateTag,
       PgClient& pg_client,
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YbcPgCallbacks& pg_callbacks,
@@ -235,6 +234,11 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   }
 
   YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
+
+  template<class... Args>
+  [[nodiscard]] static PgSessionPtr Make(Args&&... args) {
+    return std::make_shared<PgSession>(PrivateTag{}, std::forward<Args>(args)...);
+  }
 
  private:
   Result<PgTableDescPtr> DoLoadTable(

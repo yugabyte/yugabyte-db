@@ -29,7 +29,7 @@ class PgDelete final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kDelete> {
   }
 
   static Result<std::unique_ptr<PgDelete>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting) {
     std::unique_ptr<PgDelete> result{new PgDelete{pg_session, transaction_setting}};
@@ -39,7 +39,7 @@ class PgDelete final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kDelete> {
 
  private:
   PgDelete(
-      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting)
+      const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting)
       : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {

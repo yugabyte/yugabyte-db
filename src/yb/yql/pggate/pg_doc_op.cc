@@ -55,7 +55,7 @@ struct PgDocReadOpCachedHelper {
 
 class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
  public:
-  PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
+  PgDocReadOpCached(const PgSessionPtr& pg_session, PrefetchedDataHolder data)
       : PgDocOp(pg_session, &dummy_table) {
     std::list<DocResult> results;
     for (const auto& d : *data) {
@@ -242,7 +242,7 @@ Result<PgDocResponse::Data> PgDocResponse::Get(PgSession& session) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
+PgDocOp::PgDocOp(const PgSessionPtr& pg_session, PgTable* table, const Sender& sender)
     : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
 Status PgDocOp::ExecuteInit(const YbcPgExecParameters *exec_params) {
@@ -758,12 +758,12 @@ bool InPermutationBuilder::TargetsAreValid(const std::vector<size_t>& all_target
 
 //-------------------------------------------------------------------------------------------------
 
-PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocReadOp::PgDocReadOp(const PgSessionPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op)
     : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {}
 
-PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocReadOp::PgDocReadOp(const PgSessionPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op,
                          const Sender& sender)
@@ -1496,7 +1496,7 @@ void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocWriteOp::PgDocWriteOp(const PgSessionPtr& pg_session,
                            PgTable* table,
                            PgsqlWriteOpPtr write_op)
     : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
@@ -1527,7 +1527,7 @@ LWPgsqlWriteRequestPB& PgDocWriteOp::GetWriteOp(int op_index) {
 }
 
 PgDocOp::SharedPtr MakeDocReadOpWithData(
-    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data) {
+    const PgSessionPtr& pg_session, PrefetchedDataHolder data) {
   return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
 }
 

@@ -171,7 +171,7 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params,
     const YbcPgTableLocalityInfo& locality_info) {
   if (params && params->index_only_scan) {
@@ -789,7 +789,7 @@ PgApiImpl::PgApiImpl(
       enable_table_locking_(
           ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
       pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
-      pg_session_(make_scoped_refptr<PgSession>(
+      pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_,
           [this](auto marker) {

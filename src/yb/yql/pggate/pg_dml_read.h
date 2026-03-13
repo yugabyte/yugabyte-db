@@ -143,7 +143,7 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] virtual bool IsPgSelectIndex() const { return false; }
 
  protected:
-  explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgDmlRead(const PgSessionPtr& pg_session);
 
   // Allocate column protobuf.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;

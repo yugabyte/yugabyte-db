@@ -31,7 +31,7 @@
 namespace yb::pggate {
 
 PgDmlWrite::PgDmlWrite(
-    const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+    const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting,
     bool packed)
     : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
     pg_session_->SetTransactionHasWrites();

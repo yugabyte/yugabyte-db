@@ -494,6 +494,7 @@ class PgSession::RunHelper {
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
+    PrivateTag,
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YbcPgCallbacks& pg_callbacks,

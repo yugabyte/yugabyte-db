@@ -52,7 +52,7 @@ class PgDmlWrite : public PgDml {
 
  protected:
   PgDmlWrite(
-      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+      const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting,
       bool packed = false);
 
   // Prepare write operations.
