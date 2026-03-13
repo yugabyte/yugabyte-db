@@ -26,6 +26,8 @@
     "npm": ">=10"
   },
   "overrides": {
+    "vite": "8.0.15",
+    "@vitejs/plugin-react": "6.0.0",
     "react-bootstrap-table": {
       "react": "17.0.2",
       "react-dom": "17.0.2"
@@ -43,7 +45,7 @@
       "react-dom": "17.0.2"
     },
     "@storybook/react-vite": {
-      "vite": "6.4.1"
+      "vite": "8.0.15"
     },
     "react-router": {
       "react": "17.0.2",
@@ -77,7 +79,7 @@
     "@types/uuid": "9.0.0",
     "@typescript-eslint/eslint-plugin": "6.21.0",
     "@typescript-eslint/parser": "6.21.0",
-    "@vitejs/plugin-react": "4.3.4",
+    "@vitejs/plugin-react": "6.0.0",
     "@vitest/ui": "4.0.18",
     "eslint": "8.57.1",
     "eslint-config-prettier": "8.3.0",
@@ -93,10 +95,10 @@
     "orval": "6.4.1",
     "prettier": "3.8.1",
     "rimraf": "2.7.1",
-    "sass": "1.52.1",
+    "sass": "1.77.8",
     "source-map-explorer": "2.5.0",
     "storybook": "10.2.13",
-    "vite": "6.4.1",
+    "vite": "8.0.15",
     "vite-plugin-dynamic-import": "1.4.1",
     "vite-plugin-svgr": "4.3.0",
     "vitest": "4.0.18"
@@ -128,7 +130,6 @@
     "copy-to-clipboard": "3.3.1",
     "cronstrue": "1.94.0",
     "enumify": "1.0.4",
-    "esbuild": "^0.25.1",
     "formik": "1.5.8",
     "highlight.js": "9.18.2",
     "i18next": "^21.6.16",
@@ -206,9 +207,6 @@
         }
       }
     ]
-  },
-  "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.55.1"
   },
   "msw": {
     "workerDirectory": [
