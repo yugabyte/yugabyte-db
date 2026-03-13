@@ -171,7 +171,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CreatePitrConfig,
           TaskType.UpdatePitrConfig,
           TaskType.DeletePitrConfig,
-          TaskType.RestoreSnapshotSchedule);
+          TaskType.RestoreSnapshotSchedule,
+          TaskType.ProvisionUniverseNodes);
 
   @Override
   protected Application provideApplication() {
