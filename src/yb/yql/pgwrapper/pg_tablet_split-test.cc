@@ -89,6 +89,10 @@ DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 DECLARE_bool(TEST_pause_apply_tablet_split);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(cleanup_intents_sst_files);
+DECLARE_bool(rocksdb_disable_compactions);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -1876,6 +1880,70 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   }
 
   ASSERT_TRUE(found) << " The row is not found";
+}
+
+TEST_F(PgTabletSplitTest, TestWriteId) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Step 1: Create a table and insert 1000 rows.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Step 2: Start txn1, insert one new row, then flush tablet. The row is flushed to intents sst1
+  // file is with WriteId 0.
+  auto conn_txn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_txn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_txn1.Execute("INSERT INTO t VALUES (10001, 1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  // Step 3: Insert second row in txn1. This row will be flushed to intents sst2 file with WriteId 1
+  ASSERT_OK(conn_txn1.Execute("INSERT INTO t VALUES (10003, 2)"));
+
+  // Step 4: Start txn2 and insert one new row. txn2 is never committed, so this ensure intents file
+  // sst2 will not be removed after txn1 is committed.
+  auto conn_txn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_txn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_txn2.Execute("INSERT INTO t VALUES (10004, 4)"));
+
+  // Step 5: Trigger split and wait for split to complete. After split, intents sst2 file is
+  // generated.
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+  LOG(INFO) << "split done";
+
+  // Step 6: Update the row in txn1 and commit txn1. The row has WriteId 2.
+  ASSERT_OK(conn_txn1.Execute("UPDATE t SET v = 3 where k = 10003"));
+  ASSERT_OK(conn_txn1.CommitTransaction());
+
+  // Wait few seconds to ensure the txn is applied and the intents sst1 is removed. The regular db
+  // will be flushed before sst1 was removed.
+  SleepFor(15s * kTimeMultiplier);
+  LOG(INFO) << "Starting shutdown";
+
+  // Step 7: Restart the tserver with gflags to ensure intents are not flushed during shutdown.
+  // During bootstrap, we will replay all entries after split_op, so the write in step 6 will be
+  // replayed and inserts to intents db with WriteId 0 (note it is not 2 because the metadata of
+  // txn1 was gone after sst1 was removed). Without the fix, it will cause FATAL:
+  // "Corruption (yb/docdb/rocksdb_writer.cc:770): Unexpected write id. Expected: 2, found: 0".
+  // With the fix, we skip applying txn1 to regular db because it had been applied, it will not
+  // trigger the FATAL.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  auto* tserver = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tserver->Restart());
+  ASSERT_OK(tserver->WaitStarted());
+
+  // Verify rows exist after restart.
+  auto conn_verify = ASSERT_RESULT(Connect());
+  for (const auto& [k, expected_v] : std::vector<std::pair<int, int>>{{10001, 1}, {10003, 3}}) {
+    auto val = ASSERT_RESULT(conn_verify.FetchRow<int32_t>(
+        Format("SELECT v FROM t WHERE k = $0", k)));
+    ASSERT_EQ(val, expected_v) << "Mismatch for k=" << k;
+  }
 }
 
 } // namespace yb::pgwrapper
