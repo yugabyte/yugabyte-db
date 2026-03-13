@@ -58,6 +58,7 @@
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 using std::string;
 using std::vector;
@@ -287,8 +288,8 @@ void LogCache::LogCallback(bool overwritten_cache,
   user_callback.Run(log_status);
 }
 
-int64_t LogCache::earliest_op_index() const {
-  auto ret = log_->GetLogReader()->GetMinReplicateIndex();
+Result<int64_t> LogCache::earliest_op_index() const {
+  auto ret = VERIFY_RESULT(log_->GetLogReader())->GetMinReplicateIndex();
   if (ret == -1) { // No finalized log files yet.  Query the active log.
     ret = log_->GetMinReplicateIndex();
   }
@@ -307,8 +308,9 @@ Result<log::ReadableLogSegmentPtr> CheckHasFooter(
 
 Result<HybridTime> LogCache::GetMinStartTimeRunningTxnsFromSegmentFooter(
     int64_t segment_number) const {
-  const auto segment = VERIFY_RESULT(
-      CheckHasFooter(log_->GetLogReader()->GetSegmentBySequenceNumber(segment_number)));
+  const auto segment = VERIFY_RESULT(CheckHasFooter(
+      VERIFY_RESULT(log_->GetLogReader())
+          ->GetSegmentBySequenceNumber(segment_number)));
 
   // Segments from older DB versions will have a footer without min_start_time_running_txns
   // stored in it. For such segments, return HybridTime::kInitial. This is to preserve the semantics
@@ -319,8 +321,11 @@ Result<HybridTime> LogCache::GetMinStartTimeRunningTxnsFromSegmentFooter(
 }
 
 Result<int64_t> LogCache::GetMaxReplicateIndexFromSegmentFooter(int64_t segment_number) const {
-  const auto segment = VERIFY_RESULT(
-      CheckHasFooter(log_->GetLogReader()->GetSegmentBySequenceNumber(segment_number)));
+  TEST_SYNC_POINT("LogCache::GetMaxReplicateIndexFromSegmentFooter::Entered");
+  TEST_SYNC_POINT("LogCache::GetMaxReplicateIndexFromSegmentFooter::BeforeRead");
+  const auto segment = VERIFY_RESULT(CheckHasFooter(
+      VERIFY_RESULT(log_->GetLogReader())
+          ->GetSegmentBySequenceNumber(segment_number)));
 
   return segment->footer().has_max_replicate_index() ? segment->footer().max_replicate_index() : 0;
 }
@@ -354,11 +359,11 @@ Result<yb::OpId> LogCache::LookupOpId(int64_t op_index) const {
   }
 
   // If it misses, read from the log.
-  return log_->GetLogReader()->LookupOpId(op_index);
+  return VERIFY_RESULT(log_->GetLogReader())->LookupOpId(op_index);
 }
 
 Result<int64_t> LogCache::LookupOpWalSegmentNumber(int64_t op_index) const {
-  return log_->GetLogReader()->LookupOpWalSegmentNumber(op_index);
+  return VERIFY_RESULT(log_->GetLogReader())->LookupOpWalSegmentNumber(op_index);
 }
 
 namespace {
@@ -447,7 +452,7 @@ Result<ReadOpsResult> LogCache::ReadOps(
       l.unlock();
 
       ReplicateMsgs raw_replicate_ptrs;
-      auto s = log_->GetLogReader()->ReadReplicatesInRange(
+      auto s = VERIFY_RESULT(log_->GetLogReader())->ReadReplicatesInRange(
           next_index, up_to, remaining_space, obey_memory_limit, &raw_replicate_ptrs,
           &starting_op_segment_seq_num, deadline);
       if (!s.ok()) {
@@ -475,7 +480,8 @@ Result<ReadOpsResult> LogCache::ReadOps(
         next_index++;
       }
     } else {
-      const auto seg_num_result = log_->GetLogReader()->LookupOpWalSegmentNumber(next_index);
+      const auto seg_num_result =
+          VERIFY_RESULT(log_->GetLogReader())->LookupOpWalSegmentNumber(next_index);
       if (seg_num_result.ok()) {
         starting_op_segment_seq_num = *seg_num_result;
       } else if (!seg_num_result.status().IsNotFound()) {

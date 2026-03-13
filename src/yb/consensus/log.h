@@ -195,9 +195,9 @@ class Log : public RefCountedThreadSafe<Log> {
                                          const std::string& wal_dir,
                                          const std::string& peer_uuid);
 
-  // Returns a reader that is able to read through the previous segments. The reader pointer is
-  // guaranteed to be live as long as the log itself is initialized and live.
-  LogReader* GetLogReader() const;
+  // Returns a reader that is able to read through the previous segments.
+  // Returns IllegalState if the log has been closed and the reader is no longer available.
+  Result<LogReader*> GetLogReader() const;
 
   Status GetSegmentsSnapshot(SegmentSequence* segments) const;
 

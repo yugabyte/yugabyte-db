@@ -1674,7 +1674,10 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
   return Status::OK();
 }
 
-LogReader* Log::GetLogReader() const {
+Result<LogReader*> Log::GetLogReader() const {
+  if (!reader_) {
+    return STATUS(IllegalState, "LogReader is not initialized");
+  }
   return reader_.get();
 }
 
