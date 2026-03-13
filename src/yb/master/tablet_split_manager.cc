@@ -27,6 +27,7 @@
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -312,7 +313,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
-  auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfo(table));
+  auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfoNoDefault(table));
   auto s = catalog_manager_.CanAddPartitionsToTable(
       table->NumPartitions() + 1, replication_info.live_replicas());
   if (s.ok() && FLAGS_split_respects_tablet_replica_limits) {
@@ -860,14 +861,15 @@ void TabletSplitManager::DoSplitting(
 
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
-    auto replication_factor = catalog_manager_.GetTableReplicationFactor(table);
-    if (!replication_factor.ok()) {
+    auto replication_info = catalog_manager_.GetTableReplicationInfoNoDefault(table);
+    if (!replication_info.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
                                        << table->id() << ": "
-                                       << "as fetching replication factor failed with error "
-                                       << StatusToString(replication_factor.status());
+                                       << "as fetching replication info failed with error "
+                                       << StatusToString(replication_info.status());
       continue;
     }
+    auto replication_factor = CatalogManagerUtil::GetReplicationFactor(*replication_info);
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
@@ -925,7 +927,7 @@ void TabletSplitManager::DoSplitting(
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         RETURN_NOT_OK(
-            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()));
+            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor));
         RETURN_NOT_OK(AllReplicasHaveFinishedCompaction(*replicas));
         return drive_info_opt.get().sst_files_size;
       };

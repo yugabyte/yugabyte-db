@@ -143,9 +143,10 @@ class CatalogManagerIf : public tserver::TabletPeerLookupIf {
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) = 0;
 
-  virtual Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) = 0;
+  virtual Result<ReplicationInfoPB> GetTableReplicationInfoNoDefault(
+      const TableInfoPtr& table) const = 0;
 
-  virtual Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const = 0;
+  virtual ReplicationInfoPB GetTableReplicationInfoWithDefault(const TableInfoPtr& table) const = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() = 0;
 

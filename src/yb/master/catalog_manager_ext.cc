@@ -1524,7 +1524,7 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
       return STATUS_FORMAT(NotFound, "Failed to get table info for table $0", table_id);
     }
     replication_info_and_num_tablets.push_back({
-        VERIFY_RESULT(GetTableReplicationInfo(table_ptr)),
+        GetTableReplicationInfoWithDefault(table_ptr),
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.

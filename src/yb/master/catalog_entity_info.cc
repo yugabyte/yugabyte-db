@@ -664,17 +664,14 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
   return STATUS_FORMAT(NotFound, "Table $0 has no splittable hash partition", table_id_);
 }
 
-void TableInfo::AddStatusTabletViaSplitPartition(
+Result<TabletInfo::WriteLock> TableInfo::AddStatusTabletViaSplitPartition(
     TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
   const auto& new_dirty = new_tablet->metadata().dirty();
-  if (new_dirty.is_deleted()) {
-    return;
-  }
+  RSTATUS_DCHECK(!new_dirty.is_deleted(), Deleted, "New tablet to add is already deleted");
 
   auto old_lock = old_tablet->LockForWrite();
   auto old_partition = old_lock.mutable_data()->pb.mutable_partition();
   partition.ToPB(old_partition);
-  old_lock.Commit();
 
   std::lock_guard l(lock_);
   tablets_.emplace(new_tablet->id(), new_tablet);
@@ -683,6 +680,7 @@ void TableInfo::AddStatusTabletViaSplitPartition(
     const auto& new_partition_key = new_dirty.pb.partition().partition_key_end();
     partitions_.emplace(new_partition_key, new_tablet);
   }
+  return old_lock;
 }
 
 Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {

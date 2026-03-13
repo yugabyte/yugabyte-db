@@ -104,12 +104,12 @@ namespace yb::master {
 
 namespace {
 
-std::atomic<int32_t> TEST_transaction_status_check_run_counter{0};
+std::atomic<int32_t> TEST_catalog_manager_bg_task_run_counter{0};
 
 }  // namespace
 
-int32_t TEST_transaction_status_check_run_count() {
-  return TEST_transaction_status_check_run_counter.load(std::memory_order_relaxed);
+int32_t TEST_catalog_manager_bg_task_run_count() {
+  return TEST_catalog_manager_bg_task_run_counter.load();
 }
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
@@ -355,12 +355,14 @@ void CatalogManagerBgTasks::Run() {
     //    to notify about tablets creation.
     //  - DeleteTable will call Wake() to finish destructing any table internals
     l.Unlock();
+    TEST_catalog_manager_bg_task_run_counter.fetch_add(1);
     TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_end);
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
   VLOG(1) << "Catalog manager background task thread shutting down";
 }
 
+// todo(30707): Move this check to its own dedicated task.
 void CatalogManagerBgTasks::ScaleUpTransactionStatusTablesIfNeeded(const LeaderEpoch& epoch) {
   auto interval_sec = FLAGS_transaction_table_check_interval_sec;
 
@@ -398,7 +400,6 @@ Status CatalogManagerBgTasks::DoScaleUpTransactionStatusTables(
       "Local transaction status table check failed");
 
   last_live_tservers_ = num_live_tservers;
-  TEST_transaction_status_check_run_counter.fetch_add(1, std::memory_order_relaxed);
   return Status::OK();
 }
 
@@ -421,16 +422,8 @@ Status CatalogManagerBgTasks::ScaleUpLocalTransactionStatusTablesIfNeeded(
             << " in transaction_table_ids_set_ but not in table_ids_map_";
         continue;
       }
-
-      auto repl_info = catalog_manager_->GetTableReplicationInfo(table);
-      if (!repl_info.ok()) {
-        WARN_NOT_OK(repl_info, Format(
-            "Failed to get replication info - skipping table $0 ($1)",
-            table->name(), table_id));
-        continue;
-      }
-
-      transaction_tables.push_back({table, *repl_info});
+      transaction_tables.push_back(
+          {table, VERIFY_RESULT(catalog_manager_->GetTableReplicationInfoNoDefault(table))});
     }
   }
 
