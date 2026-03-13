@@ -1590,6 +1590,28 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 			IsPolymorphicType(valtypid));
 }
 
+/*
+ * yb_has_hash_code_equality_scan_key
+ *	  Return true if the scan has a yb_hash_code equality scan key, meaning
+ *	  the scan is pinned to a single hash bucket.  In that case, hash columns
+ *	  can participate in ROW comparison pushdown since rows within a single
+ *	  bucket are stored in (hash_cols, range_cols) order.
+ */
+static bool
+yb_has_hash_code_equality_scan_key(YbScanDesc ybScan)
+{
+	ListCell   *lc;
+
+	foreach(lc, ybScan->hash_code_keys)
+	{
+		ScanKey		key = (ScanKey) lfirst(lc);
+
+		if (key->sk_strategy == BTEqualStrategyNumber)
+			return true;
+	}
+	return false;
+}
+
 static bool
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 						int skey_index, bool is_not_null[],
@@ -1636,9 +1658,14 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		}
 		last_att_no = key->sk_attno;
 
-		/* Make sure that there are no hash key columns. */
-		if (index->rd_indoption[key->sk_attno - 1]
-			& INDOPTION_HASH)
+		/*
+		 * Make sure that there are no hash key columns, unless the scan
+		 * is pinned to a single hash bucket via yb_hash_code() = const.
+		 * Within a single bucket rows are ordered by (hash_cols, range_cols)
+		 * so range comparisons on hash columns are valid.
+		 */
+		if ((index->rd_indoption[key->sk_attno - 1] & INDOPTION_HASH) &&
+			!yb_has_hash_code_equality_scan_key(ybScan))
 		{
 			can_pushdown = false;
 			break;
@@ -1646,14 +1673,44 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	}
 
 	/*
-	 * Make sure that the primary key has no hash columns in order
-	 * to push down.
+	 * Make sure that the primary key has no hash columns in order to push
+	 * down.  When pinned to a single hash bucket via yb_hash_code() = const,
+	 * we can relax this only if the ROW comparison subkeys actually include
+	 * all hash columns — otherwise EncodeRowKeyForBound would receive NULL
+	 * for unspecified hash column positions, which is not supported.
 	 */
-
-	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)
+	if (can_pushdown)
 	{
-		if (index->rd_indoption[i] & INDOPTION_HASH)
+		bool	has_hash_code_eq = yb_has_hash_code_equality_scan_key(ybScan);
+		int		hash_cols_covered = 0;
+
+		for (int i = 0; i < index->rd_index->indnkeyatts; i++)
+		{
+			if (!(index->rd_indoption[i] & INDOPTION_HASH))
+				continue;
+
+			if (has_hash_code_eq)
+			{
+				/* Check if this hash column is covered by a subkey. */
+				bool	found = false;
+				for (int j = 0; j < subkey_count; j++)
+				{
+					if (subkeys[j]->sk_attno - 1 == i)
+					{
+						found = true;
+						break;
+					}
+				}
+				if (found)
+				{
+					hash_cols_covered++;
+					continue;
+				}
+			}
+			/* Hash column not covered or no hash code equality → reject. */
 			can_pushdown = false;
+			break;
+		}
 	}
 
 	bool		needs_recheck = true;
@@ -1756,8 +1813,15 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				int			att_idx = YBAttnumToBmsIndex(((TableScanDesc) ybScan)->rs_rd,
 														 subkeys[subkey_index]->sk_attno);
 
-				/* Set the first column in this RC to not null. */
-				is_not_null[att_idx] |= subkey_index == 0;
+				/*
+				 * Set the first column in this RC to not null, except for
+				 * partition/hash columns. Pggate does not allow binding
+				 * IS NOT NULL on partition columns, and for primary-key hash
+				 * columns the null check is redundant anyway.
+				 */
+				is_not_null[att_idx] |= (subkey_index == 0 &&
+										 !(index->rd_indoption[subkeys[subkey_index]->sk_attno - 1] &
+										   INDOPTION_HASH));
 
 				subkey_index++;
 			}
