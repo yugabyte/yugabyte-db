@@ -270,10 +270,9 @@ namespace yb::tserver {
 namespace {
 
 uint16_t GetPostgresPort() {
-  yb::HostPort postgres_address;
-  CHECK_OK(postgres_address.ParseString(
-      FLAGS_pgsql_proxy_bind_address, yb::pgwrapper::PgProcessConf().kDefaultPort));
-  return postgres_address.port();
+  auto parsed = CHECK_RESULT(pgwrapper::ParsePgBindAddresses(
+      FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf::kDefaultPort));
+  return parsed.port;
 }
 
 bool PostgresAndYsqlConnMgrPortValidator(const char* flag_name, uint32 value) {
@@ -570,8 +569,11 @@ Status TabletServer::Init() {
 
   auto shared = shared_object();
 
-  // 5433 is kDefaultPort in src/yb/yql/pgwrapper/pg_wrapper.h.
-  RETURN_NOT_OK(pgsql_proxy_bind_address_.ParseString(FLAGS_pgsql_proxy_bind_address, 5433));
+  // pgsql_proxy_bind_address_ is used to register with the master and for internal connections,
+  // so only the first address is needed. PostgreSQL listens on all addresses via listen_addresses.
+  auto parsed = VERIFY_RESULT(
+      pgwrapper::ParsePgBindAddresses(FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf::kDefaultPort));
+  pgsql_proxy_bind_address_ = HostPort(parsed.first_host, parsed.port);
   if (PREDICT_FALSE(FLAGS_TEST_pg_auth_key != 0)) {
     shared->SetPostgresAuthKey(FLAGS_TEST_pg_auth_key);
   } else {
