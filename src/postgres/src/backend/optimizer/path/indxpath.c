@@ -3660,7 +3660,16 @@ match_rowcompare_to_indexcol(PlannerInfo *root,
 	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
 		return NULL;
 
-	if (is_hash_column_in_lsm_index(index, indexcol))
+	/*
+	 * YB: Hash columns in an LSM index normally cannot use range comparisons
+	 * because the hash values are not ordered across buckets.  However, when
+	 * yb_hash_code(hash_cols) = constant pins the scan to a single hash
+	 * bucket, rows within that bucket ARE stored in (hash_cols, range_cols)
+	 * order, so range comparisons (including ROW comparisons used for keyset
+	 * pagination) on hash columns are valid.
+	 */
+	if (is_hash_column_in_lsm_index(index, indexcol) &&
+		!yb_has_hash_code_equality_qual(index))
 		return NULL;
 
 	index_relid = index->rel->relid;

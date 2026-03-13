@@ -31,6 +31,7 @@
 /* YB includes */
 #include "access/sysattr.h"
 #include "optimizer/yb_saop_merge.h"
+#include "pg_yb_utils.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -570,10 +571,18 @@ build_index_pathkeys(PlannerInfo *root,
 	int			i;
 	int			yb_distinct_prefixlen;
 	int			yb_saop_merge_cardinality = 1;
+	bool		yb_hash_bucket_pinned;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
 
+	/*
+	 * YB: When yb_hash_code(hash_cols) = constant constrains the scan to a
+	 * single hash bucket, DocDB guarantees rows are stored in
+	 * (hash_cols, range_cols) order within that bucket, so hash columns
+	 * provide valid sort-order pathkeys.
+	 */
+	yb_hash_bucket_pinned = yb_has_hash_code_equality_qual(index);
 	/*
 	 * YB: Compute the set of pathkeys corresponding to the distinct index scan
 	 * prefix. 0 when the prefix is empty.
@@ -618,6 +627,10 @@ build_index_pathkeys(PlannerInfo *root,
 		/*
 		 * OK, try to make a canonical pathkey for this sort key.  Note we're
 		 * underneath any outer joins, so nullable_relids should be NULL.
+		 *
+		 * YB: When pinned to a single hash bucket, treat hash columns as
+		 * range columns for ordering purposes -- they provide valid sort
+		 * pathkeys within that bucket.
 		 */
 		cpathkey = make_pathkey_from_sortinfo(root,
 											  indexkey,
@@ -630,7 +643,8 @@ build_index_pathkeys(PlannerInfo *root,
 											  0,
 											  index->rel->relids,
 											  false,
-											  yb_is_hash_column);
+											  yb_is_hash_column &&
+											  !yb_hash_bucket_pinned);
 
 		/*
 		 * YB: Index keys part of scalar array operations may be eligible for
@@ -647,8 +661,14 @@ build_index_pathkeys(PlannerInfo *root,
 		{
 			/* Do nothing */
 		}
-		/* YB: For hash columns, sort pathkeys are invalid. */
+		/*
+		 * YB: For hash columns, sort pathkeys are normally invalid.
+		 * Exception: when pinned to a single hash bucket via
+		 * yb_hash_code(hash_cols) = const, hash columns provide valid
+		 * sort ordering within that bucket.
+		 */
 		else if (cpathkey && !(yb_is_hash_column &&
+							   !yb_hash_bucket_pinned &&
 							   cpathkey->pk_eclass->ec_sortref != 0))
 		{
 			/*
@@ -671,7 +691,7 @@ build_index_pathkeys(PlannerInfo *root,
 			 * keys won't be useful either.
 			 */
 			if (!indexcol_is_bool_constant_for_query(root, index, i) ||
-				yb_is_hash_column)
+				(yb_is_hash_column && !yb_hash_bucket_pinned))
 				break;
 		}
 
@@ -699,11 +719,15 @@ build_index_pathkeys(PlannerInfo *root,
 	 * We can request a distinct index scan on h1, h2 tuples but there may still
 	 * be some duplicate values of h1 in the result.
 	 */
-	if (i < index->nhashcolumns)
+	if (i < index->nhashcolumns && !yb_hash_bucket_pinned)
 	{
 		/*
 		 * All hash columns must have EQ pathkeys. Otherwise, we cannot use
-		 * the index
+		 * the index.
+		 *
+		 * YB: Exception when pinned to a single hash bucket via
+		 * yb_hash_code(hash_cols) = const -- hash columns provide valid
+		 * ordering within the bucket.
 		 */
 		return NULL;
 	}
