@@ -20,6 +20,8 @@ type TabletOnDiskSizeStruct struct {
     SstFilesSizeBytes            uint64 `json:"sst_files_size_bytes"`
     UncompressedSstFileSize      string `json:"uncompressed_sst_file_size"`
     UncompressedSstFileSizeBytes uint64 `json:"uncompressed_sst_file_size_bytes"`
+    VectorIndexDiskSize          string `json:"vector_index_disk_size"`
+    VectorIndexDiskSizeBytes     uint64 `json:"vector_index_disk_size_bytes"`
 }
 
 type TabletInfoStruct struct {

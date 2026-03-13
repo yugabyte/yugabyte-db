@@ -13,6 +13,8 @@ type OnDiskSizeStruct struct {
     SstFilesSizeBytes            int64  `json:"sst_files_size_bytes"`
     UncompressedSstFileSize      string `json:"uncompressed_sst_file_size"`
     UncompressedSstFileSizeBytes int64  `json:"uncompressed_sst_file_size_bytes"`
+    VectorIndexDiskSize          string `json:"vector_index_disk_size"`
+    VectorIndexDiskSizeBytes     int64  `json:"vector_index_disk_size_bytes"`
     HasMissingSize               bool   `json:"has_missing_size"`
 }
 

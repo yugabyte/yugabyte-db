@@ -1847,6 +1847,16 @@ size_t VectorLSM<Vector, DistanceResult>::NumSavedImmutableChunks() const {
 }
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+uint64_t VectorLSM<Vector, DistanceResult>::OnDiskSize() const {
+  SharedLock lock(mutex_);
+  uint64_t total = 0;
+  for (const auto& chunk : immutable_chunks_) {
+    total += chunk->file_size();
+  }
+  return total;
+}
+
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 Env* VectorLSM<Vector, DistanceResult>::TEST_GetEnv() const {
   return env_;
 }

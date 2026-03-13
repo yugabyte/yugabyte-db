@@ -1128,7 +1128,8 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
                         Uuid:      table.Uuid,
                         Type:      models.YBAPIENUM_YSQL,
                         SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
-                                   table.OnDiskSize.SstFilesSizeBytes,
+                                   table.OnDiskSize.SstFilesSizeBytes +
+                                   table.OnDiskSize.VectorIndexDiskSizeBytes,
                     })
             }
         }
@@ -1141,7 +1142,8 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
                         Uuid:      index.Uuid,
                         Type:      models.YBAPIENUM_YSQL,
                         SizeBytes: index.OnDiskSize.WalFilesSizeBytes +
-                                   index.OnDiskSize.SstFilesSizeBytes,
+                                   index.OnDiskSize.SstFilesSizeBytes +
+                                   index.OnDiskSize.VectorIndexDiskSizeBytes,
                     })
             }
         }
@@ -1155,7 +1157,8 @@ func (c *Container) GetClusterTables(ctx echo.Context) error {
                         Uuid:      table.Uuid,
                         Type:      models.YBAPIENUM_YCQL,
                         SizeBytes: table.OnDiskSize.WalFilesSizeBytes +
-                                   table.OnDiskSize.SstFilesSizeBytes,
+                                   table.OnDiskSize.SstFilesSizeBytes +
+                                   table.OnDiskSize.VectorIndexDiskSizeBytes,
                 })
             }
         }

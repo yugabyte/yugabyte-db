@@ -570,6 +570,18 @@ docdb::DocVectorIndexesPtr TabletVectorIndexes::List() const {
   return vector_indexes_list_;
 }
 
+uint64_t TabletVectorIndexes::OnDiskSize() const {
+  auto list = List();
+  if (!list) {
+    return 0;
+  }
+  uint64_t total = 0;
+  for (const auto& index : *list) {
+    total += index->OnDiskSize();
+  }
+  return total;
+}
+
 auto TabletVectorIndexes::FinishedBackfills()
     -> std::optional<google::protobuf::RepeatedPtrField<std::string>> {
   auto list = List();
