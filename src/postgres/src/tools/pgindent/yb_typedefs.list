@@ -122,6 +122,8 @@ YbNLBucketInfo
 YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
+YbNotifsPollerInitStatus
+YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
 YbOptSplit
