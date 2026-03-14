@@ -1182,6 +1182,17 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   return txns;
 }
 
+std::vector<std::pair<int, TransactionId>> TableInfo::GetDdlTxnsWaitingForSchemaVersion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  std::vector<std::pair<int, TransactionId>> txns;
+
+  txns.reserve(ddl_txns_waiting_for_schema_version_.size());
+  for (const auto& [schema_version, txn] : ddl_txns_waiting_for_schema_version_) {
+    txns.emplace_back(schema_version, txn);
+  }
+  return txns;
+}
+
 void TableInfo::AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
     int schema_version, const TransactionId& txn) {
   std::lock_guard l(lock_);

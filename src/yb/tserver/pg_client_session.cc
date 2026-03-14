@@ -3034,6 +3034,9 @@ class PgClientSession::Impl {
     if (YsqlDdlRollbackEnabled() && metadata && !metadata->transaction_id.IsNil()) {
       if (has_docdb_schema_changes ) {
         if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
+          TEST_SYNC_POINT(
+              "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus");
+
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
