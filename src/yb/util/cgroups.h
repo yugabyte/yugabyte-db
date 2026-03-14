@@ -145,6 +145,8 @@ class Cgroup {
 // are created in the default thread cgroup.
 Status SetupCgroupManagement(ClearChildCgroups clear);
 
+bool CgroupManagementEnabled();
+
 // Root cgroup that the process is under. No threads should be placed into this cgroup.
 Cgroup* RootCgroup();
 

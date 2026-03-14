@@ -464,6 +464,10 @@ Status SetupCgroupManagement(ClearChildCgroups clear) {
   return cgroup_manager.Init(clear);
 }
 
+bool CgroupManagementEnabled() {
+  return cgroup_manager.initialized();
+}
+
 Cgroup* RootCgroup() {
   return cgroup_manager.root_group();
 }

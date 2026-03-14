@@ -57,6 +57,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
@@ -475,6 +476,9 @@ void ThreadMgr::RenderThreadCategoryRows(
     int64_t tid = 0;
     ThreadIdForStack tid_for_stack = 0;
     const std::string* name = nullptr;
+#ifdef __linux__
+    Result<std::string> cgroup = "";
+#endif
     ThreadStats stats;
     Result<StackTrace> stack_trace = StackTrace();
   };
@@ -482,6 +486,9 @@ void ThreadMgr::RenderThreadCategoryRows(
   std::vector<ThreadIdForStack> thread_ids;
   threads.resize(category.size());
   thread_ids.reserve(category.size());
+#ifdef __linux__
+  auto root_cgroup_name = CgroupManagementEnabled() ? RootCgroup()->full_name() : "";
+#endif
   {
     auto* data = threads.data();
     for (const auto& thread : category) {
@@ -489,6 +496,13 @@ void ThreadMgr::RenderThreadCategoryRows(
       data->tid = thread.thread_id;
 #if defined(__linux__)
       data->tid_for_stack = data->tid;
+      if (CgroupManagementEnabled()) {
+        data->cgroup = GetThreadCpuCgroup(data->tid);
+        // Remove root cgroup from name.
+        if (data->cgroup.ok()) {
+          data->cgroup = data->cgroup->substr(root_cgroup_name.size());
+        }
+      }
 #else
       data->tid_for_stack = thread.pthread_id;
 #endif
@@ -550,6 +564,11 @@ void ThreadMgr::RenderThreadCategoryRows(
     {
       auto& row = row_set.AddRow();
       row.AddColumn("Total");
+#ifdef __linux__
+      if (CgroupManagementEnabled()) {
+        row.AddColumn("");
+      }
+#endif
       row.AddColumn(format_nanoseconds(thread_group.stats.user_ns));
       row.AddColumn(format_nanoseconds(thread_group.stats.kernel_ns));
       row.AddColumn(format_nanoseconds(thread_group.stats.iowait_ns));
@@ -571,6 +590,11 @@ void ThreadMgr::RenderThreadCategoryRows(
     for (const auto& thread : thread_group.threads) {
       auto& row = row_set.AddRow();
       row.AddColumn(*thread.name);
+#ifdef __linux__
+      if (CgroupManagementEnabled()) {
+        row.AddColumn(thread.cgroup);
+      }
+#endif
       row.AddColumn(format_nanoseconds(thread.stats.user_ns));
       row.AddColumn(format_nanoseconds(thread.stats.kernel_ns));
       row.AddColumn(format_nanoseconds(thread.stats.iowait_ns));
@@ -608,13 +632,20 @@ void ThreadMgr::RenderThreadGroupUnlocked(const std::string& group, std::ostream
 
   {
     HtmlPrintHelper print_helper{output};
+    std::vector<std::string> headers = {
+        "Thread Name", "Cumulative User CPU (s)", "Cumulative Kernel CPU (s)",
+        "Cumulative IO-wait (s)", "Stack Trace"};
+    std::vector<HtmlTableCellAlignment> alignments = {
+        HtmlTableCellAlignment::Left, HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right,
+        HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left};
+#ifdef __linux__
+    if (CgroupManagementEnabled()) {
+      headers.insert(headers.begin() + 1, "Cgroup");
+      alignments.insert(alignments.begin() + 1, HtmlTableCellAlignment::Left);
+    }
+#endif
     HtmlTablePrintHelper table_printer = print_helper.CreateTablePrinter(
-        "threads",
-        {"Thread Name", "Cumulative User CPU (s)", "Cumulative Kernel CPU (s)",
-            "Cumulative IO-wait (s)", "Stack Trace"},
-        {HtmlTableCellAlignment::Left, HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Right,
-            HtmlTableCellAlignment::Right, HtmlTableCellAlignment::Left});
-
+        "threads", headers, alignments);
     for (const ThreadCategory* category : categories_to_print) {
       RenderThreadCategoryRows(table_printer, *category);
     }
