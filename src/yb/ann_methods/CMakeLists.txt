@@ -31,7 +31,7 @@ set(ANN_METHODS_SRCS
     yb_hnsw_wrapper.cc
 )
 
-set(ANN_METHODS_DEPS hnsw vector_index)
+set(ANN_METHODS_DEPS hnsw vector_index rocksdb)
 
 ADD_YB_LIBRARY(ann_methods
         SRCS ${ANN_METHODS_SRCS}

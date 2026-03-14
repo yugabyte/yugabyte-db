@@ -31,6 +31,9 @@ using namespace yb::size_literals;
 DEFINE_RUNTIME_uint64(yb_hnsw_max_block_size, 64_KB,
     "Individual block max size in YbHnsw vector index");
 
+DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
+    "Whether to keep new generated blocks in cache after YbHnsw index is built.");
+
 #define YB_MISALIGNED_STORE(ptr, type, field, value) \
   MisalignedAssign<decltype(type::field)>(ptr, offsetof(type, field), value)
 
@@ -89,8 +92,8 @@ class YbHnswBuilder {
   using CoordinateType = float;
 
   YbHnswBuilder(
-      const unum::usearch::index_dense_gt<vector_index::VectorId>& index, BlockCache& block_cache,
-      const std::string& path)
+      const unum::usearch::index_dense_gt<vector_index::VectorId>& index,
+      BlockCache& block_cache, const std::string& path)
       : index_(index), block_cache_(block_cache), path_(path) {}
 
   Result<std::pair<FileBlockCachePtr, Header>> Build() {
@@ -123,7 +126,7 @@ class YbHnswBuilder {
 
   Status WriteFooter() {
     auto buffer = builder_.MakeFooter(header_);
-    return out_->Append(Slice(buffer.data(), buffer.size()));
+    return out_->Append(buffer.AsSlice());
   }
 
   void PrepareVectors() {
@@ -271,6 +274,9 @@ class YbHnswBuilder {
 
   Status BuildBaseLayer() {
     auto& layer = header_.layers[0];
+
+    VLOG_WITH_FUNC(4) << AsString(layer);
+
     layer.block = NextBlockId();
     VectorNo block_start = 0;
     size_t block_neighbors = 0;
@@ -289,7 +295,8 @@ class YbHnswBuilder {
   Status FlushBaseLayer(VectorNo start, VectorNo stop, size_t block_neighbors) {
     DCHECK_NE(start, stop); // block should not be empty.
     auto block_id = NextBlockId();
-    auto writer = VERIFY_RESULT(StartNewBlock(block_neighbors * kNeighborSize));
+    auto writer = VERIFY_RESULT(StartNewBlock(
+        std::max<size_t>(block_neighbors, 1) * kNeighborSize));
     size_t neighbors_offset = 0;
     for (size_t j = start; j != stop; ++j) {
       auto neighbors = impl().neighbors_base_(impl().node_at_(vectors_[j].slot));
@@ -302,6 +309,9 @@ class YbHnswBuilder {
         writer.Append(slot_map_[neighbor]);
       }
     }
+    if (block_neighbors == 0) {
+      writer.Append(static_cast<VectorNo>(0));
+    }
     return Status::OK();
   }
 
@@ -311,7 +321,7 @@ class YbHnswBuilder {
 
   Result<BlockWriter> StartNewBlock(size_t size) {
     RETURN_NOT_OK(FlushBlock());
-    current_block_.resize(size);
+    current_block_.Allocate(size);
     ++num_blocks_;
     return BlockWriter(current_block_);
   }
@@ -320,7 +330,10 @@ class YbHnswBuilder {
     if (num_blocks_ == 0) {
       return Status::OK();
     }
-    RETURN_NOT_OK(out_->Append(Slice(current_block_.data(), current_block_.size())));
+    RETURN_NOT_OK(out_->Append(Slice(current_block_.AsSlice())));
+    if (!FLAGS_yb_hnsw_keep_new_blocks_in_cache) {
+      current_block_.data.reset();
+    }
     builder_.Add(std::move(current_block_));
     return Status::OK();
   }
