@@ -692,6 +692,9 @@ parse_yb_build_cmd_line() {
       ;;
       daemons|yb-daemons)
         make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
+        if [[ "${build_odyssey:-}" == "true" ]]; then
+          make_targets+=( "odyssey" )
+        fi
       ;;
       packaged|packaged-targets)
         should_use_packaged_targets=true
