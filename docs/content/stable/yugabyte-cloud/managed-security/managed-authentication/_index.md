@@ -28,12 +28,12 @@ If you have set up federated authentication, let your users know they should all
     title="Social logins"
     body="Sign in using Google, GitHub, and LinkedIn."
     href="social-login/"
-    icon="/images/section_icons/secure/authorization.png">}}
+    icon="fa-thin fa-user-check">}}
 
   {{<index/item
     title="Federated authentication"
     body="Sign in using an identity provider."
     href="federated-entra/"
-    icon="/images/section_icons/secure/authorization.png">}}
+    icon="fa-thin fa-user-check">}}
 
 {{</index/block>}}

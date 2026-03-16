@@ -29,18 +29,18 @@ Connect to clusters in YugabyteDB Aeon in the following ways:
     title="Cloud Shell"
     body="Connect from your browser."
     href="connect-cloud-shell/"
-    icon="/images/section_icons/explore/cloud_native.png">}}
+    icon="fa-thin fa-cloud">}}
 
   {{<index/item
     title="Client shell"
     body="Connect from your desktop using a client shell."
     href="connect-client-shell/"
-    icon="/images/section_icons/index/develop.png">}}
+    icon="fa-thin fa-terminal">}}
 
   {{<index/item
     title="Applications"
     body="Connect applications to your YugabyteDB Aeon clusters."
     href="connect-applications/"
-    icon="/images/section_icons/develop/real-world-apps.png">}}
+    icon="fa-thin fa-square-code">}}
 
 {{</index/block>}}

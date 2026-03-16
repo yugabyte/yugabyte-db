@@ -3,7 +3,6 @@ title: Artificial Intelligence with YugabyteDB
 headerTitle: Develop applications with AI and YugabyteDB
 linkTitle: AI
 description: How to Develop Applications with AI and YugabyteDB
-image:
 headcontent: Support RAG, semantic search, and AI agents at enterprise scale
 type: indexpage
 showRightNav: true
