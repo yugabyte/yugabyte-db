@@ -735,6 +735,9 @@ YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid)
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
 
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
+
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
 	 * db_oid is the primary key. There is no separate docdb index table for
@@ -840,6 +843,9 @@ YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid)
 {
 	Assert(YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE);
 	Assert(db_oid != MyDatabaseId);
+
+	if (!YBCIsLegacyModeForCatalogOps())
+		LockRelationOid(YBCatalogVersionRelationId, ExclusiveLock);
 
 	/*
 	 * The table pg_yb_catalog_version is a shared relation in template1 and
