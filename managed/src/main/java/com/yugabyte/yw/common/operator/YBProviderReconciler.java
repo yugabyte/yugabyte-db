@@ -194,6 +194,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
     }
     if (existingProvider != null) {
       log.info("Provider {} already exists in the system.", provider.getMetadata().getName());
+      OperatorUtils.maybeAddYbaResourceId(provider, existingProvider.getUuid(), resourceClient);
       if (existingProvider.getUsabilityState() == Provider.UsabilityState.ERROR) {
         log.info(
             "Updating provider {} in error state with latest params", existingProvider.getName());
@@ -347,6 +348,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
       UUID taskUuid = cloudProviderHandler.bootstrap(cust, providerEbean, taskParams);
       if (taskUuid != null) {
         providerTaskMap.put(OperatorWorkQueue.getWorkQueueKey(provider.getMetadata()), taskUuid);
+        OperatorUtils.maybeAddYbaResourceId(provider, providerEbean.getUuid(), resourceClient);
       }
       return taskUuid;
     } catch (Exception e) {

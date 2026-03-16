@@ -142,6 +142,7 @@ public class PitrConfigReconciler extends AbstractReconciler<PitrConfig> {
 
       if (resourceExists) {
         UUID pitrConfigUuid = UUID.fromString(pitrConfig.getStatus().getResourceUUID());
+        OperatorUtils.maybeAddYbaResourceId(pitrConfig, pitrConfigUuid, resourceClient);
         Optional<com.yugabyte.yw.models.PitrConfig> optionalPitrConfig =
             com.yugabyte.yw.models.PitrConfig.maybeGet(pitrConfigUuid);
         com.yugabyte.yw.models.PitrConfig pitrConfigModel = optionalPitrConfig.get();
@@ -232,6 +233,7 @@ public class PitrConfigReconciler extends AbstractReconciler<PitrConfig> {
     }
     String resourceNamespace = pitrConfig.getMetadata().getNamespace();
     UUID pitrConfigUuid = UUID.fromString(pitrConfig.getStatus().getResourceUUID());
+    OperatorUtils.maybeAddYbaResourceId(pitrConfig, pitrConfigUuid, resourceClient);
     Optional<com.yugabyte.yw.models.PitrConfig> optionalPitrConfig =
         com.yugabyte.yw.models.PitrConfig.maybeGet(pitrConfigUuid);
 

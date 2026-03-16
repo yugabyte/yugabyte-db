@@ -349,6 +349,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.info("Created Universe KubernetesOperator " + task.toString());
     } else {
       Universe u = uOpt.get();
+      OperatorUtils.maybeAddYbaResourceId(ybUniverse, u.getUniverseUUID(), resourceClient);
       UUID pMTaskUUID = u.getUniverseDetails().placementModificationTaskUuid;
       Optional<TaskInfo> oTaskInfo =
           pMTaskUUID != null ? TaskInfo.maybeGet(pMTaskUUID) : Optional.empty();
@@ -669,6 +670,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
       universeTaskMap.put(
           OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), universeResp.taskUUID);
+      OperatorUtils.maybeAddYbaResourceId(ybUniverse, universeResp.universeUUID, resourceClient);
       log.info("Done creating universe through CRUD Handler");
       return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
     } catch (Exception e) {
