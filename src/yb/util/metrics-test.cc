@@ -30,8 +30,10 @@
 // under the License.
 //
 
+#include <atomic>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -47,6 +49,7 @@
 #include "yb/util/json_document.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
+#include "yb/util/metrics_aggregator.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -886,6 +889,70 @@ TEST_F(MetricsTest, VerifyLabelValueEscaping) {
 
   // Newlines should be escaped
   ASSERT_STR_CONTAINS(output_str, "table_name=\"line1\\nline2\"");
+}
+
+// Regression test for a dangling-reference bug in
+// MetricsAggregator::CreateOrFindPreAggregatedMetricValueHolder.
+//
+// Before the fix, the function obtained `auto&` (a reference into the
+// unordered_map) to a shared_ptr<PreAggregatedMetricInfo>, then released
+// the mutex before dereferencing it.  A concurrent cleanup or map rehash
+// could invalidate that reference, causing a use-after-free / SIGSEGV.
+//
+// Under TSAN this reliably reports the data race.  Under ASAN it may
+// manifest as a heap-use-after-free.  Without sanitizers the crash is
+// timing-dependent.
+TEST_F(MetricsTest, MetricsAggregatorCreateCleanupRace) {
+  MetricsAggregator aggregator;
+
+  constexpr int kNumCreatorThreads = 4;
+  constexpr int kNumCleanupThreads = 2;
+  constexpr auto kTestDuration = 5s;
+
+  std::atomic<bool> stop{false};
+  std::atomic<int> metric_id{0};
+
+  auto creator_fn = [&]() {
+    while (!stop.load(std::memory_order_relaxed)) {
+      int id = metric_id.fetch_add(1, std::memory_order_relaxed);
+      std::string name = Format("race_metric_$0", id);
+
+      MetricEntity::AttributeMap attrs;
+      attrs["table_id"] = "table_1";
+      attrs["metric_type"] = "tablet";
+
+      auto proto = std::make_shared<OwningCounterPrototype>(
+          "tablet", name, "label", MetricUnit::kOperations, "desc", MetricLevel::kInfo);
+
+      // Discard the returned value holder so its use_count drops to 1,
+      // making CleanupRetiredMetricsAndCorrespondingAttributes eligible
+      // to erase the map entry.
+      aggregator.CreateOrFindPreAggregatedMetricValueHolder(
+          attrs, std::move(proto), name,
+          kTableLevel | kServerLevel, "tablet",
+          "table_1", "counter", "desc");
+    }
+  };
+
+  auto cleanup_fn = [&]() {
+    while (!stop.load(std::memory_order_relaxed)) {
+      aggregator.CleanupRetiredMetricsAndCorrespondingAttributes();
+    }
+  };
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < kNumCreatorThreads; i++) {
+    threads.emplace_back(creator_fn);
+  }
+  for (int i = 0; i < kNumCleanupThreads; i++) {
+    threads.emplace_back(cleanup_fn);
+  }
+
+  std::this_thread::sleep_for(kTestDuration);
+  stop.store(true, std::memory_order_relaxed);
+  for (auto& t : threads) {
+    t.join();
+  }
 }
 
 } // namespace yb

@@ -127,12 +127,15 @@ MetricsAggregator::CreateOrFindPreAggregatedMetricValueHolder(
   }
 
   // Store metric metadata if this is the first time we see this metric
-  auto& aggregated_metric_info = pre_aggregated_metric_info_by_metric_name_[metric_name];
-  if (aggregated_metric_info == nullptr) {
-    aggregated_metric_info = std::make_shared<PreAggregatedMetricInfo>(
+  auto& aggregated_metric_info_ref = pre_aggregated_metric_info_by_metric_name_[metric_name];
+  if (aggregated_metric_info_ref == nullptr) {
+    aggregated_metric_info_ref = std::make_shared<PreAggregatedMetricInfo>(
         metric_entity_type, default_aggregation_levels, MetricHelpAndType{description, type},
         std::move(metric_prototype_holder));
   }
+  // Copy the shared_ptr before releasing the lock to avoid a dangling reference if the map
+  // rehashes or the entry is erased by another thread (e.g. CleanupRetiredMetrics).
+  auto aggregated_metric_info = aggregated_metric_info_ref;
   lock.unlock();
 
   return aggregated_metric_info->CreateOrFindPreAggregatedValueHolder(aggregation_id);
