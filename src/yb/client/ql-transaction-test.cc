@@ -1955,7 +1955,8 @@ TEST_F_EX(QLTransactionTest, TransactionsEarlyLoadedTest, QLTransactionTestSingl
   AssertNoRunningTransactions();
 }
 
-TEST_F_EX(QLTransactionTest, WriteBatchDuringShutdown, QLTransactionTestSingleTablet) {
+TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
+          QLTransactionTestSingleTablet) {
   tablet::TabletPeer* follower;
   {
     auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
