@@ -12,15 +12,15 @@
 
 #pragma once
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-
 #include <algorithm>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <boost/assign.hpp>
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -681,6 +681,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void WaitUntilSplitIsSuccesful(
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
+
+  void PollUntilTabletSplit(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      GetChangesResponsePB* change_resp,
+      int tablet_idx = -1);
+
+  void VerifyTabletList(
+      const xrepl::StreamId& stream_id,
+      const TableId& table_id,
+      const std::set<TabletId>& expected,
+      const std::string& context_msg);
 
   void CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
