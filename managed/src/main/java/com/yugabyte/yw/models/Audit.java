@@ -423,6 +423,9 @@ public class Audit extends Model {
     @EnumValue("Configure Metrics Export")
     ConfigureMetricsExport,
 
+    @EnumValue("Configure Export Telemetry Config")
+    ConfigureExportTelemetryConfig,
+
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
 

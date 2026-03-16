@@ -13,6 +13,7 @@ import api.v2.models.CollectFilesRequest;
 import api.v2.models.CollectFilesResponse;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
@@ -231,6 +232,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask configureMetricsExport(
       Request request, UUID cUUID, UUID uniUUID, ConfigureMetricsExportSpec req) throws Exception {
     return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
+  }
+
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
   }
 
   @Override

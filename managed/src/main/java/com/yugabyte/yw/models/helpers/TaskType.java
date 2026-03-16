@@ -503,6 +503,11 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyMetricsExportConfig,
       CustomerTask.TargetType.Universe),
 
+  ConfigureExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureExportTelemetryConfig.class,
+      CustomerTask.TaskType.ConfigureExportTelemetryConfig,
+      CustomerTask.TargetType.Universe),
+
   InstallYbcSoftware(
       com.yugabyte.yw.commissioner.tasks.InstallYbcSoftware.class,
       CustomerTask.TaskType.InstallYbcSoftware,
@@ -1183,6 +1188,9 @@ public enum TaskType {
   UpdateAndPersistMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig.class),
 
+  UpdateAndPersistExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig.class),
+
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
 
@@ -1358,10 +1366,11 @@ public enum TaskType {
           .put(ModifyKubernetesAuditLoggingConfig, 56)
           .put(ModifyQueryLoggingConfig, 57)
           .put(ModifyMetricsExportConfig, 58)
-          .put(KubernetesToggleImmutableYbc, 59)
-          .put(UpgradeKubernetesYbcGFlags, 60)
-          .put(UpdateYbcThrottleFlags, 61)
-          .put(UpdateK8sYbcThrottleFlags, 62)
+          .put(ConfigureExportTelemetryConfig, 59)
+          .put(KubernetesToggleImmutableYbc, 60)
+          .put(UpgradeKubernetesYbcGFlags, 61)
+          .put(UpdateYbcThrottleFlags, 62)
+          .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
