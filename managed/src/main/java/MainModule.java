@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -267,6 +268,7 @@ public class MainModule extends AbstractModule {
     bind(EncryptionAtRestManager.class).asEagerSingleton();
     bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
     bind(SetUniverseKey.class).asEagerSingleton();
+    bind(RedactSecretsFromAudit.class).asEagerSingleton();
     bind(RefreshKmsService.class).asEagerSingleton();
     bind(CustomerTaskManager.class).asEagerSingleton();
     bind(YamlWrapper.class).asEagerSingleton();
