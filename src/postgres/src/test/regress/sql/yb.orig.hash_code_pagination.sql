@@ -174,7 +174,7 @@ SELECT * FROM hk_pagination
     ORDER BY h, r1, r2;
 
 -- Secondary index with NULLs: secondary hash indexes allow NULL values.
--- yb_hash_code(NULL) is defined, verify it works.
+-- yb_hash_code(col) works when col is NULL (function is non-strict).
 CREATE INDEX hk_pagination_nullable_idx ON hk_pagination (h HASH, v ASC);
 EXPLAIN (COSTS OFF) SELECT h, v FROM hk_pagination
     WHERE yb_hash_code(h) = yb_hash_code(1)
@@ -183,6 +183,42 @@ EXPLAIN (COSTS OFF) SELECT h, v FROM hk_pagination
 SELECT h, v FROM hk_pagination
     WHERE yb_hash_code(h) = yb_hash_code(1)
     ORDER BY h, v;
+
+-- Secondary hash index with NULLs and ROW comparison pushdown.
+-- Secondary hash indexes allow NULL values, and yb_hash_code(NULL::type)
+-- returns a valid hash code, so NULL rows live in a real bucket.
+-- The IS NOT NULL guard is skipped for hash columns (pggate rejects it),
+-- but SQL-layer recheck excludes NULLs because NULL comparisons yield NULL.
+CREATE TABLE hk_sec_null(
+    a int,
+    b int,
+    v text
+);
+CREATE INDEX hk_sec_null_idx ON hk_sec_null (a HASH, b ASC);
+INSERT INTO hk_sec_null VALUES (1, 10, 'a1b10');
+INSERT INTO hk_sec_null VALUES (1, 20, 'a1b20');
+INSERT INTO hk_sec_null VALUES (NULL, 5, 'null_a_b5');
+INSERT INTO hk_sec_null VALUES (NULL, 15, 'null_a_b15');
+
+-- ROW comparison on secondary hash index: NULLs in hash column must not appear.
+EXPLAIN (COSTS OFF) SELECT a, b FROM hk_sec_null
+    WHERE yb_hash_code(a) = yb_hash_code(1)
+      AND (a, b) > (1, 10)
+    ORDER BY a, b;
+
+SELECT a, b FROM hk_sec_null
+    WHERE yb_hash_code(a) = yb_hash_code(1)
+      AND (a, b) > (1, 10)
+    ORDER BY a, b;
+
+-- Scan the bucket that contains NULL hash values.
+-- (a, b) > (NULL, 0) yields NULL for every row, so 0 rows returned.
+SELECT a, b FROM hk_sec_null
+    WHERE yb_hash_code(a) = yb_hash_code(NULL::int)
+      AND (a, b) > (NULL::int, 0)
+    ORDER BY a, b;
+
+DROP TABLE hk_sec_null;
 
 -- Clean up.
 DROP TABLE hk_pagination;

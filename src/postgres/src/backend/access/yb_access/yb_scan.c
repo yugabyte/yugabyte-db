@@ -1816,12 +1816,19 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 				 * the DocDB row bound.
 				 *
 				 * Skip this for hash columns: pggate does not support
-				 * BindColumnCondIsNotNull on hash columns (it CHECKs
-				 * !col.is_partition()).  This is safe because the only
-				 * code path that reaches here with a hash column as the
-				 * leading subkey is the pinned-bucket case, where
-				 * yb_hash_code(hash_cols) = const already excludes
-				 * NULL rows (NULL values hash to a different bucket).
+				 * BindColumnCondIsNotNull on hash/partition columns
+				 * (it CHECKs !col.is_partition()).  This is safe
+				 * because:
+				 *
+				 * - Primary key hash columns cannot be NULL.
+				 * - Secondary index hash columns can be NULL, and
+				 *   yb_hash_code(NULL) may land in the pinned bucket.
+				 *   However, the ROW comparison is always rechecked at
+				 *   the SQL layer (needs_recheck = true when any
+				 *   column is unspecified or has mixed directionality),
+				 *   and SQL comparisons involving NULL yield NULL
+				 *   (treated as false), so NULL rows are correctly
+				 *   excluded.
 				 */
 				is_not_null[att_idx] |= (subkey_index == 0 &&
 										 !(index->rd_indoption[subkeys[subkey_index]->sk_attno - 1] &
