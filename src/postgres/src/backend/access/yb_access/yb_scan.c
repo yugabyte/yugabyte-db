@@ -4215,6 +4215,37 @@ yb_init_partition_key_data(void *data)
 	ppk->key_data_capacity = YB_PARTITION_KEY_DATA_CAPACITY;
 }
 
+/*
+ * yb_rescan_partition_key_data
+ *
+ * Reset the YBParallelPartitionKeys structure, that is, discard any key data
+ * that may be still there. We also have to remove the table identification, as
+ * an empty buffer with valid table ID would look like exhausted, not brand new,
+ * and wouldn't be valid for fetch.
+ */
+void
+yb_rescan_partition_key_data(void *data)
+{
+	YBParallelPartitionKeys ppk = (YBParallelPartitionKeys) data;
+
+	/*
+	 * It shouldn't be necessary to acquire the lock here, but there's no harm
+	 * if we do.
+	 */
+	SpinLockAcquire(&ppk->mutex);
+	ppk->database_oid = InvalidOid;
+	ppk->table_relfilenode_oid = InvalidOid;
+	ppk->fetch_status = FETCH_STATUS_IDLE;
+	ppk->low_offset = 0;
+	ppk->high_offset = 0;
+	ppk->key_count = 0;
+	ppk->total_key_size = 0.0;
+	ppk->total_key_count = 0.0;
+	ppk->key_data_size = 0;
+	ppk->key_data_capacity = YB_PARTITION_KEY_DATA_CAPACITY;
+	SpinLockRelease(&ppk->mutex);
+}
+
 typedef int keylen_t;
 #define KEY_LEN(ppk, key_offset) \
 	(ppk)->key_data + (key_offset)
@@ -4565,7 +4596,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	 * has the YBParallelPartitionKeys structure exclusively.
 	 */
 	if (OidIsValid(ppk->table_relfilenode_oid))
+	{
+		Assert(ppk->table_relfilenode_oid == YbGetRelfileNodeId(relation));
 		return;
+	}
 
 	/* We expect freshly initialized parallel state */
 	Assert(ppk->fetch_status == FETCH_STATUS_IDLE);

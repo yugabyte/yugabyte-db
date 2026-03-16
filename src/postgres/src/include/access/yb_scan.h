@@ -393,6 +393,7 @@ extern int ybParallelWorkers(double numrows);
 
 extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
+extern void yb_rescan_partition_key_data(void *data);
 extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 							  YBCPgExecParameters *exec_params,
 							  bool is_forward);
