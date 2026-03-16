@@ -11,13 +11,29 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.models.Universe;
 import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import junitparams.JUnitParamsRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Spy;
 import play.Environment;
@@ -29,6 +45,8 @@ public class GFlagsValidationTest extends FakeDBApplication {
   private GFlagsValidation gFlagsValidation;
   private Universe universe;
   @Spy Environment environment;
+
+  @Rule public TemporaryFolder tempFolder = new TemporaryFolder();
 
   @Before
   public void setUp() {
@@ -91,5 +109,105 @@ public class GFlagsValidationTest extends FakeDBApplication {
     assertThrows(
         PlatformServiceException.class,
         () -> gFlagsValidation.validateConnectionPoolingGflags(universe, connectionPoolingGflags));
+  }
+
+  private void createGFlagFiles(String releasesPath, String version, List<String> files)
+      throws IOException {
+    Path versionDir = Files.createDirectories(Paths.get(releasesPath, version));
+    for (String file : files) {
+      Files.createFile(versionDir.resolve(file));
+    }
+  }
+
+  @Test
+  public void testFetchGFlagFiles_differentVersionsConcurrently() throws Exception {
+    String releasesPath = tempFolder.getRoot().getAbsolutePath();
+    List<String> requiredFiles =
+        Arrays.asList(
+            GFlagsValidation.MASTER_GFLAG_FILE_NAME, GFlagsValidation.TSERVER_GFLAG_FILE_NAME);
+    createGFlagFiles(releasesPath, "2.20.0.0", requiredFiles);
+    createGFlagFiles(releasesPath, "2.22.0.0", requiredFiles);
+
+    CountDownLatch startLatch = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<?> f1 =
+          executor.submit(
+              () -> {
+                try {
+                  startLatch.await();
+                  gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
+                      null, "2.20.0.0", requiredFiles, releasesPath);
+                } catch (Exception e) {
+                  throw new RuntimeException(e);
+                }
+              });
+      Future<?> f2 =
+          executor.submit(
+              () -> {
+                try {
+                  startLatch.await();
+                  gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
+                      null, "2.22.0.0", requiredFiles, releasesPath);
+                } catch (Exception e) {
+                  throw new RuntimeException(e);
+                }
+              });
+
+      startLatch.countDown();
+      f1.get(5, TimeUnit.SECONDS);
+      f2.get(5, TimeUnit.SECONDS);
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  public void testFetchGFlagFiles_sameVersionWaitsOnLock() throws Exception {
+    String releasesPath = tempFolder.getRoot().getAbsolutePath();
+    String version = "2.20.0.0";
+    List<String> requiredFiles =
+        Arrays.asList(
+            GFlagsValidation.MASTER_GFLAG_FILE_NAME, GFlagsValidation.TSERVER_GFLAG_FILE_NAME);
+    createGFlagFiles(releasesPath, version, requiredFiles);
+
+    Field versionLocksField = GFlagsValidation.class.getDeclaredField("versionLocks");
+    versionLocksField.setAccessible(true);
+    ConcurrentHashMap<String, ReentrantLock> versionLocks =
+        (ConcurrentHashMap<String, ReentrantLock>) versionLocksField.get(gFlagsValidation);
+
+    ReentrantLock lock = new ReentrantLock();
+    lock.lock();
+    versionLocks.put(version, lock);
+
+    CountDownLatch threadStarted = new CountDownLatch(1);
+    CountDownLatch threadCompleted = new CountDownLatch(1);
+
+    Thread t =
+        new Thread(
+            () -> {
+              try {
+                threadStarted.countDown();
+                gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
+                    null, version, requiredFiles, releasesPath);
+                threadCompleted.countDown();
+              } catch (Exception e) {
+                throw new RuntimeException(e);
+              }
+            });
+    t.start();
+    threadStarted.await();
+
+    assertFalse(
+        "Thread should be blocked on the version lock",
+        threadCompleted.await(500, TimeUnit.MILLISECONDS));
+    assertTrue(lock.hasQueuedThreads());
+
+    lock.unlock();
+
+    assertTrue(
+        "Thread should complete after lock is released",
+        threadCompleted.await(5, TimeUnit.SECONDS));
   }
 }
