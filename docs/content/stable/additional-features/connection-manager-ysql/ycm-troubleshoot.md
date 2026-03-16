@@ -67,4 +67,4 @@ Although Connection Manager supports all SSL modes that clients can set in a con
 
 The main reason for these differences in behaviour is because sometimes authentication is done at the Connection Manager layer itself, rather than following the standard authentication mechanism (where authentication happens on the server based on credentials forwarded by Connection Manager).
 
-For details on how each client SSL mode (disable, allow, prefer, require, verify-ca, verify-full) behaves with Connection Manager when TLS is enabled or disabled in the cluster, see [Client SSL modes and TLS](../ycm-setup/#client-ssl-modes-and-tls) in Set up YSQL Connection Manager.
+For details on how each client SSL mode (disable, allow, prefer, require, verify-ca, verify-full) behaves with Connection Manager when TLS is enabled or disabled in the cluster, see [Client SSL modes and TLS](../ycm-setup/#client-ssl-modes-and-tls).

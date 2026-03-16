@@ -148,14 +148,14 @@ To enable encrypted connections between your client application and YugabyteDB v
 
 **Client and server connection handling**
 
-Client connection behavior (via sslmode) and server-side policy (pg_hba.conf) are handled separately as follows:
+Client connection behavior and server-side policy are handled separately as follows:
 
-- **sslmode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client sslmodes.
-- **pg_hba.conf** (server-side cert-related settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support this HBA auth method.
+- **SSL mode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client SSL modes.
+- **pg_hba.conf** (server-side cert-related settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support this HBA authentication method.
 
 ### Connection Manager SSL modes
 
-The YSQL Connection Manager can be configured in only two modes with respect to SSL, driven by your cluster TLS settings. The mode is reflected in the connection manager configuration file which is the Odyssey configuration that the Connection Manager process reads at startup. (see the [connection manager template config file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
+The YSQL Connection Manager can be configured in the following two modes with respect to SSL, driven by your cluster TLS settings. The mode is reflected in the connection manager configuration file which is the Odyssey configuration that the Connection Manager process reads at startup. (see the [connection manager template config file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
 
 #### Cluster TLS is disabled
 
