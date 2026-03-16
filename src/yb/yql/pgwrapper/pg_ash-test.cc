@@ -1017,6 +1017,49 @@ TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   ASSERT_GT(count, 0);
 }
 
+TEST_F(PgAshTest, TestIndexBackfillWaitEvent) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "100"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("num_concurrent_backfills_allowed", "1"));
+
+  static constexpr auto kTableName = "backfill_test";
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) split into 6 tablets", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 10000) AS i", kTableName));
+
+  // Inject latency on write-apply after loading data so that the BACKFILL INDEX writes to the
+  // index tablet are slow enough for the ASH sampler to capture tserver-side samples.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tablet_inject_latency_on_apply_write_txn_ms", "100"));
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX idx_$0 ON $0 (v)", kTableName));
+
+  // Wait for ASH samples to be collected
+  SleepFor(2s * kTimeMultiplier);
+
+  const auto backfill_samples_with_queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "wait_event IN ('BackfillIndex_WaitForAFreeSlot', 'BackfillIndex_WaitToBackfillTablet')")));
+  ASSERT_GT(backfill_samples_with_queryid, 0) <<
+      "No ASH index backfill samples found";
+
+  // Verify that there are ASH samples with the index backfill event and query id as 0
+  const auto backfill_samples_with_no_queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 0 AND "
+      "wait_event IN ('BackfillIndex_WaitForAFreeSlot', 'BackfillIndex_WaitToBackfillTablet')")));
+  ASSERT_EQ(backfill_samples_with_no_queryid, 0) <<
+      "ASH index backfill samples with query_id 0 found";
+
+  // Verify that the "BACKFILL INDEX ..." SQL statements also have tserver-side ASH samples.
+  const auto tserver_samples_for_backfill = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event_component = 'TServer' AND query_id IN "
+      "(SELECT queryid FROM pg_stat_statements WHERE query LIKE 'BACKFILL INDEX%')")));
+  ASSERT_GT(tserver_samples_for_backfill, 0) <<
+      "No tserver ASH samples found for BACKFILL INDEX statement";
+}
+
 TEST_F(PgAshTest, TestUserIdConsistency) {
   // Test: Check current userid and verify it matches between ASH and pg_user
   static constexpr auto kTableName = "a";

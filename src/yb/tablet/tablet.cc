@@ -3220,6 +3220,7 @@ Status Tablet::BackfillIndexesForYsql(
   DCHECK_EQ(*number_of_rows_processed, 0);
   DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
 
+  SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
   do {
     std::string serialized_backfill_spec =
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
@@ -3329,8 +3330,8 @@ Status Tablet::BackfillIndexes(
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
+  SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
   SlowdownBackfillForTests();
-
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   auto columns = GetColumnSchemasForIndex(indexes);
 

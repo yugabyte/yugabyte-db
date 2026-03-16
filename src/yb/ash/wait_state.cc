@@ -224,6 +224,8 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "YB client is looking up tablet information from the master.";
     case WaitStateCode::kYBClient_WaitingOnMaster:
       return "YB client is waiting on an RPC sent to the master.";
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
+      return "Waiting for index backfill chunk to be processed.";
   }
   FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
 }
@@ -589,6 +591,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
     case WaitStateCode::kMVCC_WaitForSafeTime:
     case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
     case WaitStateCode::kWaitForReadTime:
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kCreatingNewTablet:
@@ -722,6 +725,7 @@ const char* GetWaitStateAuxDescription(WaitStateCode code) {
     case WaitStateCode::kRocksDB_NewIterator:
     case WaitStateCode::kRocksDB_CreateCheckpoint:
     case WaitStateCode::kXCluster_WaitingForGetChanges:
+    case WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
       return "This contains tablet ID.";
 
     case WaitStateCode::kYCQL_Parse:

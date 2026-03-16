@@ -27,6 +27,8 @@
 
 #include <boost/preprocessor/cat.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/tserver/tserver_admin.proxy.h"
 
 #include "yb/common/wire_protocol.h"
@@ -634,7 +636,14 @@ BackfillTable::BackfillTable(
       requested_index_names_(
           RetrieveIndexNames(master->catalog_manager_impl(), requested_index_ids_)),
       ns_info_(ns_info),
-      epoch_(std::move(epoch)) {
+      epoch_(std::move(epoch)),
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
+  if (wait_state_) {
+    if (const auto& current_state = ash::WaitStateInfo::CurrentWaitState()) {
+      wait_state_->UpdateMetadata(current_state->metadata());
+    }
+    wait_state_->UpdateAuxInfo({.method = "BackfillIndex"});
+  }
   auto l = indexed_table_->LockForRead();
   schema_version_ = indexed_table_->metadata().state().pb.version();
 
@@ -727,6 +736,7 @@ Status BackfillTable::Launch() {
 }
 
 void BackfillTable::LaunchBackfillOrAbort() {
+  ADOPT_WAIT_STATE(wait_state_);
   Status status = WaitForTabletSplitting();
   if (!status.ok()) {
     LOG(WARNING) << status;
@@ -1261,6 +1271,7 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const TabletInfoPtr& tablet, const std::string& table_id) {
+  ADOPT_WAIT_STATE(wait_state_);
   auto call =
       std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id, epoch_);
   tablet->table()->AddTask(call);
@@ -1385,6 +1396,7 @@ Status GetSafeTimeForTablet::Launch() {
 }
 
 bool GetSafeTimeForTablet::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
   VLOG(1) << __PRETTY_FUNCTION__;
   tserver::GetSafeTimeRequestPB req;
   req.set_dest_uuid(permanent_uuid());
@@ -1402,6 +1414,7 @@ bool GetSafeTimeForTablet::SendRequest(int attempt) {
 }
 
 void GetSafeTimeForTablet::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
   VLOG(1) << __PRETTY_FUNCTION__;
   Status status = Status::OK();
   if (resp_.has_error()) {
@@ -1432,6 +1445,7 @@ void GetSafeTimeForTablet::HandleResponse(int attempt) {
 }
 
 void GetSafeTimeForTablet::UnregisterAsyncTaskCallback() {
+  ADOPT_WAIT_STATE(backfill_table_->wait_state());
   if (state() == MonitoredTaskState::kAborted) {
     VLOG(1) << " was aborted";
     return;
@@ -1523,6 +1537,7 @@ std::string BackfillChunk::description() const {
 }
 
 bool BackfillChunk::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(backfill_tablet_->wait_state());
   VLOG(1) << __PRETTY_FUNCTION__;
   if (indexes_being_backfilled_.empty()) {
     TransitionToFailedState(

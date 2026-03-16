@@ -24,10 +24,9 @@
 #include <vector>
 
 #include <boost/mpl/and.hpp>
-#include "yb/util/flags.h"
 
+#include "yb/ash/wait_state.h"
 #include "yb/common/entity_ids.h"
-#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
@@ -36,13 +35,16 @@
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 
+#include "yb/qlexpr/index.h"
+
 #include "yb/server/monitored_task.h"
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
 
@@ -161,6 +163,8 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   bool using_table_locks() const { return using_table_locks_.load(std::memory_order_acquire); }
 
+  const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
+
   static bool GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table);
 
   static void UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table);
@@ -225,6 +229,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const scoped_refptr<NamespaceInfo> ns_info_;
   LeaderEpoch epoch_;
+  ash::WaitStateInfoPtr wait_state_;
 };
 
 class BackfillTableJob : public server::MonitoredTask {
@@ -297,6 +302,10 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   std::string LogPrefix() const;
 
   const std::string GetNamespaceName() const { return backfill_table_->GetNamespaceName(); }
+
+  const ash::WaitStateInfoPtr& wait_state() const {
+    return backfill_table_->wait_state();
+  }
 
  private:
   Status UpdateBackfilledUntil(
