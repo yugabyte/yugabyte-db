@@ -174,7 +174,7 @@ local all yugabyte trust
 The following table describes how each client SSL mode behaves when connecting through the YSQL Connection Manager with the default HBA configuration when cluster TLS is disabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? |
-| --- | --- | --- | --- |
+| :-- | :-- | :-- | :-- |
 | disable | Client attempts a non-SSL connection | Yes. Unencrypted connection is established. | Yes |
 | allow | Tries unencrypted connection first, then secure (encrypted) | Yes. Unencrypted connection is established. | Yes (first non-SSL attempt succeeds) |
 | prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted | Yes. Unencrypted connection is established. | Partially. First SSL attempt is rejected by connection manager, second non-SSL attempt follows connection manager authentication. |
@@ -201,7 +201,7 @@ local all yugabyte trust
 The following table describes how each client SSL mode behaves when connecting through the YSQL Connection Manager with the default HBA configuration when cluster TLS is enabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? | HBA customization changes behavior? |
-| --- | --- | --- | --- | --- |
+| :-- | :-- | :-- | :-- | :-- |
 | disable | Client attempts a non-SSL connection. | Yes, but error messages differ. | No. Non-SSL attempt is rejected by connection manager. | Yes. If you add `host all all all trust` to the HBA file, connection fails with connection manager, but succeeds with PostgreSQL. |
 | allow | Tries unencrypted connection first, then secure | Yes. Encrypted connection is established. | Partial. First non-SSL attempt is rejected by connection manager; second SSL attempt follows connection manager authentication. | Yes. If you add `host all all all trust` to the HBA file, an encrypted connection is created with connection manager; unencrypted with PostgreSQL. |
 | prefer (default in PostgreSQL) | Tries secure connection first, then unencrypted. | Yes. Encrypted connection is established. | Yes. First SSL attempt establishes connection with connection manager. | No |
