@@ -1,8 +1,8 @@
 ---
-title: Create on-premises provider configuration
-headerTitle: Create the provider configuration
-linkTitle: Create provider
-description: Configure the on-premises provider configuration.
+title: Manage your on-premises provider configurations
+headerTitle: Manage the provider configuration
+linkTitle: Manage provider
+description: Manage your on-premises provider configurations.
 headContent: For deploying universes on your private cloud
 menu:
   stable_yugabyte-platform:
@@ -12,17 +12,21 @@ menu:
 type: docs
 ---
 
-Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA), you must create an on-premises provider configuration.
-
-With on-premises providers, VMs are _not_ auto-created by YBA; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
-
 Navigate to **Integrations > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
-
-## Create a provider
 
 If you are using automatic provisioning, on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
 
-If you are using legacy provisioning, you can create an on-premises provider manually as follows:
+Before you can deploy universes to private clouds using YugabyteDB Anywhere, you must have an on-premises provider configuration. With on-premises providers, VMs are _not_ auto-created by YugabyteDB Anywhere; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
+
+## Create a provider
+
+{{< tip title="Automatic provisioning" >}}
+
+If you are using automatic provisioning, on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+
+{{< /tip >}}
+
+You can create an on-premises provider manually as follows:
 
 1. Click **Create Config** to open the **OnPrem Provider Configuration** page.
 
@@ -70,10 +74,10 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 
 ### SSH Key Pairs
 
-In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required only if YBA needs SSH access to the nodes to provision them (for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). This SSH user cannot be named yugabyte.
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required only if YugabyteDB Anywhere needs SSH access to the nodes to provision them (for [legacy automatic provisioning](../../prepare/server-nodes-software/software-on-prem-auto/)). This SSH user cannot be named yugabyte.
 
 {{< tip title="SSH access" >}}
-After you have provisioned and added the instances to the provider (including installing the [node agent](/stable/faq/yugabyte-platform/#node-agent)), YBA no longer requires SSH or sudo access to nodes.
+After you have provisioned and added the instances to the provider (including installing the [node agent](/stable/faq/yugabyte-platform/#node-agent)), YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 {{< /tip >}}
 
 In the **SSH Port** field, provide the port number of SSH client connections.
@@ -102,7 +106,7 @@ Install Node Exporter
 NTP Setup
 : You can customize the Network Time Protocol server.
 : Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-: Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+: Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Next step
 
