@@ -180,6 +180,7 @@ DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_double(tablet_split_min_size_ratio);
 
 METRIC_DECLARE_gauge_uint64(tablet_split_candidates);
+METRIC_DECLARE_gauge_uint64(outstanding_tablet_splits);
 
 namespace yb {
 
@@ -2004,6 +2005,37 @@ TEST_F(AutomaticTabletSplitITest, TabletSplitCandidatesMetric) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     return metric->value() == 0;
   }, 30s * kTimeMultiplier, "Wait for metric == 0"));
+}
+
+TEST_F(AutomaticTabletSplitITest, OutstandingTabletSplitsMetric) {
+  constexpr int kTabletSplitLimit = 3;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_size_threshold_bytes) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_outstanding_tablet_split_limit) = kTabletSplitLimit;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  SetNumTablets(kTabletSplitLimit);
+  CreateTable();
+
+  auto* master = cluster_->mini_master()->master();
+  auto metric_entity = master->metric_entity_cluster();
+  auto metric =
+      metric_entity->FindOrNull<AtomicGauge<uint64_t>>(METRIC_outstanding_tablet_splits);
+  ASSERT_NE(metric, nullptr);
+  ASSERT_EQ(metric->value(), 0);
+
+  constexpr int kNumRowsPerBatch = 1000;
+  ASSERT_OK(WriteRows(kNumRowsPerBatch, 1));
+  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_->id())) {
+    ASSERT_OK(FlushAllTabletReplicas(peer->tablet_id(), table_->id()));
+  }
+
+  // With compactions disabled, post-split children retain orphaned data and all kTabletSplitLimit
+  // splits remain outstanding.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return metric->value() == kTabletSplitLimit;
+  }, 30s * kTimeMultiplier, "Wait for outstanding splits metric == kTabletSplitLimit"));
 }
 
 // Similar to the FailedSplitIsRestarted test, but crash instead.
