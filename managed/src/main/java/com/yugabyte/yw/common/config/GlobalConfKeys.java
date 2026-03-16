@@ -2102,4 +2102,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable preflight check in YNP node agent provision",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_batch_size",
+          ScopeType.GLOBAL,
+          "Background Redaction Batch Size for Audit",
+          "Batch size for redacting secrets from audit entries",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> bgRedactAuditInterval =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_interval",
+          ScopeType.GLOBAL,
+          "Background Redaction Interval for Audit",
+          "Background interval for redacting secrets from audit entries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
