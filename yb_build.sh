@@ -1054,9 +1054,6 @@ if [[ ${#make_targets[@]} -eq 0 && -n $java_test_name ]]; then
   # Build only a subset of targets when we're only trying to run a Java test.
   make_targets+=( yb-master yb-tserver gen_auto_flags_json postgres update_ysql_conn_mgr_template
       update_ysql_migrations )
-  if [[ "${build_odyssey:-}" == "true" ]]; then
-    make_targets+=( odyssey )
-  fi
 fi
 
 if [[ $build_type == "compilecmds" ]]; then
