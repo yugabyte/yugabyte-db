@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -82,6 +83,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW = "2.29.0.0-b386";
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW = "2.29.0.0-b603";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -133,6 +136,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE,
             MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isFullMoveSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_FULL_MOVE_SUPPORT_STABLE,
+            MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW,
             true)
         >= 0;
   }
@@ -1693,5 +1705,36 @@ public class KubernetesUtil {
       }
     }
     return deviceInfo;
+  }
+
+  public static boolean needsFullMove(Cluster currCluster, Cluster newCluster) {
+    Set<UUID> curClusterAZUUIDs = currCluster.placementInfo.getAllAZUUIDs();
+    Iterator<PlacementAZ> azIter = newCluster.placementInfo.azStream().iterator();
+    while (azIter.hasNext()) {
+      PlacementAZ az = azIter.next();
+      if (!curClusterAZUUIDs.contains(az.uuid)) {
+        continue;
+      }
+      DeviceInfo oldDeviceInfo, newDeviceInfo;
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

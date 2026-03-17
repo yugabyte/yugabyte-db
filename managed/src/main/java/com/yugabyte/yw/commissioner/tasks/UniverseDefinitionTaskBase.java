@@ -1719,16 +1719,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
         if (opType == UniverseOpType.EDIT
-            && cluster.userIntent.deviceInfo != null
-            && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && KubernetesUtil.needsFullMove(univCluster, cluster)
+            && !KubernetesUtil.isFullMoveSupported(univCluster.userIntent.ybSoftwareVersion)) {
+          throw new IllegalStateException("Cannot perform full move in this Kubernetes cluster");
         }
         // Verify kubernetes overrides.
         if (cluster.clusterType == ClusterType.ASYNC) {
