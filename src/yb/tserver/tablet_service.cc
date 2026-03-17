@@ -527,7 +527,11 @@ class WriteQueryCompletionCallback {
 
   void operator()(Status status) const {
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
+    if (status.IsTryAgain()) {
+      LOG_DETAIL << __PRETTY_FUNCTION__ << " completing with status " << status;
+    } else {
+      VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
+    }
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() && AllowDuplicateRequest()) {
       status = Status::OK();
