@@ -2830,8 +2830,9 @@ YBAddDdlTxnState(YbDdlMode mode)
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	ddl_transaction_state.num_create_function_stmts =
 		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
