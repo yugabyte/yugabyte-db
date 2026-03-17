@@ -20,36 +20,36 @@ You can perform migration by taking your applications offline to perform the mig
     title="Assess migration"
     body="Generate a Migration Assessment Report to ensure a successful migration."
     href="assess-migration/"
-    icon="fa-thin fa-file">}}
+    icon="fa-thin fa-clipboard">}}
 
   {{<index/item
     title="Offline migration"
     body="Perform an offline migration of your database."
     href="migrate-steps/"
-    icon="/images/section_icons/index/introduction.png">}}
+    icon="fa-thin fa-arrow-down-to-bracket">}}
 
   {{<index/item
     title="Live migration"
     body="Migrate your database while your application is running."
     href="live-migrate/"
-    icon="/images/section_icons/manage/pitr.png">}}
+    icon="fa-thin fa-arrow-down-from-arc">}}
 
   {{<index/item
     title="Live migration with fall-forward"
     body="Fall forward to a source-replica database for your live migration."
     href="live-fall-forward/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-arrow-right-from-arc">}}
 
   {{<index/item
     title="Live migration with fall-back"
     body="Fall back to the source database for your live migration."
     href="live-fall-back/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-arrow-left-from-arc">}}
 
   {{<index/item
     title="Bulk data load from files"
     body="Bulk load data from flat files stored locally or in cloud storage."
     href="bulk-data-load/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-bucket">}}
 
 {{</index/block>}}
