@@ -795,8 +795,18 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                        GetUDTypeInfoResponsePB* resp,
                        rpc::RpcContext* rpc);
 
-  // Delete CDC streams metadata for a table.
+  // Delete CDC streams metadata for a table by marking streams as DELETING_METADATA.
+  // Used when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false.
   Status DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
+
+  // It removes the entries corresponding to 'table_ids' from cdcsdk_tables_to_stream_map_. It also
+  // adds the 'table_ids' to the 'dropped_table_id' list of the associated CDCSDK streams' metadata
+  // so that the streams can track which tables were deleted while being part of it. The background
+  // task CleanUpCDCSDKStreamsMetadata() will handle the actual cleanup of the CDCSDK streams'
+  // metadata and cdc_state table entries.
+  // Used when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is true.
+  Status HandleDroppedTablesForCDCSDKStreams(const std::unordered_set<TableId>& table_ids)
+      EXCLUDES(mutex_);
 
   // Delete all the CDCSDK streams on a namespace.
   Status DropAllCDCSDKStreams(const NamespaceId& ns_id) EXCLUDES(mutex_);
@@ -1666,10 +1676,21 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::unordered_set<TableId>& table_ids, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
+  Status GetTabletsForNonDroppedTables(
+      const std::unordered_set<TableId>& table_ids, const std::set<TableId>& dropped_tables,
+      std::set<TabletId>* tablets_with_streams);
+
   // Delete specified CDC streams metadata.
   Status CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
-  using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
+  // Returns CDCSDK streams that need metadata cleanup. This includes streams with non-empty
+  // dropped_table_id list and, when FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is false,
+  // streams in DELETING_METADATA state. When the flag is true, streams in DELETING_METADATA state
+  // are transitioned to ACTIVE after populating their dropped_table_id list with the identified
+  // dropped tables.
+  Result<std::vector<CDCStreamInfoPtr>> GetCDCSDKStreamsToCleanMetadata() EXCLUDES(mutex_);
+
+  using StreamTablesMap = std::map<xrepl::StreamId, std::set<TableId>>;
 
   Result<CDCStreamInfoPtr> GetXReplStreamInfo(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
 

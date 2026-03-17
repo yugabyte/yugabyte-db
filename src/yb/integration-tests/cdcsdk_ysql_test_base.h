@@ -18,6 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <boost/assign.hpp>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -130,6 +133,7 @@ DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
@@ -631,6 +635,17 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
           std::nullopt,
       bool include_catalog_tables = false);
+
+  void VerifyTablesAndStateInStreamMetadata(
+      const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
+          std::nullopt,
+      const std::optional<std::unordered_set<std::string>>& expected_dropped_table_ids =
+          std::nullopt,
+      const master::SysCDCStreamEntryPB::State& expected_state =
+          master::SysCDCStreamEntryPB::ACTIVE,
+      bool include_catalog_tables = false,
+      const std::string& timeout_msg = "Stream metadata doesn't match the expected state");
 
   void VerifyTabletIdsInCdcStateForStream(
       const xrepl::StreamId& stream_id,

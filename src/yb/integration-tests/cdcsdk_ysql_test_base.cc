@@ -2639,6 +2639,72 @@ void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
       MonoDelta::FromSeconds(60), timeout_msg));
 }
 
+void CDCSDKYsqlTest::VerifyTablesAndStateInStreamMetadata(
+    const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+    const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids,
+    const std::optional<std::unordered_set<std::string>>& expected_dropped_table_ids,
+    const master::SysCDCStreamEntryPB::State& expected_state, bool include_catalog_tables,
+    const std::string& timeout_msg) {
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SleepFor(MonoDelta::FromSeconds(1));
+
+        auto& cm = test_cluster_.mini_cluster_->mini_master()->catalog_manager_impl();
+        auto stream_info = VERIFY_RESULT(cm.GetXReplStreamInfo(stream_id));
+        auto stream_lock = stream_info->LockForRead();
+
+        auto all_expected_table_ids = expected_table_ids;
+        if (include_catalog_tables) {
+          auto conn = VERIFY_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+          const auto pg_database_oid = VERIFY_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+              Format("SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgClassTableOid));
+          all_expected_table_ids.insert(GetPgsqlTableId(pg_database_oid, kPgPublicationRelOid));
+        }
+
+        if (static_cast<size_t>(stream_lock->pb.table_id_size()) != all_expected_table_ids.size()) {
+          return false;
+        }
+        std::unordered_set<std::string> table_ids(
+            stream_lock->pb.table_id().begin(), stream_lock->pb.table_id().end());
+        if (table_ids != all_expected_table_ids) {
+          return false;
+        }
+
+        if (expected_unqualified_table_ids.has_value()) {
+          if (static_cast<size_t>(stream_lock->pb.unqualified_table_id_size()) !=
+              expected_unqualified_table_ids->size()) {
+            return false;
+          }
+          std::unordered_set<std::string> unqualified_table_ids(
+              stream_lock->pb.unqualified_table_id().begin(),
+              stream_lock->pb.unqualified_table_id().end());
+          if (unqualified_table_ids != *expected_unqualified_table_ids) {
+            return false;
+          }
+        }
+
+        if (expected_dropped_table_ids.has_value()) {
+          if (static_cast<size_t>(stream_lock->pb.dropped_table_id_size()) !=
+              expected_dropped_table_ids->size()) {
+            return false;
+          }
+          std::unordered_set<std::string> dropped_table_ids(
+              stream_lock->pb.dropped_table_id().begin(), stream_lock->pb.dropped_table_id().end());
+          if (dropped_table_ids != *expected_dropped_table_ids) {
+            return false;
+          }
+        }
+
+        if (stream_lock->pb.state() != expected_state) {
+          return false;
+        }
+
+        return true;
+      },
+      MonoDelta::FromSeconds(30), timeout_msg));
+}
+
 void CDCSDKYsqlTest::VerifyTabletIdsInCdcStateForStream(
     const xrepl::StreamId& stream_id,
     const std::unordered_set<TabletId>& expected_tablet_ids,

@@ -640,6 +640,7 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -7261,12 +7262,14 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  // Changing CDCSDK streams' state associated with the deleted tables to DELETING_MATADATA if
-  // streaming of dropped / re-written tables by CDC is disabled.
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
   // the streams associated with the 'deleted_table_ids' are not being dropped.
   if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
-    RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+    } else {
+      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    }
   }
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
@@ -10135,7 +10138,11 @@ Status CatalogManager::DeleteYsqlDBTables(
   for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
   }
-  RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+    RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(table_ids));
+  } else {
+    RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  }
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto& [table, _] : tables_and_locks) {
