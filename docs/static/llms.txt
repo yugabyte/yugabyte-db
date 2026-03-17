@@ -29,6 +29,10 @@ This site is the authoritative source for YugabyteDB product documentation. Cont
 - [Configuration reference](https://docs.yugabyte.com/stable/reference/configuration/): yb-master, yb-tserver, and related configuration
 - [Troubleshoot](https://docs.yugabyte.com/stable/troubleshoot/): Cluster and node troubleshooting
 - [FAQ](https://docs.yugabyte.com/stable/faq/): Frequently asked questions and comparisons
+- [Benchmark](https://docs.yugabyte.com/stable/benchmark/): TPC-C, scalability, and resilience benchmarks
+- [Best practices (operations)](https://docs.yugabyte.com/stable/best-practices-operations/): Operational best practices
+- [Legal](https://docs.yugabyte.com/stable/legal/): Legal information
+- [Other doc versions](https://docs.yugabyte.com/): Version selector for v2025.1, v2024.2, v2024.1, v2.20
 
 ## Drivers & ORMs
 
@@ -88,11 +92,3 @@ Full list: https://docs.yugabyte.com/stable/drivers-orms/
 - [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db): Q&A
 - [YouTube](https://www.youtube.com/@YugabyteDB): Tutorials, demos, tech talks
 - [Yugabyte University](https://university.yugabyte.com/): Free courses and certifications
-
-## Optional
-
-- [Benchmark](https://docs.yugabyte.com/stable/benchmark/): TPC-C, scalability, and resilience benchmarks
-- [Best practices (operations)](https://docs.yugabyte.com/stable/best-practices-operations/): Operational best practices
-- [Legal](https://docs.yugabyte.com/stable/legal/): Legal information
-- [Other doc versions](https://docs.yugabyte.com/): Version selector for v2025.1, v2024.2, v2024.1, v2.20
-
