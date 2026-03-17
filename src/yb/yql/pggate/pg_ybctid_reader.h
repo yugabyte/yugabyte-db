@@ -85,24 +85,35 @@ class YbctidReader {
     const auto signature = ++active_batch_accessor_signature_;
     Clear();
     if (capacity) {
-      ybctids_.reserve(*capacity);
+      ybctids_.values.reserve(*capacity);
     }
     return BatchAccessor(*this, signature);
   }
 
  private:
-  void Add(const LightweightTableYbctid& ybctid) { ybctids_.push_back(ybctid); }
+  void Add(const LightweightTableYbctid& ybctid) { ybctids_.values.push_back(ybctid); }
+
   void Clear() {
-    ybctids_.clear();
-    holders_->clear();
+    doc_ops_.clear();
+    ybctids_.Clear();
   }
 
   ReadResult Read(
       PgOid database_id, const TableLocalityMap& tables_locality, const Options& options);
 
+  struct Ybctids {
+    boost::container::small_vector<LightweightTableYbctid, 8> values;
+    DocResultYbctidRetention retention;
+
+    void Clear() {
+      values.clear();
+      retention.Clear();
+    }
+  };
+
   const PgSessionPtr& session_;
-  BuffersPtr holders_ = std::make_shared<Buffers>();
-  boost::container::small_vector<LightweightTableYbctid, 8> ybctids_;
+  boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 8> doc_ops_;
+  Ybctids ybctids_;
   size_t active_batch_accessor_signature_{0};
 };
 

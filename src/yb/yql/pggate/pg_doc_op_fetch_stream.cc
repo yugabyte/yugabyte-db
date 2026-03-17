@@ -28,15 +28,30 @@
 
 namespace yb::pggate {
 
-DocResult::DocResult(rpc::SidecarHolder data)
-    : data_(std::move(data)), current_row_idx_(0) {
-  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
+DocResultDataRetention::DocResultDataRetention(const RefCntBuffer& buffer) : buffer_(buffer) {}
+
+size_t DocResultDataRetention::Hash::operator()(const DocResultDataRetention& value) const {
+  return reinterpret_cast<size_t>(value.buffer_.data());
 }
 
-DocResult::DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
-    : DocResult(std::move(data)) {
-  if (row_count_ > 0 && !response.batch_orders().empty()) {
-    const auto& orders = response.batch_orders();
+bool DocResultDataRetention::EqualTo::operator()(
+    const DocResultDataRetention& lhs, const DocResultDataRetention& rhs) const {
+  return lhs.buffer_.data() == rhs.buffer_.data();
+}
+
+void DocResultYbctidRetention::Clear() {
+  container_.clear();
+  hint_ = container_.begin();
+}
+
+void DocResultYbctidRetention::Add(DocResultDataRetention&& retention) {
+  hint_ = container_.emplace_hint(hint_, std::move(retention));
+}
+
+DocResult::DocResult(rpc::SidecarHolder data, std::span<const int64_t> orders)
+    : data_(std::move(data)), current_row_idx_(0) {
+  PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);
+  if (row_count_ > 0 && !orders.empty()) {
     row_orders_.assign(orders.begin(), orders.end());
     DCHECK(row_orders_.size() == static_cast<size_t>(row_count_))
         << "Number of the row orders does not match the number of rows";
@@ -44,6 +59,7 @@ DocResult::DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response)
 }
 
 Status DocResult::WritePgTuple(const FetchedTargets& targets, PgTuple *pg_tuple) {
+  DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
   for (auto* target : targets) {
     if (PgDocData::ReadHeaderIsNull(&row_iterator_)) {
       target->SetNull(pg_tuple);
@@ -72,12 +88,14 @@ int DocResult::CompareTo(DocResult& other) {
   return 0;
 }
 
-Result<Slice> DocResult::ReadYbctid(Slice& data) {
-  SCHECK(!PgDocData::ReadHeaderIsNull(&data), InternalError, "System column ybctid cannot be NULL");
-  const auto data_size = PgDocData::ReadNumber<int64_t>(&data);
-  const auto* data_ptr = data.data();
+Result<Slice> DocResult::ReadYbctid() {
+  SCHECK(
+      !PgDocData::ReadHeaderIsNull(&row_iterator_),
+      InternalError, "System column ybctid cannot be NULL");
+  const auto data_size = PgDocData::ReadNumber<int64_t>(&row_iterator_);
+  const auto* data_ptr = row_iterator_.data();
   Slice ybctid{data_ptr, data_ptr + data_size};
-  data.remove_prefix(data_size);
+  row_iterator_.remove_prefix(data_size);
   return ybctid;
 }
 
@@ -144,7 +162,6 @@ Status PgDocResult::WritePgTuple(PgTuple* pg_tuple) {
 
 Status PgDocResult::NextPgTuple() {
   if (!pg_tuple_is_valid_) {
-    DCHECK(current_row_idx_ < static_cast<size_t>(row_count_));
     auto save = YBCSwitchMemoryContext(mem_context_.ptr);
     auto status = DocResult::WritePgTuple(*targets_, &pg_tuple_);
     YBCSwitchMemoryContext(save);
@@ -154,23 +171,13 @@ Status PgDocResult::NextPgTuple() {
   return Status::OK();
 }
 
-Status PgDocResult::ProcessYbctids(const YbctidProcessor& processor) {
+Result<Slice> PgDocResult::ReadYbctid() {
   RETURN_NOT_OK(NextPgTuple());
-  processor(VERIFY_RESULT(ReadYbctid(row_iterator_)));
   pg_tuple_is_valid_ = false;
-  return Status::OK();
+  return DocResult::ReadYbctid();
 }
 
 //--------------------------------------------------------------------------------------------------
-template <class R>
-DocResultStream<R>::~DocResultStream() {
-  if (old_results_holder_) {
-    for (auto& result : results_queue_) {
-      old_results_holder_->push_back(result.DataBuffer());
-    }
-  }
-}
-
 template <class R>
 StreamFetchStatus DocResultStream<R>::FetchStatus() const {
   for (const auto& result : results_queue_) {
@@ -190,16 +197,8 @@ void DocResultStream<R>::Detach() {
 }
 
 template <class R>
-void DocResultStream<R>::HoldResults(BuffersPtr holder) {
-  old_results_holder_ = holder ? holder : std::make_shared<Buffers>();
-}
-
-template <class R>
 R* DocResultStream<R>::GetNextDocResult() {
   while (!results_queue_.empty() && results_queue_.front().is_eof()) {
-    if (old_results_holder_) {
-      old_results_holder_->push_back(results_queue_.front().DataBuffer());
-    }
     results_queue_.pop_front();
   }
   return results_queue_.empty() ? nullptr : &results_queue_.front();
@@ -237,11 +236,18 @@ uint64_t PgDocOpFetchStream::EmplaceDocResult(DocResultStream<R>& stream, Args&&
   return stream.EmplaceDocResult(std::forward<Args>(args)...);
 }
 
-BuffersPtr PgDocOpFetchStream::HoldResults(BuffersPtr holder) {
-  auto previous = old_results_holder_;
-  old_results_holder_ = holder ? holder : std::make_shared<Buffers>();
-  DoHoldResults();
-  return previous;
+Result<bool> PgDocOpFetchStream::DoProcessNextYbctids(const YbctidProcessorContext& ctx) {
+  auto* result = VERIFY_RESULT(NextDocResult());
+  if (!result) {
+    return false;
+  }
+  while (!result->is_eof()) {
+    ctx.processor(VERIFY_RESULT(result->ReadYbctid()));
+  }
+  if (ctx.retention) {
+    ctx.retention->Add(result->Retention());
+  }
+  return true;
 }
 
 ParallelPgDocOpFetchStream::ParallelPgDocOpFetchStream(
@@ -259,9 +265,6 @@ void ParallelPgDocOpFetchStream::ResetOps() {
 void ParallelPgDocOpFetchStream::ResetOps(const std::vector<PgsqlOpPtr>& ops) {
   for (const auto& op : ops) {
     read_streams_.emplace_back(op);
-  }
-  if (old_results_holder_) {
-    DoHoldResults();
   }
 }
 
@@ -295,12 +298,6 @@ Result<DocResult*> ParallelPgDocOpFetchStream::NextDocResult() {
   }
 
   return STATUS(RuntimeError, "Unreachable statement");
-}
-
-void ParallelPgDocOpFetchStream::DoHoldResults() {
-  for (auto& read_stream : read_streams_) {
-    read_stream.HoldResults(old_results_holder_);
-  }
 }
 
 Result<DocResultStream<DocResult>&> ParallelPgDocOpFetchStream::FindReadStream(
@@ -359,9 +356,6 @@ void MergingPgDocOpFetchStream<R>::ResetOps(const std::vector<PgsqlOpPtr>& ops) 
   for (auto& op : ops) {
     read_streams_.emplace_back(op);
   }
-  if (old_results_holder_) {
-    DoHoldResults();
-  }
   started_ = false;
 }
 
@@ -369,7 +363,8 @@ template <class R>
 Result<uint64_t> MergingPgDocOpFetchStream<R>::EmplaceOpDocResult(
     const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) {
   return EmplaceDocResult(
-      VERIFY_RESULT_REF(FindReadStream(op, response)), std::move(data), response);
+      VERIFY_RESULT_REF(FindReadStream(op, response)), std::move(data),
+      std::span{response.batch_orders()});
 }
 
 template <>
@@ -409,11 +404,7 @@ Result<DocResultStream<R>&> MergingPgDocOpFetchStream<R>::FindReadStream(
     // Large part of such split is beyond the scope of the result stream management structures.
     VLOG_WITH_FUNC(2) << "Adding split stream for operation " << op;
     read_streams_.emplace_back(nullptr);
-    auto& new_stream = read_streams_.back();
-    if (old_results_holder_) {
-      new_stream.HoldResults(old_results_holder_);
-    }
-    return new_stream;
+    return read_streams_.back();
   }
   auto it = std::find(read_streams_.begin(), read_streams_.end(), op);
   if (it == read_streams_.end()) {
@@ -475,9 +466,23 @@ Result<DocResult*> MergingPgDocOpFetchStream<R>::NextDocResult() {
 }
 
 template <class R>
-void MergingPgDocOpFetchStream<R>::DoHoldResults() {
-  for (auto& read_stream : read_streams_) {
-    read_stream.HoldResults(old_results_holder_);
+Result<bool> MergingPgDocOpFetchStream<R>::DoProcessNextYbctids(const YbctidProcessorContext& ctx) {
+  VLOG_WITH_FUNC(4) << "Start";
+  size_t found = 0;
+  while (true) {
+    auto* result = VERIFY_RESULT(NextDocResult());
+    if (!result) {
+      VLOG_WITH_FUNC(4) << "All done after " << found << " ybctids processed";
+      return found > 0;
+    }
+    ++found;
+    ctx.processor(VERIFY_RESULT(result->ReadYbctid()));
+    if (ctx.retention)
+      ctx.retention->Add(result->Retention());
+    if (current_stream_->FetchStatus() == StreamFetchStatus::kNeedsFetch) {
+      VLOG_WITH_FUNC(4) << "Need to fetch after " << found << " ybctids processed";
+      return true;
+    }
   }
 }
 
