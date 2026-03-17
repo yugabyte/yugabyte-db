@@ -3943,6 +3943,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_listen_notify", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Enables LISTEN/NOTIFY."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_listen_notify,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
