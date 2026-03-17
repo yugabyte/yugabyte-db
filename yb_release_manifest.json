@@ -50,6 +50,32 @@
       "thirdparty/installed/common/lib/ossl-modules"
     ],
     "postgres": ["$BUILD_ROOT/postgres/*"],
+    "python/ai/rag_agent": [
+      "python/ai/rag_agent/*.py",
+      "python/ai/rag_agent/*.txt",
+      "python/ai/rag_agent/*.md"
+    ],
+    "python/ai/rag_agent/db": [
+      "python/ai/rag_agent/db/*"
+    ],
+    "python/ai/rag_agent/embeddings": [
+      "python/ai/rag_agent/embeddings/*"
+    ],
+    "python/ai/rag_agent/models": [
+      "python/ai/rag_agent/models/*"
+    ],
+    "python/ai/rag_agent/pdf_processing": [
+      "python/ai/rag_agent/pdf_processing/*"
+    ],
+    "python/ai/rag_agent/rag_pipeline": [
+      "python/ai/rag_agent/rag_pipeline/*"
+    ],
+    "python/ai/rag_agent/source_location_crawlers": [
+      "python/ai/rag_agent/source_location_crawlers/*"
+    ],
+    "python/ai/rag_agent/work_queue": [
+      "python/ai/rag_agent/work_queue/*"
+    ],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",

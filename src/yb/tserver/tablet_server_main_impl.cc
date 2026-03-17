@@ -78,6 +78,7 @@
 #include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
+#include "yb/yql/dist_rag_wrapper/dist_rag_wrapper.h"
 
 using std::string;
 using namespace std::placeholders;
@@ -96,6 +97,10 @@ using namespace std::chrono_literals;
 
 DEFINE_NON_RUNTIME_bool(start_redis_proxy, false,
     "Starts a redis proxy along with the tablet server");
+
+
+DEFINE_NON_RUNTIME_bool(enable_pg_dist_rag_service, false,
+    "Enable the Distributed RAG service.");
 
 DEFINE_NON_RUNTIME_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
 DEFINE_NON_RUNTIME_string(cql_proxy_broadcast_rpc_address, "",
@@ -394,6 +399,13 @@ int TabletServerMain(int argc, char** argv) {
         &io_service_thread));
   }
 
+  std::unique_ptr<DistRagServiceSupervisor> dist_rag_service_supervisor;
+  if (FLAGS_enable_pg_dist_rag_service) {
+    LOG(INFO) << "Starting Distributed RAG Service...";
+    dist_rag_service_supervisor = std::make_unique<DistRagServiceSupervisor>(*server);
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(dist_rag_service_supervisor->Start());
+  }
+
   auto llvm_profile_dumper_result = std::make_unique<LlvmProfileDumper>();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(llvm_profile_dumper_result->Start());
 
@@ -428,6 +440,11 @@ int TabletServerMain(int argc, char** argv) {
   if (ysql_conn_mgr_supervisor) {
     LOG(WARNING) << "Stopping Ysql Connection Manager process";
     ysql_conn_mgr_supervisor->Stop();
+  }
+
+  if (dist_rag_service_supervisor) {
+    LOG(WARNING) << "Stopping Distributed RAG Service";
+    dist_rag_service_supervisor->Stop();
   }
 
   if (call_home) {

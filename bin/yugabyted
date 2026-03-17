@@ -149,6 +149,8 @@ PREREQS_ERROR_MSGS = {
     'clockbound': 'Clockbound is recommended on AWS/Azure/GCP clusters.' \
         ' It can reduce read restart errors significantly in concurrent workloads. Please run ' \
         'bin/configure_clockbound.sh script to install and configure clockbound.',
+    'python_version': 'Python 3.11+ is required for the Distributed RAG service. ' \
+        'Please install Python 3.11 or higher.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
@@ -3383,6 +3385,26 @@ class ControlScript(object):
         return (failed_ports, warning_ports,
                 mandatory_port_available, recommended_port_available)
 
+    def check_python_version_for_rag(self):
+        """Check if Python 3.11+ is available for RAG service.
+
+        Returns:
+            tuple: (python_exe, is_valid) where python_exe is the path and is_valid is boolean
+        """
+        for python_executable in ['python3.11', 'python3.12', 'python3.13', 'python3', 'python']:
+            try:
+                result = subprocess.check_output([python_executable, '--version'],
+                                                stderr=subprocess.STDOUT,
+                                                universal_newlines=True)
+                version_str = result.split()[1]  # "Python 3.11.9" -> "3.11.9"
+                major_version, minor_version = map(int, version_str.split('.')[:2])
+                if major_version > 3 or (major_version == 3 and minor_version >= 11):
+                    Output.log("Found {} for RAG agent virtual environment".format(result.strip()))
+                    return (python_executable, True)
+            except (subprocess.CalledProcessError, FileNotFoundError, ValueError, IndexError):
+                continue
+        return (None, False)
+
     # All Pre-requisites check for Linux
     def linux_prereqs_check(self):
         prereqs_failed = set()
@@ -3394,6 +3416,14 @@ class ControlScript(object):
             Output.log("Running in a Docker container. Skipping pre-requisite checks.")
             return (prereqs_failed_flag, prereqs_failed, prereqs_warn_flag, prereqs_warn,
                     True, True)
+
+        # Check Python 3.11+ if RAG service is enabled
+        tserver_flags = self.configs.saved_data.get("tserver_flags", "")
+        if "enable_pg_dist_rag_service=true" in tserver_flags:
+            python_exe, is_valid = self.check_python_version_for_rag()
+            if not is_valid:
+                prereqs_failed.add('python_version')
+                prereqs_failed_flag = True
 
         if not self.linux_transparent_hugepage_check():
             prereqs_warn.add('transparent_hugepages')
@@ -3438,6 +3468,14 @@ class ControlScript(object):
         prereqs_warn = set()
         prereqs_failed_flag = False
         prereqs_warn_flag = False
+
+        # Check Python 3.11+ if RAG service is enabled
+        tserver_flags = self.configs.saved_data.get("tserver_flags", "")
+        if "enable_pg_dist_rag_service=true" in tserver_flags:
+            python_exe, is_valid = self.check_python_version_for_rag()
+            if not is_valid:
+                prereqs_failed.add('python_version')
+                prereqs_failed_flag = True
 
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
@@ -3484,6 +3522,126 @@ class ControlScript(object):
         recommended_ports.append("ycql_metric_port")
 
         return recommended_ports
+
+    # Setup environment for Distributed RAG service
+    def setup_dist_rag_python_env(self, is_first_run):
+        """Setup Python virtual environment for the Distributed RAG service.
+
+        This creates a venv and installs requirements for the RAG agent
+        located in python/ai/rag_agent.
+        - On first run: Always creates a fresh venv
+        - On restart: Only creates if venv is missing, otherwise reuses existing
+
+        Args:
+            is_first_run: True if this is the first startup, False for restarts
+
+        Returns:
+            dict: Result dictionary with 'msg' and 'status' keys similar to prereqs_check
+        """
+        # The RAG agent is located at python/ai/rag_agent/
+        # This path is consistent across development builds and release tarballs
+        script_dir = os.path.join(YUGABYTE_DIR, "python", "ai", "rag_agent")
+        script_path = os.path.join(script_dir, "start_rag_agent.py")
+
+        if not os.path.exists(script_dir):
+            Output.log_error_and_exit(
+                "RAG agent directory not found: {}".format(script_dir))
+
+        if not os.path.isfile(script_path):
+            Output.log_error_and_exit(
+                "RAG agent script not found: {}".format(script_path))
+
+        venv_dir = os.path.join(script_dir, 'venv')
+        requirements_path = os.path.join(script_dir, 'requirements.txt')
+
+        # Get Python 3.11+ (prereqs_check already validated this exists)
+        python_exe, is_valid = self.check_python_version_for_rag()
+        if not is_valid:
+            # This should not happen as prereqs_check should have caught it
+            Output.log_error_and_exit(
+                "Python 3.11+ is required for the RAG agent. "
+                "Please install Python 3.11 or higher.")
+
+        # Determine if we need to create the venv
+        should_create_venv = False
+        if is_first_run:
+            # On first run, always create fresh venv
+            should_create_venv = True
+            if os.path.exists(venv_dir):
+                Output.log("Removing existing virtual environment at {}...".format(venv_dir))
+                import shutil
+                shutil.rmtree(venv_dir)
+        else:
+            # On restart, only create if venv is missing
+            if not os.path.exists(venv_dir):
+                should_create_venv = True
+            else:
+                Output.log("Using existing RAG virtual environment at {}".format(venv_dir))
+
+        # Create virtual environment if needed
+        if should_create_venv:
+            # Stage 1: Setting up environment
+            Output.init_animation("Setting up Distributed RAG environment...")
+
+            # Step 1: Create virtual environment
+            Output.log("Creating Python virtual environment at {}...".format(venv_dir))
+            try:
+                subprocess.check_call([python_exe, '-m', 'venv', venv_dir])
+                Output.log("Virtual environment created successfully")
+            except subprocess.CalledProcessError as e:
+                Output.update_animation(
+                    "Failed to set up Distributed RAG environment", Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(
+                    "Failed to create virtual environment: {}".format(e))
+
+            # Step 2: Install/upgrade pip
+            pip_exe = os.path.join(venv_dir, 'bin', 'pip')
+            Output.log("Upgrading pip...")
+            try:
+                subprocess.check_call(
+                    [pip_exe, 'install', '--upgrade', 'pip'],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+                Output.log("Pip upgraded successfully")
+            except subprocess.CalledProcessError:
+                Output.log("Warning: Failed to upgrade pip, continuing anyway...")
+
+            # Stage 2: Installing dependencies (update the animation message)
+            Output.update_animation(
+                "Installing RAG dependencies (this may take a few minutes)...",
+                Output.ANIMATION_RUNNING)
+
+            # Step 3: Install requirements
+            if os.path.exists(requirements_path):
+                Output.log("Installing Python dependencies from {}...".format(requirements_path))
+                try:
+                    result = subprocess.run(
+                        [pip_exe, 'install', '-r', requirements_path],
+                        capture_output=True,
+                        text=True,
+                        check=True)
+                    Output.log("Python dependencies installed successfully")
+                except subprocess.CalledProcessError as e:
+                    Output.update_animation(
+                        "Failed to install Distributed RAG dependencies", Output.ANIMATION_FAIL)
+                    error_msg = "Failed to install requirements: {}".format(e)
+                    if e.stderr:
+                        # Include last 2000 chars of stderr
+                        error_msg += "\n\nPip error output:\n{}".format(
+                            e.stderr[-2000:])
+                    Output.log_error_and_exit(error_msg)
+            else:
+                Output.log("Warning: No requirements.txt found at {}".format(requirements_path))
+                Output.print_and_log("No requirements.txt found at {}".format(requirements_path))
+
+            # Stage 3: Complete (update animation with success message)
+            Output.update_animation("Distributed RAG environment ready", Output.ANIMATION_SUCCESS)
+
+        # Return success result like prereqs_check
+        return {
+            'msg': Output.ANIMATION_SUCCESS + " " + "Distributed RAG setup",
+            'status': Output.ANIMATION_SUCCESS
+        }
 
     # Checks whether the prerequisites are met or not
     def prereqs_check(self, ulimits=False):
@@ -3728,6 +3886,11 @@ class ControlScript(object):
             elif prereqs_check_result['status']==Output.ANIMATION_FAIL:
                 Output.print_and_log(prereqs_check_result['msg'])
                 sys.exit(1)
+
+        # Setup Distributed RAG environment before starting servers (only if enabled)
+        tserver_flags = self.configs.saved_data.get("tserver_flags", "")
+        if "enable_pg_dist_rag_service=true" in tserver_flags:
+            self.setup_dist_rag_python_env(is_first_run)
 
         common_gflags = self.get_common_flags()
 
@@ -4379,6 +4542,12 @@ class ControlScript(object):
             Output.log("Warning: Failed to read flagfile {}: {}".format(flagfile_path, str(e)))
         return flag_dict
 
+    def get_flagfile_dict(self, flags_str):
+        flagfile_value = self.get_flag_value(flags_str, "flagfile")
+        if not flagfile_value:
+            return {}
+        return self.parse_flagfile(flagfile_value)
+
     # Extracts a simple flag value from flags_str or flagfile_dict.
     # Direct flags in flags_str take precedence over flagfile_dict.
     # Returns the flag value or None if not found.
@@ -4492,10 +4661,7 @@ class ControlScript(object):
         master_flags = self.configs.saved_data.get("master_flags","")
 
         # Parse flagfile if specified
-        flagfile_dict = {}
-        flagfile_value = self.get_flag_value(master_flags, "flagfile")
-        if flagfile_value:
-            flagfile_dict = self.parse_flagfile(flagfile_value)
+        flagfile_dict = self.get_flagfile_dict(master_flags)
 
         # Add yb_enable_read_committed_isolation flag
         # Check if user has provided this flag (direct flags or flagfile)
@@ -4586,10 +4752,7 @@ class ControlScript(object):
         tserver_flags = self.configs.saved_data.get("tserver_flags","")
 
         # Parse flagfile if specified
-        flagfile_dict = {}
-        flagfile_value = self.get_flag_value(tserver_flags, "flagfile")
-        if flagfile_value:
-            flagfile_dict = self.parse_flagfile(flagfile_value)
+        flagfile_dict = self.get_flagfile_dict(tserver_flags)
 
         # Add yb_enable_read_committed_isolation flag
         # Check if user has provided this flag (direct flags or flagfile)
@@ -6614,6 +6777,10 @@ class ControlScript(object):
 
         (out, err, retcode) = run_process_with_retries(cmd=cmd, log_cmd=True, retries=retries,
                                                        timeout=timeout)
+        Output.log("pg_isready command: {}".format(cmd))
+        Output.log("pg_isready output: {}".format(out))
+        Output.log("pg_isready error: {}".format(err))
+        Output.log("pg_isready return code: {}".format(retcode))
         if retcode:
             return False
         else:
