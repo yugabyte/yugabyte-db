@@ -54,6 +54,9 @@ const int kDebugLogChunkSize = 128 * 1024;
 
 class PosixLogger : public Logger {
  private:
+#if !defined(__APPLE__)
+  FILE* file_;
+#endif
   int fd_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
   std::atomic_size_t log_size_;
@@ -63,6 +66,7 @@ class PosixLogger : public Logger {
   std::atomic<bool> flush_pending_;
   std::string fname_;
  public:
+#if defined(__APPLE__)
   PosixLogger(const std::string& fname, int fd, uint64_t (*gettid)(), Env* env,
               const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
       : Logger(log_level),
@@ -78,13 +82,38 @@ class PosixLogger : public Logger {
   }
   virtual void Flush() override {
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
-    // With raw write() syscalls, data goes directly to OS kernel buffers — there is no user-space
-    // stdio buffer to flush. We intentionally avoid fsync() here to prevent forcing data to disk
-    // every 5 seconds per logger, which would be a significant perf regression in high-fd-count
-    // scenarios (see also win_logger.cc which documents this same reasoning).
+    // raw write() bypasses stdio buffering, so data is already in OS kernel buffers - no flush
+    // needed. Just reset the pending flag.
     flush_pending_.store(false);
     last_flush_micros_ = env_->NowMicros();
   }
+#else
+  PosixLogger(const std::string& fname, FILE* f, uint64_t (*gettid)(), Env* env,
+              const InfoLogLevel log_level = InfoLogLevel::ERROR_LEVEL)
+      : Logger(log_level),
+        file_(f),
+        fd_(fileno(f)),
+        gettid_(gettid),
+        log_size_(0),
+        last_flush_micros_(0),
+        env_(env),
+        flush_pending_(false),
+        fname_(fname) {}
+  virtual ~PosixLogger() {
+    fclose(file_);
+  }
+  virtual void Flush() override {
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
+    {
+      bool expected_flush_pending = true;
+      // TODO: use a weaker memory order?
+      if (flush_pending_.compare_exchange_strong(expected_flush_pending, false)) {
+        fflush(file_);
+      }
+    }
+    last_flush_micros_ = env_->NowMicros();
+  }
+#endif // defined(__APPLE__)
 
   using Logger::Logv;
   virtual void Logv(const char* format, va_list ap) override {
@@ -169,7 +198,8 @@ class PosixLogger : public Logger {
       }
 #endif
 
-      // Write using raw fd I/O to avoid macOS stdio FILE* stream limit (~32K).
+#if defined(__APPLE__)
+      // Use raw fd I/O to avoid macOS stdio FILE* stream limit (~32K).
       const char* src = base;
       size_t left = write_size;
       while (left > 0) {
@@ -184,6 +214,9 @@ class PosixLogger : public Logger {
         left -= done;
       }
       size_t sz = write_size - left;
+#else
+      size_t sz = fwrite(base, 1, write_size, file_);
+#endif
       // TODO: use a weaker memory order?
       flush_pending_.store(true);
       assert(sz == write_size);
