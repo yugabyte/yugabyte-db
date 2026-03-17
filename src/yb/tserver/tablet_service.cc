@@ -527,11 +527,7 @@ class WriteQueryCompletionCallback {
 
   void operator()(Status status) const {
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    if (status.IsTryAgain()) {
-      LOG_DETAIL << __PRETTY_FUNCTION__ << " completing with status " << status;
-    } else {
-      VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
-    }
+    VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() && AllowDuplicateRequest()) {
       status = Status::OK();
@@ -548,7 +544,8 @@ class WriteQueryCompletionCallback {
         status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
       }
 
-      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      status.IsTryAgain()? LOG_DETAIL : LOG(INFO) << "Write failed: " << status;
+
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
       }
