@@ -3469,9 +3469,6 @@ class PgClientSession::Impl {
 
     if (options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
-      if (options.ddl_mode()) {
-        return STATUS(NotSupported, "Restarting a DDL transaction not supported");
-      }
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
     } else {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
