@@ -41,7 +41,7 @@ type: docs
 
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-Create a Amazon Web Services (AWS) provider configuration if your target cloud is AWS, and you can provide full SSH permissions to YugabyteDB Anywhere to orchestrate universe management.
+Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS, and you can provide full SSH permissions to YugabyteDB Anywhere to orchestrate universe management.
 
 {{< tip title="Use on-premises provider" >}}
 
