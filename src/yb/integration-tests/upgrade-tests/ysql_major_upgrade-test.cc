@@ -19,6 +19,7 @@
 #include "yb/client/table_info.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/pg_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::chrono_literals;
@@ -1872,6 +1873,36 @@ TEST_F(YsqlMajorUpgradeWorkingDirTest, PgUpgradeSetWorkingDirectory) {
 
   // Restore permissions and expect upgrade to now succeed.
   ASSERT_EQ(chmod(custom_working_dir_.c_str(), 0755), 0) << "chmod failed: " << strerror(errno);
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+}
+
+// Verify that when pg_upgrade fails, the temporary socket directory is cleaned up
+// and not left behind as a stale artifact.
+TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterFailedUpgrade) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  constexpr int kNonDefaultUpgradePort = 15000;
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "ysql_upgrade_postgres_port", std::to_string(kNonDefaultUpgradePort)));
+
+  // Inject a failure right before the pg_upgrade binary runs.
+  // This skips the slow pg_upgrade dump/restore cycle while still exercising the
+  // socket directory creation and cleanup paths.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_fail_ysql_pg_upgrade", "true"));
+
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+
+  auto* leader = cluster_->GetLeaderMaster();
+  auto socket_dir = PgDeriveSocketDir(
+      HostPort(leader->bound_rpc_addr().host(), kNonDefaultUpgradePort));
+
+  ASSERT_FALSE(Env::Default()->DirExists(socket_dir))
+      << "Stale socket directory was not cleaned up: " << socket_dir;
+
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  // Verify upgrade succeeds after rollback with no stale state left behind.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_fail_ysql_pg_upgrade", "false"));
   ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }
 
