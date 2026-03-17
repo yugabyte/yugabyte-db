@@ -332,7 +332,8 @@ void AshCopyTServerSample(
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
-  cb_metadata->query_id = tserver_metadata.query_id();
+  cb_metadata->qp.query_id = tserver_metadata.query_id();
+  cb_metadata->qp.plan_id = tserver_metadata.plan_id();
   // if the pid is zero, it's a tserver background activity
   cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
                                             : pgapi->GetLocalTServerPid();
