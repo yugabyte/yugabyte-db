@@ -2204,8 +2204,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       UserIntent newIntent = newCluster.userIntent, currIntent = currCluster.userIntent;
       PlacementInfo newPI = newCluster.placementInfo, curPI = currCluster.placementInfo;
 
-      // Not allowing re-run if disk size change was attempted
-      if (newIntent.deviceInfo.volumeSize != currIntent.deviceInfo.volumeSize) {
+      // Not allowing re-run if device info change was attempted
+      Map<ServerType, Boolean> deviceInfoChanged =
+          getServerTypeDeviceInfoChangedMap(newCluster, currCluster);
+      if (deviceInfoChanged.get(ServerType.TSERVER) || deviceInfoChanged.get(ServerType.MASTER)) {
         return false;
       }
 
@@ -2227,5 +2229,39 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
     }
     return true;
+  }
+
+  private static Map<ServerType, Boolean> getServerTypeDeviceInfoChangedMap(
+      Cluster newCluster, Cluster currCluster) {
+    boolean masterVolumeChanged = false, tserverVolumeChanged = false;
+    KubernetesPlacement newPlacement =
+        new KubernetesPlacement(
+            newCluster.placementInfo, newCluster.clusterType == ClusterType.ASYNC);
+    for (Entry<UUID, Map<String, String>> entry : newPlacement.configs.entrySet()) {
+      DeviceInfo taskDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+      DeviceInfo existingDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), false /* isDedicatedMaster */);
+      if (taskDeviceInfo != null
+          && existingDeviceInfo != null
+          && !taskDeviceInfo.equals(existingDeviceInfo)) {
+        log.debug("Volume config changed for AZ {} for tserver", entry.getKey());
+        tserverVolumeChanged = true;
+      }
+      DeviceInfo taskMasterDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+      DeviceInfo existingMasterDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(entry.getKey(), true /* isDedicatedMaster */);
+      if (taskMasterDeviceInfo != null
+          && existingMasterDeviceInfo != null
+          && !taskMasterDeviceInfo.equals(existingMasterDeviceInfo)) {
+        log.debug("Volume config changed for AZ {} for master", entry.getKey());
+        masterVolumeChanged = true;
+      }
+    }
+    Map<ServerType, Boolean> deviceInfoChanged = new HashMap<>();
+    deviceInfoChanged.put(ServerType.TSERVER, tserverVolumeChanged);
+    deviceInfoChanged.put(ServerType.MASTER, masterVolumeChanged);
+    return deviceInfoChanged;
   }
 }

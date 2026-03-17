@@ -761,10 +761,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -807,8 +805,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
     verify(mockUniverseImporter)
         .setYsqlSpec(any(), eq(userIntent.enableYSQL), eq(userIntent.enableYSQLAuth));
     verify(mockUniverseImporter).setGflagsSpecFromUniverse(any(), eq(testUniverse));
-    verify(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), eq(testUniverse));
-    verify(mockUniverseImporter).setMasterDeviceInfoSpecFromUniverse(any(), eq(testUniverse));
+    verify(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), eq(testUniverse));
+    verify(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), eq(testUniverse));
     verify(mockUniverseImporter).setYbcThrottleParametersSpecFromUniverse(any(), eq(testUniverse));
     verify(mockUniverseImporter).setKubernetesOverridesSpecFromUniverse(any(), eq(testUniverse));
   }
@@ -836,10 +834,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     // Mock universeImporter calls
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -884,10 +880,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -929,10 +923,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     // Mock universeImporter calls
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -978,10 +970,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());

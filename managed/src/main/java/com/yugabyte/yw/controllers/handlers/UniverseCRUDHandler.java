@@ -1277,8 +1277,8 @@ public class UniverseCRUDHandler {
           primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
       primaryCluster.userIntent.setUserIntentOverrides(
           KubernetesUtil.generateVolumeOverridesForUserIntent(
-              primaryCluster.userIntent,
-              primaryCluster.placementInfo,
+              primaryCluster.userIntent.getUserIntentOverrides(),
+              primaryCluster.placementInfo.getAllAZUUIDs(),
               primaryCluster.userIntent.universeOverrides,
               primaryCluster.userIntent.azOverrides,
               PlacementInfoUtil.findRetainedAZs(
@@ -1304,8 +1304,8 @@ public class UniverseCRUDHandler {
           cluster, taskParams.getNodesInCluster(cluster.uuid));
       cluster.userIntent.setUserIntentOverrides(
           KubernetesUtil.generateVolumeOverridesForUserIntent(
-              cluster.userIntent,
-              cluster.placementInfo,
+              cluster.userIntent.getUserIntentOverrides(),
+              cluster.placementInfo.getAllAZUUIDs(),
               u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
               u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
               PlacementInfoUtil.findRetainedAZs(

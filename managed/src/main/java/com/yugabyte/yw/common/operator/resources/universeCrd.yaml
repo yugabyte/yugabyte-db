@@ -24,6 +24,16 @@ spec:
                 rule: self.replicationFactor <= self.numNodes
               - message: placementInfo cannot be removed once set.
                 rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
+              - message: >
+                  tserverVolume cannot be present if deviceInfo or masterDeviceInfo is present.
+                  The new volume fields are mutually exclusive with the old deviceInfo fields.
+                rule: >
+                  !has(self.tserverVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
+              - message: >
+                  masterVolume cannot be present if deviceInfo or masterDeviceInfo is present.
+                  The new volume fields are mutually exclusive with the old deviceInfo fields.
+                rule: >
+                  !has(self.masterVolume) || (!has(self.deviceInfo) && !has(self.masterDeviceInfo))
             properties:
               universeName:
                 type: string
@@ -240,6 +250,7 @@ spec:
                   Device information for the tservers in universe to
                   refer to storage information for volume,
                   storage classes etc.
+                  DEPRECATED: Use tserverVolume instead. deviceInfo and tserverVolume are mutually exclusive.
                 properties:
                   volumeSize:
                     type: integer
@@ -255,13 +266,16 @@ spec:
                     x-kubernetes-validations:
                       - message: StorageClass cannot be changed once set.
                         rule: self == oldSelf
-                    description: Storage class for the volumes. Only used when providerName is not specified.
+                    description: >
+                      Storage class for the volumes. Only used when providerName is not specified
+                      to populate storageClass of generated auto-provider.
                 type: object
               masterDeviceInfo:
                 description: >
                   Device information for the masters in universe to
                   refer to storage information for volume,
                   storage classes etc.
+                  DEPRECATED: Use masterVolume instead. masterDeviceInfo and masterVolume are mutually exclusive.
                 properties:
                   volumeSize:
                     type: integer
@@ -279,6 +293,84 @@ spec:
                         rule: self == oldSelf
                     description: Storage class for the volumes. Only used when providerName is not specified.
                 type: object
+              tserverVolume:
+                description: >
+                  Volume configuration for tservers in the universe.
+                  This replaces deviceInfo. deviceInfo and tserverVolume are mutually exclusive.
+                type: object
+                properties:
+                  volumeSize:
+                    type: integer
+                    description: Volume size in GiB
+                  numVolumes:
+                    type: integer
+                    description: Number of volumes per tserver
+                  storageClass:
+                    type: string
+                    description: >
+                      Storage class for the volumes. Provider storage class takes precedence over this
+                      since it is at AZ level. To use this, provider storage class values should be empty.
+                  perAZ:
+                    description: >
+                      Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                      This takes precedence over provider/base volume configuration. When this is being used,
+                      the provider values for storageClass and other volume overrides are not used. If some
+                      AZs are not provided as overrides, the values are picked from base tserverVolume.
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        volumeSize:
+                          type: integer
+                          description: Volume size in GiB for this AZ
+                        numVolumes:
+                          type: integer
+                          description: Number of volumes per tserver for this AZ
+                        storageClass:
+                          type: string
+                          description: Storage class for this AZ
+                x-kubernetes-validations:
+                  - message: tserverVolume cannot be removed once set.
+                    rule: self != null || oldSelf == null
+              masterVolume:
+                description: >
+                  Volume configuration for masters in the universe.
+                  This replaces masterDeviceInfo. masterDeviceInfo and masterVolume are mutually exclusive.
+                type: object
+                properties:
+                  volumeSize:
+                    type: integer
+                    description: Volume size in GiB
+                  numVolumes:
+                    type: integer
+                    description: Number of volumes per master
+                  storageClass:
+                    type: string
+                    description: >
+                      Storage class for the volumes. Provider storage class takes precedence over this
+                      since it is at AZ level. To use this, provider storage class values should be empty.
+                  perAZ:
+                    description: >
+                      Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                      This takes precedence over provider/base volume configuration. When this is being used,
+                      the provider values for storageClass and other volume overrides are not used. If some
+                      AZs are not provided as overrides, the values are picked from base masterVolume.
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        volumeSize:
+                          type: integer
+                          description: Volume size in GiB for this AZ
+                        numVolumes:
+                          type: integer
+                          description: Number of volumes per master for this AZ
+                        storageClass:
+                          type: string
+                          description: Storage class for this AZ
+                x-kubernetes-validations:
+                  - message: masterVolume cannot be removed once set.
+                    rule: self != null || oldSelf == null
               tserverResourceSpec:
                 description: >
                   Resource specification for the tserver pods in the universe.
@@ -317,12 +409,14 @@ spec:
               readReplica:
                 type: object
                 x-kubernetes-validations:
-                - message: placementInfo for read replica cannot be removed once set.
-                  rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
+                  - message: placementInfo for read replica cannot be removed once set.
+                    rule: has(self.placementInfo) || !has(oldSelf.placementInfo)
+                  - message: deviceInfo and tserverVolume are mutually exclusive in readReplica. Only one can be provided.
+                    rule: >
+                      !has(self.deviceInfo) || !has(self.tserverVolume)
                 required:
                 - numNodes
                 - replicationFactor
-                - deviceInfo
                 properties:
                   numNodes:
                     type: integer
@@ -331,6 +425,7 @@ spec:
                   deviceInfo:
                     description: >
                       Device information for the readReplica tservers.
+                      DEPRECATED: Use tserverVolume instead. deviceInfo and tserverVolume are mutually exclusive.
                     type: object
                     required:
                     - numVolumes
@@ -343,6 +438,45 @@ spec:
                         x-kubernetes-validations:
                           - message: numVolumes cannot be changed once set.
                             rule: "self == oldSelf"
+                  tserverVolume:
+                    description: >
+                      Volume configuration for tservers in the read replica.
+                      This replaces deviceInfo. deviceInfo and tserverVolume are mutually exclusive.
+                    type: object
+                    properties:
+                      volumeSize:
+                        type: integer
+                        description: Volume size in GiB
+                      numVolumes:
+                        type: integer
+                        description: Number of volumes per tserver
+                      storageClass:
+                        type: string
+                        description: >
+                          Storage class for the volumes. Provider storage class takes precedence over this
+                          since it is at AZ level. To use this, provider storage class values should be empty.
+                      perAZ:
+                        description: >
+                          Per availability zone volume overrides. Maps AZ codes to volume configuration.
+                          This takes precedence over provider/base volume configuration. When this is being used,
+                          the provider values for storageClass and other volume overrides are not used. If some
+                          AZs are not provided as overrides, the values are picked from base tserverVolume.
+                        type: object
+                        additionalProperties:
+                          type: object
+                          properties:
+                            volumeSize:
+                              type: integer
+                              description: Volume size in GiB for this AZ
+                            numVolumes:
+                              type: integer
+                              description: Number of volumes per tserver for this AZ
+                            storageClass:
+                              type: string
+                              description: Storage class for this AZ
+                    x-kubernetes-validations:
+                      - message: tserverVolume cannot be removed once set.
+                        rule: self != null || oldSelf == null
                   tserverResourceSpec:
                     description: >
                       Resource specification for the tserver pods in the universe.

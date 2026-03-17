@@ -13,17 +13,19 @@ import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesDeserializer;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.GFlags;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
-import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterDeviceInfo;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.gflags.PerAZ;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -88,42 +90,45 @@ public class UniverseImporter {
     spec.setGFlags(gflags);
   }
 
-  public void setDeviceInfoSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+  public void setTserverVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
     com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo;
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for universe {}", universe.getUniverseUUID());
       return;
     }
-    DeviceInfo deviceInfo = new DeviceInfo();
+    TserverVolume tserverVolume = new TserverVolume();
     if (clusterDeviceInfo.volumeSize != null) {
-      deviceInfo.setVolumeSize(Long.valueOf(clusterDeviceInfo.volumeSize));
+      tserverVolume.setVolumeSize(Long.valueOf(clusterDeviceInfo.volumeSize));
     }
     if (clusterDeviceInfo.numVolumes != null) {
-      deviceInfo.setNumVolumes(Long.valueOf(clusterDeviceInfo.numVolumes));
+      tserverVolume.setNumVolumes(Long.valueOf(clusterDeviceInfo.numVolumes));
     }
     if (clusterDeviceInfo.storageClass != null) {
-      deviceInfo.setStorageClass(clusterDeviceInfo.storageClass);
+      tserverVolume.setStorageClass(clusterDeviceInfo.storageClass);
     }
-    spec.setDeviceInfo(deviceInfo);
+    spec.setTserverVolume(tserverVolume);
   }
 
-  public void setReadReplicaDeviceInfo(
+  public void setReadReplicaTserverVolume(
       ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
     com.yugabyte.yw.models.helpers.DeviceInfo clusterDeviceInfo = cluster.userIntent.deviceInfo;
     if (clusterDeviceInfo == null) {
       log.debug("No device info found for read replica cluster {}", cluster.uuid);
       return;
     }
-    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.DeviceInfo deviceInfo =
-        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.DeviceInfo();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume();
     if (clusterDeviceInfo.volumeSize != null) {
-      deviceInfo.setVolumeSize(Long.valueOf(clusterDeviceInfo.volumeSize));
+      tserverVolume.setVolumeSize(Long.valueOf(clusterDeviceInfo.volumeSize));
     }
     if (clusterDeviceInfo.numVolumes != null) {
-      deviceInfo.setNumVolumes(Long.valueOf(clusterDeviceInfo.numVolumes));
+      tserverVolume.setNumVolumes(Long.valueOf(clusterDeviceInfo.numVolumes));
     }
-    spec.setDeviceInfo(deviceInfo);
+    if (clusterDeviceInfo.storageClass != null) {
+      tserverVolume.setStorageClass(clusterDeviceInfo.storageClass);
+    }
+    spec.setTserverVolume(tserverVolume);
   }
 
   public void setTserverResourceSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
@@ -179,24 +184,24 @@ public class UniverseImporter {
     spec.setTserverResourceSpec(resourceSpec);
   }
 
-  public void setMasterDeviceInfoSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+  public void setMasterVolumeSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
     com.yugabyte.yw.models.helpers.DeviceInfo deviceInfo =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.masterDeviceInfo;
     if (deviceInfo == null) {
       log.debug("No master device info found for universe {}", universe.getUniverseUUID());
       return;
     }
-    MasterDeviceInfo masterDeviceInfo = new MasterDeviceInfo();
+    MasterVolume masterVolume = new MasterVolume();
     if (deviceInfo.volumeSize != null) {
-      masterDeviceInfo.setVolumeSize(Long.valueOf(deviceInfo.volumeSize));
+      masterVolume.setVolumeSize(Long.valueOf(deviceInfo.volumeSize));
     }
     if (deviceInfo.storageClass != null) {
-      masterDeviceInfo.setStorageClass(deviceInfo.storageClass);
+      masterVolume.setStorageClass(deviceInfo.storageClass);
     }
     if (deviceInfo.numVolumes != null) {
-      masterDeviceInfo.setNumVolumes(Long.valueOf(deviceInfo.numVolumes));
+      masterVolume.setNumVolumes(Long.valueOf(deviceInfo.numVolumes));
     }
-    spec.setMasterDeviceInfo(masterDeviceInfo);
+    spec.setMasterVolume(masterVolume);
   }
 
   public void setYbcThrottleParametersSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
@@ -290,5 +295,203 @@ public class UniverseImporter {
                 })
             .collect(Collectors.toList()));
     spec.setPlacementInfo(placementInfo);
+  }
+
+  public void setAzDeviceInfoOverridesSpecFromUniverse(YBUniverseSpec spec, Universe universe) {
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.getUserIntentOverrides() == null
+        || userIntent.getUserIntentOverrides().getAzOverrides() == null
+        || userIntent.getUserIntentOverrides().getAzOverrides().isEmpty()) {
+      log.debug("No az device info overrides found for universe {}", universe.getUniverseUUID());
+      return;
+    }
+
+    // Get or create tserverVolume and masterVolume (they should already exist from previous calls)
+    TserverVolume tserverVolume = spec.getTserverVolume();
+    MasterVolume masterVolume = spec.getMasterVolume();
+
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> tserverPerAZMap =
+        null;
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ> masterPerAZMap =
+        null;
+
+    // First pass: collect all overrides to determine if we need to create volume objects
+    boolean hasTserverOverrides = false;
+    boolean hasMasterOverrides = false;
+    for (Map.Entry<UUID, UniverseDefinitionTaskParams.AZOverrides> entry :
+        userIntent.getUserIntentOverrides().getAzOverrides().entrySet()) {
+      UniverseDefinitionTaskParams.AZOverrides azOverrides = entry.getValue();
+      if (azOverrides.getPerProcess() != null
+          && azOverrides.getPerProcess().containsKey(ServerType.TSERVER)
+          && azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo() != null) {
+        com.yugabyte.yw.models.helpers.DeviceInfo tserverDeviceInfo =
+            azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+        if (tserverDeviceInfo != null && !tserverDeviceInfo.allNull()) {
+          hasTserverOverrides = true;
+        }
+      }
+      if (azOverrides.getPerProcess() != null
+          && azOverrides.getPerProcess().containsKey(ServerType.MASTER)
+          && azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo() != null) {
+        com.yugabyte.yw.models.helpers.DeviceInfo masterDeviceInfo =
+            azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+        if (masterDeviceInfo != null && !masterDeviceInfo.allNull()) {
+          hasMasterOverrides = true;
+        }
+      }
+    }
+
+    // Only create volume objects if we have overrides and they don't already exist
+    if (hasTserverOverrides) {
+      if (tserverVolume == null) {
+        tserverVolume = new TserverVolume();
+        spec.setTserverVolume(tserverVolume);
+      }
+      tserverPerAZMap = tserverVolume.getPerAZ();
+      if (tserverPerAZMap == null) {
+        tserverPerAZMap = new HashMap<>();
+        tserverVolume.setPerAZ(tserverPerAZMap);
+      }
+    }
+
+    if (hasMasterOverrides) {
+      if (masterVolume == null) {
+        masterVolume = new MasterVolume();
+        spec.setMasterVolume(masterVolume);
+      }
+      masterPerAZMap = masterVolume.getPerAZ();
+      if (masterPerAZMap == null) {
+        masterPerAZMap = new HashMap<>();
+        masterVolume.setPerAZ(masterPerAZMap);
+      }
+    }
+
+    // Second pass: populate the perAZ maps
+    for (Map.Entry<UUID, UniverseDefinitionTaskParams.AZOverrides> entry :
+        userIntent.getUserIntentOverrides().getAzOverrides().entrySet()) {
+      UUID azUUID = entry.getKey();
+      UniverseDefinitionTaskParams.AZOverrides azOverrides = entry.getValue();
+
+      try {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
+        String azCode = az.getCode();
+
+        // Handle tserver deviceInfo
+        if (tserverPerAZMap != null
+            && azOverrides.getPerProcess() != null
+            && azOverrides.getPerProcess().containsKey(ServerType.TSERVER)
+            && azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo() != null) {
+          com.yugabyte.yw.models.helpers.DeviceInfo tserverDeviceInfo =
+              azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+          if (tserverDeviceInfo != null && !tserverDeviceInfo.allNull()) {
+            io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ tserverPerAZ =
+                new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+            if (tserverDeviceInfo.volumeSize != null) {
+              tserverPerAZ.setVolumeSize(Long.valueOf(tserverDeviceInfo.volumeSize));
+            }
+            if (tserverDeviceInfo.numVolumes != null) {
+              tserverPerAZ.setNumVolumes(Long.valueOf(tserverDeviceInfo.numVolumes));
+            }
+            if (tserverDeviceInfo.storageClass != null) {
+              tserverPerAZ.setStorageClass(tserverDeviceInfo.storageClass);
+            }
+            tserverPerAZMap.put(azCode, tserverPerAZ);
+          }
+        }
+
+        // Handle master deviceInfo
+        if (masterPerAZMap != null
+            && azOverrides.getPerProcess() != null
+            && azOverrides.getPerProcess().containsKey(ServerType.MASTER)
+            && azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo() != null) {
+          com.yugabyte.yw.models.helpers.DeviceInfo masterDeviceInfo =
+              azOverrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+          if (masterDeviceInfo != null && !masterDeviceInfo.allNull()) {
+            io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ masterPerAZ =
+                new io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ();
+            if (masterDeviceInfo.volumeSize != null) {
+              masterPerAZ.setVolumeSize(Long.valueOf(masterDeviceInfo.volumeSize));
+            }
+            if (masterDeviceInfo.numVolumes != null) {
+              masterPerAZ.setNumVolumes(Long.valueOf(masterDeviceInfo.numVolumes));
+            }
+            if (masterDeviceInfo.storageClass != null) {
+              masterPerAZ.setStorageClass(masterDeviceInfo.storageClass);
+            }
+            masterPerAZMap.put(azCode, masterPerAZ);
+          }
+        }
+      } catch (Exception e) {
+        log.warn(
+            "Failed to process az device info override for AZ UUID {}: {}", azUUID, e.getMessage());
+      }
+    }
+  }
+
+  public void setReadReplicaAzDeviceInfoOverrides(
+      ReadReplica spec, UniverseDefinitionTaskParams.Cluster cluster) {
+    UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if (userIntent.getUserIntentOverrides() == null
+        || userIntent.getUserIntentOverrides().getAzOverrides() == null
+        || userIntent.getUserIntentOverrides().getAzOverrides().isEmpty()) {
+      log.debug("No az device info overrides found for read replica cluster {}", cluster.uuid);
+      return;
+    }
+
+    // Get or create tserverVolume
+    io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume tserverVolume =
+        spec.getTserverVolume();
+    if (tserverVolume == null) {
+      tserverVolume = new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume();
+      spec.setTserverVolume(tserverVolume);
+    }
+
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ>
+        tserverPerAZMap = tserverVolume.getPerAZ();
+    if (tserverPerAZMap == null) {
+      tserverPerAZMap = new HashMap<>();
+      tserverVolume.setPerAZ(tserverPerAZMap);
+    }
+
+    for (Map.Entry<UUID, UniverseDefinitionTaskParams.AZOverrides> entry :
+        userIntent.getUserIntentOverrides().getAzOverrides().entrySet()) {
+      UUID azUUID = entry.getKey();
+      UniverseDefinitionTaskParams.AZOverrides azOverrides = entry.getValue();
+
+      try {
+        AvailabilityZone az = AvailabilityZone.getOrBadRequest(azUUID);
+        String azCode = az.getCode();
+
+        // Handle tserver deviceInfo (read replica only has tserver)
+        if (azOverrides.getPerProcess() != null
+            && azOverrides.getPerProcess().containsKey(ServerType.TSERVER)
+            && azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo() != null) {
+          com.yugabyte.yw.models.helpers.DeviceInfo tserverDeviceInfo =
+              azOverrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+          if (tserverDeviceInfo != null && !tserverDeviceInfo.allNull()) {
+            io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume.PerAZ
+                tserverPerAZ =
+                    new io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.tservervolume
+                        .PerAZ();
+            if (tserverDeviceInfo.volumeSize != null) {
+              tserverPerAZ.setVolumeSize(Long.valueOf(tserverDeviceInfo.volumeSize));
+            }
+            if (tserverDeviceInfo.numVolumes != null) {
+              tserverPerAZ.setNumVolumes(Long.valueOf(tserverDeviceInfo.numVolumes));
+            }
+            if (tserverDeviceInfo.storageClass != null) {
+              tserverPerAZ.setStorageClass(tserverDeviceInfo.storageClass);
+            }
+            tserverPerAZMap.put(azCode, tserverPerAZ);
+          }
+        }
+      } catch (Exception e) {
+        log.warn(
+            "Failed to process az device info override for read replica AZ UUID {}: {}",
+            azUUID,
+            e.getMessage());
+      }
+    }
   }
 }

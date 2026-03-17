@@ -1562,7 +1562,11 @@ public class KubernetesUtil {
     overridesApplier.accept(ServerType.MASTER);
     userIntent.setUserIntentOverrides(
         generateVolumeOverridesForUserIntent(
-            userIntent, placementInfo, universeOverridesStr, azOverrides, null /* skipAZs */));
+            userIntent.getUserIntentOverrides(),
+            placementInfo.getAllAZUUIDs(),
+            universeOverridesStr,
+            azOverrides,
+            null /* skipAZs */));
   }
 
   /**
@@ -1577,22 +1581,20 @@ public class KubernetesUtil {
    * @return
    */
   public static UserIntentOverrides generateVolumeOverridesForUserIntent(
-      UserIntent userIntent,
-      PlacementInfo placementInfo,
-      String universeOverridesStr,
-      Map<String, String> azOverrides,
+      UserIntentOverrides userIntentOverrides,
+      Set<UUID> azUUIDs,
+      @Nullable String universeOverridesStr,
+      @Nullable Map<String, String> azOverrides,
       @Nullable Set<UUID> skipAZs) {
     UserIntentOverrides userIntentOverridesClone =
-        userIntent.getUserIntentOverrides() == null
-            ? new UserIntentOverrides()
-            : userIntent.getUserIntentOverrides().clone();
+        userIntentOverrides == null ? new UserIntentOverrides() : userIntentOverrides.clone();
 
-    BiConsumer<PlacementAZ, ServerType> overridesApplier =
-        (pAz, serverType) -> {
-          if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(pAz.uuid)) {
+    BiConsumer<UUID, ServerType> overridesApplier =
+        (azUUID, serverType) -> {
+          if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
             return;
           }
-          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(pAz.uuid);
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
           DeviceInfo deviceInfo = new DeviceInfo();
           // Populate from Provider SC
           Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(zone);
@@ -1646,8 +1648,8 @@ public class KubernetesUtil {
             userIntentOverridesClone.setAzOverrides(userIntentAZOverridesMap);
           }
         };
-    placementInfo.azStream().forEach(pAZ -> overridesApplier.accept(pAZ, ServerType.MASTER));
-    placementInfo.azStream().forEach(pAZ -> overridesApplier.accept(pAZ, ServerType.TSERVER));
+    azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.MASTER));
+    azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.TSERVER));
     return userIntentOverridesClone;
   }
 
