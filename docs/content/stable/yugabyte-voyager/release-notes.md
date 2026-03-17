@@ -26,7 +26,7 @@ Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, 
 
 ### Bug fixes
 
-- Fixed duplicate table entries in the Control Plane UI by standardizing table name formatting between the initialization and progress reporting of data imports.
+- Fixed duplicate table entries in the [yugabyted UI](../migrate/migrate-steps/#configure-yugabyted-ui) (Control Plane UI) by standardizing table name formatting between the initialization and progress reporting of data imports.
 - Fixed a spurious password prompt when running `assess-migration` with `--assessment-metadata-dir` for offline assessments that do not require source database connectivity.
 - Refined the colocated database warning during `import-schema` to only appear when the assessment has recommended colocated tables, rather than whenever the target database is non-colocated.
 
