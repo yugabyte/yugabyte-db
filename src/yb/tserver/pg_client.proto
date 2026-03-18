@@ -1288,8 +1288,8 @@ message PgDatabaseCloneInfoPB {
   string failure_reason = 7;
 }
 
-message PgQueryAutoAnalyzeRequestPB{
-  AshMetadataPB ash_metadata = 1;
+message PgQueryAutoAnalyzeRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
   uint32 database_oid = 2;
 }
 
