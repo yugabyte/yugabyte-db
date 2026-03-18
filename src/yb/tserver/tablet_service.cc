@@ -544,7 +544,11 @@ class WriteQueryCompletionCallback {
         status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
       }
 
-      (status.IsTryAgain()? LOG_DETAIL : LOG(INFO)) << "Write failed: " << status;
+      if (status.IsTryAgain()) {
+          LOG_DETAIL << "Write failed: " << status;
+      } else {
+          LOG(INFO) << "Write failed: " << status;
+      }
 
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
