@@ -212,8 +212,9 @@ ADD_YB_LIBRARY(pg_cron_leader_service_proto
 #########################################
 
 set(TSERVER_SHARED_SRCS
-  tserver_flags.cc
+  tserver_cgroup_manager.cc
   tserver_error.cc
+  tserver_flags.cc
   tserver_shared_mem.cc)
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
@@ -423,6 +424,7 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+ADD_YB_TEST(tserver_cgroup_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)

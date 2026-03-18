@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -57,6 +58,7 @@ import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
+@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
@@ -97,7 +99,10 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             numZones = 3;
           }
           for (NodeDetails node : nodes) {
-            node.cloudInfo.az = "az-" + (count % numZones + 1);
+            node.cloudInfo.az = "az-" + (count++ % numZones + 1);
+            AvailabilityZone az = AvailabilityZone.getByCode(defaultProvider, node.cloudInfo.az);
+            node.azUuid = az.getUuid();
+            node.cloudInfo.region = az.getRegion().getCode();
             nodes.add(node);
           }
           universeDetails.nodeDetailsSet = nodes;
@@ -105,6 +110,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
         };
     Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    log.debug("QQ1 {}", Json.toJson(defaultUniverse.getUniverseDetails().nodeDetailsSet));
 
     mockClient = mock(YBClient.class);
     when(mockNodeManager.nodeCommand(any(), any()))
@@ -175,6 +181,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckTabletsMovementAvailableForNode,
           TaskType.CheckLeaderlessTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,
@@ -205,6 +212,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
+          TaskType.CheckTabletsMovementAvailableForNode,
           TaskType.CheckLeaderlessTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,
@@ -274,6 +282,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
+          TaskType.CheckTabletsMovementAvailableForNode,
           TaskType.CheckLeaderlessTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.UpdateConsistencyCheck,

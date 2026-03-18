@@ -1859,12 +1859,19 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& tserver_uuid) {
+      std::string_view query, const std::string& tserver_uuid,
+      const std::vector<std::optional<std::string>>& params) {
     tserver::PgRemoteExecRequestPB req;
     tserver::PgRemoteExecResponsePB resp;
 
     req.set_query(std::string(query));
     req.set_tserver_uuid(tserver_uuid);
+    for (const auto& p : params) {
+      auto* param = req.add_params();
+      if (p.has_value()) {
+        param->set_value(*p);
+      }
+    }
 
     const auto [deadline, _] = timeouts_.GetDeadlineAndTimeoutForRPC<void>(
         CoarseMonoClock::now() +
@@ -2369,8 +2376,9 @@ Status PgClient::GetYbSystemTableInfo(
 }
 
 Result<tserver::PgRemoteExecResponsePB> PgClient::RemoteExec(
-      std::string_view query, const std::string& tserver_uuid) {
-  return impl_->RemoteExec(query, tserver_uuid);
+    std::string_view query, const std::string& tserver_uuid,
+    const std::vector<std::optional<std::string>>& params) {
+  return impl_->RemoteExec(query, tserver_uuid, params);
 }
 
 template class pg_client::internal::ExchangeFuture<pg_client::internal::PerformData>;

@@ -32,12 +32,12 @@ For information on how to configure the security features of clusters in Yugabyt
     title="Security architecture"
     body="Learn about the YugabyteDB Aeon security architecture."
     href="cloud-security-features/"
-    icon="/images/section_icons/secure/checklist.png">}}
+    icon="fa-thin fa-building-shield">}}
 
   {{<index/item
     title="Shared responsibility model"
     body="The YugabyteDB Aeon shared responsibility model for security."
     href="shared-responsibility/"
-    icon="/images/section_icons/secure/grant-permissions.png">}}
+    icon="fa-thin fa-people-carry-box">}}
 
 {{</index/block>}}

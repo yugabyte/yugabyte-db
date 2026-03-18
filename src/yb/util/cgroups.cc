@@ -112,7 +112,8 @@ Result<std::string> CpuRootPath() {
 }
 
 Result<std::string> ReadCpuGroup(
-    int64_t process_or_thread_id, std::optional<CgroupVersion> version = std::nullopt) {
+    int64_t process_or_thread_id, std::optional<CgroupVersion> version,
+    bool check_controllers = true) {
   // Arbitrary length that is definitely long enough.
   constexpr auto kMaxConfigLength = 65535uz;
   std::string cgroups = VERIFY_RESULT(ReadConfigFromPath(
@@ -137,15 +138,17 @@ Result<std::string> ReadCpuGroup(
     // Cgroups v2 format is a single line:
     // 0::/cgroup/path
     auto cgroup = cgroups.substr(3);
-    // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
-    // if CPU controller is available.
-    auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
-        Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
-        kMaxConfigLength)), ' ');
-    if (std::ranges::find(controllers, "cpu") != controllers.end()) {
-      return cgroup;
+    if (check_controllers) {
+      // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
+      // if CPU controller is available.
+      auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
+          Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
+          kMaxConfigLength)), ' ');
+      if (std::ranges::find(controllers, "cpu") == controllers.end()) {
+        return STATUS(IllegalState, "CPU controller not delegated");
+      }
     }
-    return STATUS(IllegalState, "CPU controller not delegated");
+    return cgroup;
   }
 }
 
@@ -185,7 +188,8 @@ class CgroupManager {
     RSTATUS_DCHECK(!cpu_cgroup.empty(), IllegalState, "CPU controller not available");
     RSTATUS_DCHECK(cpu_cgroup != "/", IllegalState, "Cannot manage root cgroup");
     process_cpu_cgroup_ = cpu_cgroup;
-    process_cpu_cgroup_path_ = VERIFY_RESULT(CpuRootPath()) + cpu_cgroup;
+    cpu_root_path_ = VERIFY_RESULT(CpuRootPath());
+    process_cpu_cgroup_path_ = cpu_root_path_ + cpu_cgroup;
 
     if (clear) {
       RETURN_NOT_OK(CleanupAllChildCgroups(process_cpu_cgroup_path_));
@@ -203,6 +207,7 @@ class CgroupManager {
   Cgroup* default_thread_group() { return default_group_; }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
+  std::string_view cpu_root_path() { return cpu_root_path_; }
   std::string_view cpu_group_path() { return process_cpu_cgroup_path_; }
 
   bool initialized() { return initialized_; }
@@ -210,6 +215,7 @@ class CgroupManager {
  private:
   CgroupVersion version_;
   std::string process_cpu_cgroup_;
+  std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
   Cgroup* default_group_;
@@ -222,6 +228,21 @@ std::string CgroupConfigPath(std::string_view cgroup_name, std::string_view conf
   return Format("$0$1/$2", cgroup_manager.cpu_group_path(), cgroup_name, config);
 }
 
+Result<int> CpuFractionToCfsQuotaMicroseconds(double cpu_fraction, int period_us) {
+  int max_quota_us = base::NumCPUs() * period_us;
+  int cfs_quota_us = static_cast<int>(std::round(cpu_fraction * max_quota_us));
+  // Linux requires cfs_quota_us to be at least 1 ms.
+  if (cfs_quota_us < 1'000) {
+    double min_cpu_fraction = 1'000.0 / max_quota_us;
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Period ($0 us) is too low for max cpu of $1% (minimum possible setting with this period "
+        "is $2%)",
+        period_us, (100.0 * cpu_fraction), (100.0 * min_cpu_fraction));
+  }
+  // Return -1 for max, since that's what cgroups v1 uses for cfs_quota_us.
+  return cfs_quota_us < max_quota_us ? cfs_quota_us : -1;
+}
 
 } // namespace
 
@@ -249,7 +270,7 @@ Result<std::string> Cgroup::ReadConfig(std::string_view config, size_t max_lengt
 
 Status Cgroup::Init(bool is_root) {
   if (!is_root) {
-    RETURN_NOT_OK(UpdateMaxCpu(1.0 /* quota */));
+    RETURN_NOT_OK(UpdateCpuLimits(/*max_cpu_fraction=*/1.0));
     RETURN_NOT_OK(UpdateCpuWeight(kDefaultCpuWeight));
     if (cgroup_manager.version() == CgroupVersion::kVersion2) {
       RETURN_NOT_OK(WriteConfig("cgroup.type", "threaded"));
@@ -261,31 +282,23 @@ Status Cgroup::Init(bool is_root) {
   return Status::OK();
 }
 
-Status Cgroup::UpdateMaxCpu(std::optional<double> quota, std::optional<int> period_us) {
+Status Cgroup::CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us) {
+  return ResultToStatus(CpuFractionToCfsQuotaMicroseconds(max_cpu_fraction, period_us));
+}
+
+Status Cgroup::UpdateCpuLimits(
+    std::optional<double> max_cpu_fraction, std::optional<int> period_us) {
   std::lock_guard lock(mutex_);
 
-  int cfs_quota_us;
   int cfs_period_us = period_us.value_or(cpu_period_us_);
-  double new_quota = quota.value_or(cpu_quota_);
-  if (new_quota >= 1.0) {
-    // Cgroups v1 uses -1 as the unbounded value, while Cgroups v2 uses "max" as unbounded.
-    cfs_quota_us = -1;
-  } else {
-    cfs_quota_us = static_cast<int>(std::round(new_quota * base::NumCPUs() * cfs_period_us));
-    // Linux requires cfs_quota_us to be at least 1ms.
-    if (cfs_quota_us < 1'000) {
-      double min_quota = 1'000.0 / cfs_period_us;
-      return STATUS_FORMAT(
-          InvalidArgument,
-          "Period ($0us) is too low, cannot satisfy requested max cpu of $1% (minimum possible "
-          "setting with current period is $2%)",
-          cfs_period_us, (100.0 * new_quota), (100.0 * min_quota));
-    }
-  }
+  double cpu_fraction = max_cpu_fraction.value_or(cpu_max_fraction_);
+  int cfs_quota_us = VERIFY_RESULT(CpuFractionToCfsQuotaMicroseconds(cpu_fraction, cfs_period_us));
 
   if (cgroup_manager.version() == CgroupVersion::kVersion1) {
-    RETURN_NOT_OK(WriteConfig("cpu.cfs_period_us", AsString(cfs_period_us)));
-    if (quota) {
+    if (period_us) {
+      RETURN_NOT_OK(WriteConfig("cpu.cfs_period_us", AsString(cfs_period_us)));
+    }
+    if (max_cpu_fraction) {
       RETURN_NOT_OK(WriteConfig("cpu.cfs_quota_us", AsString(cfs_quota_us)));
     }
   } else {
@@ -293,7 +306,7 @@ Status Cgroup::UpdateMaxCpu(std::optional<double> quota, std::optional<int> peri
         "cpu.max",
         Format("$0 $1", cfs_quota_us == -1 ? "max"s : AsString(cfs_quota_us), cfs_period_us)));
   }
-  cpu_quota_ = new_quota;
+  cpu_max_fraction_ = cpu_fraction;
   cpu_period_us_ = cfs_period_us;
   return Status::OK();
 }
@@ -365,10 +378,9 @@ Result<Cgroup&> Cgroup::CreateOrLoadChild(std::string_view child_name) {
     weight = VERIFY_RESULT(CheckedStoi(VERIFY_RESULT(cg.ReadConfig("cpu.weight"))));
   }
 
-  double quota = cfs_quota_us < 0 ? 1.0 : static_cast<double>(cfs_quota_us) / cfs_period_us;
   std::lock_guard child_lock(cg.mutex_);
   cg.cpu_period_us_ = cfs_period_us;
-  cg.cpu_quota_ = quota;
+  cg.cpu_max_fraction_ = cfs_quota_us < 0 ? 1.0 : static_cast<double>(cfs_quota_us) / cfs_period_us;
   cg.cpu_weight_ = weight;
   return cg;
 }
@@ -397,8 +409,41 @@ Status Cgroup::MoveCurrentThreadToGroup() {
   return WriteConfigToDescriptor(fd, AsString(thread_id));
 }
 
+Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
+  auto path = CgroupConfigPath(
+      name_, cgroup_manager.version() == CgroupVersion::kVersion1 ? "tasks" : "cgroup.threads");
+  VLOG(3) << "Read " << path;
+  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
+  ScopeExit s([fd] { close(fd); });
+
+  constexpr ssize_t kReadSize = 4096;
+  ssize_t bytes_read;
+  std::string contents;
+  do {
+    std::array<char, kReadSize> buffer;
+    bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, buffer.data(), kReadSize);
+    contents += std::string(buffer.data(), bytes_read);
+  } while (bytes_read == kReadSize);
+
+  if (contents.empty()) {
+    return std::vector<int64_t>{};
+  }
+
+  // Last byte is a newline, drop it.
+  contents.resize(contents.size() - 1);
+  std::vector<int64_t> ids;
+  for (const auto& id_str : StringSplit(contents, '\n')) {
+    ids.push_back(VERIFY_RESULT(CheckedStol<int64_t>(Slice(id_str))));
+  }
+  return ids;
+}
+
 std::string Cgroup::full_name() const {
   return std::string(cgroup_manager.cpu_group()) + name_;
+}
+
+std::string Cgroup::path() const {
+  return std::string(cgroup_manager.cpu_root_path()) + full_name();
 }
 
 Cgroup* Cgroup::child(std::string_view name) {
@@ -412,11 +457,15 @@ Cgroup* Cgroup::child(std::string_view name) {
 
 std::string Cgroup::ToString() const {
   std::lock_guard lock(mutex_);
-  return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_quota_, cpu_weight_);
+  return YB_STRUCT_TO_STRING(name_, cpu_period_us_, cpu_max_fraction_, cpu_weight_);
 }
 
 Status SetupCgroupManagement(ClearChildCgroups clear) {
   return cgroup_manager.Init(clear);
+}
+
+bool CgroupManagementEnabled() {
+  return cgroup_manager.initialized();
 }
 
 Cgroup* RootCgroup() {
@@ -427,20 +476,27 @@ Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
 }
 
-Result<std::string> GetProcessCpuCgroup() {
+Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {
   return ReadCpuGroup(
-      getpid(),
-      cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt);
+      process_id == -1 ? getpid() : process_id,
+      cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt,
+      check_controllers);
 }
 
-Result<std::string> GetProcessCpuCgroupPath() {
-  return VERIFY_RESULT(CpuRootPath()) + VERIFY_RESULT(GetProcessCpuCgroup());
+Result<std::string> GetProcessCpuCgroupPath(int64_t process_id, bool check_controllers) {
+  return VERIFY_RESULT(CpuRootPath()) +
+         VERIFY_RESULT(GetProcessCpuCgroup(process_id, check_controllers));
 }
 
 Result<std::string> GetThreadCpuCgroup(int64_t thread_id) {
   return ReadCpuGroup(
       thread_id == -1 ? Thread::CurrentThreadId() : thread_id,
       cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt);
+}
+
+Status MoveProcessToCgroupPath(std::string_view cgroup_path) {
+  LOG(INFO) << "Move process to cgroup: " << cgroup_path;
+  return WriteConfigToPath(Format("$0/cgroup.procs", cgroup_path), AsString(getpid()));
 }
 
 } // namespace yb

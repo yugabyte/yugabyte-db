@@ -3586,10 +3586,10 @@ void TabletServiceImpl::PgRemoteExec(
   VLOG(1) << "received remote pg exec query: " << req->query();
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
-  auto conn_res = server_->CreateInternalPGConn(
-      "template1", /* simple_query_protocol */ true);
-  if (!conn_res.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), conn_res.status(), &context);
+  auto conn = server_->CreateInternalPGConn(
+      "template1", /* simple_query_protocol */ false, context.GetClientDeadline());
+  if (!conn.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
   }
 
@@ -3597,7 +3597,20 @@ void TabletServiceImpl::PgRemoteExec(
     SleepFor(FLAGS_TEST_pause_remote_pg_query_execution_ms * 1ms);
   }
 
-  auto result = conn_res->Fetch(req->query());
+  // c_str() pointers borrow from req's protobuf strings, valid for the
+  // lifetime of this RPC handler.
+  std::vector<const char*> params;
+  params.reserve(req->params_size());
+  for (const auto& p : req->params()) {
+    if (p.has_value()) {
+      params.push_back(p.value().c_str());
+    } else {
+      params.push_back(nullptr);
+    }
+  }
+  // Postgres_fdw expects results in TEXT format
+  auto result = conn->Fetch(req->query(), pgwrapper::PGResultFormat::kText, params);
+
   auto* result_pb = resp->mutable_pg_result();
   if (!result.ok()) {
     // TODO(#30482): Fetch the error status from PGresult

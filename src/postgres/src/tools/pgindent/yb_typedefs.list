@@ -28,7 +28,7 @@ YBUpdateOptimizationOptions
 YbAddTupleToOuterBatchFn_t
 YbAdditionalNegCacheIds
 YbAsh
-YbAshNestedQueryIdStack
+YbAshQueryPlanPairStack
 YbAshTrackNestedQueries
 YbAttnumBmsState
 YbAttrProcessorState
@@ -232,6 +232,7 @@ YbcAshAcquireBufferLock
 YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata
+YbcAshQueryPlanPair
 YbcAshSample
 YbcAutoAnalyzeInfo
 YbcBindColumn

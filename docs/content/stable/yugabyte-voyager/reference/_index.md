@@ -19,13 +19,13 @@ menu:
     title="yb-voyager CLI"
     body="yb-voyager CLI commands, arguments, and SSL connectivity."
     href="yb-voyager-cli//"
-    icon="/images/section_icons/architecture/concepts.png">}}
+    icon="fa-thin fa-diagram-project">}}
 
   {{<index/item
     title="Datatype mapping"
     body="Data type mapping from different source databases to YugabyteDB."
     href="datatype-mapping-mysql/"
-    icon="/images/section_icons/reference/connectors/ecosystem-integrations.png">}}
+    icon="fa-thin fa-plug">}}
 
   {{<index/item
     title="Tune performance"
@@ -43,6 +43,6 @@ menu:
     title="Configuration file"
     body="Use a YAML-based configuration file to simplify and standardize migrations."
     href="configuration-file/"
-    icon="/images/section_icons/manage/export_import.png">}}
+    icon="fa-thin fa-right-left">}}
 
 {{</index/block>}}

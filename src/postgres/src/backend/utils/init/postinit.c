@@ -1338,6 +1338,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	MyDatabaseId = dboid;
 
+	if (IsYugaByteEnabled())
+		YBCSetupPgBackendCgroup(MyDatabaseId);
+
 	/*
 	 * Validate the internal relcache init connection.
 	 */

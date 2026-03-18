@@ -56,8 +56,12 @@ class Cgroup {
 
   Status Init(bool is_root = false);
 
-  // Quota is a fraction of total CPUs, i.e. 1.0 is all CPUs (uncapped).
-  Status UpdateMaxCpu(std::optional<double> quota, std::optional<int> period_us = std::nullopt)
+  static Status CheckMaxCpuValidForPeriod(double max_cpu_fraction, int period_us);
+
+  // max_cpu_fraction is a fraction of total CPUs, i.e., 1.0 is all CPUs (uncapped).
+  // std::nullopt for either parameter to leave it unchanged.
+  Status UpdateCpuLimits(
+      std::optional<double> max_cpu_fraction, std::optional<int> period_us = std::nullopt)
       EXCLUDES(mutex_);
 
   Status UpdateCpuWeight(int weight) EXCLUDES(mutex_);
@@ -66,6 +70,12 @@ class Cgroup {
 
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
 
+  // This function has an inherent race condition: the threads it reads may change
+  // cgroups or exit immediately after reading, and the thread id may even be reused by
+  // another thread before returning. It should only be used for testing and for
+  // informational purposes like logs and debugging UI.
+  Result<std::vector<int64_t>> ReadThreadIds();
+
   // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
   std::string_view name() const { return name_; }
 
@@ -73,13 +83,16 @@ class Cgroup {
   // /sys/fs/cgroup/a/b/c is "/a/b/c".
   std::string full_name() const;
 
+  // The full cgroup path, e.g. /sys/fs/cgroup/a/b/c.
+  std::string path() const;
+
   Cgroup* parent() const { return parent_; }
 
   Cgroup* child(std::string_view name) EXCLUDES(mutex_);
 
-  double cpu_quota() const EXCLUDES(mutex_) {
+  double cpu_max_fraction() const EXCLUDES(mutex_) {
     std::lock_guard lock(mutex_);
-    return cpu_quota_;
+    return cpu_max_fraction_;
   }
 
   int cpu_period_us() const EXCLUDES(mutex_) {
@@ -114,7 +127,7 @@ class Cgroup {
 
   std::atomic<int> threads_fd_{-1};
 
-  double cpu_quota_ GUARDED_BY(mutex_) = 1.0;
+  double cpu_max_fraction_ GUARDED_BY(mutex_) = 1.0;
   int cpu_period_us_ GUARDED_BY(mutex_) = kDefaultCpuPeriod;
   int cpu_weight_ GUARDED_BY(mutex_) = kDefaultCpuWeight;
 };
@@ -132,6 +145,8 @@ class Cgroup {
 // are created in the default thread cgroup.
 Status SetupCgroupManagement(ClearChildCgroups clear);
 
+bool CgroupManagementEnabled();
+
 // Root cgroup that the process is under. No threads should be placed into this cgroup.
 Cgroup* RootCgroup();
 
@@ -147,11 +162,13 @@ Cgroup* RootCgroup();
 // explicitly.
 Cgroup* DefaultThreadCgroup();
 
-Result<std::string> GetProcessCpuCgroup();
+Result<std::string> GetProcessCpuCgroup(int64_t process_id = -1, bool check_controllers = true);
 
-Result<std::string> GetProcessCpuCgroupPath();
+Result<std::string> GetProcessCpuCgroupPath(int64_t process_id = -1, bool check_controllers = true);
 
 Result<std::string> GetThreadCpuCgroup(int64_t thread_id = -1);
+
+Status MoveProcessToCgroupPath(std::string_view cgroup_path);
 
 } // namespace yb
 #endif // __linux__

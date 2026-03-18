@@ -27,6 +27,7 @@
 
 namespace yb {
 
+class Env;
 class RWOperationCounter;
 
 namespace tablet {
@@ -75,6 +76,8 @@ class TabletComponent {
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const;
 
   std::mutex& create_checkpoint_lock() const;
+
+  Env& env() const;
 
   rocksdb::Env& rocksdb_env() const;
 

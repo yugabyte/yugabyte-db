@@ -812,8 +812,7 @@ Status TSTabletManager::Init() {
       *tablet_options_.env,
       server_->mem_tracker(),
       server_->metric_entity(),
-      GetTargetBlockCacheSize(kDefaultTserverBlockCacheSizePercentage),
-      GetDbBlockCacheNumShardBits()
+      *tablet_options_.block_cache
   );
 
   return Status::OK();

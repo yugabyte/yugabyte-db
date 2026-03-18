@@ -154,6 +154,7 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
+  html_print_helper.cc
   json_document.cc
   jsonwriter.cc
   jwt_util.cc

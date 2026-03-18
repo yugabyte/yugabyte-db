@@ -24,6 +24,7 @@ import { ReleaseState, type YbdbRelease } from './dtos';
 import { buildVersionOptions } from './utils/versionUtils';
 import { DbUpgradeSummaryCard } from './DbUpgradeSummaryCard';
 import { CurrentDbUpgradeFormStep } from './CurrentDbUpgradeFormStep';
+import { YBStepper } from '@app/redesign/components/YBStepper/YBStepper';
 import {
   DB_UPGRADE_FIRST_FORM_STEP,
   DbUpgradeFormStep,
@@ -53,8 +54,6 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex',
     flexDirection: 'column',
 
-    flex: 1,
-    minHeight: 0,
     overflowY: 'auto'
   },
 
@@ -69,12 +68,20 @@ const useStyles = makeStyles((theme) => ({
     borderLeft: `1px solid ${theme.palette.grey[200]}`
   },
   loadingContainer: {
-    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
     justifyContent: 'center',
     alignItems: 'center'
+  },
+  leftPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1
+  },
+  stepperContainer: {
+    padding: theme.spacing(2, 3),
+    borderBottom: `1px solid ${theme.palette.grey[200]}`
   }
 }));
 
@@ -120,7 +127,11 @@ export const DbUpgradeModal = ({
       (c: any) => c.key === RuntimeConfigKey.SKIP_VERSION_CHECKS
     )?.value === 'true';
   const releasesList = dbReleasesQuery.data ?? [];
-  const targetReleaseOptions = buildVersionOptions(releasesList, currentDbVersion, shouldSkipVersionChecks);
+  const targetReleaseOptions = buildVersionOptions(
+    releasesList,
+    currentDbVersion,
+    shouldSkipVersionChecks
+  );
 
   const formMethods = useForm<DBUpgradeFormFields>({
     defaultValues: {
@@ -225,8 +236,21 @@ export const DbUpgradeModal = ({
     }
   };
 
-  const targetDbVersion = formMethods.watch('targetDbVersion');
+  const upgradeMethod = formMethods.watch('upgradeMethod');
+  const formStepperLabels: Record<string, string> =
+    upgradeMethod === UpgradeMethod.EXPRESS
+      ? {
+          [DbUpgradeFormStep.DB_VERSION]: t('stepper.dbVersion'),
+          [DbUpgradeFormStep.UPGRADE_METHOD]: t('stepper.upgradeMethod')
+        }
+      : {
+          [DbUpgradeFormStep.DB_VERSION]: t('stepper.dbVersion'),
+          [DbUpgradeFormStep.UPGRADE_METHOD]: t('stepper.upgradeMethod'),
+          [DbUpgradeFormStep.UPGRADE_PLAN]: t('stepper.upgradePlan'),
+          [DbUpgradeFormStep.UPGRADE_PACE]: t('stepper.upgradePace')
+        };
 
+  const targetDbVersion = formMethods.watch('targetDbVersion');
   const modalTitle = t('modalTitle');
   const submitLabel = getSubmitLabel();
   const cancelLabel = t('cancel', { keyPrefix: 'common' });
@@ -261,26 +285,32 @@ export const DbUpgradeModal = ({
       submitButtonTooltip={!hasRequiredUpgradePermission ? RBAC_ERR_MSG_NO_PERM : ''}
       {...modalProps}
     >
-      <div className={classes.formScrollArea}>
-        <FormProvider {...formMethods}>
-          {universeDetailsQuery.isLoading ||
-          universeRuntimeConfigsQuery.isLoading ||
-          dbReleasesQuery.isLoading ? (
-            <div className={classes.loadingContainer}>
-              <YBLoadingCircleIcon />
-            </div>
-          ) : (
-            <CurrentDbUpgradeFormStep
-              currentUniverseUuid={currentUniverseUuid}
-              currentFormStep={currentFormStep}
-              currentRelease={currentDbVersion}
-              targetReleaseOptions={targetReleaseOptions}
-              maxNodesPerBatchMaximum={maxNodesPerBatchMaximum}
-              onPreCheckSuccess={modalProps.onClose}
-            />
-          )}
-        </FormProvider>
+      <div className={classes.leftPanel}>
+        <div className={classes.stepperContainer}>
+          <YBStepper steps={formStepperLabels} currentStep={currentFormStep} />
+        </div>
+        <div className={classes.formScrollArea}>
+          <FormProvider {...formMethods}>
+            {universeDetailsQuery.isLoading ||
+            universeRuntimeConfigsQuery.isLoading ||
+            dbReleasesQuery.isLoading ? (
+              <div className={classes.loadingContainer}>
+                <YBLoadingCircleIcon />
+              </div>
+            ) : (
+              <CurrentDbUpgradeFormStep
+                currentUniverseUuid={currentUniverseUuid}
+                currentFormStep={currentFormStep}
+                currentRelease={currentDbVersion}
+                targetReleaseOptions={targetReleaseOptions}
+                maxNodesPerBatchMaximum={maxNodesPerBatchMaximum}
+                onPreCheckSuccess={modalProps.onClose}
+              />
+            )}
+          </FormProvider>
+        </div>
       </div>
+
       <div className={classes.infoPanel}>
         <DbUpgradeSummaryCard />
       </div>

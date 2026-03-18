@@ -1252,4 +1252,87 @@ TEST_F_EX(PgRowLockTest, RowLockBatchFlushOnSnapshotChange, PgMiniTestRowLockBat
   ASSERT_EQ(row, 1);
 }
 
+class PgRowLockWithConcurrentDdlTest : public PgMiniTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_enable_concurrent_ddl=true";
+    PgMiniTestBase::SetUp();
+  }
+};
+
+// Test for issue #30414:
+//
+// This test is used to reproduce the "Some of the requested ybctids are missing" error when
+// yb_enable_concurrent_ddl=true.
+//
+// The error occurs due to the following scenario:
+//   1. A table is created with a composite primary key.
+//   2. A row with pk id='1' is repeatedly deleted and inserted.
+//   3. A SELECT ... FOR KEY SHARE is repeatedly executed concurrently.
+//   4. The SELECT performs a read of the main table with a read time of T1 and the row is found.
+//   5. A DELETE removes the row with a time T2 > T1.
+//   6. The row lock operation is buffered.
+//   7. The SELECT attempts to perform a catalog read to lookup the composite type. To do this read,
+//      the read_time_serial_no is switched to the CatalogSnapshot's read_time_serial_no (which
+//      happens to) have a read time higher than T2, which is possible since the CatalogSnapshot
+//      is invalidated many times during the execution of a statement).
+//   8. After switching to the catalog snapshot, the row lock buffer is flushed with the
+//      CatalogSnapshot's read time serial number. Since this is > T2, the row is not found.
+// TODO(#30682): Enable this in debug builds.
+TEST_F_EX(PgRowLockTest,
+          YB_RELEASE_ONLY_TEST(MissingYbctidsDuringExplicitRowLock),
+          PgRowLockWithConcurrentDdlTest) {
+  constexpr auto kTestDuration = 10s;
+  const std::string kTableName = "read_committed_il_table";
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TYPE composite_val AS (x INT, y TEXT)"));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "CREATE TABLE $0 (id TEXT PRIMARY KEY, val INT, name TEXT, comp composite_val)",
+      kTableName));
+  ASSERT_OK(setup_conn.ExecuteFormat(
+      "INSERT INTO $0 (id, val, name, comp) VALUES ('1', 1, 'initial', ROW(1, 'a'))",
+      kTableName));
+
+  auto writer_conn = ASSERT_RESULT(Connect());
+
+  {
+    TestThreadHolder threads;
+
+    // Writer thread: rapid DELETE + INSERT cycles using a single connection.
+    threads.AddThreadFunctor([&writer_conn, &stop = threads.stop_flag(), &kTableName] {
+      int counter = 0;
+      while (!stop.load(std::memory_order_acquire)) {
+        ++counter;
+        ASSERT_OK(writer_conn.ExecuteFormat("DELETE FROM $0 WHERE id='1'", kTableName));
+        ASSERT_OK(writer_conn.ExecuteFormat(
+            "INSERT INTO $0 (id, val, name, comp) VALUES ('1', $1, 'row_$1', ROW($1, 'v_$1'))",
+            kTableName, counter));
+      }
+      LOG(INFO) << "Writer done after " << counter << " iterations";
+      ASSERT_GT(counter, 0);
+    });
+
+    // Reader thread: locking SELECTs with a new connection per iteration.
+    threads.AddThreadFunctor([this, &stop = threads.stop_flag(), &kTableName] {
+      int counter = 0;
+      while (!stop.load(std::memory_order_acquire)) {
+        ++counter;
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.Execute("SET yb_debug_log_snapshot_mgmt=true"));
+        ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests=true"));
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE id='1' FOR KEY SHARE", kTableName));
+      }
+      LOG(INFO) << "Reader done after " << counter << " iterations";
+      ASSERT_GT(counter, 0);
+    });
+
+    std::this_thread::sleep_for(kTestDuration);
+  }
+
+  ASSERT_OK(setup_conn.ExecuteFormat("DROP TABLE $0", kTableName));
+}
+
 }  // namespace yb::pgwrapper

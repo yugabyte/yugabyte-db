@@ -743,6 +743,9 @@ message AshMetadataPB {
   optional int64 rpc_request_id = 4;
   // Query id as seen on pg_stat_statements to identify identical normalized queries.
   optional uint64 query_id = 5;
+  // Plan identifier (plan hash) for the current execution plan. Same as in yb_pg_stat_plans.
+  // 0 when no plan (e.g. utility statement) or for YCQL components.
+  optional uint64 plan_id = 11;
   // Deprecated session_id
   reserved 6;
   // pid of the YSQL/YCQL backend which is executing the query. TServer pid for

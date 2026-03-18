@@ -2948,6 +2948,30 @@ public class YBClient implements AutoCloseable {
     }
 
     /**
+     * Sets the threshold for DNS debug logging of slow dns lookups. Optional.
+     * If not provided, defaults to 5ms.
+     *
+     * @param dnsDebugThresholdNs a threshold in nanoseconds
+     * @return this builder
+     */
+    public YBClientBuilder dnsDebugThresholdNs(int dnsDebugThresholdNs) {
+      clientBuilder.dnsDebugThresholdNs(dnsDebugThresholdNs);
+      return this;
+    }
+
+    /**
+     * Sets the threshold for DNS warning logging of slow dns lookups. Optional.
+     * If not provided, defaults to 300ms.
+     *
+     * @param dnsWarningThresholdNs a threshold in nanoseconds
+     * @return this builder
+     */
+    public YBClientBuilder dnsWarningThresholdNs(int dnsWarningThresholdNs) {
+      clientBuilder.dnsWarningThresholdNs(dnsWarningThresholdNs);
+      return this;
+    }
+
+    /**
      * Creates a new client that connects to the masters. Doesn't block and won't throw an exception
      * if the masters don't exist.
      *

@@ -512,6 +512,10 @@ class Tablet : public AbstractTablet,
   const RaftGroupMetadata *metadata() const { return metadata_.get(); }
   RaftGroupMetadata *metadata() { return metadata_.get(); }
 
+  Env& env() const {
+    return *tablet_options_.env;
+  }
+
   rocksdb::Env& rocksdb_env() const;
 
   const std::string& tablet_id() const override;

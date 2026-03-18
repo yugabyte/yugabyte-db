@@ -28,7 +28,7 @@ YB_DEFINE_ENUM(HtmlTableCellAlignment, (Left)(Right));
 // Helper class to print HTML.
 class HtmlPrintHelper {
  public:
-  explicit HtmlPrintHelper(std::stringstream& output);
+  explicit HtmlPrintHelper(std::ostream& output);
 
   HtmlTablePrintHelper CreateTablePrinter(
       std::string table_name, std::vector<std::string> column_names,
@@ -43,7 +43,7 @@ class HtmlPrintHelper {
  private:
   friend class HtmlTablePrintHelper;
 
-  std::stringstream& output_;
+  std::ostream& output_;
   bool has_tables_ = false;
 };
 
@@ -61,31 +61,61 @@ class HtmlPrintHelper {
 // table_printer.Print();
 class HtmlTablePrintHelper {
  public:
-  struct TableRow {
-    std::vector<std::string> column_values_;
-
-    template <typename T>
-    void AddColumn(const T& cell_value) {
-      AddColumn(yb::AsString(cell_value));
-    }
-
-    void AddColumn(const char* cell_value);
-    void AddColumn(const std::string& cell_value);
-    void AddColumn(bool cell_value);
-
-    template <typename... Ts>
-    void AddColumns(const Ts&... values) {
-      (AddColumn(values), ...);
-    }
+  struct TableColumnValue {
+    std::string value;
+    // Sorting by column will first sort by sort_order, then by value.
+    size_t sort_order = 0;
+    size_t rowspan = 1;
   };
 
-  template <typename... Ts>
-  void AddRow(const Ts&... column_values) {
-    auto& row = AddRow();
-    row.AddColumns(column_values...);
-  }
+  class TableRow {
+   public:
+    template <typename T>
+    void AddColumn(T&& cell_value, size_t sort_order = 0, size_t rowspan = 1) {
+      column_values_.emplace_back(ProcessValue(std::forward<T>(cell_value)), sort_order, rowspan);
+    }
 
-  HtmlTablePrintHelper::TableRow& AddRow();
+    template<typename... Ts>
+    void AddColumns(Ts&&... values) {
+      (AddColumn(std::forward<Ts>(values)), ...);
+    }
+
+   private:
+    std::string ProcessValue(std::string&& value) { return std::move(value); }
+    std::string ProcessValue(std::string_view value) { return std::string(value); }
+    std::string ProcessValue(const char* value) { return value; }
+    std::string ProcessValue(bool value) { return value ? "true" : "false"; }
+    template<typename T>
+    std::string ProcessValue(T&& value) { return yb::AsString(std::forward<T>(value)); }
+
+    friend class HtmlTablePrintHelper;
+    std::vector<TableColumnValue> column_values_;
+  };
+
+  struct TableRowSet {
+   public:
+    TableRow& AddRow();
+
+    template<typename... Ts>
+    void AddRow(Ts&&... column_values) {
+      AddRow().AddColumns(std::forward<Ts>(column_values)...);
+    }
+
+   private:
+    friend class HtmlTablePrintHelper;
+    std::vector<TableRow> rows_;
+  };
+
+  TableRowSet& AddRowSet();
+
+  // AddRow helpers are for the common case with one row per row set.
+  TableRow& AddRow() {
+    return AddRowSet().AddRow();
+  }
+  template<typename... Ts>
+  void AddRow(Ts&&... column_values) {
+    AddRow().AddColumns(std::forward<Ts>(column_values)...);
+  }
 
   void Print();
 
@@ -95,16 +125,16 @@ class HtmlTablePrintHelper {
   friend class HtmlPrintHelper;
 
   HtmlTablePrintHelper(
-      std::stringstream& output, std::string table_name, std::vector<std::string> column_names,
+      std::ostream& output, std::string table_name, std::vector<std::string> column_names,
       std::vector<HtmlTableCellAlignment> column_alignment);
 
   size_t ColumnCount() const { return column_names_.size(); }
 
-  std::stringstream& output_;
+  std::ostream& output_;
   const std::string table_name_;
   const std::vector<std::string> column_names_;
   const std::vector<HtmlTableCellAlignment> column_alignment_;
-  std::vector<TableRow> table_rows_;
+  std::vector<TableRowSet> table_row_sets_;
 };
 
 // Helper class to print HTML fieldset in the current scope.
@@ -115,9 +145,9 @@ class HtmlFieldsetScope {
 
  private:
   friend class HtmlPrintHelper;
-  explicit HtmlFieldsetScope(std::stringstream& output, const std::string& name);
+  explicit HtmlFieldsetScope(std::ostream& output, const std::string& name);
 
-  std::stringstream& output_;
+  std::ostream& output_;
 };
 
 }  // namespace yb

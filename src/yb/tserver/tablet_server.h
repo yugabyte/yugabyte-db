@@ -118,13 +118,14 @@ class PgCronLeaderService;
 
 namespace tserver {
 
+class GetYSQLLeaseInfoResponsePB;
+class PgClientServiceImpl;
+class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
 class TserverXClusterContextIf;
-class PgClientServiceImpl;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
-class GetYSQLLeaseInfoResponsePB;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -177,6 +178,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
     return ysql_lease_manager_->ts_local_lock_manager();
   }
+
+#ifdef __linux__
+  TServerCgroupManager* cgroup_manager() const override {
+    return cgroup_manager_.get();
+  }
+#endif
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -688,6 +695,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   OneTimeBool shutting_down_;
 
   std::map<std::string, std::shared_future<Status>> in_flight_superuser_connections_;
+
+#ifdef __linux__
+  std::unique_ptr<TServerCgroupManager> cgroup_manager_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

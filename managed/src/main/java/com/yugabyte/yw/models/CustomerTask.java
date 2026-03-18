@@ -344,6 +344,9 @@ public class CustomerTask extends Model {
     @EnumValue("ModifyMetricsExportConfig")
     ModifyMetricsExportConfig,
 
+    @EnumValue("ConfigureExportTelemetryConfig")
+    ConfigureExportTelemetryConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -584,6 +587,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Modified metrics export config for"
               : "Modifying metrics export config for";
+        case ConfigureExportTelemetryConfig:
+          return completed
+              ? "Configured export telemetry config for"
+              : "Configuring export telemetry config for";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:

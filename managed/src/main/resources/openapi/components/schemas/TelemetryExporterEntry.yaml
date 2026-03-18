@@ -1,0 +1,41 @@
+x-yba-api-visibility: internal
+title: TelemetryExporterEntry
+type: object
+description: Exporter reference and optional overrides for a telemetry config.
+required:
+  - exporter_uuid
+properties:
+  exporter_uuid:
+    description: UUID of the telemetry provider (exporter).
+    type: string
+    format: uuid
+  additional_tags:
+    description: Key-value tags to attach to exported data.
+    type: object
+    additionalProperties:
+      type: string
+  send_batch_max_size:
+    description: Maximum number of metrics to buffer before sending.
+    type: integer
+    default: 1000
+  send_batch_size:
+    description: Target batch size for sending metrics.
+    type: integer
+    default: 100
+  send_batch_timeout_seconds:
+    description: Timeout in seconds for sending a batch.
+    type: integer
+    default: 10
+  memory_limit_mib:
+    description: Memory limit in MiB for the exporter.
+    type: integer
+    default: 2048
+  memory_limit_check_interval_seconds:
+    description: Interval in seconds between memory limit checks.
+    type: integer
+    default: 10
+  metrics_prefix:
+    description: Prefix added to metric names (e.g. ybdb.).
+    type: string
+    example: ybdb.
+    default: ''
