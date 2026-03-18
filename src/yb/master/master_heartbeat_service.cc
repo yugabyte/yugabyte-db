@@ -17,7 +17,6 @@
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/common_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
@@ -29,27 +28,27 @@
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_util.h"
 #include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_heartbeat.service.h"
 #include "yb/master/master_service_base.h"
-#include "yb/master/master_service_base-internal.h"
+#include "yb/master/master_util.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
+#include "yb/master/ysql/ysql_manager_if.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tserver/service_util.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
-#include "yb/rpc/rpc_context.h"
 
 DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
@@ -76,6 +75,10 @@ DEFINE_RUNTIME_AUTO_bool(use_tablet_report_pending_config_op_id, kLocalVolatile,
 
 DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
                  "Whether to skip processing tablet metadata for TSHeartbeat.");
+
+DEFINE_NON_RUNTIME_uint32(xcluster_guarded_lease_duration_ms, 2 * 60 * 1000,
+    "Duration of xCluster-guarded information lease in milliseconds; not safe to lower.");
+TAG_FLAG(xcluster_guarded_lease_duration_ms, advanced);
 
 DEFINE_RUNTIME_int32(catalog_manager_report_batch_size, 1,
     "The max number of tablets evaluated in the heartbeat as a single SysCatalog update.");
@@ -488,9 +491,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
     TSDescriptorPtr& ts_desc = *desc_result;
 
-    // This is the right place to put this once we add the lease functionality in the next diff.
-    // Must stay after UpdateAndReturnTSDescriptorOrRespond.
-    // TODO(mlillibridge): adjust this comment after the lease functionality gets added.
+    // Correctness requires that this occur after UpdateAndReturnTSDescriptorOrRespond.
     auto fill_status = catalog_manager_->GetXClusterManager()->FillXClusterGuardedInfo(
         leader_term, *resp->mutable_xcluster_guarded_info());
     if (!fill_status.ok()) {
@@ -499,6 +500,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
 
     resp->set_tablet_report_limit(FLAGS_tablet_report_limit);
+
+    resp->set_xcluster_guarded_lease_duration_ms(FLAGS_xcluster_guarded_lease_duration_ms);
 
     // Set the TServer metrics in TS Descriptor.
     if (req->has_metrics()) {

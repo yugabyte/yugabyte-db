@@ -374,6 +374,10 @@ message TSHeartbeatResponsePB {
 
   // xCluster-guarded information.
   optional XClusterGuardedInfoPB xcluster_guarded_info = 35;
+
+  // If present, this heartbeat response grants the TServer a xCluster-guarded information lease
+  // of this duration from when the TServer sent the heartbeat request.
+  optional uint32 xcluster_guarded_lease_duration_ms = 36;
 }
 
 service MasterHeartbeat {

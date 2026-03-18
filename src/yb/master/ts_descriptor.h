@@ -29,9 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#pragma once
 
-#include <shared_mutex>
+#pragma once
 
 #include <atomic>
 #include <memory>
@@ -57,9 +56,9 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/shared_ptr_tuple.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -103,6 +102,10 @@ using ProxyTuple = util::SharedPtrTuple<
 
 struct PersistentTServerInfo : public Persistent<SysTabletServerEntryPB> {
   bool IsLive() const;
+  // If this returns false then we can be sure the TServer does not currently have a
+  // xCluster-guarded information lease.  False positives (i.e., returning true when it does not
+  // have a lease) are possible.
+  bool MaybeHasXClusterGuardedLease() const;
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
   std::string placement_uuid() const;
 };
@@ -136,7 +139,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   static std::string generate_placement_id(const CloudInfoPB& ci);
 
-  virtual ~TSDescriptor() = default;
+  ~TSDescriptor() override = default;
 
   // Updates TS metadata -
   //     hybrid time on the TS
@@ -357,6 +360,11 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   bool IsLive() const;
 
+  // If this returns false then we can be sure the TServer does not currently have a
+  // xCluster-guarded information lease.  False positives (i.e., returning true when it does not
+  // have a lease) are possible.
+  bool MaybeHasXClusterGuardedLease() const;
+
   bool IsLiveAndHasReported() const;
 
   bool HasYsqlCatalogLease() const;
@@ -366,6 +374,8 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   Result<HostPort> GetHostPort() const EXCLUDES(mutex_);
 
+  // Transition this TServer to UNRESPONSIVE and/or DEFINITELY_NO_LEASE if enough time has passed
+  // since its last heartbeat.
   std::optional<TSDescriptor::WriteLock> MaybeUpdateLiveness(MonoTime time) EXCLUDES(mutex_);
 
  private:

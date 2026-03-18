@@ -3323,28 +3323,52 @@ class PgClientSession::Impl {
         txn, used_session_kind, deadline, is_ddl, GlobalObjectLocksReleaseMode::kSync);
   }
 
+  static bool MayBeAutomaticTarget(XClusterNamespaceInfoPB::XClusterRole role) {
+    // The role is UNAVAILABLE when this TServer does not hold a current xCluster-guarded
+    // information lease, so it cannot tell whether the database is an automatic-mode target; fail
+    // closed by treating it as if it could be an automatic target.
+    return role == XClusterNamespaceInfoPB::AUTOMATIC_TARGET ||
+           role == XClusterNamespaceInfoPB::UNAVAILABLE;
+  }
+
+  // Precondition: MayBeAutomaticTarget(role).
+  static Status MakeForbiddenOnAutomaticTargetStatus(
+      XClusterNamespaceInfoPB::XClusterRole role, const char* operations) {
+    CHECK(MayBeAutomaticTarget(role));
+    if (role == XClusterNamespaceInfoPB::UNAVAILABLE) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "$0 are forbidden because the xCluster role of the database is currently unavailable; "
+          "retry later",
+          operations);
+    }
+    return STATUS_FORMAT(
+        IllegalState,
+        "$0 are forbidden on a database that is the target of automatic mode xCluster replication",
+        operations);
+  }
+
   template <class DataPtr, class Options>
   Status ValidateRequestForXCluster(const Options& options, const DataPtr& data) {
     if (options.yb_non_ddl_txn_for_sys_tables_allowed() || !xcluster_context()) {
       return Status::OK();
     }
-    bool is_automatic_target = xcluster_context()->GetXClusterRole(options.namespace_id()) ==
-                               XClusterNamespaceInfoPB::AUTOMATIC_TARGET;
-    if (is_automatic_target && FLAGS_xcluster_target_manual_override) {
+    const auto role = xcluster_context()->GetXClusterRole(options.namespace_id());
+    const bool may_be_automatic_target = MayBeAutomaticTarget(role);
+    if (may_be_automatic_target && FLAGS_xcluster_target_manual_override) {
       return Status::OK();
     }
 
     if (options.ddl_mode()) {
       // In xCluster Automatic mode, DDLs are not allowed on the target database unless it is run
       // via the target poller or in forced manual mode.
-      if (is_automatic_target && !options.xcluster_target_ddl_bypass()) {
+      if (may_be_automatic_target && !options.xcluster_target_ddl_bypass()) {
         // Force catalog modifications is set for temp table, and in-place materialized view
         // refresh. These DDLs are safe to perform on xCluster target in automatic mode.
         for (const auto& op : data->req.ops()) {
-          SCHECK(
-              !op.has_write(), IllegalState,
-              "DDL operations are forbidden on a database that is the target of automatic mode "
-              "xCluster replication");
+          if (op.has_write()) {
+            return MakeForbiddenOnAutomaticTargetStatus(role, "DDL operations");
+          }
         }
       }
 
@@ -3356,7 +3380,7 @@ class PgClientSession::Impl {
       for (const auto& op : data->req.ops()) {
         if (op.has_write() && !op.write().is_backfill()) {
           TEST_SYNC_POINT_CALLBACK("WriteDetectedOnXClusterReadOnlyModeTarget", nullptr);
-          // Only DDLs and index backfill is allowed in xcluster read only mode.
+          // Only DDLs and index backfill is allowed in xCluster read-only mode.
           return STATUS(
               IllegalState,
               "Data modification is forbidden on database that is the target of a transactional "
@@ -3369,16 +3393,13 @@ class PgClientSession::Impl {
   }
 
   Status ValidateSequenceModificationFunctionForXCluster(int64_t db_oid) {
-    if (FLAGS_xcluster_target_manual_override) {
+    if (!xcluster_context() || FLAGS_xcluster_target_manual_override) {
       return Status::OK();
     }
-    if (xcluster_context() &&
-        xcluster_context()->GetXClusterRole(GetPgsqlNamespaceId(narrow_cast<uint32_t>(db_oid))) ==
-            XClusterNamespaceInfoPB::AUTOMATIC_TARGET) {
-      return STATUS(
-          IllegalState,
-          "Sequence manipulation functions are forbidden on a database that is the target of "
-          "automatic mode xCluster replication");
+    const auto role =
+        xcluster_context()->GetXClusterRole(GetPgsqlNamespaceId(narrow_cast<uint32_t>(db_oid)));
+    if (MayBeAutomaticTarget(role)) {
+      return MakeForbiddenOnAutomaticTargetStatus(role, "Sequence manipulation functions");
     }
     return Status::OK();
   }

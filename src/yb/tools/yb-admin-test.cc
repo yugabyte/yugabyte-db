@@ -3570,7 +3570,12 @@ TEST_F(AdminCliTest, TestUpdateSysCatalogEntry) {
 
 TEST_F(AdminCliTest, TestRemoveTabletServer) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_replicas) = 1;
-  BuildAndStart({}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000"});
+  // remove_tablet_server requires the TServer to have definitely lost its xCluster-guarded
+  // information lease.  Keep the lease (plus clock-skew slack) shorter than
+  // tserver_unresponsive_timeout_ms so that holds as soon as the TServer is marked unresponsive.
+  BuildAndStart(
+      {}, {"--enable_load_balancing=false", "--tserver_unresponsive_timeout_ms=5000",
+           "--xcluster_guarded_lease_duration_ms=3000"});
   ASSERT_OK(cluster_->AddTabletServer(true));
   auto added_tserver = cluster_->tablet_server(cluster_->num_tablet_servers() - 1);
   ASSERT_OK(cluster_->AddTServerToBlacklist(cluster_->master(), added_tserver));

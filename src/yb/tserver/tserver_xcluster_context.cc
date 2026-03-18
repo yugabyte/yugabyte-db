@@ -15,11 +15,16 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+
+DECLARE_bool(enforce_xcluster_guarded_lease);
 
 namespace yb::tserver {
 
@@ -31,8 +36,15 @@ Result<std::optional<HybridTime>> TserverXClusterContext::GetSafeTime(
 XClusterNamespaceInfoPB_XClusterRole TserverXClusterContext::GetXClusterRole(
     NamespaceIdView namespace_id) const {
   SharedLock lock(mutex_);
-  if (!have_received_a_heartbeat_) {
-    return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+  if (FLAGS_enforce_xcluster_guarded_lease) {
+    if (!xcluster_guarded_lease_expiration_ ||
+        MonoTime::Now() >= xcluster_guarded_lease_expiration_) {
+      return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+    }
+  } else {
+    if (!have_received_a_heartbeat_) {
+      return XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+    }
   }
   if (auto* xcluster_info_per_namespace = FindOrNull(xcluster_info_per_namespace_, namespace_id)) {
     return xcluster_info_per_namespace->role();
@@ -55,6 +67,11 @@ bool TserverXClusterContext::IsTargetAndInAutomaticMode(const NamespaceId& names
 void TserverXClusterContext::UpdateSafeTimeMap(
     const XClusterNamespaceToSafeTimePBMap& safe_time_map) {
   safe_time_map_.Update(safe_time_map);
+}
+
+void TserverXClusterContext::UpdateXClusterGuardedLease(MonoTime lease_expiration_time) {
+  std::lock_guard lock(mutex_);
+  xcluster_guarded_lease_expiration_ = lease_expiration_time;
 }
 
 void TserverXClusterContext::UpdateXClusterInfoPerNamespace(

@@ -69,6 +69,10 @@ DEFINE_RUNTIME_AUTO_bool(skip_fields_moved_to_xcluster_guarded_info, kLocalVolat
     "Skip sending in master heartbeat responses the fields that were moved into "
     "xcluster_guarded_info, and skip applying them on TServers.");
 
+DEFINE_RUNTIME_AUTO_bool(enforce_xcluster_guarded_lease, kLocalPersisted, false, true,
+    "Should the xCluster-guarded information lease be enforced?  If so, the xCluster role for a "
+    "namespace will be reported as UNAVAILABLE if the TServer does not have a current lease.");
+
 namespace yb {
 
 bool IsYsqlMajorVersionUpgradeInProgress() {

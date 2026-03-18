@@ -44,8 +44,8 @@
 #include "yb/client/universe_key_client.h"
 
 #include "yb/common/common_flags.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/common_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/schema.h"
@@ -88,13 +88,13 @@
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
-#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 #include "yb/tserver/tablet_service.h"
+#include "yb/tserver/thin_client_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
@@ -106,16 +106,16 @@
 #include "yb/tserver/xcluster_consumer_if.h"
 
 #include "yb/util/cgroups.h"
+#include "yb/util/env.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
-#include "yb/util/env.h"
-#include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -2519,13 +2519,21 @@ void TabletServer::ApplyXClusterGuardedInfoIfNewer(const XClusterGuardedInfoPB& 
 }
 
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
-    const master::TSHeartbeatResponsePB& resp) {
+    const master::TSHeartbeatResponsePB& resp, MonoTime lease_expiration_time) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
   // A master with auto flag skip_fields_moved_to_xcluster_guarded_info off sends both the
   // deprecated fields and xcluster_guarded_info; prefer the latter.  See TryHeartbeat.
   if (!resp.has_xcluster_guarded_info() && !FLAGS_skip_fields_moved_to_xcluster_guarded_info) {
     xcluster_context_->UpdateXClusterInfoPerNamespace(
         resp.deprecated_xcluster_heartbeat_info().xcluster_info_per_namespace());
+  }
+  // Update lease now that we have already updated the information it protects with fresh info.
+  // (ApplyXClusterGuardedInfoIfNewer is called by the heartbeater right before this function.)
+  //
+  // This ensures that when a TServer (re-)acquires a lease it has information at least as current
+  // as when that lease was issued.
+  if (lease_expiration_time) {
+    xcluster_context_->UpdateXClusterGuardedLease(lease_expiration_time);
   }
 
   auto* xcluster_consumer = GetXClusterConsumer();

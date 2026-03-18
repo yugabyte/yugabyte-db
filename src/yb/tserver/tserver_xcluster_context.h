@@ -23,6 +23,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -48,6 +49,8 @@ class TserverXClusterContext : public TserverXClusterContextIf {
 
   void UpdateSafeTimeMap(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
+  void UpdateXClusterGuardedLease(MonoTime lease_expiration_time);
+
   void UpdateXClusterInfoPerNamespace(
       const ::google::protobuf::Map<std::string, XClusterNamespaceInfoPB>&
           automatic_mode_replication_state_per_namespace) EXCLUDES(mutex_);
@@ -70,10 +73,18 @@ class TserverXClusterContext : public TserverXClusterContextIf {
   XClusterSafeTimeMap safe_time_map_;
 
   mutable std::shared_mutex mutex_;
+
+  // Set to true after the first heartbeat response containing xCluster info is processed.
+  // Used as a fallback when enforce_xcluster_guarded_lease is false.
   bool have_received_a_heartbeat_ GUARDED_BY(mutex_) = false;
+
   // The set of namespaces that for this universe are targets of xCluster automatic mode
   // replication.
   std::unordered_set<NamespaceId> target_namespaces_in_automatic_mode_ GUARDED_BY(mutex_);
+
+  // Expiration time of the xCluster-guarded information lease granted by the master.
+  // Updated from heartbeat responses.
+  MonoTime xcluster_guarded_lease_expiration_ GUARDED_BY(mutex_);
 
   UnorderedStringMap<NamespaceId, XClusterNamespaceInfoPB> xcluster_info_per_namespace_
       GUARDED_BY(mutex_);

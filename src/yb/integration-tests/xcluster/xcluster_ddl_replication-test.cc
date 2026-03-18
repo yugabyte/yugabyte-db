@@ -68,6 +68,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
+DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -80,6 +81,8 @@ DECLARE_int32(xcluster_ddl_queue_max_retries_per_ddl);
 DECLARE_uint32(xcluster_ddl_tables_retention_secs);
 DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(xcluster_enable_target_applied_filter);
+DECLARE_bool(enforce_xcluster_guarded_lease);
+DECLARE_uint32(xcluster_guarded_lease_duration_ms);
 DECLARE_bool(xcluster_target_manual_override);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_string(ysql_cron_database_name);
@@ -101,6 +104,7 @@ DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
 DECLARE_string(TEST_skip_async_insert_packed_schema_for_tablet_id);
 DECLARE_bool(TEST_skip_oid_advance_on_restore);
+DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_cache_connection);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
@@ -477,6 +481,55 @@ TEST_F(XClusterDDLReplicationTest, ExtensionRoleUpdating) {
   EXPECT_EQ(
       xcluster_context.GetXClusterRole(namespace_id),
       XClusterNamespaceInfoPB_XClusterRole_NOT_AUTOMATIC_MODE);
+}
+
+TEST_F(XClusterDDLReplicationTest, GuardedLeaseExpiration) {
+  const auto kLeaseDuration = 20s;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_guarded_lease_duration_ms) =
+      narrow_cast<uint32_t>(MonoDelta(kLeaseDuration).ToMilliseconds());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enforce_xcluster_guarded_lease) = true;
+
+  ASSERT_OK(SetUpClustersAndReplication());
+  const auto namespace_id =
+      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*producer_client(), namespace_name));
+  auto* tserver = producer_cluster_.mini_cluster_->mini_tablet_server(0);
+  auto& xcluster_context = tserver->server()->GetXClusterContext();
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE;
+      },
+      kLeaseDuration, "Wait for role to initially switch to AUTOMATIC_SOURCE"));
+
+  // Now stop heartbeats and measure how long the lease lasts.  The lease came from the last
+  // heartbeat sent before this point, at most one heartbeat interval ago, and a lease is anchored
+  // to its heartbeat's send time.  So the role should become unavailable between
+  // kLeaseDuration - heartbeat interval and kLeaseDuration from now, give or take slack for
+  // polling, scheduling, and heartbeat timing jitter.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  const auto heartbeats_stopped = MonoTime::Now();
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_UNAVAILABLE;
+      },
+      kLeaseDuration * 2, "Wait for the lease to expire", /*initial_delay=*/100ms,
+      /*delay_multiplier=*/1.0, /*max_delay=*/100ms));
+  const auto lease_lasted = MonoTime::Now() - heartbeats_stopped;
+  const auto heartbeat_interval = FLAGS_heartbeat_interval_ms * 1ms;
+  const auto slack = 2s * kTimeMultiplier;
+  EXPECT_GE(lease_lasted, MonoDelta(kLeaseDuration - heartbeat_interval - slack));
+  EXPECT_LE(lease_lasted, MonoDelta(kLeaseDuration + slack));
+
+  // When we resume heartbeats, we should get the role back.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return xcluster_context.GetXClusterRole(namespace_id) ==
+               XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE;
+      },
+      3s * kTimeMultiplier, "Wait for role to return to AUTOMATIC_SOURCE"));
 }
 
 TEST_F(XClusterDDLReplicationTest, TestExtensionDeletionWithMultipleReplicationGroups) {
