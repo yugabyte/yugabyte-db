@@ -39,6 +39,9 @@ typedef enum {
 typedef enum {
 	KIWI_FE_CLOSE_PREPARED_STATEMENT = 'S',
 	KIWI_FE_CLOSE_PORTAL = 'P',
+	/* YB */
+	/* Perform no-op on server, instructing server to return CloseComplete */
+	YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE = 's',
 } kiwi_fe_close_type_t;
 
 typedef enum {
@@ -79,6 +82,7 @@ typedef enum {
 	/* special ParameterStatus, do not forward to client */
 	YB_CONN_MGR_PARAMETER_STATUS = 'r',
 	YB_BE_PARSE_PREPARE_ERROR_RESPONSE = '4',
+	YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME = '5',
 } kiwi_be_type_t;
 
 struct kiwi_header {
@@ -185,6 +189,8 @@ static inline char *kiwi_be_type_to_string(int type)
 		return "ConnMgrParameterStatus";
 	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
 		return "YBParsePrepareErrorResponse";
+	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
+		return "YBCloseCompletePrepStmtName";
 	}
 	return "Unknown";
 }

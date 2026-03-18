@@ -132,6 +132,24 @@ static inline od_hashmap_elt_t *od_bucket_search(od_hashmap_bucket_t *b,
 	return NULL;
 }
 
+static inline od_hashmap_list_item_t *yb_od_bucket_search_by_key(od_hashmap_bucket_t *b,
+						      void *value, size_t value_len)
+{
+	od_list_t *i;
+	od_list_foreach(&(b->nodes->link), i)
+	{
+		od_hashmap_list_item_t *item;
+		item = od_container_of(i, od_hashmap_list_item_t, link);
+		if (item->key.len == value_len &&
+		    memcmp(item->key.data, value, value_len) == 0) {
+			// find
+			return item;
+		}
+	}
+
+	return NULL;
+}
+
 static inline int od_hashmap_elt_copy(od_hashmap_elt_t *dst,
 				      od_hashmap_elt_t *src)
 {
@@ -270,6 +288,21 @@ bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
 	*matched_keys = keys;
 	*matched_count = count;
 	return true;
+}
+
+/*
+ * YB: This function searches for item in the hashmap by key.
+ * It returns the item if found, otherwise NULL.
+ */
+od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm, od_hash_t keyhash,
+	od_hashmap_elt_t *key)
+{
+	size_t bucket_index = keyhash % hm->size;
+	pthread_mutex_lock(&hm->buckets[bucket_index]->mu);
+	od_hashmap_list_item_t *item = yb_od_bucket_search_by_key(hm->buckets[bucket_index],
+								key->data, key->len);
+	pthread_mutex_unlock(&hm->buckets[bucket_index]->mu);
+	return item;
 }
 
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
