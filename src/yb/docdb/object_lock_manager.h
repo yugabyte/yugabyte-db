@@ -87,6 +87,7 @@ class ObjectLockManager {
   void Poll();
 
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+  void EnableSharedLockState();
 
   void Shutdown();
 

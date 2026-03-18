@@ -99,6 +99,7 @@ class TSLocalLockManager {
       const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req);
 
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+  void EnableSharedLockState();
 
   void Shutdown();
   void StartShutdown();

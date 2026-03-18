@@ -320,6 +320,13 @@ class ObjectLockManagerImpl {
     waiting_txn_registry_ = waiting_txn_registry;
   }
 
+  void EnableSharedLockState() {
+    std::lock_guard lock(global_mutex_);
+    if (shared_manager_) {
+      shared_manager_->ResumeSharedLockState();
+    }
+  }
+
   void Shutdown();
 
   void DumpStatusHtml(std::ostream& out) EXCLUDES(global_mutex_);
@@ -1017,6 +1024,9 @@ void ObjectLockManagerImpl::Shutdown() {
   std::vector<WaiterEntryPtr> waiters;
   {
     std::lock_guard l(global_mutex_);
+    if (shared_manager_) {
+      shared_manager_->PauseAndResetSharedLockState();
+    }
     for (auto& [_, entry] : locks_) {
       std::lock_guard obj_lock(entry->mutex);
       auto& index = entry->wait_queue.get<StartUsTag>();
@@ -1415,6 +1425,10 @@ void ObjectLockManager::Poll() {
 void ObjectLockManager::Start(
     docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
   return impl_->Start(waiting_txn_registry);
+}
+
+void ObjectLockManager::EnableSharedLockState() {
+  return impl_->EnableSharedLockState();
 }
 
 void ObjectLockManager::Shutdown() {

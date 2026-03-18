@@ -92,6 +92,26 @@ void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
   shared_.store(&shared, std::memory_order_release);
 }
 
+void ObjectLockSharedStateManager::PauseAndResetSharedLockState() {
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    return;
+  }
+
+  ParentProcessGuard g;
+  shared->PauseAndReset();
+}
+
+void ObjectLockSharedStateManager::ResumeSharedLockState() {
+  auto* shared = shared_.load(std::memory_order_relaxed);
+  if (PREDICT_FALSE(!shared)) {
+    return;
+  }
+
+  ParentProcessGuard g;
+  shared->Resume();
+}
+
 size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
   auto* shared = shared_.load(std::memory_order_relaxed);
