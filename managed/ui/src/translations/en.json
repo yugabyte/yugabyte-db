@@ -392,6 +392,42 @@
             "maxNodesPerBatchMaximum": "Must be less than or equal to the maxium batch size {{max}}.",
             "waitBetweenBatchesMin": "Must be 0 or greater."
           }
+        },
+        "dbUpgradeManagementSidePanel": {
+          "title": "DB Upgrade Management",
+          "descriptionTitle": "DESCRIPTION",
+          "description": "Upgrade to YugabyteDB {{targetDbVersion}}",
+          "ysqlMajorUpgrade": "YSQL Major Upgrade",
+          "progressPanel": {
+            "title": "Upgrade Progress",
+            "preCheckStage": {
+              "title": "Pre-Check",
+              "description": "Checks upgrade readiness and flags anything that needs fixing."
+            },
+            "upgradeMasterServersStage": {
+              "title": "Upgrade Master Servers",
+              "description": "This step upgrades master servers to {{version}}."
+            },
+            "upgradeAzStage": {
+              "title": "Upgrade AZ : {{azLabel}}",
+              "description": "This step upgrades T-servers in {{azName}} to {{version}}.",
+              "upgradeInProgressInfo": "Upgrade in progress. DDLs and some universe operations are not available at this time.",
+              "learnMore": "Learn more"
+            },
+            "finalizeStage": {
+              "title": "Finalize Upgrade",
+              "assessPerformanceTitle": "Before finalizing, assess your universe's performance",
+              "assessPerformanceDescription": "Compare the performance of PostgreSQL statements before and after upgrade.",
+              "rollBack": "Roll Back",
+              "finalizeUpgradeNow": "Finalize Upgrade Now"
+            },
+            "temporaryRestrictions": {
+              "tag": "Temporary Restrictions",
+              "duringAzUpgradeItem1": "DDLs and some operations are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "duringAzUpgradeItem2": "The universe may have slower performance.",
+              "beforeFinalize": "DDLs and some operations remain blocked until the upgrade is either finalized or rolled back."
+            }
+          }
         }
       },
       "dbRollbackUpgrade": {

@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/react-vite';
 import { CssBaseline, ThemeProvider } from '@material-ui/core';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import { useMemo, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { YBCssBaseline, YBThemeProvider, yba } from '@yugabyte-ui-library/core';
 import { initialize, mswLoader } from 'msw-storybook-addon';
@@ -17,22 +18,36 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false }
 });
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      refetchOnWindowFocus: false
+const createStorybookQueryClient = () => {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        refetchOnWindowFocus: false
+      }
     }
-  }
-});
+  });
+};
+
+const StorybookQueryClientProvider = ({
+  storyId,
+  children
+}: {
+  storyId: string;
+  children: ReactNode;
+}) => {
+  const queryClient = useMemo(() => createStorybookQueryClient(), [storyId]);
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+};
+
 const { ybaTheme } = yba;
 
 const apiBase = import.meta.env.VITE_YUGAWARE_API_URL ?? 'http://localhost:9000/api/v2';
 const API_ORIGIN = apiBase.startsWith('http') ? new URL(apiBase).origin : window.location.origin;
 
 export const decorators = [
-  (Story: React.ComponentType) => (
-    <QueryClientProvider client={queryClient}>
+  (Story: React.ComponentType, context: { id: string }) => (
+    <StorybookQueryClientProvider storyId={context.id}>
       <YBThemeProvider theme={ybaTheme}>
         <ThemeProvider theme={mainTheme}>
           <CssBaseline />
@@ -40,7 +55,7 @@ export const decorators = [
           <Story />
         </ThemeProvider>
       </YBThemeProvider>
-    </QueryClientProvider>
+    </StorybookQueryClientProvider>
   )
 ];
 
