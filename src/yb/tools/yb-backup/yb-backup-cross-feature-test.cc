@@ -3820,7 +3820,13 @@ TEST_F_EX(
   ));
 }
 
-TEST_F(YBBackupTest, ColocatedDatabaseNonColocatedTableWithVectorIndex) {
+TEST_F(
+    YBBackupTest,
+    YB_DISABLE_TEST_IN_SANITIZERS(ColocatedDatabaseNonColocatedTableWithVectorIndex)) {
+  if (!UseYbController()) {
+    GTEST_SKIP()
+        << "yb_backup.py does not support vector indexes when mixed with colocated databases.";
+  }
   const std::string db_name{"test_colo_db"};
   const std::string table_name{"test_tbl"};
   {
