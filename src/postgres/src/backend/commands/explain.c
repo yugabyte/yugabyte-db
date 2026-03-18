@@ -930,6 +930,34 @@ YbIsTimingNeeded(ExplainState *es, bool timing_set)
 	return es->analyze;
 }
 
+bool
+YbIsDebugMetricsCollectionNeeded(bool log_debug, bool log_dist)
+{
+	if (!log_debug)
+		return false;
+
+	/* YB: DIST is required for DEBUG option to be enabled. */
+	if (!log_dist)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("EXPLAIN option DEBUG requires DIST")));
+		return false;
+	}
+
+	/* YB: DEBUG option is disabled if non-deterministic fields are hidden. */
+	if (yb_explain_hide_non_deterministic_fields)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
+						"disables EXPLAIN option DEBUG")));
+		return false;
+	}
+
+	return true;
+}
+
 static void
 YbExplainRpcRequestMetrics(YbExplainState *yb_es, YbcPgExecStorageMetrics *metrics,
 						   double nloops, bool is_mean, const char *labelname)
@@ -1053,14 +1081,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("EXPLAIN option WAL requires ANALYZE")));
 
-	if (yb_explain_hide_non_deterministic_fields && es->yb_debug)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("GUC yb_explain_hide_non_deterministic_fields "
-						"disables EXPLAIN option DEBUG")));
-		es->yb_debug = false;
-	}
+	es->yb_debug = YbIsDebugMetricsCollectionNeeded(es->yb_debug, es->rpc);
 
 	/* YB: check if timing is required */
 	es->timing = YbIsTimingNeeded(es, timing_set);

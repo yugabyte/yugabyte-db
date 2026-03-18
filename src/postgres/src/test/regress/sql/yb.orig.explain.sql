@@ -44,3 +44,10 @@ EXPLAIN (ANALYZE, DIST, COMMIT, SUMMARY OFF, COSTS OFF) INSERT INTO t_test VALUE
 EXPLAIN (ANALYZE, DIST, COMMIT, COSTS OFF, FORMAT JSON) INSERT INTO t_test VALUES (11, 11, 11);
 
 SELECT * FROM t_test ORDER BY k;
+
+-- DEBUG without DIST should produce a warning and no debug metrics
+EXPLAIN (ANALYZE, DEBUG, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
+
+-- DEBUG with yb_explain_hide_non_deterministic_fields should produce a warning and no debug metrics
+SHOW yb_explain_hide_non_deterministic_fields;
+EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF) SELECT * FROM p1 WHERE k = 1;

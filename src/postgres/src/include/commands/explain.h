@@ -152,4 +152,6 @@ extern void ExplainCloseGroup(const char *objtype, const char *labelname,
 
 extern void YbExplainCommitStats(DestReceiver *dest);
 
+extern bool YbIsDebugMetricsCollectionNeeded(bool log_debug, bool log_dist);
+
 #endif							/* EXPLAIN_H */
