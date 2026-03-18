@@ -2665,7 +2665,13 @@ GetSnapshotData(Snapshot snapshot)
 
 	GetSnapshotDataInitOldSnapshot(snapshot);
 
-	snapshot->yb_read_point_handle = YbResetTransactionReadPoint(snapshot->yb_is_catalog_snapshot);
+	/*
+	 * In legacy mode, CatalogSnapshots are not integrated with pggate's snapshot management via read
+	 * time serial numbers.
+	 */
+	if (!snapshot->yb_is_catalog_snapshot || !YBCIsLegacyModeForCatalogOps())
+		snapshot->yb_read_point_handle = YbResetTransactionReadPoint(snapshot->yb_is_catalog_snapshot);
+
 	YbLogSnapshotData("Fetched new snapshot", snapshot,
 					  yb_debug_log_snapshot_mgmt_stack_trace);
 	return snapshot;
