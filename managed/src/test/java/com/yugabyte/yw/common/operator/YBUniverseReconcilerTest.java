@@ -34,6 +34,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
@@ -521,6 +522,37 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     assertTrue(uDTCaptor.getValue().universeOverrides.contains("bar"));
     // Verify upgrade handler is not called
     Mockito.verifyNoInteractions(universeCRUDHandler);
+  }
+
+  @Test
+  public void testEditUniverseTriggersToggleYbcWhenUseYbdbInbuiltYbcToggledInCr() throws Exception {
+    String universeName = "test-toggle-ybc-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe has useYbdbInbuiltYbc = false by default; ensure it stays false
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Toggle useYbdbInbuiltYbc to true in the CR
+    ybUniverse.getSpec().setUseYbdbInbuiltYbc(true);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<KubernetesToggleImmutableYbcParams> paramsCaptor =
+        ArgumentCaptor.forClass(KubernetesToggleImmutableYbcParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .kubernetesToggleImmutableYbc(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    assertTrue(
+        "toggle params should have useYbdbInbuiltYbc true",
+        paramsCaptor.getValue().isUseYbdbInbuiltYbc());
+    assertEquals(oldUniverse.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
   }
 
   @Test

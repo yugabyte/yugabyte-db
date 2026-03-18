@@ -167,6 +167,12 @@ spec:
               ybSoftwareVersion:
                 description: Version of DB software to use in the universe.
                 type: string
+              useYbdbInbuiltYbc:
+                description: >
+                  Use YBDB inbuilt YBC (immutable YBC) for the universe. When true, YBC runs from
+                  the same container image as the database instead of being installed at runtime.
+                type: boolean
+                default: false
               providerName:
                 description: Preexisting Provider name to use in the universe.
                 type: string

@@ -31,6 +31,7 @@ import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -869,6 +870,19 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           updateThrottleParams(universe, ybUniverse);
           kubernetesStatusUpdater.updateUniverseState(
               KubernetesResourceDetails.fromResource(ybUniverse), UniverseState.READY);
+          // Handle immutable YBC (useYbdbInbuiltYbc) toggle
+        } else if (currentUserIntent.isUseYbdbInbuiltYbc()
+            != ybUniverse.getSpec().getUseYbdbInbuiltYbc()) {
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe, k8ResourceDetails, TaskType.KubernetesToggleImmutableYbc.name());
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID =
+              toggleYbcYbUniverse(
+                  universeDetails, cust, ybUniverse, ybUniverse.getSpec().getUseYbdbInbuiltYbc());
           // Case with new edits
         } else if (!HelmUtils.equal(
             incomingIntent.universeOverrides, currentUserIntent.universeOverrides)) {
@@ -1012,6 +1026,33 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.ERROR_UPDATING);
       throw e;
     }
+  }
+
+  private UUID toggleYbcYbUniverse(
+      UniverseDefinitionTaskParams taskParams,
+      Customer cust,
+      YBUniverse ybUniverse,
+      boolean useYbdbInbuiltYbc) {
+    KubernetesToggleImmutableYbcParams requestParams = new KubernetesToggleImmutableYbcParams();
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    try {
+      requestParams =
+          mapper.readValue(
+              mapper.writeValueAsString(taskParams), KubernetesToggleImmutableYbcParams.class);
+    } catch (Exception e) {
+      log.error("Failed at creating toggle immutable YBC params", e);
+    }
+    requestParams.setUseYbdbInbuiltYbc(useYbdbInbuiltYbc);
+
+    Universe oldUniverse =
+        Universe.maybeGetUniverseByName(cust.getId(), getUniverseName(ybUniverse)).orElse(null);
+    log.info("Toggling YBC useYbdbInbuiltYbc to {}", useYbdbInbuiltYbc);
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    return upgradeUniverseHandler.kubernetesToggleImmutableYbc(requestParams, cust, oldUniverse);
   }
 
   private UUID updateOverridesYbUniverse(
@@ -1315,6 +1356,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.enableYEDIS = false; // Always disable YEDIS
       userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
       userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
+      userIntent.setUseYbdbInbuiltYbc(
+          Boolean.TRUE.equals(ybUniverse.getSpec().getUseYbdbInbuiltYbc()));
       userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
       if (ybUniverse.getSpec().getEnableLoadBalancer()) {
         userIntent.enableExposingService = ExposingServiceState.EXPOSED;

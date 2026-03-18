@@ -871,6 +871,11 @@ public class OperatorUtils {
     log.trace("pause mismatch: {}", mismatch);
     mismatch = mismatch || isThrottleParamUpdate(u, ybUniverse);
     log.trace("throttle mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+                == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
+    log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -2056,6 +2061,8 @@ public class OperatorUtils {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableExposingService
               == ExposingServiceState.EXPOSED);
       spec.setPaused(universe.getUniverseDetails().universePaused);
+      spec.setUseYbdbInbuiltYbc(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
 
       if (universe.getUniverseDetails().clusters.size() > 1) {
         List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
