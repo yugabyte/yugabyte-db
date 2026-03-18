@@ -38,7 +38,6 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -108,8 +107,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(AutoFlagUtil.class),
             mock(XClusterUniverseService.class),
             mock(TelemetryProviderService.class),
-            mock(SoftwareUpgradeHelper.class),
-            mock(GFlagsValidation.class));
+            mock(SoftwareUpgradeHelper.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
