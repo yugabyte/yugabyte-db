@@ -498,13 +498,16 @@ Status PgTxnManager::RestartTransaction() {
 // Reset to a new read point. This corresponds to a new latest snapshot.
 Status PgTxnManager::ResetTransactionReadPoint(bool is_catalog_snapshot) {
   VLOG_WITH_FUNC(4);
-  if (!YBCIsLegacyModeForCatalogOps() && is_catalog_snapshot) {
-    // When a new catalog snapshot is created in concurrent DDL mode, create a new read time serial
-    // no but do not switch to it yet. Switching to it will happen via RestoreReadPoint() when the
-    // catalog op is made in pg_doc_op.cc.
+  if (is_catalog_snapshot) {
+    // For a new catalog snapshot, create a new read time serial number but do not switch
+    // to it yet. Switching to it will happen via PgSession::UpdateReadPointForCatalogOps()
+    // when catalog operations are performed.
+    //
+    // NOTE: If YBCIsLegacyModeForCatalogOps() is true, we will not arrive here for
+    // catalog snapshots.
     serial_no_.IncMaxReadTime();
   } else {
-    // In all other cases, create and switch to the new read time serial number.
+    // For transaction snapshots, create and switch to the new read time serial number.
     // Leaving it upto the caller would have worked too, but this is how it has been, so not
     // changing it now.
     serial_no_.IncReadTime();
