@@ -382,3 +382,16 @@ $$;
 CALL test_alter2();
 \c
 -- end of test of #30109
+
+-- Test rollback of in-place index pg_attribute update during ALTER TYPE.
+CREATE TABLE test_idx_rollback (val varchar(10));
+CREATE INDEX idx_rollback ON test_idx_rollback(val);
+ALTER TABLE test_idx_rollback ALTER COLUMN val TYPE varchar(100);
+SELECT atttypmod FROM pg_attribute
+    WHERE attrelid = 'idx_rollback'::regclass AND attnum = 1;
+BEGIN;
+ALTER TABLE test_idx_rollback ALTER COLUMN val TYPE varchar(200);
+ROLLBACK;
+-- atttypmod should revert to 104 (varchar(100)) after rollback.
+SELECT atttypmod FROM pg_attribute
+    WHERE attrelid = 'idx_rollback'::regclass AND attnum = 1;
