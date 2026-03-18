@@ -38,36 +38,36 @@ You can also create clusters using the **Advanced** security profile, which addi
     title="IP allow lists"
     body="Whitelist IP addresses to control who can connect to your clusters."
     href="add-connections/"
-    icon="/images/section_icons/secure/tls-encryption/connect-to-cluster.png">}}
+    icon="fa-thin fa-address-book">}}
 
   {{<index/item
     title="Database authorization"
     body="Role-based access control in YugabyteDB Aeon databases."
     href="cloud-users/"
-    icon="/images/section_icons/secure/authorization.png">}}
+    icon="fa-thin fa-users">}}
 
   {{<index/item
     title="Add database users"
     body="Add users to your cluster databases."
     href="add-users/"
-    icon="/images/section_icons/secure/create-roles.png">}}
+    icon="fa-thin fa-user-plus">}}
 
   {{<index/item
     title="Encryption in transit"
     body="YugabyteDB Aeon clusters use TLS and digital certificates to secure data in transit."
     href="cloud-authentication/"
-    icon="/images/section_icons/secure/tls-encryption/connect-to-cluster.png">}}
+    icon="fa-thin fa-binary-lock">}}
 
   {{<index/item
     title="Encryption at rest"
     body="Use your own customer managed key to encrypt your clusters."
     href="managed-ear/"
-    icon="/images/section_icons/secure/tls-encryption/connect-to-cluster.png">}}
+    icon="fa-thin fa-file-lock">}}
 
   {{<index/item
     title="Audit account activity"
     body="Audit account activity, including changes to clusters, billing, allow lists, and more."
     href="cloud-activity/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+    icon="fa-thin fa-calculator">}}
 
 {{</index/block>}}
