@@ -881,20 +881,15 @@ Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
 //
 // For now, statements is allocated as ScopedPtr and cached in the memory context. The statements
 // would then be destructed when the context is destroyed and all other references are also cleared.
-Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
-                                       PgStatement **handle) {
-  *handle = stmt.get();
-  pg_callbacks_.GetCurrentYbMemctx()->Register(stmt.release());
-  return Status::OK();
-}
-
+//
 // TODO(tvesely): Figure out how to use an arena for this
 //
 // For now, functions are allocated as ScopedPtr and cached in the memory context. The statements
 // would then be destructed when the context is destroyed and all other references are also cleared.
-Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle) {
-  *handle = func.get();
-  pg_callbacks_.GetCurrentYbMemctx()->Register(func.release());
+template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
+Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle) {
+  *handle = impl.get();
+  GetCurrentYbMemctx().Register(impl.release());
   return Status::OK();
 }
 
@@ -904,15 +899,18 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunct
 //
 // For now, table_desc is allocated as ScopedPtr and cached in the memory context. The table_desc
 // would then be destructed when the context is destroyed.
-Status PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id,
-                                       const PgTableDescPtr &table_desc) {
-  pg_callbacks_.GetCurrentYbMemctx()->Cache(table_desc_id, table_desc);
-  return Status::OK();
+void PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id, const PgTableDescPtr& table_desc) {
+  GetCurrentYbMemctx().Cache(table_desc_id, table_desc);
 }
 
-Status PgApiImpl::GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle) {
-  pg_callbacks_.GetCurrentYbMemctx()->GetCache(table_desc_id, handle);
-  return Status::OK();
+PgTableDesc* PgApiImpl::GetTabledescFromCurrentPgMemctx(size_t table_desc_id) {
+  PgTableDesc* handle = nullptr;
+  GetCurrentYbMemctx().GetCache(table_desc_id, &handle);
+  return handle;
+}
+
+PgMemctx& PgApiImpl::GetCurrentYbMemctx() {
+  return *DCHECK_NOTNULL(pg_callbacks_.GetCurrentYbMemctx());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1249,16 +1247,14 @@ Status PgApiImpl::NewDropDBSequences(PgOid database_oid, PgStatement** handle) {
 
 Status PgApiImpl::GetTableDesc(const PgObjectId& table_id, PgTableDesc **handle) {
   // First read from memory context.
-  size_t hash_id = hash_value(table_id);
-  RETURN_NOT_OK(GetTabledescFromCurrentPgMemctx(hash_id, handle));
+  const auto hash_id = hash_value(table_id);
+  *handle = GetTabledescFromCurrentPgMemctx(hash_id);
 
   // Read from environment.
-  if (*handle == nullptr) {
-    auto result = pg_session_->LoadTable(table_id);
-    RETURN_NOT_OK(result);
-    RETURN_NOT_OK(AddToCurrentPgMemctx(hash_id, *result));
-
-    *handle = result->get();
+  if (!*handle) {
+    auto result = VERIFY_RESULT(pg_session_->LoadTable(table_id));
+    AddToCurrentPgMemctx(hash_id, result);
+    *handle = result.get();
   }
 
   return Status::OK();
@@ -2829,10 +2825,8 @@ Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead*
   for (auto& ts : t_servers) {
     uuids.emplace_back(std::move(ts.server.uuid));
   }
-  auto read = std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids));
-  *handle = read.get();
-  pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
-  return Status::OK();
+  return AddToCurrentPgMemctx(
+      std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids)), handle);
 }
 
 YbcRemotePgExecResult PgApiImpl::Exec(PgGlobalViewRead* handle, std::string_view query) {
