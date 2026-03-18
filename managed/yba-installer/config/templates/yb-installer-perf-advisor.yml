@@ -28,7 +28,7 @@ services:
       pa.deployment.type=yba_installer
 
       # PA Topology Configuration - for writing the PA collected data to Prometheus
-      pa.metrics.export.topology={{ baseInstall }}/perf-advisor/config/metrics-export.yml
+      pa.metrics.export.topology={{ .MetricExportConfLocation }}
 
       # Perf Advisor Prometheus Configuration - reading the data from the prometheus server
       {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
@@ -48,7 +48,7 @@ services:
       {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
       server.ssl.enabled=true
       server.ssl.key-store-type=PKCS12
-      server.ssl.key-store={{ baseInstall }}/perf-advisor/certs/tls.p12
+      server.ssl.key-store={{ .DataDir }}/certs/tls.p12
       server.ssl.key-store-password={{ yamlPath "perfAdvisor.tls.keystorePassword" }}
       {{ if ne (yamlPath "perfAdvisor.tls.sslProtocols") "" }}
       server.ssl.enabled-protocols={{ yamlPath "perfAdvisor.tls.sslProtocols" }}
@@ -56,11 +56,11 @@ services:
       pa.web.hsts.enabled={{ yamlPath "perfAdvisor.tls.hsts" }}
       {{ end }}
 
-      pa.metrics.export.jsonl.directory="{{ .DataDir }}/perf-advisor/collected/metrics"
-      pa.support-bundle.path="{{ .DataDir }}/perf-advisor/support-bundle"
+      pa.metrics.export.jsonl.directory="{{ .DataDir }}/collected/metrics"
+      pa.support-bundle.path="{{ .DataDir }}/support-bundle"
 
   - name: perfAdvisorMetricsExportTopology
-    fileName: "{{ baseInstall }}/perf-advisor/config/metrics-export.yml"
+    fileName: "{{ .MetricExportConfLocation }}"
     contents: |
       labels:
         collector_id: local
