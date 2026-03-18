@@ -261,12 +261,18 @@ class ProvisionCommand(Command):
                 os.makedirs(yb_home_dir, exist_ok=True)
 
                 # Define the full path to the ynp_version file
-                ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+                yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+                os.makedirs(yugabyte_dir, exist_ok=True)
+                ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
-                os.chown(ynp_version_file, uid, gid)
+                if current_user_id == 0 and current_user_id != uid:
+                    # Change ownership only if running as root and yb_user is different
+                    # from current user.
+                    os.chown(yugabyte_dir, uid, gid)
+                    os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")
 
@@ -278,7 +284,8 @@ class ProvisionCommand(Command):
             current_ynp_version = self._parse_version(context.get('version'))
 
             # Define the full path to the ynp_version file
-            ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+            yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+            ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
             try:
                 # Read the ynp_version from the file
                 with open(ynp_version_file, 'r') as file:
