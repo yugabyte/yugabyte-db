@@ -76,4 +76,8 @@ public class MetricQueryParams {
   @ApiModelProperty(value = "YbaApi Internal. Server type")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.18.0.0")
   private UniverseTaskBase.ServerType serverType;
+
+  @ApiModelProperty(value = "YbaApi Internal. Step size in seconds")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2026.1.0.0")
+  private Long step;
 }

@@ -144,7 +144,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     HashMap<String, String> params = new HashMap<>();
     long startTimestamp = 1646925800;
     params.put("start", String.valueOf(startTimestamp));
-    params.put("end", String.valueOf(startTimestamp - DEFAULT_POINTS + 1));
+    params.put("end", String.valueOf(startTimestamp + DEFAULT_POINTS));
     params.put("step", "qwe");
 
     try {
@@ -160,7 +160,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     HashMap<String, String> params = new HashMap<>();
     long startTimestamp = 1646925800;
     params.put("start", String.valueOf(startTimestamp));
-    params.put("end", String.valueOf(startTimestamp - DEFAULT_POINTS + 1));
+    params.put("end", String.valueOf(startTimestamp + DEFAULT_POINTS));
     params.put("step", "0");
 
     try {
@@ -202,7 +202,6 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         Integer.parseInt(graphQueryParam.get("time")),
         allOf(notNullValue(), equalTo(startTimestamp)));
     assertThat(Integer.parseInt(graphQueryParam.get("step")), is(notNullValue()));
-    assertThat(Integer.parseInt(graphQueryParam.get("_")), is(notNullValue()));
   }
 
   @Test

@@ -4,12 +4,15 @@ package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -23,6 +26,7 @@ import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
 import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -30,10 +34,16 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.forms.MetricQueryParams;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -82,6 +92,10 @@ public class CallHomeManagerTest extends FakeDBApplication {
   @Mock AlertService alertService;
 
   @Mock XClusterUniverseService xClusterUniverseService;
+
+  @Mock MetricQueryHelper metricQueryHelper;
+
+  @Mock UniverseTableHandler universeTableHandler;
 
   Customer defaultCustomer;
   Users defaultUser;
@@ -523,5 +537,142 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(drConfig.getUuid().toString(), drConfigNode.get("uuid").asText());
     assertEquals("test-dr-config", drConfigNode.get("name").asText());
     assertEquals("Replicating", drConfigNode.get("state").asText());
+  }
+
+  @Test
+  public void testUniverseDiagnosticsVmMetricsAndHealthStatus() {
+    Universe okUniverse = ModelFactory.createUniverse("ok", defaultCustomer.getId());
+    Universe warnUniverse = ModelFactory.createUniverse("warn", defaultCustomer.getId());
+    Universe errUniverse = ModelFactory.createUniverse("err", defaultCustomer.getId());
+
+    HealthCheck.Details ok = new HealthCheck.Details();
+    ok.setHasError(false);
+    ok.setHasWarning(false);
+    HealthCheck.Details warn = new HealthCheck.Details();
+    warn.setHasError(false);
+    warn.setHasWarning(true);
+    HealthCheck.Details err = new HealthCheck.Details();
+    err.setHasError(true);
+    HealthCheck.addAndPrune(okUniverse.getUniverseUUID(), defaultCustomer.getId(), ok);
+    HealthCheck.addAndPrune(warnUniverse.getUniverseUUID(), defaultCustomer.getId(), warn);
+    HealthCheck.addAndPrune(errUniverse.getUniverseUUID(), defaultCustomer.getId(), err);
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+    when(universeTableHandler.listTables(
+            any(), any(), anyBoolean(), anyBoolean(), anyBoolean(), anyBoolean()))
+        .thenReturn(ImmutableList.of(mock(TableInfoResp.class), mock(TableInfoResp.class)));
+    when(universeTableHandler.listNamespaces(any(), any(), anyBoolean()))
+        .thenReturn(ImmutableList.of(mock(NamespaceInfoResp.class)));
+    String vmResponse =
+        "{\"cpu_usage\":{\"data\":["
+            + "{\"name\":\"User\",\"y\":[\"3.3\"]},"
+            + "{\"name\":\"System\",\"y\":[\"2.5\"]},"
+            + "{\"name\":\"Total\",\"y\":[\"6.6\"]}]},"
+            + "\"disk_usage\":{\"data\":["
+            + "{\"name\":\"free\",\"y\":[\"50.0\"]},"
+            + "{\"name\":\"size\",\"y\":[\"100.0\"]}]},"
+            + "\"memory_usage\":{\"data\":["
+            + "{\"name\":\"Total\",\"y\":[\"16.0\"]},"
+            + "{\"name\":\"Free\",\"y\":[\"4.0\"]},"
+            + "{\"name\":\"Cached\",\"y\":[\"2.0\"]},"
+            + "{\"name\":\"Buffered\",\"y\":[\"1.0\"]}]},"
+            + "\"ysql_server_rpc_per_second\":{\"data\":["
+            + "{\"name\":\"Select\",\"y\":[\"10.0\"]},"
+            + "{\"name\":\"Insert\",\"y\":[\"5.0\"]},"
+            + "{\"name\":\"Update\",\"y\":[\"2.0\"]}]},"
+            + "\"cql_server_rpc_per_second\":{\"data\":["
+            + "{\"name\":\"Select\",\"y\":[\"8.0\"]},"
+            + "{\"name\":\"Insert\",\"y\":[\"3.0\"]}]}}";
+    when(metricQueryHelper.query(any(Customer.class), any(MetricQueryParams.class)))
+        .thenReturn(Json.parse(vmResponse));
+
+    JsonNode diagArray =
+        callHomeManager
+            .collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW)
+            .get("universe_diagnostics");
+
+    assertEquals(3, diagArray.size());
+    for (JsonNode diag : diagArray) {
+      String uuid = diag.get("universe_uuid").asText();
+      if (okUniverse.getUniverseUUID().toString().equals(uuid))
+        assertEquals("OK", diag.get("health_check_last_status").asText());
+      if (warnUniverse.getUniverseUUID().toString().equals(uuid))
+        assertEquals("WARNING", diag.get("health_check_last_status").asText());
+      if (errUniverse.getUniverseUUID().toString().equals(uuid))
+        assertEquals("ERROR", diag.get("health_check_last_status").asText());
+
+      JsonNode m = diag.get("universe_metrics");
+      assertEquals(3.3, m.get("cpu_user").asDouble(), 0.01);
+      assertEquals(2.5, m.get("cpu_system").asDouble(), 0.01);
+      assertEquals(6.6, m.get("cpu_total").asDouble(), 0.01);
+      assertEquals(50.0, m.get("disk_used_gb").asDouble(), 0.01);
+      assertEquals(100.0, m.get("disk_total_gb").asDouble(), 0.01);
+      assertEquals(50.0, m.get("disk_usage_percent").asDouble(), 0.01);
+      assertEquals(10.0, m.get("ysql_read_ops").asDouble(), 0.01);
+      assertEquals(7.0, m.get("ysql_write_ops").asDouble(), 0.01);
+      assertEquals(8.0, m.get("ycql_read_ops").asDouble(), 0.01);
+      assertEquals(3.0, m.get("ycql_write_ops").asDouble(), 0.01);
+      assertEquals(16.0, m.get("memory_total_gb").asDouble(), 0.01);
+      assertEquals(4.0, m.get("memory_free_gb").asDouble(), 0.01);
+      assertEquals(2.0, m.get("memory_cached_gb").asDouble(), 0.01);
+      assertEquals(1.0, m.get("memory_buffered_gb").asDouble(), 0.01);
+      assertEquals(2, diag.get("num_tables").asInt());
+      assertEquals(1, diag.get("num_databases").asInt());
+    }
+  }
+
+  @Test
+  public void testUniverseDiagnostics2() {
+    // k8s universe case
+    Universe k8sUniverse =
+        ModelFactory.createUniverse(
+            "k8s", UUID.randomUUID(), defaultCustomer.getId(), Common.CloudType.kubernetes);
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(inv -> RuntimeConfigEntry.getAll(inv.getArgument(0, java.util.Set.class)));
+    String k8sResponse =
+        "{\"container_cpu_usage\":{\"data\":["
+            + "{\"name\":\"cpu_usage\",\"y\":[\"45.0\"]}]},"
+            + "\"container_volume_stats\":{\"data\":["
+            + "{\"name\":\"used\",\"y\":[\"30.0\"]}]},"
+            + "\"container_volume_max_usage\":{\"data\":["
+            + "{\"name\":\"used\",\"y\":[\"100.0\"]}]},"
+            + "\"container_memory_usage\":{\"data\":["
+            + "{\"name\":\"memory_usage\",\"y\":[\"8.0\"]}]},"
+            + "\"ysql_server_rpc_per_second\":{\"data\":["
+            + "{\"name\":\"Select\",\"y\":[\"10.0\"]},"
+            + "{\"name\":\"Insert\",\"y\":[\"5.0\"]}]},"
+            + "\"cql_server_rpc_per_second\":{\"data\":[]}}";
+    when(metricQueryHelper.query(any(Customer.class), any(MetricQueryParams.class)))
+        .thenReturn(Json.parse(k8sResponse));
+    JsonNode diagArray =
+        callHomeManager
+            .collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW)
+            .get("universe_diagnostics");
+
+    assertEquals(1, diagArray.size());
+    JsonNode diag = diagArray.get(0);
+    JsonNode m = diag.get("universe_metrics");
+    assertEquals(k8sUniverse.getUniverseUUID().toString(), diag.get("universe_uuid").asText());
+    assertEquals(45.0, m.get("cpu_total").asDouble(), 0.01);
+    assertNull(m.get("cpu_user"));
+    assertEquals(30.0, m.get("disk_used_gb").asDouble(), 0.01);
+    assertEquals(100.0, m.get("disk_total_gb").asDouble(), 0.01);
+    assertEquals(30.0, m.get("disk_usage_percent").asDouble(), 0.01);
+    assertEquals(10.0, m.get("ysql_read_ops").asDouble(), 0.01);
+    assertEquals(5.0, m.get("ysql_write_ops").asDouble(), 0.01);
+    assertEquals(0.0, m.get("ycql_read_ops").asDouble(), 0.01);
+    assertEquals(0.0, m.get("ycql_write_ops").asDouble(), 0.01);
+    assertEquals(8.0, m.get("memory_used_gb").asDouble(), 0.01);
   }
 }
