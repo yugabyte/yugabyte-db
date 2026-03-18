@@ -316,6 +316,7 @@ extern PGDLLIMPORT int yb_test_index_check_num_batches_per_snapshot;
 extern PGDLLIMPORT bool yb_enable_planner_trace;
 extern PGDLLIMPORT char *yb_hinted_uids;
 extern PGDLLIMPORT bool yb_enable_derived_equalities;
+extern PGDLLIMPORT bool yb_enable_listen_notify;
 
 /*
  * Functions exported by guc.c

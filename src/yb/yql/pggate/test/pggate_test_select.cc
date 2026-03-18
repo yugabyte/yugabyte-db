@@ -1334,8 +1334,8 @@ class PggateTestSelectWithYbSystemDB : public PggateTestSelectWithYsql {
  protected:
   void CustomizeExternalMiniCluster(ExternalMiniClusterOptions* opts) override {
     PggateTestSelectWithYsql::CustomizeExternalMiniCluster(opts);
-    opts->extra_master_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
-    opts->extra_tserver_flags.push_back("--TEST_ysql_yb_enable_listen_notify=true");
+    opts->extra_master_flags.push_back("--ysql_yb_enable_listen_notify=true");
+    opts->extra_tserver_flags.push_back("--ysql_yb_enable_listen_notify=true");
   }
 };
 
