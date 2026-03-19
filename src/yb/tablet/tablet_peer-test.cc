@@ -226,6 +226,7 @@ class TabletPeerTest : public YBTabletTest {
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
                                            nullptr /* server_mem_tracker */,
                                            messenger_.get(),
+                                           messenger_->ThreadPoolPtr(),
                                            proxy_cache_.get(),
                                            log,
                                            table_metric_entity_,
