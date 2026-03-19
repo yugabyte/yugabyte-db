@@ -76,7 +76,7 @@ public class LiveQueryExecutor implements Callable<JsonNode> {
             rowData.put("privateIp", hostName);
             rowData.put("dbName", params.db_name);
             rowData.put("sessionStatus", params.backend_status);
-            rowData.put("query", params.query);
+            rowData.put("query", StringUtils.defaultString(params.query));
             rowData.put("elapsedMillis", params.query_running_for_ms);
             rowData.put("queryStartTime", params.query_start_time);
             rowData.put("appName", params.application_name);
