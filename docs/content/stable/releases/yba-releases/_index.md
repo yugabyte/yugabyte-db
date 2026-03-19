@@ -44,7 +44,7 @@ For example, as of November 2024, the just-released YugabyteDB Anywhere v2024.2.
 For information on YugabyteDB release support timelines, refer to [YugabyteDB releases](../ybdb-releases).
 
 {{< warning title="YugabyteDB v2.20 and v2024.1 End of Maintenance" >}}
-v2.20 and v2024.1 will reach end of maintenance in early 2026. If you are running universes on these release series, you should consider upgrading those universes to the next LTS release series (v2024.2). Note that to upgrade to 2025.1 or later (a [YSQL major upgrade](../../../yugabyte-platform/manage-deployments/ysql-major-upgrade-yba/)), your universe must be running v2024.2.3.0 or later.
+v2.20 and v2024.1 will reach end of maintenance in early 2026. If you are running universes on these release series, you should consider upgrading those universes to the next LTS release series (v2024.2). Note that to upgrade to v2025.1 or later (a [YSQL major upgrade](../../yugabyte-platform/manage-deployments/ysql-major-upgrade-yba/)), your universe must be running v2024.2.3.0 or later.
 {{< /warning >}}
 
 For information on managing YugabyteDB releases and upgrading universes using YugabyteDB Anywhere, refer to [Upgrade the YugabyteDB software](../../yugabyte-platform/manage-deployments/upgrade-software/).

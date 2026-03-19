@@ -1,8 +1,8 @@
 ---
-title: Create provider configurations
-headerTitle: Create provider configurations
-linkTitle: Create providers
-description: Create provider configurations for deploying YugabyteDB universes.
+title: Provider configurations
+headerTitle: Provider configurations
+linkTitle: Provider configurations
+description: Create and manage provider configurations for deploying YugabyteDB universes.
 menu:
   v2025.1_yugabyte-platform:
     parent: yugabytedb-anywhere
