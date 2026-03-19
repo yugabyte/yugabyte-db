@@ -35,23 +35,11 @@ Follow the steps in the [vulnerability disclosure policy](/stable/secure/vulnera
 
 ## Installation
 
-<!--### How are the build artifacts packaged and stored for YugabyteDB Anywhere?
-
-YugabyteDB Anywhere software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that YugabyteDB Anywhere remains highly available, and allows for instant upgrades by pulling the incremental container images associated with a newer YugabyteDB Anywhere release. If the host running the YugabyteDB Anywhere UI does not have the Internet connectivity, a fully air-gapped installation option is also available.
-
-The data node (YugabyteDB) software is packaged into the YugabyteDB Anywhere application.-->
-
 ### How does YugabyteDB Anywhere installation work?
 
 YugabyteDB Anywhere first needs to be installed on a machine. The next step is to configure YugabyteDB Anywhere to work with public and/or private clouds. In the case of public clouds, YugabyteDB Anywhere spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into YugabyteDB Anywhere.
 
 You install YugabyteDB Anywhere using a standalone installer that you download from Yugabyte.
-
-{{< note title="Replicated end of life" >}}
-
-YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere ended support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/).
-
-{{< /note >}}
 
 YugabyteDB Anywhere distributes and installs YugabyteDB on the hosts identified to run the data nodes. Because the YugabyteDB software is already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
