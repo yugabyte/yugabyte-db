@@ -44,7 +44,7 @@ For more information, refer to [How the connector works](../../../additional-fea
 
 - Kafka environment. This can be a [Self-managed Kafka](../../../additional-features/change-data-capture/using-logical-replication/get-started/#get-started-with-yugabytedb-connector), or a managed service such as [Confluent Cloud](https://www.confluent.io/confluent-cloud/) or [AWS MSK Connect](https://aws.amazon.com/msk/features/msk-connect/).
 
-- YugabyteDB Connector v2.5.2. Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1).
+- YugabyteDB Connector v2.5.3. Download the Connector JAR file from [GitHub releases](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2025.2.3).
 
 ## Limitations
 
