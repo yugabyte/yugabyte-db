@@ -32,8 +32,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CPPLINT = (shutil.which("cpplint.py")
-                   or str(REPO_ROOT / "thirdparty/installed/bin/cpplint.py"))
+CPPLINT_PATH = REPO_ROOT / "src" / "lint" / "cpplint.py"
 
 
 @dataclass
@@ -93,7 +92,7 @@ def _changed_files(base: str | None = None) -> list[str]:
 
     If ``base`` is provided, it is used directly as the diff base. Otherwise ``@{upstream}`` is
     used. If the current branch has no ``@{upstream}`` configured, the caller must pass
-    ``--rev`` explicitly — we do not fall back to ``origin/master`` because on stable release
+    ``--rev`` explicitly -- we do not fall back to ``origin/master`` because on stable release
     branches that would include a huge unrelated fileset.
     """
     if base is not None:
@@ -203,7 +202,7 @@ def _cpplint_filter_arg(severity_rules: dict) -> str:
 
 def run_cpplint(linter: Linter, files: list[str]) -> list[Message]:
     """Run Google's cpplint.py on ``files``."""
-    binary = DEFAULT_CPPLINT
+    binary = CPPLINT_PATH
     if not os.access(binary, os.X_OK):
         print(f"[lint] skipping {linter.name}: cpplint.py not executable at {binary}",
               file=sys.stderr)

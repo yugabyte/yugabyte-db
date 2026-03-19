@@ -12,10 +12,11 @@
      "([.]txt$)",
      "(^[.]gitmodules$)",
      "(Makefile$)",
-     "(src/yb/common/ql_type[.]cc$)",
-     "(src/yb/gutil/valgrind[.]h$)",
-     "(^src/odyssey/)",
      "(^src/inline-thirdparty/)",
+     "(^src/lint/cpplint[.]py$)",
+     "(^src/odyssey/)",
+     "(^src/yb/common/ql_type[.]cc$)",
+     "(^src/yb/gutil/valgrind[.]h$)",
      "(^src/yb/integration-tests/upgrade-tests/builds.xml$)",
      "(^managed/src/main/resources/alert/alert_templates[.]yml$)",
      "(^managed/src/main/resources/alert/.*[.]template$)",
@@ -142,6 +143,7 @@
         "([.]hpp$)",
         "([.]h$)"
       ],
+      "bin": "src/lint/cpplint.py",
       "cpplint.header_guard_root_dir": "src",
       "cpplint.max_line_length": 100,
       "severity.rules": {
