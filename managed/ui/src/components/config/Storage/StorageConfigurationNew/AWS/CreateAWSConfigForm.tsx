@@ -8,7 +8,7 @@
  */
 
 import { Field, FieldArray, FormikValues } from 'formik';
-import _ from 'lodash';
+import _, { flatten, isEmpty, uniq, uniqBy } from 'lodash';
 import React, { FC, useState } from 'react';
 import { YBControlledTextInput, YBFormInput, YBFormToggle } from '../../../../common/forms/fields';
 import { StorageConfigCreationForm, YBReduxFormSelect } from '../common/StorageConfigCreationForm';
@@ -17,7 +17,6 @@ import { OptionTypeBase } from 'react-select';
 import { Col, Row } from 'react-bootstrap';
 import { IStorageProviders } from '../IStorageConfigs';
 import { YBLabelledMultiEntryInput } from '../../../../common/forms/fields/YBMultiEntryInput';
-import { flatten, isEmpty, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery } from 'react-query';
 import {
   addCustomerConfig,
@@ -31,6 +30,7 @@ import './CreateAWSConfigForm.scss';
 import { toast } from 'react-toastify';
 import YBInfoTip from '../../../../common/descriptors/YBInfoTip';
 import { createErrorMessage } from '../../../../../utils/ObjectUtils';
+import { isS3BackupProxyEnabled } from '../../../../backupv2/common/BackupUtils';
 
 interface CreateAWSConfigFormProps {
   visible: boolean;
@@ -102,9 +102,8 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
       .filter((p: any) => p.code === CloudType.aws)
       .map((t: any) => t.regions)
   );
-  const featureFlags = useSelector((state: any) => state.featureFlags);
-  const enableS3BackupProxy =
-    featureFlags.test.enableS3BackupProxy || featureFlags.released.enableS3BackupProxy;
+  const runtimeConfigs = useSelector((state: any) => state.customer.runtimeConfigs);
+  const enableS3BackupProxy = isS3BackupProxyEnabled(runtimeConfigs?.data);
 
   const isEditMode = !isEmpty(editInitialValues);
 

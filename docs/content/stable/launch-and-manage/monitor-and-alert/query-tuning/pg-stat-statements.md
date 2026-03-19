@@ -76,13 +76,9 @@ You can configure the following parameters in `postgresql.conf`:
 | `pg_stat_statements.track_utility` | boolean | on | Controls whether the module tracks utility commands. |
 | `pg_stat_statements.save` | boolean | on | Specifies whether to save statement statistics across server shutdowns. |
 | `pg_stat_statements.yb_hdr_bucket_factor` | integer | 16 | Changes the number of latency range buckets. |
-| `yb_enable_pg_stat_statements_rpc_stats` | boolean | false | Enables RPC execution time stats for pg_stat_statements. When enabled, populates the DocDB-related columns (docdb_read_rpcs, docdb_write_rpcs, docdb_wait_time, and others). This is a runtime flag that can be changed without restarting the server. |
+| `yb_enable_pg_stat_statements_rpc_stats` | boolean | false | Enables RPC execution time statistics for pg_stat_statements. When enabled, populates the DocDB-related columns `docdb_wait_time` and  `catalog_wait_time`. This is a runtime flag that can be changed without restarting the server. |
 
 The module requires additional shared memory proportional to `pg_stat_statements.max`. Note that this memory is consumed whenever the module is loaded, even if `pg_stat_statements.track` is set to `none`.
-
-{{<note title="RPC statistics">}}
-To populate the DocDB-related columns (`docdb_read_rpcs`, `docdb_write_rpcs`, `docdb_wait_time`, `catalog_wait_time`, `docdb_read_operations`, `docdb_write_operations`, `docdb_rows_scanned`, `docdb_rows_returned`, `conflict_retries`, `read_restart_retries`, and `total_retries`), you must enable the `yb_enable_pg_stat_statements_rpc_stats` flag. This flag defaults to `false` and can be set at runtime.
-{{</note>}}
 
 ```sh
 pg_stat_statements.max = 10000

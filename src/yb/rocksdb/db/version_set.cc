@@ -2431,7 +2431,7 @@ Status VersionSet::LogAndApply(ColumnFamilyData* column_family_data,
   assert(!manifest_writers_.empty());
   assert(manifest_writers_.front() == &w);
 
-  UserFrontierPtr flushed_frontier_override;
+  yb::storage::UserFrontierPtr flushed_frontier_override;
   if (edit->IsColumnFamilyManipulation()) {
     // No group commits for column family add or drop.
     LogAndApplyCFHelper(edit);
@@ -2829,7 +2829,7 @@ Status VersionSet::Recover(
   bool have_prev_log_number = false;
   bool have_next_file = false;
   bool have_last_sequence = false;
-  UserFrontierPtr flushed_frontier;
+  yb::storage::UserFrontierPtr flushed_frontier;
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t log_number = 0;
@@ -2986,7 +2986,7 @@ Status VersionSet::Recover(
 
       if (edit.flushed_frontier_) {
         UpdateUserFrontier(
-            &flushed_frontier, edit.flushed_frontier_, UpdateUserValueType::kLargest);
+            &flushed_frontier, edit.flushed_frontier_, yb::storage::UpdateUserValueType::kLargest);
         VLOG(1) << "Updating flushed frontier with that from edit: "
                 << edit.flushed_frontier_->ToString()
                 << ", new flushed frontier: " << flushed_frontier->ToString();
@@ -3364,7 +3364,7 @@ Status VersionSet::DumpManifest(const Options& options, const std::string& dscna
   uint64_t next_file = 0;
   uint64_t last_sequence = 0;
   uint64_t previous_log_number = 0;
-  UserFrontierPtr flushed_frontier;
+  yb::storage::UserFrontierPtr flushed_frontier;
   int count __attribute__((unused)) = 0;
   std::unordered_map<uint32_t, std::string> comparators;
   std::unordered_map<uint32_t, BaseReferencedVersionBuilder*> builders;
@@ -3556,7 +3556,8 @@ void VersionSet::SetLastSequenceNoSanityChecking(SequenceNumber s) {
 }
 
 // Set the last flushed op id / hybrid time / history cutoff to the specified set of values.
-void VersionSet::UpdateFlushedFrontier(UserFrontierPtr values, FrontierModificationMode mode) {
+void VersionSet::UpdateFlushedFrontier(
+    yb::storage::UserFrontierPtr values, FrontierModificationMode mode) {
   if (mode != FrontierModificationMode::kUpdateIgnoreBackwards) {
     EnsureNonDecreasingFlushedFrontier(FlushedFrontier(), *values);
   }
@@ -3588,7 +3589,8 @@ Status AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer
 
 } // namespace
 
-Status VersionSet::WriteSnapshot(log::Writer* log, UserFrontierPtr flushed_frontier_override) {
+Status VersionSet::WriteSnapshot(
+    log::Writer* log, yb::storage::UserFrontierPtr flushed_frontier_override) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
 
   // WARNING: This method doesn't hold a mutex!
@@ -4032,19 +4034,20 @@ void VersionSet::EnsureNonDecreasingLastSequence(
 }
 
 void VersionSet::EnsureNonDecreasingFlushedFrontier(
-    const UserFrontier* prev_value,
-    const UserFrontier& new_value) {
+    const yb::storage::UserFrontier* prev_value,
+    const yb::storage::UserFrontier& new_value) {
   if (!prev_value) {
     return;
   }
-  if (!prev_value->IsUpdateValid(new_value, UpdateUserValueType::kLargest)) {
+  if (!prev_value->IsUpdateValid(new_value, yb::storage::UpdateUserValueType::kLargest)) {
     LOG(DFATAL) << "Attempt to decrease flushed frontier " << prev_value->ToString() << " to "
                 << new_value.ToString();
   }
 }
 
-void VersionSet::UpdateFlushedFrontierNoSanityChecking(UserFrontierPtr value) {
-  UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+void VersionSet::UpdateFlushedFrontierNoSanityChecking(yb::storage::UserFrontierPtr value) {
+  UpdateUserFrontier(
+      &flushed_frontier_, std::move(value), yb::storage::UpdateUserValueType::kLargest);
 }
 
 }  // namespace rocksdb

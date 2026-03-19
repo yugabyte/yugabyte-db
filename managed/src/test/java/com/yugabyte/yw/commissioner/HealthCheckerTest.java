@@ -25,6 +25,7 @@ import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AssertHelper;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.EmailFixtures;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -40,6 +41,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -92,6 +94,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   @Mock private Config mockConfig;
   @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private ExecutorService executorService;
+  @Mock private ConfigHelper mockConfigHelper;
 
   private Customer defaultCustomer;
   private Provider defaultProvider;
@@ -179,6 +182,9 @@ public class HealthCheckerTest extends FakeDBApplication {
         .when(executorService)
         .execute(any(Runnable.class));
 
+    when(mockConfigHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(Collections.emptyMap());
+
     metricService = app.injector().instanceOf(MetricService.class);
 
     // Finally setup the mocked instance.
@@ -197,9 +203,11 @@ public class HealthCheckerTest extends FakeDBApplication {
             executorService,
             executorService,
             executorService,
+            executorService,
             mockFileHelperService,
             mockMaintenanceService,
-            null) {
+            app.injector().instanceOf(YBClientService.class),
+            mockConfigHelper) {
           @Override
           RuntimeConfig<Model> getRuntimeConfig() {
             return new RuntimeConfig<>(mockRuntimeConfig);

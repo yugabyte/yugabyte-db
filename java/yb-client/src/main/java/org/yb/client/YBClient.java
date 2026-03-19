@@ -1113,6 +1113,17 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get connectivity state from a TServer (tserver-to-tserver and tserver-to-master connectivity).
+   *
+   * @param tserverHP host and port of the TServer.
+   * @return the connectivity state response with per-node entries (alive, ping, last_failure).
+   */
+  public ConnectivityStateResponse getConnectivityState(HostAndPort tserverHP) throws Exception {
+    Deferred<ConnectivityStateResponse> d = asyncClient.getConnectivityState(tserverHP);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get consensus state for a tablet from a Tserver.
    *
    * @param tabletId

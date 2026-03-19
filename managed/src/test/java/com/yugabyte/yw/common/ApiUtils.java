@@ -196,6 +196,9 @@ public class ApiUtils {
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();
             node.azUuid = azUUIDList.get(azIndex);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+            node.cloudInfo.region = az.getRegion().getCode();
+            node.cloudInfo.az = az.getName();
           }
           if (userIntent.dedicatedNodes) {
             node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
@@ -213,6 +216,9 @@ public class ApiUtils {
             if (azUUIDList != null) {
               int azIndex = (idx - 1) % azUUIDList.size();
               node.azUuid = azUUIDList.get(azIndex);
+              AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+              node.cloudInfo.region = az.getRegion().getCode();
+              node.cloudInfo.az = az.getName();
             }
             universeDetails.nodeDetailsSet.add(node);
           }
@@ -711,7 +717,12 @@ public class ApiUtils {
       boolean isMultiAz) {
     NodeDetails node =
         KubernetesUtil.getKubernetesNodeName(
-            partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
+            partition,
+            zone,
+            isMaster ? ServerType.MASTER : ServerType.TSERVER,
+            isMultiAz,
+            false,
+            0);
     node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;

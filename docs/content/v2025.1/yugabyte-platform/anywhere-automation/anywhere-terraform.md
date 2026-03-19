@@ -3,7 +3,9 @@ title: YugabyteDB Anywhere Terraform Provider
 headerTitle: YugabyteDB Anywhere Terraform Provider
 linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Anywhere.
-headcontent: Manage YugabyteDB Anywhere accounts and deployments using the Terraform Provider
+headcontent: Manage your accounts and deployments using Terraform
+tags:
+  feature: early-access
 menu:
   v2025.1_yugabyte-platform:
     parent: anywhere-automation

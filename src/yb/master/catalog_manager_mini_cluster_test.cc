@@ -10,20 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/client/yb_table_name.h"
 
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/catalog_loaders.h"
+#include "yb/master/catalog_loading_state.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 
+DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(master_join_existing_universe);
 
 namespace yb::master {

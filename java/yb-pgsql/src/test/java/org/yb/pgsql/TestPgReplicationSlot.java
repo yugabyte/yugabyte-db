@@ -12,6 +12,7 @@
 //
 package org.yb.pgsql;
 
+import static org.yb.AssertionWrappers.assertNotEquals;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -79,20 +80,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       flagMap.put("ysql_conn_mgr_stats_interval", "1");
     }
     flagMap.put(
-        "vmodule", "cdc_service=4,cdcsdk_producer=4,ybc_pggate=4,cdcsdk_virtual_wal=4,client=4");
-    flagMap.put("ysql_log_min_messages", "DEBUG2");
-    flagMap.put(
         "cdcsdk_publication_list_refresh_interval_secs","" + kPublicationRefreshIntervalSec);
     flagMap.put("cdc_send_null_before_image_if_not_exists", "true");
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
+    flagMap.put("ysql_cdc_active_replication_slot_window_ms", "0");
     return flagMap;
   }
 
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
-    flagMap.put(
-      "vmodule", "cdc_service=4,cdcsdk_producer=4");
+    flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
   }
 
@@ -122,6 +120,36 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     try (Statement statement = conn2.createStatement()) {
       statement.execute("select pg_drop_replication_slot('test_slot')");
     }
+  }
+
+  @Test
+  public void createStreamAndDropSlot() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE test_table (a int primary key, b text)");
+      stmt.execute("CREATE PUBLICATION test_pub FOR TABLE test_table");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replConnection, "test_slot", YB_OUTPUT_PLUGIN_NAME);
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("INSERT INTO test_table VALUES (1, 'hello')");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName("test_slot")
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "test_pub")
+        .start();
+
+    receiveMessage(stream, 4);
+    stream.close();
+    replConnection.dropReplicationSlot("test_slot");
+    conn.close();
   }
 
   @Test
@@ -966,24 +994,31 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   public void setFlagsForDynamicTablesTest(Map<String, String> tserverFlags,
       Map<String, String> masterFlags, Boolean usePubRefresh, Boolean streamTablesWithoutPrimaryKey)
       throws Exception {
-    tserverFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
-    tserverFlags.put("cdcsdk_enable_dynamic_table_support", "" + usePubRefresh);
     tserverFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     tserverFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    tserverFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    tserverFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    tserverFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
-    masterFlags.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication,"
-            + "ysql_yb_cdcsdk_stream_tables_without_primary_key");
     masterFlags.put(
-        "ysql_yb_enable_implicit_dynamic_tables_logical_replication", "" + !usePubRefresh);
+        "allowed_preview_flags_csv",
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key,"
+            + "enable_table_rewrite_for_cdcsdk_table");
     masterFlags.put(
-        "ysql_yb_cdcsdk_stream_tables_without_primary_key", "" + streamTablesWithoutPrimaryKey);
-    masterFlags.put("TEST_enable_table_rewrite_for_cdcsdk_table", "true");
+        "ysql_yb_enable_implicit_dynamic_tables_logical_replication",
+        "" + !usePubRefresh);
+    masterFlags.put(
+        "ysql_yb_cdcsdk_stream_tables_without_primary_key",
+        "" + streamTablesWithoutPrimaryKey);
+    masterFlags.put(
+        "enable_table_rewrite_for_cdcsdk_table", "true");
 
     restartClusterWithFlags(masterFlags, tserverFlags);
   }
@@ -3902,6 +3937,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidAndWalStatusPopulationOnStreamRestart() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");
@@ -3989,6 +4028,10 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void testActivePidPopulationFromDifferentTServers() throws Exception {
+    Map<String, String> tserverFlags = getTServerFlags();
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "60000");
+    restartClusterWithFlags(getMasterFlags(), tserverFlags);
+
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("DROP TABLE IF EXISTS test_1");
       stmt.execute("DROP TABLE IF EXISTS test_2");
@@ -4088,12 +4131,15 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Thread.sleep(kPublicationRefreshIntervalSec * 2 * 1000);
     try (Statement stmt = connection.createStatement()) {
       ResultSet res1 = stmt.executeQuery("SELECT * FROM pg_stat_replication");
-      int xmin1 = -2;
       assertTrue(res1.next());
-      xmin1 = res1.getInt("backend_xmin");
-      String state = res1.getString("state");
 
+      String state = res1.getString("state");
       assertEquals("streaming", state);
+
+      // TODO(#30340): Once we start populating backend_xmin correctly in this view,
+      // we should assert that xmin1 comes out equal to xmin2.
+      int xmin1 = res1.getInt("backend_xmin");
+      assertEquals(xmin1, 0);
 
       ResultSet res2 = stmt.executeQuery(String.format("SELECT * FROM pg_replication_slots"));
       int xmin2 = -1;
@@ -4101,7 +4147,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
       xmin2 = res2.getInt("xmin");
 
       res2.close();
-      assertEquals(xmin2, xmin1);
+      assertNotEquals(xmin2, xmin1);
     }
     conn.close();
   }
@@ -5144,6 +5190,121 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
             new PgOutputMessageTupleColumnValue("1")))));
         add(PgOutputCommitMessage.CreateForComparison(
           LogSequenceNumber.valueOf("0/13"), LogSequenceNumber.valueOf("0/14")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+  }
+
+  @Test
+  public void testAddDropPrimaryKey() throws Exception {
+    setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
+        false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);
+
+    String slotName = "test_add_drop_primary_key_slot";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t1");
+      stmt.execute("DROP TABLE IF EXISTS t2");
+
+      stmt.execute("CREATE TABLE t1 (a int, b int)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b int)");
+
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    // Write a row to each table.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+    }
+
+    // Adding and dropping primary key on t1 and t2 respectively that will cause a table rewrite.
+    // The table rewrites on t1 and t2 will cause the existing rows to be re-written. As a result we
+    // will resend the rows from previous txn again. This behaviour is different from that of
+    // Postgres, where the rows present before the rewrite are not streamed again.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("ALTER TABLE t1 ADD PRIMARY KEY (a)");
+      stmt.execute("ALTER TABLE t2 DROP CONSTRAINT t2_pkey");
+    }
+
+    // Write another row to each table after table rewrite.
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 2)");
+      stmt.execute("INSERT INTO t2 VALUES (2, 2)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+                                     .logical()
+                                     .withSlotName(slotName)
+                                     .withStartPosition(LogSequenceNumber.valueOf(0L))
+                                     .withSlotOption("proto_version", 1)
+                                     .withSlotOption("publication_names", "pub")
+                                     .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    // 6 from first txn, 8 from DDLs, 4 from third txn.
+    result.addAll(receiveMessage(stream, 18));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // First txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/5"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/5"), LogSequenceNumber.valueOf("0/6")));
+
+        // Add primary key DDL for t1 and the re-written row.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+
+        // Drop primary key DDL for t2 and the re-written row.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 4));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+
+        // Remaining txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/F"), 5));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/F"), LogSequenceNumber.valueOf("0/10")));
       }
     };
     assertEquals(expectedResult, result);

@@ -1,4 +1,4 @@
-import type { Meta } from '@storybook/react';
+import type { Meta } from '@storybook/react-vite';
 import { YBButton, YBButtonProps } from '../redesign/components/YBButton/YBButton';
 import { Settings } from '@material-ui/icons';
 

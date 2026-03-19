@@ -664,6 +664,11 @@ void CompactionJob::ProcessKeyValueCompaction(
       input->SeekToFirst();
     }
 
+    // Explicitly cleanup resource from previous iteration.
+    if (sub_compact->context) {
+      sub_compact->context->CompactionFinished();
+    }
+
     if (db_options_.compaction_context_factory) {
       auto context = CompactionContextOptions{
           .level0_inputs = *compact_->compaction->inputs(0),
@@ -810,6 +815,11 @@ void CompactionJob::ProcessKeyValueCompaction(
     if (prev_perf_level != PerfLevel::kEnableTime) {
       SetPerfLevel(prev_perf_level);
     }
+  }
+
+  if (sub_compact->context) {
+    // Must be triggered to maybe free the resource, despite the compaction result.
+    sub_compact->context->CompactionFinished();
   }
 
   sub_compact->c_iter = nullptr;
@@ -1043,7 +1053,7 @@ Status CompactionJob::InstallCompactionResults(
 
   {
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacted %s => %" PRIu64 " bytes",
         compaction->column_family_data()->GetName().c_str(), job_id_,
         compaction->InputLevelSummary(&inputs_summary), compact_->total_bytes);
@@ -1058,7 +1068,7 @@ Status CompactionJob::InstallCompactionResults(
     }
   }
   if (largest_user_frontier_) {
-    LOG_WITH_PREFIX(INFO) << "Updating flushed frontier to " << largest_user_frontier_->ToString();
+    LOG_WITH_PREFIX_DETAIL << "Updating flushed frontier to " << largest_user_frontier_->ToString();
     compaction->edit()->UpdateFlushedFrontier(largest_user_frontier_);
   }
   return versions_->LogAndApply(compaction->column_family_data(),
@@ -1323,14 +1333,14 @@ void CompactionJob::LogCompaction() {
       }
     }
     Compaction::InputLevelSummaryBuffer inputs_summary;
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Compacting %s, score %.2f", cfd->GetName().c_str(),
         job_id_, compaction->InputLevelSummary(&inputs_summary),
         compaction->score());
     char scratch[2345];
     compaction->Summary(scratch, sizeof(scratch));
     RLOG(
-        InfoLogLevel::INFO_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
+        InfoLogLevel::DETAIL_LEVEL, db_options_.info_log, "[%s] Compaction start summary: %s%s\n",
         cfd->GetName().c_str(), scratch,
         compaction->skip_corrupt_data_blocks_unsafe()
             ? " WILL DELETE ANY CORRUPT DATA BLOCKS IF FOUND"

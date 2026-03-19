@@ -13,12 +13,14 @@
 #include <chrono>
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
+
+#include "yb/rpc/scheduler.h"
 
 #include "yb/util/sync_point.h"
 
@@ -52,6 +54,9 @@ DEFINE_test_flag(double, ysql_ddl_verification_failure_probability, 0.0,
 DEFINE_test_flag(bool, disable_release_object_locks_on_ddl_verification, false,
     "When set, skip release object lock rpcs to tservers triggered at the end of DDL verification, "
     "that release object locks acquired by the DDL.");
+
+DEFINE_test_flag(int32, ysql_ddl_atomicity_alter_table_request_delay_ms, 0,
+  "Inject delay before sending ALTER TABLE request as part of DDL atomicity rollback.");
 
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 
@@ -283,8 +288,25 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       continue;
     }
     auto table_txn_id = table->LockForRead()->pb_transaction_id();
-    // If the table is no longer involved in a DDL transaction, then txn has already completed.
+    // If the table is no longer involved in a DDL transaction, check if it waiting for a schema
+    // version from the txn.
+    // If yes, then it is still bound by the txn. Skip the RemoveDdlTransactionState operation as
+    // it'll be done once the ALTER TABLE finishes (see HandleTabletSchemaVersionReport).
+    // Otherwise, the txn has already completed.
     if (table_txn_id.empty()) {
+      TEST_SYNC_POINT("CatalogManager::YsqlDdlTxnCompleteCallback:NoTxnIdOnTable");
+      const auto ddl_txns_waiting_for_schema_version = table->GetDdlTxnsWaitingForSchemaVersion();
+      auto schema_version_txn = std::find_if(
+          ddl_txns_waiting_for_schema_version.cbegin(), ddl_txns_waiting_for_schema_version.cend(),
+          [txn](const std::pair<int, TransactionId>& schema_version_txn) {
+            return schema_version_txn.second == txn;
+          });
+      if (schema_version_txn != ddl_txns_waiting_for_schema_version.cend()) {
+        LOG(INFO) << "table " << table->id() << " has no txn id but is waiting for "
+                  << schema_version_txn->first << ". So it is still bound by txn " << txn;
+        continue;
+      }
+
       LOG(INFO) << "table " << table->id() << " has no txn id"
                 << " so is no longer bound by txn " << txn;
       RemoveDdlTransactionState(table->id(), {txn});
@@ -622,12 +644,21 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
         target_schema_version, txn_data.ddl_txn_id);
   }
 
+  TEST_SYNC_POINT("CatalogManager::YsqlDdlTxnAlterTableHelper:AfterClearYsqlDdlTxnState");
+
   auto action = success ? "roll forward"
                         : (final_cleanup ? "rollback" : "rollback to sub-transaction");
   LOG(INFO) << "Sending Alter Table request as part of " << action << " for table "
             << table->name();
   if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_rollback_failure_probability)) {
     return STATUS(InternalError, "Injected random failure for testing.");
+  }
+  TEST_SYNC_POINT("CatalogManager::YsqlDdlTxnAlterTableHelper:SendAlterTableRequestInternal");
+  if (FLAGS_TEST_ysql_ddl_atomicity_alter_table_request_delay_ms > 0) {
+    LOG(INFO) << "Sleeping for " << FLAGS_TEST_ysql_ddl_atomicity_alter_table_request_delay_ms
+              << "ms before sending Alter Table request";
+    SleepFor(
+        MonoDelta::FromMilliseconds(FLAGS_TEST_ysql_ddl_atomicity_alter_table_request_delay_ms));
   }
   return SendAlterTableRequestInternal(table, TransactionId::Nil(), txn_data.epoch);
 }
@@ -679,7 +710,7 @@ Status CatalogManager::IsYsqlDdlVerificationDone(
     const IsYsqlDdlVerificationDoneRequestPB* req, IsYsqlDdlVerificationDoneResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
 
-  if (GetAtomicFlag(&FLAGS_TEST_hang_on_ddl_verification_progress)) {
+  if (FLAGS_TEST_hang_on_ddl_verification_progress) {
     TEST_SYNC_POINT("YsqlDdlHandler::IsYsqlDdlVerificationDone:Fail");
   }
 

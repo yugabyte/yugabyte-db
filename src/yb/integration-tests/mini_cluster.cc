@@ -249,7 +249,7 @@ Status MiniCluster::StartAsync(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
-  SetAtomicFlag(options_.num_tablet_servers >= 3 ? 3 : 1, &FLAGS_replication_factor);
+  FLAGS_replication_factor = options_.num_tablet_servers >= 3 ? 3 : 1;
   FLAGS_memstore_size_mb = 16;
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
@@ -1331,6 +1331,33 @@ Status StepDown(
   return Status::OK();
 }
 
+Status TransferLeadership(
+    MiniCluster* cluster, const TabletId& tablet_id, const TabletServerId& new_leader_uuid,
+    MonoDelta timeout) {
+  auto deadline = MonoTime::Now() + timeout;
+  while (MonoTime::Now() < deadline) {
+    auto peers = VERIFY_RESULT(ListTabletPeers(cluster, tablet_id));
+    tablet::TabletPeerPtr leader;
+    for (const auto& peer : peers) {
+      if (VERIFY_RESULT(peer->GetConsensus())->GetLeaderStatus() ==
+              consensus::LeaderStatus::LEADER_AND_READY) {
+        leader = peer;
+      }
+    }
+    if (!leader) {
+      std::this_thread::sleep_for(100ms);
+      continue;
+    }
+    if (leader->permanent_uuid() == new_leader_uuid) {
+      return Status::OK();
+    }
+    WARN_NOT_OK(StepDown(leader, new_leader_uuid, ForceStepDown::kTrue, deadline - MonoTime::Now()),
+                "Step down failed");
+  }
+  return STATUS_FORMAT(
+      TimedOut, "Timed out to transfer leaders of $0 to $1", tablet_id, new_leader_uuid);
+}
+
 std::thread RestartsThread(
     MiniCluster* cluster, CoarseDuration interval, std::atomic<bool>* stop_flag) {
   return std::thread([cluster, interval, stop_flag] {
@@ -1913,6 +1940,29 @@ Result<bool> RowExistsInTablet(
   int64_t row_count = pggate::PgWire::ReadNumber<int64_t>(&cursor);
 
   return row_count > 0;
+}
+
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster) {
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    auto* ts = cluster->mini_tablet_server(i)->server();
+    ts->client_future().get()->ClearAllMetaCachesOnServer();
+  }
+}
+
+Status WaitForTabletHidden(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  return WaitFor(
+      [cluster, &tablet_id]() -> Result<bool> {
+        auto& catalog_manager =
+            VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+        auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+        auto lock = tablet_info->LockForRead();
+        if (lock->is_hidden()) {
+          LOG(INFO) << "Tablet " << tablet_id << " is now hidden";
+          return true;
+        }
+        return false;
+      },
+      timeout, Format("Wait for tablet $0 to be hidden", tablet_id));
 }
 
 }  // namespace yb

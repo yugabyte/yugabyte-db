@@ -47,7 +47,12 @@
 <!-- XML to table -->
 
 {{ range $data.flag}}
+{{ $tagsStr := default "" .tags }}
+{{ $isRuntime := findRE "runtime" $tagsStr }}
+{{ $needsRestart := not $isRuntime }}
 #### {{.name}}
-{{.meaning}} (**_Default_: {{ default "None" (or .default .target)}}**{{if .tags}} - _{{replaceRE "," ", " .tags}}_{{end}})
+{{ if $needsRestart }}<span class="tag feature restart-needed">Restart Needed <span class="popup-details">Changes to this flag require a restart</span></span>
+
+{{ end }}{{.meaning}} (**_Default_: {{ default "None" (or .default .target)}}**{{if .tags}} - _{{replaceRE "," ", " .tags}}_{{end}})
 
 {{ end }}

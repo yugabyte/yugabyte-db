@@ -5,8 +5,6 @@ block_indexing: true
 +++
 -->
 
-This feature is {{<tags/feature/ea idea="153">}}; you must enable it by adding the `xcluster_enable_ddl_replication` flag to the [allowed_preview_flags_csv](../../../../reference/configuration/yb-master/#allowed-preview-flags-csv) list and setting it to true on yb-master in both universes.
-
 {{< tip >}}
 Before setting up xCluster replication, ensure you have reviewed the [Prerequisites](../#prerequisites) and [Best practices](../#best-practices).
 {{< /tip >}}

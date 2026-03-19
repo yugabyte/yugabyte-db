@@ -1310,6 +1310,11 @@ class KeyManagementConfiguration extends Component {
     });
   };
 
+  refreshKMSToken = (configUUID) => {
+    const { refreshKMSConfig } = this.props;
+    refreshKMSConfig(configUUID);
+  };
+
   /**
    * Shows list view on click of cancel button by turning the listView flag ON.
    */
@@ -1392,6 +1397,7 @@ class KeyManagementConfiguration extends Component {
             onEdit={this.handleEdit}
             isAdmin={isAdmin}
             isCipherTrustKmsEnabled={isCipherTrustKmsEnabled}
+            refreshKMSToken={this.refreshKMSToken}
           />
         );
       }

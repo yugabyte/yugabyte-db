@@ -43,6 +43,12 @@ Look at `avg_wait_time_ns` on the `13000/connections` endpoint; higher values ac
 
 If you have high multiplexity (many more client connections than server connections), clients may be waiting too long to attach to a server connection. Consider increasing the [ysql_max_connections setting](../ycm-setup/#configure).
 
+{{< note title="Note" >}}
+
+A consistently high `avg_wait_time_ns` metric for the `control_connection` pool indicates that the connection acquisition (authentication) latency induced by the workload might be high. Consider setting `ysql_conn_mgr_use_auth_backend=false`. Contact {{% support-general %}} about the suitability of this setting for your workload.
+
+{{</note>}}
+
 ## Unsupported authentication methods
 
 - TCP IPv6 client connections. Connection Manager assumes all client connections use IPv4. If any IPv6 client connection tries to connect, Connection Manager will still authenticate against IPv4 in the host column of the hba file.

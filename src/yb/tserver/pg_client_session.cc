@@ -803,7 +803,7 @@ struct QueryDataBase {
   PrefixLogger LogPrefix() const { return PrefixLogger{session_id_}; }
 
   Status ValidateSidecars() const {
-    const size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+    const size_t max_size = FLAGS_rpc_max_message_size;
     return sidecars.size() > max_size
         ? STATUS_FORMAT(InvalidArgument,
                         "Sending too long RPC message ($0 bytes of data), limit: $1 bytes",
@@ -1598,7 +1598,8 @@ template <typename Request>
 Request AcquireRequestFor(
     const std::string& session_host_uuid, const TransactionId& txn_id, SubTransactionId subtxn_id,
     auto lock_oid, TableLockType lock_type, uint64_t lease_epoch, ClockBase* clock,
-    CoarseTimePoint deadline, const TabletId& status_tablet) {
+    CoarseTimePoint deadline, const TabletId& status_tablet,
+    std::optional<TransactionMetadata> bg_txn_meta) {
   auto now = clock->Now();
   Request req;
   req.set_txn_id(txn_id.data(), txn_id.size());
@@ -1617,6 +1618,10 @@ Request AcquireRequestFor(
   lock->set_object_sub_oid(lock_oid.object_sub_oid());
   lock->set_lock_type(lock_type);
   req.set_status_tablet(status_tablet);
+  if (bg_txn_meta) {
+    req.set_background_transaction_id(
+        bg_txn_meta->transaction_id.data(), bg_txn_meta->transaction_id.size());
+  }
   return req;
 }
 
@@ -2200,6 +2205,16 @@ class PgClientSession::Impl {
   }
 
   Status CleanupObjectLocks() {
+    // Release session object locks if any.
+    if (auto txn = GetSessionData(PgClientSessionKind::kPgSession).transaction; txn) {
+      VLOG_WITH_FUNC(1) << "Releasing session object locks of txn " << txn->id().ToString();
+      auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
+          ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
+              instance_uuid(), txn->id(), std::nullopt /* subtxn */, lease_epoch_,
+              context_.clock.get()));
+      ReleaseWithRetriesGlobal(
+          client_, ts_lock_manager(), txn->id(), std::nullopt /* subtxn */, release_req);
+    }
     auto deadline = CoarseMonoClock::Now() +
                     MonoDelta::FromMilliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
     return MergeStatus(
@@ -2805,25 +2820,42 @@ class PgClientSession::Impl {
 
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
-    auto setup_session_result = VERIFY_RESULT(SetupSession(
-        options, deadline, GetInTxnLimit(options, clock().get())));
-    RSTATUS_DCHECK(
-        setup_session_result.is_plain ||
-        (options.ddl_mode() && setup_session_result.session_data.transaction),
-        IllegalState, "Expected kPlain/kDdl session");
-    if (setup_session_result.is_plain && setup_session_result.session_data.transaction) {
-      RETURN_NOT_OK(setup_session_result.session_data.transaction->GetMetadata(deadline).get());
+
+    auto primary_session_kind = GetSessionKindBasedOnDDLOptions(
+        options.ddl_mode(), options.ddl_use_regular_transaction_block());
+    auto* primary_session_data = &GetSessionData(primary_session_kind);
+    auto* background_session_data = &GetSessionData(PgClientSessionKind::kPgSession);
+    if (PREDICT_FALSE(data->req.is_session_lock())) {
+      std::swap(primary_session_data, background_session_data);
+      primary_session_kind = PgClientSessionKind::kPgSession;
+      const auto& pg_session_data = VERIFY_RESULT_REF(BeginPgSessionLevelTxnIfNecessary(deadline));
+      DCHECK(&pg_session_data == primary_session_data) << "Expected session of kind kPgSession.";
+    } else {
+      RETURN_NOT_OK(SetupSession(options, deadline, GetInTxnLimit(options, clock().get())));
     }
+
+    std::optional<TransactionMetadata> opt_bg_txn_meta = std::nullopt;
+    if (const auto& background_txn = background_session_data->transaction; background_txn) {
+      auto background_txn_meta_res = background_txn->GetMetadata(deadline).get();
+      RETURN_NOT_OK(background_txn_meta_res);
+      opt_bg_txn_meta = std::move(*background_txn_meta_res);
+    }
+
+    RSTATUS_DCHECK(
+        primary_session_data->transaction || primary_session_kind == PgClientSessionKind::kPlain,
+        IllegalState, Format("Expected valid transaction for $0", AsString(primary_session_kind)));
+
     auto locality = GetTargetTransactionLocality(data->req);
-    auto txn_meta_res = setup_session_result.session_data.transaction
-        ? setup_session_result.session_data.transaction->GetMetadata(deadline).get()
+    auto txn_meta_res = primary_session_data->transaction
+        ? primary_session_data->transaction->GetMetadata(deadline).get()
         : NextObjectLockingTxnMeta(locality, deadline);
     RETURN_NOT_OK(txn_meta_res);
     const auto lock_type = static_cast<TableLockType>(data->req.lock_type());
     VLOG_WITH_PREFIX_AND_FUNC(4) << "txn_id " << txn_meta_res->transaction_id << " subtxn_id "
                                  << options.active_sub_transaction_id()
                                  << " lock_type: " << AsString(lock_type)
-                                 << " req: " << data->req.ShortDebugString();
+                                 << " req: " << data->req.ShortDebugString()
+                                 << " background txn meta: " << AsString(opt_bg_txn_meta);
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
         "PgClientSession::Impl::DoAcquireObjectLock", &txn_meta_res->transaction_id);
 
@@ -2833,7 +2865,7 @@ class PgClientSession::Impl {
       data->FlushDone(&flush_status);
     };
     if (IsTableLockTypeGlobal(lock_type)) {
-      if (setup_session_result.is_plain) {
+      if (primary_session_kind == PgClientSessionKind::kPlain) {
         plain_session_has_exclusive_object_locks_.store(true);
       }
       ts_lock_manager()->TrackDeadlineForGlobalAcquire(
@@ -2841,10 +2873,10 @@ class PgClientSession::Impl {
       auto lock_req = AcquireRequestFor<master::AcquireObjectLocksGlobalRequestPB>(
           instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
           data->req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
-          txn_meta_res->status_tablet);
+          txn_meta_res->status_tablet, opt_bg_txn_meta);
       client_.AcquireObjectLocksGlobalAsync(
           lock_req, std::move(callback), deadline,
-          [txn = setup_session_result.session_data.transaction]() -> Status {
+          [txn = primary_session_data->transaction]() -> Status {
             RETURN_NOT_OK(txn->metadata());
             return Status::OK();
           });
@@ -2853,10 +2885,10 @@ class PgClientSession::Impl {
     auto lock_req = AcquireRequestFor<tserver::AcquireObjectLockRequestPB>(
         instance_uuid(), txn_meta_res->transaction_id, options.active_sub_transaction_id(),
         data->req.lock_oid(), lock_type, lease_epoch_, context_.clock.get(), deadline,
-        txn_meta_res->status_tablet);
+        txn_meta_res->status_tablet, opt_bg_txn_meta);
     AcquireObjectLockLocallyWithRetries(
         ts_lock_manager(), std::move(lock_req), deadline, std::move(callback),
-        [session_impl = this, txn = setup_session_result.session_data.transaction, locality]
+        [session_impl = this, txn = primary_session_data->transaction, locality]
             (CoarseTimePoint deadline) -> Status {
           if (txn) {
             RETURN_NOT_OK(txn->metadata());
@@ -2878,6 +2910,45 @@ class PgClientSession::Impl {
     if (!s.ok()) {
       query->SendErrorResponse(s);
     }
+  }
+
+  Status ReleaseSessionObjectLock(
+      const PgReleaseSessionObjectLockRequestPB& req, PgReleaseSessionObjectLockResponsePB* resp,
+      rpc::RpcContext* context) {
+    // If we fail to release the lock for any reason, return InvalidArgument as status so as to
+    // force the backend to FATAL, thus freeing all object locks associated with it.
+    VLOG_WITH_FUNC(1) << req.ShortDebugString();
+    std::optional<SubTransactionId> opt_subtxn_id = std::nullopt;
+    if (req.options().active_sub_transaction_id()) {
+        opt_subtxn_id = req.options().active_sub_transaction_id();
+        RSTATUS_DCHECK(
+            req.has_lock_oid(), InvalidArgument,
+            "Expected to see object id in session lock release request");
+    }
+    auto* session_data = &GetSessionData(PgClientSessionKind::kPgSession);
+    RSTATUS_DCHECK(
+        session_data->transaction != nullptr, InvalidArgument, "Expected non-null kPgSession txn");
+    auto txn_meta_res = session_data->transaction->GetMetadata(context->GetClientDeadline()).get();
+    if (!txn_meta_res.ok()) {
+      LOG_AND_RETURN(WARNING, STATUS(InvalidArgument, txn_meta_res.status().message()));
+    }
+    auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
+        ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
+            instance_uuid(), txn_meta_res->transaction_id, opt_subtxn_id, lease_epoch_,
+            context_.clock.get()));
+    if (opt_subtxn_id) {
+      auto* lock = release_req->add_object_locks();
+      lock->set_database_oid(req.lock_oid().database_oid());
+      lock->set_relation_oid(req.lock_oid().relation_oid());
+      lock->set_object_oid(req.lock_oid().object_oid());
+      lock->set_object_sub_oid(req.lock_oid().object_sub_oid());
+      lock->set_lock_type(TableLockType::NONE);
+    }
+    ReleaseWithRetriesGlobal(
+        client_, ts_lock_manager(), txn_meta_res->transaction_id,
+        opt_subtxn_id, release_req);
+    // Release control to the pg backend, and let the release continue in async mode.
+    return Status::OK();
   }
 
   void StartShutdown(bool pg_service_shutting_down) {
@@ -2967,6 +3038,9 @@ class PgClientSession::Impl {
     if (YsqlDdlRollbackEnabled() && metadata && !metadata->transaction_id.IsNil()) {
       if (has_docdb_schema_changes ) {
         if (commit.has_value() && FLAGS_report_ysql_ddl_txn_status_to_master) {
+          TEST_SYNC_POINT(
+              "PgClientSession::DdlAtomicityFinishTransaction:BeforeReportYsqlDdlTxnStatus");
+
           // If we failed to report the status of this DDL transaction, we can just log and ignore
           // it, as the poller in the YB-Master will figure out the status of this transaction using
           // the transaction status tablet and PG catalog.
@@ -3399,9 +3473,6 @@ class PgClientSession::Impl {
 
     if (options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
-      if (options.ddl_mode()) {
-        return STATUS(NotSupported, "Restarting a DDL transaction not supported");
-      }
       RETURN_NOT_OK(RestartTransaction(kind, deadline));
     } else {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
@@ -3459,22 +3530,18 @@ class PgClientSession::Impl {
         // TODO: Shouldn't the below logic for DDL transactions as well?
         session.SetInTxnLimit(in_txn_limit);
       }
-
-      if (options.clamp_uncertainty_window() &&
-          !session.read_point()->GetReadTime()) {
-        RSTATUS_DCHECK(
-          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
-        // Set read time with clamped uncertainty window when requested by
-        // the query layer.
-        // Do not mess with the read time if already set.
-        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-        VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "Setting read time to "
-          << session.read_point()->GetReadTime()
-          << " for read only txn/stmt";
-      }
     }
+
+    // Do not clamp uncertainty window for legacy catalog reads.
+    // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
+    if (options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
+      RSTATUS_DCHECK(
+        !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+        IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+      session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+      VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+    }
+
     return Status::OK();
   }
 
@@ -3956,9 +4023,11 @@ class PgClientSession::Impl {
   Result<docdb::TxnBlockedTableLockRequests> DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
       CoarseTimePoint deadline, bool has_exclusive_locks) {
+    auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Requesting release of "
                                  << (has_exclusive_locks ? "global" : "local") << " locks for txn "
-                                 << txn_id << " subtxn_id " << AsString(subtxn_id);
+                                 << txn_id << " subtxn_id " << AsString(subtxn_id) << " ash_meta: "
+                                 << (wait_state ? wait_state->metadata().ToString() : "n/a");
     if (!has_exclusive_locks) {
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
@@ -4022,6 +4091,11 @@ class PgClientSession::Impl {
       return CalculateTablespaceBasedLocality(std::move(tablespace_oids));
     }
 
+    return CalculateRegionBasedLocality(std::move(tablespace_oids), options.is_all_region_local());
+  }
+
+  TransactionFullLocality CalculateRegionBasedLocality(
+      std::ranges::range auto&& tablespace_oids, bool is_all_region_local) const {
     // TODO: is_all_region_local() handles exactly two cases that tablespace oid check does not:
     // 1. until upgrade is finalized (enable_tablespace_based_transaction_placement autoflag on
     //    master), tablespace oid check does not work, so it is needed to avoid global latencies
@@ -4032,14 +4106,15 @@ class PgClientSession::Impl {
     //    from use setting up some unit tests.
     // Once these are no longer of concern, is_all_region_local and corresponding code in
     // pggate/pg can be removed.
-    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && options.is_all_region_local()) {
+    if (!FLAGS_TEST_perform_ignore_pg_is_region_local && is_all_region_local) {
       return TransactionFullLocality::RegionLocal();
     }
-    return CalculateRegionBasedLocality(std::move(tablespace_oids));
-  }
-
-  TransactionFullLocality CalculateRegionBasedLocality(
-      std::ranges::range auto&& tablespace_oids) const {
+    // Similar to above, but for the case of table-level locks when tablespace oid locality
+    // calculations are not yet possible, we always return region-local, since requests from
+    // table-level lock acquisition never have the old is_all_region_local field set.
+    if (!context_.transaction_manager_provider().TablespaceLocalTransactionsPossible()) {
+      return TransactionFullLocality::RegionLocal();
+    }
     auto& transaction_manager = context_.transaction_manager_provider();
     bool all_region_local = transaction_manager.RegionLocalTransactionsPossible();
     for (PgTablespaceOid oid : tablespace_oids) {

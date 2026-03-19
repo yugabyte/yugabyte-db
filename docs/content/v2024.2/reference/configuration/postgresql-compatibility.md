@@ -8,42 +8,35 @@ menu:
     parent: configuration
     weight: 3500
 type: docs
-rightNav:
-  hideH3: true
 ---
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. YugabyteDB is methodically expanding its features to deliver PostgreSQL-compatible performance that can substantially improve your application's efficiency.
 
-To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are currently in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in {{<release "2024.1">}} and later. The following features are part of EPCM.
+To test and take advantage of features developed for enhanced PostgreSQL compatibility in YugabyteDB that are in {{<tags/feature/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use the features developed for feature and performance parity. EPCM is available in {{<release "2024.1">}} and later.
+
+## Feature availability
+
+After turning EPCM on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
+
+As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they are no longer managed under EPCM on your existing universes after the upgrade.
+
+## Released features
+
+The following features are currently included in EPCM.
 
 | Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
 | [Read committed](#read-committed) | [yb_enable_read_committed_isolation](../yb-tserver/#ysql-default-transaction-isolation) | {{<release "2.20, 2024.1">}} | {{<release "2024.2.2">}} |
-| [Wait-on-conflict](#wait-on-conflict-concurrency) | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1">}} |
-| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1">}} | {{<release "2025.1">}} |
-| [Batch nested loop join](#batched-nested-loop-join) | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1">}} |
+| [Wait-on-conflict](#wait-on-conflict-concurrency)<sup>1</sup> | [enable_wait_queues](../yb-tserver/#enable-wait-queues) | {{<release "2.20">}} | {{<release "2024.1.0.0">}} |
+| [Cost-based optimizer](#cost-based-optimizer) | [yb_enable_cbo](../yb-tserver/#yb-enable-cbo) | {{<release "2024.1.0.0">}} | {{<release "2025.1.0.0">}} |
+| [Batch nested loop join](#batched-nested-loop-join)<sup>1</sup> | [yb_enable_batchednl](../yb-tserver/#yb-enable-batchednl) | {{<release "2.20">}} | {{<release "2024.1.0.0">}} |
 | [Ascending indexing by default](#default-ascending-indexing) | [yb_use_hash_splitting_by_default](../yb-tserver/#yb-use-hash-splitting-by-default) | {{<release "2024.1">}} | |
-| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3">}} | {{<release "2024.2">}} |
-| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2">}} |
-| [Parallel query](#parallel-query)<br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3">}} | {{<release "2025.1">}} |
+| [YugabyteDB bitmap scan](#yugabytedb-bitmap-scan) | [yb_enable_bitmapscan](../yb-tserver/#yb-enable-bitmapscan) | {{<release "2024.1.3.0">}} | {{<release "2025.1.0.0">}} |
+| [Efficient communication<br>between PostgreSQL and DocDB](#efficient-communication-between-postgresql-and-docdb) | [pg_client_use_shared_memory](../yb-tserver/#pg-client-use-shared-memory) | {{<release "2024.1">}} | {{<release "2024.2.0.0">}} |
+| [Parallel query](#parallel-query)<sup>2</sup><br>- Parallel append<br>- Parallel query | <br>[yb_enable_parallel_append](../../../additional-features/parallel-query/)<br>[yb_parallel_range_rows](../../../additional-features/parallel-query/) | {{<release "2024.2.3.0">}} | {{<release "2025.1.0.0">}} |
 
-Note that Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.
-
-## Feature availability
-
-After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
-
-As features included in the PostgreSQL compatibility mode transition from {{<tags/feature/ea>}} to {{<tags/feature/ga>}} in subsequent versions of YugabyteDB, they are no longer managed under EPCM on your existing universes after the upgrade.
-
-{{<note title="Note">}}
-If you have set these features independent of EPCM, you cannot use EPCM.
-
-Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
-{{</note>}}
-
-## Released features
-
-The following features are currently available in EPCM.
+(1) Wait-on-conflict concurrency and Batched nested loop join are enabled by default in v2024.1 and later.<br>
+(2) Parallel query is not included in EPCM, but is included here because it contributes to PostgreSQL parity.
 
 ### Read committed
 
@@ -75,6 +68,8 @@ Flag: `enable_wait_queues=true`
 
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
+Wait-on-conflict concurrency is enabled (`true`) by default starting in v2024.1.
+
 {{<lead link="../../../architecture/transactions/concurrency-control/">}}
 To learn about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
@@ -84,6 +79,8 @@ To learn about concurrency control in YugabyteDB, see [Concurrency control](../.
 Configuration parameter: `yb_enable_batchednl=true`
 
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
+
+Batched nested loop join is enabled (`true`) by default starting in v2024.1.
 
 {{<lead link="../../../architecture/query-layer/join-strategies/">}}
 To learn about join strategies in YugabyteDB, see [Join strategies](../../../architecture/query-layer/join-strategies/).
@@ -103,7 +100,9 @@ Default ascending indexing provides feature compatibility and is the default in 
 
 Configuration parameter: `yb_enable_bitmapscan=true`
 
-Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity. For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing `AND` and `OR` conditions across several index scans. YugabyteDB bitmap scan provides feature compatibility and improved performance parity.
+
+For YugabyteDB relations to use a bitmap scan, the PostgreSQL parameter `enable_bitmapscan` must also be true (the default).
 
 ### Efficient communication between PostgreSQL and DocDB
 
@@ -124,7 +123,9 @@ Configuration parameters:
 - Parallel query - `yb_parallel_range_rows`
 - Parallel append - `yb_enable_parallel_append=true`
 
-Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Currently, YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is planned. Parallel query provides feature compatibility and improved performance parity.
+Enables the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. YugabyteDB supports parallel query for colocated tables. Support for hash- and range-sharded tables is available in v2025.2.
+
+Parallel query provides feature compatibility and improved performance parity.
 
 {{<lead link="../../../additional-features/parallel-query/">}}
 To learn about using parallel queries, see [Parallel queries](../../../additional-features/parallel-query/).
@@ -132,7 +133,15 @@ To learn about using parallel queries, see [Parallel queries](../../../additiona
 
 ## Enable EPCM
 
+You can enable EPCM as follows.
+
 ### YugabyteDB
+
+{{<note title="Note">}}
+If you have set any of the compatibility features using their own flags, you cannot enable EPCM.
+
+Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
+{{</note>}}
 
 To enable EPCM in YugabyteDB:
 

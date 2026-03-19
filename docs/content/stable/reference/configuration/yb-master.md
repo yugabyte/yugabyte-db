@@ -38,6 +38,7 @@ Flags are organized in the following categories.
 | [Change data capture (CDC) flags](#change-data-capture-cdc-flags) | CDC state table and WAL retention. |
 | [Metric export flags](#metric-export-flags) | Prometheus metrics output. |
 | [Catalog flags](#catalog-flags) | YSQL catalog version and invalidation. |
+| [Auto Analyze service flags](#auto-analyze-service-flags) | Deprecated master-side toggle; configure Auto Analyze on yb-tserver. |
 | [Advisory lock flags](#advisory-lock-flags) | Advisory locking. |
 | [Advanced flags](#advanced-flags) | Preview flags and index backfill timeout. |
 
@@ -194,7 +195,7 @@ Valid values for the policy are:
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `0.0.0.0`
+Default: `""` (empty; the web UI binds to the first host IP from [`--rpc_bind_addresses`](#rpc-bind-addresses))
 {{% /tags/wrap %}}
 
 Specifies the bind address for web server user interface access.
@@ -262,7 +263,6 @@ Default: `true`
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -331,7 +331,7 @@ Buffer log messages logged at this level (or lower).
 
 Valid values: `-1` (don't buffer); `0` (INFO); `1` (WARN); `2` (ERROR); `3` (FATAL)
 
-Default: `0`
+Default: `1`
 
 ##### --logbufsecs
 
@@ -382,7 +382,7 @@ Default: `0` (INFO)
 
 Log messages at, or above, this level are copied to `stderr` in addition to log files.
 
-Default: `2`
+Default: `3`
 
 ##### --callhome_enabled
 
@@ -437,10 +437,10 @@ For Kubernetes deployments, this flag is automatically set from the Kubernetes p
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `-1000` (use the built-in default ratio; commonly `0.10` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
 {{% /tags/wrap %}}
 
-The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`. The special value `-1000` selects that built-in default. Available RAM excludes memory reserved by the kernel.
 
 This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
@@ -456,9 +456,9 @@ Default: `-1`
 
 ##### --db_block_cache_size_percentage
 
-Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`.  The special value `-1000` means to instead use the default value for this flag.  The special value `-3` means to use an older default that does not take the amount of RAM into account.
+Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`. The special value `-1000` means to use the built-in default for this flag. The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
-Default: `25` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `-1000` (use the built-in default percentage; commonly `25` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
 
 ##### --tablet_overhead_size_percentage
 
@@ -466,7 +466,7 @@ Percentage of the process' hard memory limit to use for tablet-related overheads
 
 Each tablet replica generally requires 700 MiB of this memory.
 
-Default: `0` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
+Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
 
 ## Raft flags
 
@@ -475,7 +475,6 @@ With the exception of flags that have different defaults for yb-master vs yb-tse
 ##### --follower_unavailable_considered_failed_sec
 
 {{% tags/wrap %}}
-{{<tags/feature/restart-needed>}}
 Default: `7200` (2 hours)
 {{% /tags/wrap %}}
 
@@ -530,18 +529,22 @@ Ensure that values used for the write ahead log (WAL) in yb-master configuration
 
 ##### --fs_wal_dirs
 
-The directory where the yb-tserver retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
+{{% tags/wrap %}}
+{{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
+Default: The same as `--fs_data_dirs`
+{{% /tags/wrap %}}
 
-Default: Same as `--fs_data_dirs`
+The directory where the yb-master retains WAL files. May be the same as one of the directories listed in [`--fs_data_dirs`](#fs-data-dirs), but not a subdirectory of a data directory.
 
 ##### --durable_wal_write
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `false`
+Default: `true`
 {{% /tags/wrap %}}
 
-If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. This default setting is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single AZ deployments, this flag should be set to `true`.
+If set to `false`, the writes to the WAL are synced to disk every [`interval_durable_wal_write_ms`](#interval-durable-wal-write-ms) milliseconds (ms) or every [`bytes_durable_wal_write_mb`](#bytes-durable-wal-write-mb) megabyte (MB), whichever comes first. Using `false` is recommended only for multi-AZ or multi-region deployments where the availability zones (AZs) or regions are independent failure domains and there is not a risk of correlated power loss. For single-AZ deployments, keep this flag `true`.
 
 ##### --interval_durable_wal_write_ms
 
@@ -565,7 +568,6 @@ When [`--durable_wal_write`](#durable-wal-write) is `false`, writes to the WAL a
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-{{<tags/feature/restart-needed>}}
 Default: `7200` (2 hours)
 {{% /tags/wrap %}}
 
@@ -577,7 +579,6 @@ The `--log_min_seconds_to_retain` value should match the value for [`--follower_
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-{{<tags/feature/restart-needed>}}
 Default: `2`
 {{% /tags/wrap %}}
 
@@ -597,7 +598,6 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-{{<tags/feature/restart-needed>}}
 Default: The default value in [v2.18.1](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.1.0) is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
 {{% /tags/wrap %}}
 
@@ -633,43 +633,43 @@ Default: `3000` (3 seconds)
 
 Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
-Default: `1`
+Default: `25`
 
 ##### --load_balancer_max_concurrent_moves
 
 Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
-Default: `2`
+Default: `100`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
 Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
-Default: `1`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_removals
 
 Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
-Default: `1`
+Default: `50`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `10`
+Default: `-1` (no global limit; per-table and per-tserver limits still apply)
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
 Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
 
-Default: `2`
+Default: `-1`
 
 ##### --load_balancer_max_over_replicated_tablets
 
-Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor.
+Specifies the maximum number of running tablet replicas **per table** that are allowed to be over the configured replication factor.
 
-Default: `1`
+Default: `50`
 
 ##### --load_balancer_num_idle_runs
 
@@ -806,7 +806,7 @@ Default: `50`
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: `true`
+Default: Auto flag — initial `false`, target `true` (after promotion, behaves as `true`; see [All YB-Master flags](../all-flags-yb-master/) for full metadata)
 {{% /tags/wrap %}}
 
 Enables YugabyteDB to [automatically split tablets](../../../architecture/docdb-sharding/tablet-splitting/#automatic-tablet-splitting), based on the specified tablet threshold sizes configured below.
@@ -963,9 +963,12 @@ The unique identifier for the cluster.
 
 ##### --use_private_ip
 
-Determines when to use private IP addresses. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the `placement_*` configuration flags.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `never`
+{{% /tags/wrap %}}
+
+Determines when to use private IP addresses. Possible values are `never` (default), `zone`, `cloud`, and `region`. Based on the values of the `placement_*` configuration flags.
 
 ##### --auto_create_local_transaction_tables
 
@@ -1034,10 +1037,10 @@ Default: `false`
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `DEFAULTS`
+Default: `""` (empty string; library defaults apply)
 {{% /tags/wrap %}}
 
-Specify cipher lists for TLS 1.2 and earlier versions. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon-separated list of TLS 1.2 cipher names in order of preference. Use an exclamation mark ( `!` ) to exclude ciphers. For example:
+Specify cipher lists for TLS 1.2 and earlier versions. (For TLS 1.3, use [--ciphersuites](#ciphersuites).) Use a colon-separated list of TLS 1.2 cipher names in order of preference. Use an exclamation mark ( `!` ) to exclude ciphers. For example:
 
 ```sh
 --cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
@@ -1049,19 +1052,19 @@ This flag requires a restart or rolling restart.
 
 For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
 
-##### --ciphersuite
+##### --ciphersuites
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-Default: `DEFAULTS`
+Default: `""` (empty string; library defaults apply)
 {{% /tags/wrap %}}
 
-Specify cipher lists for TLS 1.3. For TLS 1.2 and earlier, use [--cipher_list](#cipher-list).
+Define the available TLS 1.3 ciphersuites. For TLS 1.2 and earlier, use [--cipher_list](#cipher-list).
 
 Use a colon-separated list of TLS 1.3 ciphersuite names in order of preference. Use an exclamation mark ( ! ) to exclude ciphers. For example:
 
 ```sh
---ciphersuite DEFAULTS:!CHACHA20
+--ciphersuites DEFAULTS:!CHACHA20
 ```
 
 This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
@@ -1147,7 +1150,7 @@ Default: `false`
 
 Toggle automatic tablet splitting for tables under replication slot. Applicable only to CDC using the [PostgreSQL logical replication protocol](../../../additional-features/change-data-capture/using-logical-replication/).
 
-Default: `false`
+Default: `true`
 
 ## Metric export flags
 
@@ -1174,6 +1177,8 @@ Default: `UINT32_MAX`
 For information on setting these flags, see [Customize preloading of YSQL catalog caches](../../../best-practices-operations/ysql-catalog-cache-tuning-guide/).
 
 ##### --ysql_enable_db_catalog_version_mode
+
+This flag is marked `hidden` in the server binary, so it does not appear in autogenerated flag dumps (for example, `--dump_flags_xml` or the downloadable all-flags XML).
 
 Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
@@ -1309,6 +1314,16 @@ Default: 60000 (1 minute)
 Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
 
 Default: 1440 (1 day)
+
+##### --ysql_enable_write_pipelining
+
+{{<tags/feature/ea idea="1298">}} Enables concurrent replication of multiple write operations within a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
+
+Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
+
+This flag also needs to be enabled on [YB-Tserver servers](../yb-tserver/#ysql_enable_write_pipelining).
+
+Default: false
 
 ## Admin UI
 

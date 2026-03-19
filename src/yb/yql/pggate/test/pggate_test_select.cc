@@ -98,8 +98,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -725,8 +725,8 @@ class PggateTestBucketizedSelect : public PggateTest {
       int16_t num_buckets, int32_t num_k1s, int32_t num_k2s, size_t num_rows) {
     YbcPgStatement pg_stmt;
     CHECK_YBC_STATUS(YBCPgNewInsert(
-        kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-        YbcPgTransactionSetting::YB_TRANSACTIONAL));
+        kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+        YbcPgTransactionSetting::YB_TRANSACTIONAL, &pg_stmt));
 
     // Allocate constant expressions.
     YbcPgExpr expr_bkt;

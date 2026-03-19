@@ -132,6 +132,7 @@ struct TableInfo {
             Primary primary,
             std::string table_id,
             std::string namespace_name,
+            NamespaceId namespace_id,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
@@ -371,7 +372,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   [[deprecated]]
   SchemaPtr schema(const TableId& table_id = "") const;
 
-  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
+  Result<std::shared_ptr<qlexpr::IndexMap>> index_map(const TableId& table_id = "") const;
 
   SchemaVersion primary_table_schema_version() const;
 
@@ -552,6 +553,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> AddTable(
       const std::string& table_id,
       const std::string& namespace_name,
+      const NamespaceId& namespace_id,
       const std::string& table_name,
       const TableType table_type,
       const Schema& schema,

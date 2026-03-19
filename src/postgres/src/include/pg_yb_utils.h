@@ -106,13 +106,15 @@ extern bool YbGetNeedInvalidateAllTableCache();
 extern bool YbCanTryInvalidateTableCacheEntry();
 
 extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+extern void YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version);
 extern void YbResetNewCatalogVersion();
 extern void YbSetNewCatalogVersion(uint64_t new_version);
 
 extern void YbSetLogicalClientCacheVersion(uint64_t logical_client_cache_version);
 extern void YbResetLogicalClientCacheVersion();
 
-extern void SendLogicalClientCacheVersionToFrontend();
+extern void YbSendLogicalClientCacheVersionToFrontend();
+extern void YbSendMasterLogicalClientVersionToFrontend();
 
 extern void YbResetCatalogCacheVersion();
 
@@ -504,12 +506,6 @@ extern bool yb_enable_index_aggregate_pushdown;
 extern bool yb_enable_optimizer_statistics;
 
 /*
- * If true then condition rechecking is bypassed at YSQL if the condition is
- * bound to DocDB.
- */
-extern bool yb_bypass_cond_recheck;
-
-/*
  * Enables nonbreaking DDL mode in which a DDL statement is not considered as
  * a "breaking catalog change" and therefore will not cause running transactions
  * to abort.
@@ -643,6 +639,30 @@ extern bool yb_debug_original_backtrace_format;
  * schema-version restarts (e.g. catalog version mismatch errors).
  */
 extern bool yb_debug_log_internal_restarts;
+
+/*
+ * Tracks whether a non-atomic (in-procedure) COMMIT has been executed during
+ * the current top-level query. This is used to prevent unsafe retries of
+ * CALL/DO statements: once a COMMIT has been performed inside a stored
+ * procedure or DO block, retrying the entire statement from scratch would
+ * re-execute already-committed work, potentially causing duplicates or other
+ * incorrect behavior.
+ *
+ * Set to true in _SPI_commit() and reset at the start of each top-level query
+ * in yb_exec_query_wrapper().
+ */
+extern bool yb_is_non_atomic_commit_done;
+
+/*
+ * When true, allows the query layer to retry CALL/DO statements even after a
+ * non-atomic (in-procedure) COMMIT has been executed. This can lead to
+ * re-execution of already-committed work, but is provided as a safety valve
+ * for customers who depend on the old retry behavior.
+ *
+ * Default: false (safe behavior -- retries are blocked after in-procedure
+ * COMMIT).
+ */
+extern bool yb_enable_retry_after_non_atomic_commit;
 
 /*
  * Relaxes some internal sanity checks for system catalogs to allow creating them.
@@ -1151,6 +1171,7 @@ void		YbCheckUnsupportedSystemColumns(int attnum, const char *colname, RangeTblE
  */
 void		YbRegisterSysTableForPrefetching(int sys_table_id);
 void		YbTryRegisterCatalogVersionTableForPrefetching();
+extern void	YbTryRegisterLogicalClientVersionTableForPrefetching();
 
 YbcPgTableLocalityInfo
 YbBuildTableLocalityInfo(Relation rel);
@@ -1520,6 +1541,32 @@ typedef enum YbTxnError
 	YB_TXN_LOCK_NOT_FOUND,
 	YB_TXN_CONFLICT_KIND_COUNT, /* Must be last value of this enum */
 } YbTxnError;
+
+typedef enum
+{
+	YB_QPM_TRACK_NONE,
+	YB_QPM_TRACK_TOP,
+	YB_QPM_TRACK_ALL
+} YbQpmTrackEnum;
+
+typedef enum
+{
+	YB_QPM_SIMPLE_CLOCK_LRU,
+	YB_QPM_TRUE_LRU
+} YbCacheReplacementAlgorithmEnum;
+
+typedef struct YbQpmConfiguration
+{
+	int track;
+	int cache_replacement_algorithm;
+	int max_cache_size;
+	bool track_catalog_queries;
+	int plan_format;
+	bool verbose_plans;
+	bool compress_text;
+} YbQpmConfiguration;
+
+extern YbQpmConfiguration yb_qpm_configuration;
 
 extern void YbResetRetryCounts();
 extern void YbIncrementRetryCount(YbTxnError kind);

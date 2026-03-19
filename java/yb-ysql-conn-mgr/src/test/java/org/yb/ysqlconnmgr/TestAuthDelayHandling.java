@@ -36,7 +36,9 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
   private final int NUM_WORKERS = 10; // Queue size is num_workers * 16. Set to 10 to be safe.
   private final String USERNAME = "yugabyte";
   private final String PASSWORD = "yugabyte";
+  private final int RESERVED_CONNECTIONS = 5;
   private final int MAX_PHYSICAL_CONNECTIONS = 20;
+  private final int NUM_PHYSICAL_CONNECTIONS = MAX_PHYSICAL_CONNECTIONS - RESERVED_CONNECTIONS;
 
   // If N is the control pool max size,
   // 2*N connection attempts expected to fail and 1 attempt expected to succeed.
@@ -44,7 +46,7 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
   // Becaue multi route pooling is true by default, all backend capacity is allowed to be used by
   // the control pool while no other pools are using backends.
   // So, N = `ysql_max_connections`. (Would have been 1/10th otherwise)
-  private final int numThreads = 1 + (2 * MAX_PHYSICAL_CONNECTIONS);
+  private final int numThreads = 1 + (2 * NUM_PHYSICAL_CONNECTIONS);
 
   @Override
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
@@ -60,6 +62,7 @@ public class TestAuthDelayHandling extends BaseYsqlConnMgr {
         put("ysql_enable_auth", "true");
         put("TEST_ysql_conn_mgr_auth_delay_ms", Integer.toString(AUTH_DELAY_MS));
         put("ysql_conn_mgr_log_settings", "log_debug,log_query");
+        put("ysql_conn_mgr_reserve_internal_conns", Integer.toString(RESERVED_CONNECTIONS));
       }
     };
     super.customizeMiniClusterBuilder(builder);

@@ -22,13 +22,12 @@ For information on how to respond to DB Node Restart, DB Instance Down, and DB I
 
 ## Automatic YB-Master failover
 
-{{<tags/feature/ea>}} To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
+To avoid under-replication, YugabyteDB Anywhere can automatically detect a YB-Master server that is not responding to the master leader, or that is lagging WAL operations, and fail over to another available node in the same availability zone.
 
 Note that automatic failover only works for a single unhealthy master server.
 
 ### Prerequisites
 
-- Automatic YB-Master failover is {{<tags/feature/ea>}}. To enable the feature for a universe, set the **Auto Master Failover** Universe Runtime Configuration option (config key `yb.auto_master_failover.enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 - The universe has the following characteristics:
 
   - running v2.20.3.0, v2.21.0.0, or later

@@ -162,7 +162,7 @@ class ClusterLoadBalancer {
   // If new_leader_ts_uuid is empty, a server will be picked by random to be the new leader.
   virtual Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      bool should_remove_leader, const std::string& reason,
+      bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid = "");
 
   // If type_ is live, return PRE_VOTER, otherwise, return PRE_OBSERVER.
@@ -235,6 +235,8 @@ class ClusterLoadBalancer {
     TabletServerId to_ts;
     std::string to_ts_path;
     std::string reason;
+    // Whether to also remove the replica after stepping down the leader.
+    bool also_remove_replica = false;
   };
   // Move leaders load from a lower priority to a high priority TServers.
   // This is called before normal leader load balancing which balances load within each priority.
@@ -283,6 +285,12 @@ class ClusterLoadBalancer {
   // tablet server.
   Status RemoveReplica(
       const TabletId& tablet_id, const TabletServerId& ts_uuid, const std::string& reason);
+
+  // Select the best leader from the tablet's replicas based on leader affinity / preferred zones.
+  // Returns the TabletServerId of the preferred leader, or empty string if no preferred leader
+  // could be determined.
+  TabletServerId SelectBestLeaderAfterStepdown(
+      const TabletId& tablet_id, const TabletServerId& ts_to_exclude);
 
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.

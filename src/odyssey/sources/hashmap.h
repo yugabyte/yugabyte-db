@@ -44,7 +44,9 @@ extern od_retcode_t od_hashmap_free(od_hashmap_t *hm);
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
 				  od_hashmap_elt_t *key);
 
-extern bool yb_od_hashmap_find_key_and_remove (od_hashmap_t *hm, od_hash_t keyhash);
+extern bool yb_od_hashmap_find_key_and_remove(od_hashmap_t *hm, od_hash_t keyhash,
+					      char ***matched_keys,
+					      int *matched_count);
 
 /* 
  * This function inserts a new key into the hashmap.

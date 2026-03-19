@@ -24,7 +24,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.inject.Singleton;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pekko.stream.Materializer;
 import play.libs.ws.WSClient;
 
 @Slf4j
@@ -35,15 +37,18 @@ public class WSClientRefresher implements CustomTrustStoreListener {
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final Map<String, WSClient> customWsClients = new ConcurrentHashMap<>();
   private final CustomCAStoreManager customCAStoreManager;
+  @Getter private final Materializer materializer;
 
   @Inject
   public WSClientRefresher(
       CustomWsClientFactory customWsClientFactory,
       RuntimeConfigFactory runtimeConfigFactory,
-      CustomCAStoreManager customCAStoreManager) {
+      CustomCAStoreManager customCAStoreManager,
+      Materializer materializer) {
     this.customWsClientFactory = customWsClientFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.customCAStoreManager = customCAStoreManager;
+    this.materializer = materializer;
     customCAStoreManager.addListener(this);
   }
 

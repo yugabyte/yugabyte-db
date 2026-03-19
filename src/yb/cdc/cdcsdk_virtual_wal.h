@@ -50,7 +50,8 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
       {Status::Code::kNotFound, "Footer for segment"},
-      {Status::Code::kNotFound, "Log index cache entry for op index"}};
+      {Status::Code::kNotFound, "Log index cache entry for op index"},
+      {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
       std::unordered_set<TableId> table_list,
@@ -369,6 +370,10 @@ class CDCSDKVirtualWAL {
   // Maintains the mapping between table's PG OID and relfilenode. This is used in detecting DDLs
   // that cause table rewrites.
   std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode_;
+
+  // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
+  // tablet for determining changes to the publication.
+  bool detect_publication_changes_implicitly_ = false;
 };
 
 }  // namespace cdc

@@ -28,6 +28,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
+import "yb/tserver/tserver_service.proto";
 
 service PgClientService {
   option (yb.rpc.service_send_metadata) = true;
@@ -62,6 +63,8 @@ service PgClientService {
   }
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListSlotEntries(PgListSlotEntriesRequestPB)
+      returns (PgListSlotEntriesResponsePB);
   rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
       returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -115,9 +118,13 @@ service PgClientService {
 
   rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
 
+  rpc GetTabletForKey(PgGetTabletForKeyRequestPB) returns (PgGetTabletForKeyResponsePB);
+
   rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
+
+  rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -142,6 +149,8 @@ service PgClientService {
       returns (PgAcquireObjectLockResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
   }
+  rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
+      returns (PgReleaseSessionObjectLockResponsePB);
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
       returns (PgExportTxnSnapshotResponsePB);
@@ -164,6 +173,9 @@ service PgClientService {
   // Fetch table info for non-catalog tables in yb_system database
   rpc GetYbSystemTableInfo(PgGetYbSystemTableInfoRequestPB)
       returns (PgGetYbSystemTableInfoResponsePB);
+
+  rpc RemoteExec(PgRemoteExecRequestPB)
+      returns (PgRemoteExecResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -649,6 +661,25 @@ message PgListLiveTabletServersResponsePB {
   string universe_uuid = 3;
 }
 
+message PgListSlotEntriesRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
+}
+
+message PgSlotEntryInfoPB {
+  string stream_id = 1;
+  uint64 confirmed_flush_lsn = 2;
+  uint64 restart_lsn = 3;
+  uint32 xmin = 4;
+  uint64 record_id_commit_time_ht = 5;
+  uint64 last_pub_refresh_time = 6;
+  uint64 active_pid = 7;
+}
+
+message PgListSlotEntriesResponsePB {
+  AppStatusPB status = 1;
+  repeated PgSlotEntryInfoPB slot_entries = 2;
+}
+
 message PgListReplicationSlotsRequestPB {
   reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
@@ -671,6 +702,7 @@ message PgReplicationSlotInfoPB {
   uint64 active_pid = 13;
   bool expired = 14;
   bool allow_tables_without_primary_key = 15;
+  bool detect_publication_changes_implicitly = 16;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -1189,6 +1221,16 @@ message PgTabletsMetadataResponsePB {
   repeated tablet.TabletStatusPB tablets = 2;
 }
 
+message PgGetTabletForKeyRequestPB {
+  bytes table_id = 1;
+  bytes partition_key = 2;
+}
+
+message PgGetTabletForKeyResponsePB {
+  AppStatusPB status = 1;
+  string tablet_id = 2;
+}
+
 message PgServersMetricsRequestPB {
   reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
@@ -1244,6 +1286,22 @@ message PgDatabaseCloneInfoPB {
   string state = 5;
   fixed64 as_of_time = 6;
   string failure_reason = 7;
+}
+
+message PgQueryAutoAnalyzeRequestPB{
+  AshMetadataPB ash_metadata = 1;
+  uint32 database_oid = 2;
+}
+
+message PgQueryAutoAnalyzeResponsePB {
+  AppStatusPB status = 1;
+  repeated PgAutoAnalyzeDataPB rows = 2;
+}
+
+message PgAutoAnalyzeDataPB {
+  uint32 table_oid = 1;
+  uint64 mutations = 2;
+  bytes last_analyze_info = 3;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1305,26 +1363,39 @@ enum ObjectLockMode {
   ACCESS_EXCLUSIVE_LOCK = 8;
 }
 
+message ObjectLockOid {
+  uint64 database_oid = 1;
+  uint64 relation_oid = 2;
+  uint64 object_oid = 3;
+  uint64 object_sub_oid = 4;
+  uint32 tablespace_oid = 5;
+}
+
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
 
-  message LockOId {
-    uint64 database_oid = 1;
-    uint64 relation_oid = 2;
-    uint64 object_oid = 3;
-    uint64 object_sub_oid = 4;
-    uint32 tablespace_oid = 5;
-  }
-  LockOId lock_oid = 3;
+  ObjectLockOid lock_oid = 3;
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
   ObjectLockMode lock_type = 4;
 
   reserved 5; // ASH metadata is now passed in RequestHeader PB
+
+  bool is_session_lock = 6;
 }
 
 message PgAcquireObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgReleaseSessionObjectLockRequestPB {
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  ObjectLockOid lock_oid = 3;
+}
+
+message PgReleaseSessionObjectLockResponsePB {
   AppStatusPB status = 1;
 }
 

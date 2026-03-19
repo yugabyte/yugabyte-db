@@ -557,9 +557,8 @@ templates:
   DB_MEMORY_OVERLOAD:
     name: DB memory overload
     description: DB memory rejections detected during last 10 minutes
-    queryTemplate: sum by (universe_uuid) (increase(leader_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
-      + sum by (universe_uuid) (increase(follower_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
-      + sum by (universe_uuid) (increase(operation_memory_pressure_rejections{universe_uuid="__universeUuid__"}[10m]))
+    queryTemplate: sum by (universe_uuid) (increase(leader_memory_pressure_rejections{universe_uuid="__universeUuid__",
+      saved_name=~"leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"}[10m]))
       {{ query_condition }} {{ query_threshold }}
     createForNewCustomer: true
     defaultThresholdMap:
@@ -571,9 +570,8 @@ templates:
     thresholdUnitName: rejection(s)
     labels:
       affected_node_names: >-
-        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        + sum by (universe_uuid, node_name) (increase(follower_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
-        + sum by (universe_uuid, node_name) (increase(operation_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}'}[10m]))
+        {{ range $index, $element := query "sum by (universe_uuid, node_name) (increase(leader_memory_pressure_rejections{universe_uuid='{{ $labels.universe_uuid }}',
+        saved_name=~'leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure'}[10m]))
         {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
     annotations:
       summary: >-
@@ -696,6 +694,29 @@ templates:
     annotations:
       summary: >-
         Validation of KMS Config '{{ $labels.kms_config_name }}' failed for universe '{{ $labels.source_name }}'
+
+  UNIVERSE_TSERVER_CONNECTIVITY_ERROR:
+    name: Universe TServer Connectivity Error
+    description: TServer connectivity check reported one or more nodes unreachable
+    queryTemplate: count by (universe_uuid) (min_over_time(ybp_universe_node_connectivity_status{universe_uuid = "__universeUuid__"}[1h])
+      < 1) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "min_over_time(ybp_universe_node_connectivity_status{universe_uuid='{{ $labels.universe_uuid }}'}[1h]) < 1"
+        }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        {{ $value | printf "%.0f" }} node(s) are unreachable in connectivity check for universe '{{ $labels.source_name }}'.  Affected nodes: {{ $labels.affected_node_names }}
 
   HEALTH_CHECK_ERROR:
     name: Health Check Error
@@ -1411,30 +1432,6 @@ templates:
         Minimum expiry time is {{ $value | printf "%.0f" }} ms (less than 2 hours remaining).
         Affected replication slots: {{ $labels.affected_slot_names_warning }}{{ end }}
 
-  CDCSDK_IDLE_STREAM:
-    name: CDC SDK Idle Stream
-    description: CDC SDK replication slot is idle (no messages emitted, change event count rate is 0)
-    queryTemplate: count by (universe_uuid) (rate(cdcsdk_change_event_count{universe_uuid="__universeUuid__"}[10m])
-      == 0) {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
-    defaultThresholdMap:
-      WARNING:
-        threshold: 0.0
-    targetType: UNIVERSE
-    defaultThresholdCondition: GREATER_THAN
-    defaultThresholdUnit: COUNT
-    thresholdUnitName: slot(s)
-    thresholdReadOnly: true
-    labels:
-      affected_slot_names: >-
-        {{ range $index, $element := query "rate(cdcsdk_change_event_count{universe_uuid='{{ $labels.universe_uuid }}'}[10m])
-        == 0" }}{{if $index}},{{end}}{{ $element.Labels.slot_name }}{{ end }}
-    annotations:
-      summary: >-
-        CDC SDK replication slot(s) are idle for universe '{{ $labels.source_name }}'.
-        No messages are being emitted (change event count rate is 0).
-        Idle replication slots: {{ $labels.affected_slot_names }}
-
   SSH_KEY_ROTATION_FAILURE:
     name: SSH Key Rotation Failure
     description: Last SSH Key Rotation task failed for universe
@@ -2018,6 +2015,31 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
+  NODE_AGENT_MISSING:
+    name: Node agent missing
+    description: Node agent is missing
+    queryTemplate: count by(node_name) ((min_over_time(ybp_universe_node_process_status{universe_uuid="__universeUuid__"}[1m]) == 1
+      and on (universe_uuid) (max_over_time(ybp_nodeagent_missing_universe[1m]) > 0))
+      unless on (node_address) (label_replace(max_over_time(up{customer_uuid="__customerUuid__", job="node-agent"}[1m]), "node_address", "$1", "instance", "(.+):([0-9]+)") >= 0)) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: instance(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "count by(node_name) ((min_over_time(ybp_universe_node_process_status{universe_uuid='{{ $labels.universe_uuid }}'}[1m]) == 1
+        and on (universe_uuid) (max_over_time(ybp_nodeagent_missing_universe[1m]) > 0))
+        unless on (node_address) (label_replace(max_over_time(up{customer_uuid='{{ $labels.customer_uuid }}', job='node-agent'}[1m]), 'node_address', '$1', 'instance', '(.+):([0-9]+)') >= 0)) {{ query_condition }} {{ query_threshold }}" }} {{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Node agent server has been missing for universe '{{ $labels.source_name }}' for more than 1 minute.
+
+        Affected nodes: {{ $labels.affected_node_names }}
+
   TABLET_PEERS_GUARDRAIL:
     name: Percentage of tablet peers is high
     description: It represents the percentage of number of live tablet peers compared to number of tablet peers that can be supported based on available RAM, cores, etc.
@@ -2198,6 +2220,35 @@ templates:
         Incorrect THP settings found for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}
+  
+  YNP_VERSION_SKEW:
+    name: YNP Version Skew
+    description: YNP version on node is behind the YBA YNP version or version file is missing
+    queryTemplate: count by (universe_uuid) (yb_node_ynp_version_skew{universe_uuid="__universeUuid__"} > 0
+      or on (universe_uuid, node_name) yb_node_ynp_version{universe_uuid="__universeUuid__"} == 0)
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultDurationSec: 300
+    defaultThresholdMap:
+      WARNING:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: node(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "yb_node_ynp_version_skew{universe_uuid='{{
+        $labels.universe_uuid }}'} > 0
+        or on (universe_uuid, node_name) yb_node_ynp_version{universe_uuid='{{
+        $labels.universe_uuid }}'} == 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        YNP version skew detected for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s). Node YNP version is behind the YBA version
+        or version file is missing.
+
+        Affected nodes: {{ $labels.affected_node_names }}
 
   OTEL_LOG_EXPORT_FAILURE:
     name: OTel Log Export Failure
@@ -2232,4 +2283,29 @@ templates:
         OpenTelemetry log records are not being exported for universe '{{ $labels.source_name }}'
         on {{ $value | printf "%.0f" }} node(s).
 
+        Affected nodes: {{ $labels.affected_node_names }}
+
+  OTEL_METRIC_EXPORT_FAILURE:
+    name: OTel Metric Export Failure
+    description: DB metrics are not being exported for universe
+    queryTemplate: count by (universe_uuid) (increase(otelcol_exporter_send_failed_metric_points{universe_uuid="__universeUuid__"}[3m]))
+      {{ query_condition }} {{ query_threshold }}
+    defaultDurationSec: 300
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: COUNT
+    thresholdUnitName: metric(s)
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "sum by (universe_uuid, node_name)
+        (increase(otelcol_exporter_send_failed_metric_points{universe_uuid='{{ $labels.universe_uuid }}'}[3m]))
+        > 0" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        DB metrics export is failing for universe '{{ $labels.source_name }}'
+        on {{ $value | printf "%.0f" }} node(s).
         Affected nodes: {{ $labels.affected_node_names }}

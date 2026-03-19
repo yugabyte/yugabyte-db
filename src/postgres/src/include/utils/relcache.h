@@ -175,4 +175,6 @@ extern Relation YbRelationIdCacheLookup(Oid relid);
 
 extern long YbGetRelCachePreloads(void);
 
+extern void YbPrefetchRequiredData(bool preload_rel_cache);
+
 #endif							/* RELCACHE_H */

@@ -1117,7 +1117,7 @@ outputs directions for bootstrapping the relevant databases.
 --replication_id *xcluster-replication-id*
 : A string to uniquely identify the replication.
 
---automatic_mode  {{<tags/feature/ea idea="2176">}}
+--automatic_mode  {{<tags/feature/ga idea="153">}}
 : Enable automatic mode for the xCluster replication. For more information refer to [Automatic mode](../../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/). If you omit this flag, then semi-automatic mode is used.
 
 #### add_to_checkpoint

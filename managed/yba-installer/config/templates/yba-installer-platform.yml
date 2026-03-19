@@ -85,6 +85,7 @@ services:
       }
 
       yb {
+        platform.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "platform.port" }}"
         {{if eq (yamlPath "perfAdvisor.enabled") "true" }}
         {{ if eq (yamlPath "perfAdvisor.tls.enabled") "true" }}
         pa.url = "https://{{ index (splitInput (yamlPath "host")) 0 }}:
@@ -283,6 +284,7 @@ services:
     fileName: "{{ .UpgradePrecheckScriptPath }}"
     fileMode: "755"
     contents: |
+      #!/bin/bash
       export JAVA_HOME="{{ installVersionDir }}/jdk-17.0.7+7-jre/"
       export YB_OIDC_SECRET="{{ yamlPath "platform.ybOidcSecret" }}"
       export PLATFORM_APP_SECRET="{{ yamlPath "platform.appSecret" }}"

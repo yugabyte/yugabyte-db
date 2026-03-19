@@ -19,9 +19,11 @@ import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.Util;
@@ -43,7 +45,9 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -60,6 +64,8 @@ public class YNPProvisioningTest extends FakeDBApplication {
   @Mock private NodeUniverseManager nodeUniverseManager;
 
   @Mock private RuntimeConfGetter confGetter;
+
+  @Mock ImageBundleUtil mockImageBundleUtil;
 
   private Customer customer;
   private Provider provider;
@@ -79,8 +85,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
                 any(), any(), anyString(), any(), any(), anyString()))
         .thenReturn(List.of("/dev/sdb", "/dev/sdc"));
     when(baseTaskDependencies.getConfGetter()).thenReturn(confGetter);
-    ynpProvisioning =
-        new YNPProvisioning(baseTaskDependencies, mockCloudQueryHelper, mockFileHelperService);
+    YNPConfigGenerator ynpConfigGenerator =
+        new YNPConfigGenerator(
+            confGetter, mockCloudQueryHelper, mockImageBundleUtil, mockFileHelperService);
+    ynpProvisioning = new YNPProvisioning(baseTaskDependencies, ynpConfigGenerator);
   }
 
   private void setTaskParams(YNPProvisioning.Params params) throws Exception {
@@ -165,12 +173,59 @@ public class YNPProvisioningTest extends FakeDBApplication {
                         .toProvider(CustomWsClientFactoryProvider.class)));
   }
 
+  private void verifyCommunicationPorts(JsonNode primaryRoot, Map<String, Integer> expectedPorts) {
+    JsonNode portsNode = primaryRoot.get("ynp").get("communication_ports");
+    for (Map.Entry<String, Integer> entry : expectedPorts.entrySet()) {
+      assertEquals(
+          String.valueOf(expectedPorts.get(entry.getKey())), portsNode.get(entry.getKey()));
+    }
+  }
+
   @Test
   public void testGetProvisionArgumentsWithPrimaryCluster() throws Exception {
     // Create universe with primary cluster
     Universe universe = ModelFactory.createUniverse("test-universe", customer.getId());
     Universe.saveDetails(
         universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater("host", CloudType.aws));
+    Map<String, Integer> expectedCommunicationPorts = new HashMap<>();
+    expectedCommunicationPorts.put("master_http_port", 1);
+    expectedCommunicationPorts.put("master_rpc_port", 2);
+    expectedCommunicationPorts.put("tserver_http_port", 3);
+    expectedCommunicationPorts.put("tserver_rpc_port", 4);
+    expectedCommunicationPorts.put("yb_controller_http_port", 5);
+    expectedCommunicationPorts.put("yb_controller_rpc_port", 6);
+    expectedCommunicationPorts.put("ycql_server_http_port", 7);
+    expectedCommunicationPorts.put("ycql_server_rpc_port", 8);
+    expectedCommunicationPorts.put("ysql_server_http_port", 9);
+    expectedCommunicationPorts.put("ysql_server_rpc_port", 10);
+    expectedCommunicationPorts.put("node_exporter_port", 11);
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.communicationPorts.masterHttpPort =
+              expectedCommunicationPorts.get("master_http_port");
+          details.communicationPorts.masterRpcPort =
+              expectedCommunicationPorts.get("master_rpc_port");
+          details.communicationPorts.tserverHttpPort =
+              expectedCommunicationPorts.get("tserver_http_port");
+          details.communicationPorts.tserverRpcPort =
+              expectedCommunicationPorts.get("tserver_rpc_port");
+          details.communicationPorts.ybControllerHttpPort =
+              expectedCommunicationPorts.get("yb_controller_http_port");
+          details.communicationPorts.ybControllerrRpcPort =
+              expectedCommunicationPorts.get("yb_controller_rpc_port");
+          details.communicationPorts.yqlServerHttpPort =
+              expectedCommunicationPorts.get("ycql_server_http_port");
+          details.communicationPorts.ysqlServerRpcPort =
+              expectedCommunicationPorts.get("ycql_server_rpc_port");
+          details.communicationPorts.ysqlServerHttpPort =
+              expectedCommunicationPorts.get("ysql_server_http_port");
+          details.communicationPorts.ysqlServerRpcPort =
+              expectedCommunicationPorts.get("ysql_server_rpc_port");
+          details.communicationPorts.nodeExporterPort =
+              expectedCommunicationPorts.get("node_exporter_port");
+        });
 
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -207,12 +262,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-primary-", ".json");
-    String outputPath = tempFile.toString();
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
-
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(
-        universe, primaryNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -224,11 +277,13 @@ public class YNPProvisioningTest extends FakeDBApplication {
     assertEquals("10.0.0.1", ynpNode.get("node_ip").asText());
     assertEquals(false, ynpNode.get("is_install_node_agent").asBoolean());
     assertEquals(true, ynpNode.get("is_configure_clockbound").asBoolean());
+    assertEquals(false, ynpNode.get("is_yb_prebuilt_image").asBoolean());
 
     // Verify extra node
     JsonNode extraNode = rootNode.get("extra");
     assertNotNull(extraNode);
     assertEquals("aws", extraNode.get("cloud_type").asText());
+    assertEquals("/tmp/node-agent/thirdparty", extraNode.get("package_path").asText());
 
     // Clean up
     Files.deleteIfExists(tempFile);
@@ -322,11 +377,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     // Create temp file for output
     Path tempFile = Files.createTempFile("ynp-test-rr-", ".json");
-    String outputPath = tempFile.toString();
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
-
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFile);
     // Call the method
-    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, outputPath, nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     // Verify the JSON file was created and contains expected data
     assertTrue(Files.exists(tempFile));
@@ -445,9 +499,10 @@ public class YNPProvisioningTest extends FakeDBApplication {
 
     Path tempFilePrimary = Files.createTempFile("ynp-test-primary-", ".json");
     Path nodeAgentHome = Paths.get("/tmp/node-agent");
+    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+        .thenReturn(tempFilePrimary);
 
-    ynpProvisioning.generateProvisionConfig(
-        universe, primaryNode, provider, tempFilePrimary.toString(), nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, primaryNode, provider, nodeAgentHome);
 
     JsonNode primaryRoot = objectMapper.readTree(Files.readAllBytes(tempFilePrimary));
     assertEquals("10.0.0.10", primaryRoot.get("ynp").get("node_ip").asText());
@@ -474,9 +529,9 @@ public class YNPProvisioningTest extends FakeDBApplication {
     setTaskParams(params);
 
     Path tempFileRR = Files.createTempFile("ynp-test-rr-", ".json");
+    when(mockFileHelperService.createTempFile(anyString(), anyString())).thenReturn(tempFileRR);
 
-    ynpProvisioning.generateProvisionConfig(
-        universe, rrNode, provider, tempFileRR.toString(), nodeAgentHome);
+    ynpProvisioning.generateProvisionConfig(universe, rrNode, provider, nodeAgentHome);
 
     JsonNode rrRoot = objectMapper.readTree(Files.readAllBytes(tempFileRR));
     assertEquals("10.0.0.20", rrRoot.get("ynp").get("node_ip").asText());

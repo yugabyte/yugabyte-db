@@ -57,6 +57,7 @@ class PgFlushDebugContext {
   [[nodiscard]] static PgFlushDebugContext ExitDdlTxnMode();
   [[nodiscard]] static PgFlushDebugContext ExecuteDdl();
   [[nodiscard]] static PgFlushDebugContext AcquireLock(std::string_view lock_id);
+  [[nodiscard]] static PgFlushDebugContext ReleaseLock(std::string_view lock_id);
   [[nodiscard]] static PgFlushDebugContext ConflictingRead(
       PgOid table_oid, std::string_view table_name);
   [[nodiscard]] static PgFlushDebugContext ConflictingKeyWrite(

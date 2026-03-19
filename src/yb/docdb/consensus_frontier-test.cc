@@ -18,10 +18,9 @@
 #include "yb/rocksdb/metadata.h"
 #include "yb/util/test_util.h"
 
-using rocksdb::UpdateUserValueType;
+namespace yb::docdb {
 
-namespace yb {
-namespace docdb {
+using storage::UpdateUserValueType;
 
 class ConsensusFrontierTest : public YBTest {
 };
@@ -198,5 +197,4 @@ TEST_F(ConsensusFrontierTest, TestUpdateExpirationTime) {
   EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), maxHT);
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

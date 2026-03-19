@@ -116,12 +116,52 @@ func TestVerifyChecksum(t *testing.T) {
 	tmpFile := filepath.Join(tmpDir, "testfile.txt")
 
 	content := "yugabyte"
-	expectedChecksum := "3590b9bbd432f7a9f2db8c69c7313a70c03e1ac6cfa52dfdc1ea6c2b4dfeb8fc" // sha256sum of "yugabyte"
+	// Previous has was incorrect but not used
+	// [yugabyte-db]$ printf '%s' "yugabyte" | sha256sum
+	// 1e1c59f402939ecf9fe7d33589b2a0f243f1663088486044f4d8ef1dd1471ab8  -
 
-	// Write test content to file
+	validHash := "1e1c59f402939ecf9fe7d33589b2a0f243f1663088486044f4d8ef1dd1471ab8" // sha256 of "yugabyte"
+
 	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write temp file: %v", err)
 	}
+
+	t.Run("with lowercase prefix", func(t *testing.T) {
+		expected := "sha256:" + validHash
+		if err := VerifyChecksum(tmpFile, expected); err != nil {
+			t.Errorf("expected success with lowercase sha256: prefix, got: %v", err)
+		}
+	})
+
+	t.Run("with uppercase prefix", func(t *testing.T) {
+		expected := "SHA256:" + validHash
+		if err := VerifyChecksum(tmpFile, expected); err != nil {
+			t.Errorf("expected success with uppercase SHA256: prefix, got: %v", err)
+		}
+	})
+
+	t.Run("prefix good but hash malformed", func(t *testing.T) {
+		expected := "sha256:" + strings.Repeat("0", 64)
+		if err := VerifyChecksum(tmpFile, expected); err == nil {
+			t.Error("expected checksum mismatch when hash is malformed/wrong")
+		}
+	})
+
+	t.Run("malformed prefix", func(t *testing.T) {
+		// "sha256" without colon — not stripped, so full string compared to actual hash → mismatch
+		expected := "sha256" + validHash
+		if err := VerifyChecksum(tmpFile, expected); err == nil {
+			t.Error("expected failure when prefix is malformed (no colon)")
+		}
+	})
+
+	t.Run("prefix other than sha256", func(t *testing.T) {
+		// sha512: is not stripped, so expected stays "sha512:..." and won't match actual sha256 hex
+		expected := "sha512:" + validHash
+		if err := VerifyChecksum(tmpFile, expected); err == nil {
+			t.Error("expected failure when prefix is not sha256")
+		}
+	})
 
 	t.Run("invalid checksum", func(t *testing.T) {
 		badChecksum := strings.Repeat("0", 64)
@@ -131,7 +171,7 @@ func TestVerifyChecksum(t *testing.T) {
 	})
 
 	t.Run("missing file", func(t *testing.T) {
-		err := VerifyChecksum(filepath.Join(tmpDir, "nonexistent.txt"), expectedChecksum)
+		err := VerifyChecksum(filepath.Join(tmpDir, "nonexistent.txt"), validHash)
 		if err == nil {
 			t.Errorf("expected error for missing file but got none")
 		}

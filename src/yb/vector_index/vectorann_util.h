@@ -21,8 +21,7 @@
 
 #include "yb/common/vector_types.h"
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/status.h"
+#include "yb/storage/storage_types.h"
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -137,14 +136,14 @@ Result<VectorIndexIfPtr<Vector, DistanceResult>> Merge(
       std::thread::hardware_concurrency(),
       std::thread::hardware_concurrency()));
 
-  RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return rocksdb::FilterDecision::kKeep; }));
+  RETURN_NOT_OK(Merge(merged_index, indexes, [](auto&&){ return storage::FilterDecision::kKeep; }));
   return std::move(merged_index);
 }
 
 template <typename Filter>
 concept MergeFilterType =
-    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, VectorId> ||
-    std::is_invocable_r_v<rocksdb::FilterDecision, Filter, const VectorId&>;
+    std::is_invocable_r_v<storage::FilterDecision, Filter, VectorId> ||
+    std::is_invocable_r_v<storage::FilterDecision, Filter, const VectorId&>;
 
 template <IndexableVectorType Vector,
           ValidDistanceResultType DistanceResult,
@@ -155,7 +154,7 @@ Status Merge(
     MergeFilter&& merge_filter) {
   for (const auto& index : source) {
     for (const auto& [vector_id, vector] : *index) {
-      if (merge_filter(vector_id) == rocksdb::FilterDecision::kKeep) {
+      if (merge_filter(vector_id) == storage::FilterDecision::kKeep) {
         RETURN_NOT_OK(target->Insert(vector_id, vector));
       }
     }

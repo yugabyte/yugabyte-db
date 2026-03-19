@@ -1189,6 +1189,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterPauseRpcTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.pause_rpc_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for xCluster Pause RPC call",
+          "Timeout for xCluster Pause RPC call; if the SetUniverseReplicationEnabled RPC times out,"
+              + " you can increase this runtime config to alleviate the issue",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration>
       xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
           new ConfKeyInfo<>(
@@ -1257,6 +1266,17 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Check if nodes are safe to take down before running upgrades",
           "Check if nodes are safe to take down before running upgrades",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableComprehensivePrechecks =
+      new ConfKeyInfo<>(
+          "yb.checks.comprehensive_prechecks.enabled",
+          ScopeType.UNIVERSE,
+          "Enable comprehensive prechecks",
+          "When enabled (default), extra runtime prechecks run during universe create/edit and "
+              + "rolling upgrades (e.g. node connectivity and service/command checks). Disable to "
+              + "skip these checks.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 
@@ -1813,4 +1833,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enables the all node script APIs for this universe",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableCanaryUpgrade =
+      new ConfKeyInfo<>(
+          "yb.upgrade.enable_canary_upgrade",
+          ScopeType.UNIVERSE,
+          "Enable Canary Upgrade",
+          "Enable canary upgrade for the universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> fullMoveRollBatchSize =
+      new ConfKeyInfo<>(
+          "yb.task.full_move.roll_batch_size",
+          ScopeType.UNIVERSE,
+          "Number of nodes to move in a given batch during full move",
+          "Set numer of nodes to move in a given batch during full move. Default is 0 which means"
+              + " no batching, i.e. move all pods in a single go",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

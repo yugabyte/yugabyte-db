@@ -62,7 +62,8 @@ public class PrometheusPriorityRegexTest {
         "follower_lag_ms",
         "leader_memory_pressure_rejections",
         "follower_memory_pressure_rejections",
-        "operation_memory_pressure_rejections"
+        "operation_memory_pressure_rejections",
+        "rpc_inbound_calls_rejected_because_memory_pressure"
       };
 
   @Test

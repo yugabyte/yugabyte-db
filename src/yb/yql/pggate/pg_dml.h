@@ -115,7 +115,7 @@ class PgDml : public PgStatement {
     bool is_executed_;
   };
 
-  explicit PgDml(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgDml(const PgSessionPtr& pg_session);
 
   // Allocate protobuf for a SELECTed expression.
   virtual LWPgsqlExpressionPB* AllocTargetPB() = 0;

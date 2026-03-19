@@ -17,6 +17,43 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.3.2 - March 17, 2026
+
+### Enhancements
+
+- YugabyteDB CDC savepoint and read-committed isolation limitations for live migration with fall-forward/fall-back are reported for YugabyteDB versions that lack support.
+- Improved performance for import data and import data file when resuming local data files for large tables.
+
+### Bug fixes
+
+- Fixed duplicate table entries in the [yugabyted UI](../migrate/migrate-steps/#configure-yugabyted-ui) (Control Plane UI) by standardizing table name formatting between the initialization and progress reporting of data imports.
+- Fixed a spurious password prompt when running `assess-migration` with `--assessment-metadata-dir` for offline assessments that do not require source database connectivity.
+- Refined the colocated database warning during `import-schema` to only appear when the assessment has recommended colocated tables, rather than whenever the target database is non-colocated.
+
+## v2026.3.1 - March 2, 2026
+
+### Enhancements
+
+- Assessment report now includes recommended partial index SQL for columns with high-frequency values, or a high percentage of NULL values to improve performance on YugabyteDB.
+- Increased default `--adaptive-parallelism-max` from total N/2 to N total cores. This change enables better CPU utilization during data migration, with improved core detection for load-balanced and managed clusters.
+
+### Bug fixes
+
+- Reduced excessive logging in import data when no batch is available, preventing log flooding and unnecessary CPU usage during slower batch production.
+- Commands executed after cutover to target now correctly use the provided config file and forward flags.
+
+## v2026.2.2 - February 17, 2026
+
+### Enhancements
+
+- TIMETZ (time with time zone) and pgvector columns are now flagged as unsupported for live migration in the assessment report, and the corresponding columns are automatically excluded from live migration.
+
+### Bug fixes
+
+- Fixed an issue where `export schema` could hang while fetching redundant index information during schema export.
+- Fixed a potential data loss issue in live migration where events could be marked as processed before being durably written to disk.
+- Corrected the default value of the `use-yb-grpc-connector` parameter in configuration templates from true to false.
+
 ## v2026.2.1 - February 3, 2026
 
 {{< note title="Important: Breaking change" >}}

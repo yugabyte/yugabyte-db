@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -147,8 +148,8 @@ public class Audit extends Model {
     @EnumValue("Telemetry Provider")
     TelemetryProvider,
 
-    @EnumValue("Troubleshooting Platform")
-    TroubleshootingPlatform,
+    @EnumValue("PA Collector")
+    PACollector,
 
     @EnumValue("GFlags")
     GFlags,
@@ -317,20 +318,20 @@ public class Audit extends Model {
     @EnumValue("Delete Telemetry Provider Config")
     DeleteTelemetryConfig,
 
-    @EnumValue("Create Troubleshooting Platform Config")
-    CreateTroubleshootingConfig,
+    @EnumValue("Create PA Collector Config")
+    CreatePACollectorConfig,
 
-    @EnumValue("Edit Troubleshooting Platform Config")
-    EditTroubleshootingConfig,
+    @EnumValue("Edit PA Collector Config")
+    EditPACollectorConfig,
 
-    @EnumValue("Delete Troubleshooting Platform Config")
-    DeleteTroubleshootingConfig,
+    @EnumValue("Delete PA Collector Config")
+    DeletePACollectorConfig,
 
-    @EnumValue("Register Universe with Troubleshooting Platform")
-    TroubleshootingPlatformRegister,
+    @EnumValue("Register Universe with PA Collector")
+    PACollectorRegister,
 
-    @EnumValue("Unregister Universe from Troubleshooting Platform")
-    TroubleshootingPlatformUnregister,
+    @EnumValue("Unregister Universe from PA Collector")
+    PACollectorUnregister,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,
@@ -421,6 +422,9 @@ public class Audit extends Model {
 
     @EnumValue("Configure Metrics Export")
     ConfigureMetricsExport,
+
+    @EnumValue("Configure Export Telemetry Config")
+    ConfigureExportTelemetryConfig,
 
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
@@ -623,6 +627,9 @@ public class Audit extends Model {
     @EnumValue("Update Universe's Proxy Configuration")
     UpdateProxyConfig,
 
+    @EnumValue("Provision Universe Nodes")
+    ProvisionUniverseNodes,
+
     @EnumValue("Clone Namespace")
     CloneNamespace,
 
@@ -634,6 +641,18 @@ public class Audit extends Model {
 
     @EnumValue("Import Universe to the Kubernetes Operator")
     OperatorImportUniverse,
+
+    @EnumValue("Run Script on Database Nodes")
+    RunScript,
+
+    @EnumValue("Create File Collection from Database Nodes")
+    CreateFileCollection,
+
+    @EnumValue("Download File Collection to YBA")
+    DownloadFileCollection,
+
+    @EnumValue("Delete File Collection from Database Nodes")
+    DeleteFileCollection,
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.
@@ -712,6 +731,11 @@ public class Audit extends Model {
   @Column(nullable = true)
   private String userAddress;
 
+  // Hide this from the API.
+  @ApiModelProperty(hidden = true)
+  @Column(nullable = false)
+  private int lastRedactedVersion;
+
   public Audit() {
     this.timestamp = new Date();
   }
@@ -777,5 +801,11 @@ public class Audit extends Model {
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  @Override
+  public void save() {
+    setLastRedactedVersion(RedactSecretsFromAudit.getLastRedactedVersion());
+    super.save();
   }
 }

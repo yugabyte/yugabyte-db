@@ -25,9 +25,13 @@
 
 #include <string>
 #include <gtest/gtest.h>
+
 #include "yb/rocksdb/env.h"
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/storage/storage_test_util.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -60,7 +64,7 @@ void SetupVersionEdit(VersionEdit* edit) {
   edit->SetLogNumber(kBig + 100);
   edit->SetNextFile(kBig + 200);
   edit->SetLastSequence(kBig + 1000);
-  test::TestUserFrontier frontier(kBig + 100);
+  yb::storage::TestUserFrontier frontier(kBig + 100);
   edit->UpdateFlushedFrontier(frontier.Clone());
 }
 

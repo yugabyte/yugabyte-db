@@ -22,6 +22,7 @@ import io.yugabyte.operator.v1alpha1.StorageConfig;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -39,6 +40,16 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
   private final String namespace;
   private final SharedIndexInformer<StorageConfig> scInformer;
   private final OperatorUtils operatorUtils;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public BackupReconciler(
       SharedIndexInformer<Backup> backupInformer,
@@ -97,6 +108,11 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       log.debug("backup is already controlled by the operator, ignoring");
       return;
     }
+
+    // Track the resource only after confirming it should actually be processed.
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
+    resourceTracker.trackResource(backup);
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     log.info("Creating backup {} ", backup);
     BackupRequestParams backupRequestParams = null;
@@ -167,6 +183,8 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       handleDelete(newBackup);
       return;
     }
+    // Persist the latest resource YAML so the OperatorResource table stays current.
+    resourceTracker.trackResource(newBackup);
     log.info(
         "Got backup update {} {}, ignoring as backup does not support update.",
         oldBackup,
@@ -180,6 +198,10 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
   private void handleDelete(Backup backup) {
     log.info("Got backup delete {}", backup);
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
+    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    log.info("Untracked backup {} and orphaned dependencies: {}", resourceDetails, orphaned);
+
     BackupStatus status = backup.getStatus();
 
     // Remove finalizer if no status
@@ -225,7 +247,7 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     // Cancel backup if running
     try {
       boolean taskstatus = backupHelper.abortBackupTask(taskUUID);
-      if (taskstatus == true) {
+      if (taskstatus) {
         log.info("cancelled ongoing task");
         BackupHelper.waitForTask(taskUUID);
       }

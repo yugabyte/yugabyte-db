@@ -186,16 +186,16 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_index_aggregate_pushdown, kLocalVola
     "Push supported aggregates from ysql down to DocDB for evaluation. Affects IndexScan only.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_strict_inequality, kLocalVolatile, false, true,
-    "Push down strict inequality filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_pushdown_is_not_null, kLocalVolatile, false, true,
-    "Push down IS NOT NULL condition filters");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_hash_batch_in, kLocalVolatile, false, true,
     "Enable batching of hash in queries.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
-    "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
+    "DEPRECATED: no-op.");
 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_pg_locks, kLocalVolatile, false, true,
     "Enable the pg_locks view. This view provides information about the locks held by "
@@ -433,6 +433,9 @@ DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
     "Ignore boolean condition for row count estimate in legacy cost model.");
 
+DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
+    "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
+
 using gflags::CommandLineFlagInfo;
 using std::string;
 using std::vector;
@@ -441,6 +444,20 @@ using namespace std::literals;  // NOLINT
 
 namespace yb {
 namespace pgwrapper {
+
+string FormatPgGFlagValue(const string& value, const string& type) {
+  if (type == "string") {
+    auto trimmed = boost::algorithm::trim_copy(value);
+    if (trimmed.size() >= 2 && trimmed.front() == '\'' && trimmed.back() == '\'') {
+      // Already single-quoted: pass through unchanged.
+      return value;
+    }
+    // Add single quotes and escape internal single quotes.
+    string escaped_value = boost::replace_all_copy(value, "'", "''");
+    return Format("'$0'", escaped_value);
+  }
+  return value;
+}
 
 namespace {
 
@@ -591,7 +608,8 @@ void AppendPgGFlags(vector<string>* lines) {
     }
 
     string pg_variable_name = flag.name.substr(pg_flag_prefix.length());
-    lines->push_back(Format("$0=$1", pg_variable_name, flag.current_value));
+    lines->push_back(
+        Format("$0=$1", pg_variable_name, FormatPgGFlagValue(flag.current_value, flag.type)));
   }
 
   // Special handling for deprecated ysql_enable_pg_export_snapshot flag.
@@ -1054,7 +1072,17 @@ Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
     args.push_back("--no-statistics");
   }
 
+  // pg_upgrade checks for write access to its current working directory. We explicitly set
+  // the working directory rather than inheriting from the parent process (yb-master), because
+  // yb-master may be running in a directory without write permissions. The default is the
+  // pg_upgrade data directory. This can be overridden via the --pg_upgrade_working_dir flag.
+  const auto& working_dir =
+      FLAGS_pg_upgrade_working_dir.empty() ? param.data_dir : FLAGS_pg_upgrade_working_dir;
+  args.push_back("--yb-working-dir");
+  args.push_back(working_dir);
+
   LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
+
   RETURN_NOT_OK_PREPEND(
       Subprocess::Call(args, /*log_stdout_and_stderr=*/true),
       "pg_upgrade failed. Check previous errors for more details.");

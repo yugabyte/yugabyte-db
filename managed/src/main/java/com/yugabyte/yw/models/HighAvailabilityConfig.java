@@ -60,7 +60,7 @@ public class HighAvailabilityConfig extends Model {
 
   private static final Finder<UUID, HighAvailabilityConfig> find =
       new Finder<UUID, HighAvailabilityConfig>(HighAvailabilityConfig.class) {};
-  private static final KeyLock<UUID> KEY_LOCK = new KeyLock<>();
+  private static final KeyLock<String> KEY_LOCK = new KeyLock<>();
 
   private static volatile boolean isSwitchOverInProgress = false;
 
@@ -114,22 +114,22 @@ public class HighAvailabilityConfig extends Model {
 
   @JsonIgnore
   public List<PlatformInstance> getRemoteInstances() {
-    return this.instances.stream().filter(i -> !i.getIsLocal()).collect(Collectors.toList());
+    return this.instances.stream().filter(i -> !i.isLocal()).collect(Collectors.toList());
   }
 
   @JsonIgnore
   public boolean isLocalLeader() {
-    return this.instances.stream().anyMatch(i -> i.getIsLeader() && i.getIsLocal());
+    return this.instances.stream().anyMatch(i -> i.isLeader() && i.isLocal());
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLocal() {
-    return this.instances.stream().filter(PlatformInstance::getIsLocal).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLocal).findFirst();
   }
 
   @JsonIgnore
   public Optional<PlatformInstance> getLeader() {
-    return this.instances.stream().filter(PlatformInstance::getIsLeader).findFirst();
+    return this.instances.stream().filter(PlatformInstance::isLeader).findFirst();
   }
 
   public boolean getAcceptAnyCertificate() {
@@ -160,8 +160,9 @@ public class HighAvailabilityConfig extends Model {
 
   public static HighAvailabilityConfig update(
       UUID uuid, String clusterKey, boolean acceptAnyCertificate) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(uuid);
     return doWithLock(
-        uuid,
+        haConfig.getClusterKey(),
         config -> {
           config.setClusterKey(clusterKey);
           config.setAcceptAnyCertificate(acceptAnyCertificate);
@@ -198,6 +199,7 @@ public class HighAvailabilityConfig extends Model {
       SecretKey secretKey = keyGen.generateKey();
       return Base64.getEncoder().encodeToString(secretKey.getEncoded());
     } catch (NoSuchAlgorithmException e) {
+      log.error("Error generating cluster key", e);
       throw new PlatformServiceException(BAD_REQUEST, "Error generating cluster key");
     }
   }
@@ -205,7 +207,7 @@ public class HighAvailabilityConfig extends Model {
   public static boolean isFollower() {
     // Return follower to true as active is not known during switch over.
     return isSwitchOverInProgress
-        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.getIsLeader()).orElse(false);
+        || get().flatMap(HighAvailabilityConfig::getLocal).map(i -> !i.isLeader()).orElse(false);
   }
 
   public static void setSwitchOverInProgress(boolean isSwitchOverInProgress) {
@@ -254,12 +256,14 @@ public class HighAvailabilityConfig extends Model {
   }
 
   // Invoke the function after acquiring the lock.
-  public static <T> T doWithLock(UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    KEY_LOCK.acquireLock(haConfigUuid);
+  public static <T> T doWithLock(String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    KEY_LOCK.acquireLock(clusterKey);
     try {
-      return function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid));
+      return function.apply(
+          HighAvailabilityConfig.getByClusterKey(clusterKey)
+              .orElseThrow(() -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key")));
     } finally {
-      KEY_LOCK.releaseLock(haConfigUuid);
+      KEY_LOCK.releaseLock(clusterKey);
     }
   }
 
@@ -267,13 +271,16 @@ public class HighAvailabilityConfig extends Model {
   // non-null if the lock is acquired to distinguish between lock acquisition failure vs actual
   // value.
   public static <T> Optional<T> doWithTryLock(
-      UUID haConfigUuid, Function<HighAvailabilityConfig, T> function) {
-    if (KEY_LOCK.tryLock(haConfigUuid)) {
+      String clusterKey, Function<HighAvailabilityConfig, T> function) {
+    if (KEY_LOCK.tryLock(clusterKey)) {
       try {
         return Optional.ofNullable(
-            function.apply(HighAvailabilityConfig.getOrBadRequest(haConfigUuid)));
+            function.apply(
+                HighAvailabilityConfig.getByClusterKey(clusterKey)
+                    .orElseThrow(
+                        () -> new PlatformServiceException(BAD_REQUEST, "Invalid cluster key"))));
       } finally {
-        KEY_LOCK.releaseLock(haConfigUuid);
+        KEY_LOCK.releaseLock(clusterKey);
       }
     }
     return Optional.empty();

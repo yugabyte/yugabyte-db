@@ -7,12 +7,15 @@ import (
 	"io/fs"
 	"node-agent/util"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/nikolalohinski/gonja/v2"
+	"github.com/nikolalohinski/gonja/v2/config"
 	"github.com/nikolalohinski/gonja/v2/exec"
+	"github.com/nikolalohinski/gonja/v2/loaders"
 )
 
 // Custom filters for Gonja templating engine.
@@ -108,6 +111,23 @@ func asBoolIfPossible(val interface{}) (bool, bool) {
 	return false, false
 }
 
+// createTemplate creates a Gonja template from the given path and the optional config.
+func createTemplate(templatePath string, templateConfig *config.Config) (*exec.Template, error) {
+	loader, err := loaders.NewFileSystemLoader(path.Dir(templatePath))
+	if err != nil {
+		return nil, err
+	}
+	if templateConfig == nil {
+		templateConfig = gonja.DefaultConfig
+	}
+	return exec.NewTemplate(
+		path.Base(templatePath),
+		templateConfig,
+		loader,
+		gonja.DefaultEnvironment,
+	)
+}
+
 func CopyFile(
 	ctx context.Context,
 	values map[string]any,
@@ -156,7 +176,23 @@ func ResolveTemplate(
 	values map[string]any,
 	templatePath string,
 ) (string, error) {
-	tpl, err := gonja.FromFile(templatePath)
+	return ResolveTemplateStrict(ctx, values, templatePath, false /*strictUndefined*/)
+}
+
+// ResolveTemplateStrict resolves the template with an option for strict undefined variables.
+// Setting strict is useful for catching missing variables.
+func ResolveTemplateStrict(
+	ctx context.Context,
+	values map[string]any,
+	templatePath string,
+	strictUndefined bool,
+) (string, error) {
+	templateConfig := gonja.DefaultConfig
+	if strictUndefined {
+		templateConfig = config.New()
+		templateConfig.StrictUndefined = true
+	}
+	tpl, err := createTemplate(templatePath, templateConfig)
 	if err != nil {
 		return "", err
 	}

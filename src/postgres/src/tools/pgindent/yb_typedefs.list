@@ -51,6 +51,7 @@ YbBucketTupleInfo
 YbBundleInfo
 YbCRSLsnType
 YbCRSOrderingMode
+YbCacheReplacementAlgorithmEnum
 YbCatCListIterator
 YbCatCacheInfo
 YbCatNamePfId
@@ -114,6 +115,8 @@ YbInstrumentation
 YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
+YbJumbleState
+YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
@@ -122,6 +125,8 @@ YbNLBucketInfo
 YbNameToOidMapEntry
 YbNewRelMapEntry
 YbNextRangeResult
+YbNotifsPollerInitStatus
+YbNotifsPollerShmemData
 YbObjectLockMode
 YbOidAssignmentMapEntry
 YbOptSplit
@@ -146,10 +151,20 @@ YbPgRpcStats
 YbPgssCounters
 YbPgssFillInConstantLengths
 YbPlanInfo
+YbPlanStatePtr
 YbPrefetcherStarterFunctor
 YbPrefetcherStarterWithCache
 YbPushdownExprs
 YbQdPgssStoreKind
+YbQpmConfiguration
+YbQpmHashEntry
+YbQpmHashKey
+YbQpmInfoEntry
+YbQpmLruClock
+YbQpmLruEntry
+YbQpmSharedState
+YbQpmTiming
+YbQpmTrackEnum
 YbQueryConstantsMetadata
 YbQueryDiagnosticsBundles
 YbQueryDiagnosticsEntry
@@ -218,6 +233,7 @@ YbcAshConstQueryIdType
 YbcAshGetNextCircularBufferSlot
 YbcAshMetadata
 YbcAshSample
+YbcAutoAnalyzeInfo
 YbcBindColumn
 YbcCatalogMessageList
 YbcCatalogMessageLists
@@ -265,11 +281,13 @@ YbcPgExpr
 YbcPgFunction
 YbcPgGFlagsAccessor
 YbcPgGlobalTabletsDescriptor
+YbcPgGlobalViewRead
 YbcPgInitPostgresInfo
 YbcPgInitTransactionData
 YbcPgInsertOnConflictKeyInfo
 YbcPgInsertOnConflictKeyState
 YbcPgJwtAuthOptions
+YbcPgKeyValue
 YbcPgLastKnownCatalogVersionInfo
 YbcPgLocalTabletsDescriptor
 YbcPgMemctx
@@ -312,6 +330,7 @@ YbcReadAfterCommitVisibilityEnum
 YbcReadHybridTime
 YbcReadPointHandle
 YbcRecordTempRelationDDL_hook_type
+YbcRemotePgExecResult
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
 YbcRpczEntry
@@ -319,6 +338,7 @@ YbcSamplingAlgorithmEnum
 YbcServerDescriptor
 YbcSliceSet
 YbcSliceVector
+YbcSlotEntryDescriptor
 YbcSortKey
 YbcStatus
 YbcSwitchMemoryContextFn

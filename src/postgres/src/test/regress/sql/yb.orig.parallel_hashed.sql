@@ -264,6 +264,16 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 /*+ Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
 
+-- GHI #30204 support for conditions on yb_hash_code()
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
+
 DROP TABLE pctest1;
 DROP TABLE pctest2;
 DROP TABLE pctest3;

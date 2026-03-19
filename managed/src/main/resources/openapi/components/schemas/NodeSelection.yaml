@@ -1,0 +1,39 @@
+title: NodeSelection
+description: Options for selecting which nodes to run the script on
+x-yba-api-visibility: internal
+type: object
+properties:
+  node_names:
+    description: List of specific node names to run the script on.
+    type: array
+    items:
+      type: string
+    example:
+      - yb-15-universe-n1
+      - yb-15-universe-n2
+  masters_only:
+    description: Run the script only on master nodes from the specified node_names (or all masters if node_names is not provided).
+    type: boolean
+    example: false
+    default: false
+  tservers_only:
+    description: Run the script only on tserver nodes from the specified node_names (or all tservers if node_names is not provided).
+    type: boolean
+    example: false
+    default: false
+  cluster_uuid:
+    description: |
+      Run the script only on nodes belonging to a specific cluster (e.g., primary or read replica).
+      If not provided, runs on nodes across all clusters in the universe.
+    type: string
+    format: uuid
+    example: 5e8e5e8e-5e8e-5e8e-5e8e-5e8e5e8e5e8e
+  max_parallel_nodes:
+    description: |
+      Maximum number of nodes to execute the script on in parallel.
+      Higher values complete faster but use more resources.
+      Set to 1 for sequential execution.
+    type: integer
+    example: 50
+    default: 50
+    minimum: 1

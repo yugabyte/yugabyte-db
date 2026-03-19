@@ -25,16 +25,19 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.ProxyConfigUpdateParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -728,14 +731,24 @@ public class UpgradeUniverseHandler {
 
     requestParams.verifyParams(universe, true);
     userIntent.auditLogConfig = requestParams.auditLogConfig;
-    return submitUpgradeTask(
-        userIntent.providerType.equals(CloudType.kubernetes)
-            ? TaskType.ModifyKubernetesAuditLoggingConfig
-            : TaskType.ModifyAuditLoggingConfig,
-        CustomerTask.TaskType.ModifyAuditLoggingConfig,
-        requestParams,
-        customer,
-        universe);
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      return submitUpgradeTask(
+          TaskType.ModifyKubernetesAuditLoggingConfig,
+          CustomerTask.TaskType.ModifyAuditLoggingConfig,
+          requestParams,
+          customer,
+          universe);
+    }
+    ExportTelemetryConfigParams exportParams =
+        buildExportTelemetryConfigParamsFromUniverse(universe);
+    // Override the audit log config in the export params with the requested config.
+    exportParams.setTelemetryConfig(
+        TelemetryConfig.of(
+            requestParams.auditLogConfig,
+            exportParams.getQueryLogConfig(),
+            exportParams.getMetricsExportConfig()));
+    exportParams.upgradeOption = requestParams.upgradeOption;
+    return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
   public UUID modifyQueryLoggingConfig(
@@ -802,12 +815,6 @@ public class UpgradeUniverseHandler {
         }
       }
 
-      if (userIntent.providerType.equals(CloudType.kubernetes)) {
-        String errorMessage = "Query log exporter is not supported for kubernetes provider.";
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
       // Verify if the exporter credentials are consistent on the universe.
       // Applies to AWS and GCP TPs since they are exported as environment variables on the DB
       // nodes.
@@ -824,16 +831,44 @@ public class UpgradeUniverseHandler {
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
+
+      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      if (userIntent.providerType.equals(CloudType.kubernetes)
+          && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+        String errorMessage =
+            String.format(
+                "Query log exporter is not supported for universe '%s' running version '%s'. Please"
+                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+                    + " only enable query logs on the universe.",
+                universe.getUniverseUUID(),
+                userIntent.ybSoftwareVersion,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+        log.error(errorMessage);
+        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
-    return submitUpgradeTask(
-        TaskType.ModifyQueryLoggingConfig,
-        CustomerTask.TaskType.ModifyQueryLoggingConfig,
-        requestParams,
-        customer,
-        universe);
+    if (userIntent.providerType.equals(CloudType.kubernetes)) {
+      return submitUpgradeTask(
+          TaskType.ModifyKubernetesQueryLoggingConfig,
+          CustomerTask.TaskType.ModifyQueryLoggingConfig,
+          requestParams,
+          customer,
+          universe);
+    }
+    ExportTelemetryConfigParams exportParams =
+        buildExportTelemetryConfigParamsFromUniverse(universe);
+    // Override the query log config in the export params with the requested config.
+    exportParams.setTelemetryConfig(
+        TelemetryConfig.of(
+            exportParams.getAuditLogConfig(),
+            requestParams.queryLogConfig,
+            exportParams.getMetricsExportConfig()));
+    exportParams.upgradeOption = requestParams.upgradeOption;
+    return submitExportTelemetryConfigs(exportParams, customer, universe);
   }
 
   // Enable/Disable TLS on Cluster
@@ -953,6 +988,17 @@ public class UpgradeUniverseHandler {
     return submitUpgradeTask(
         TaskType.RebootUniverse,
         CustomerTask.TaskType.RebootUniverse,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID provisionUniverseNodes(
+      ProvisionUniverseNodesParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.ProvisionUniverseNodes,
+        CustomerTask.TaskType.ProvisionUniverseNodes,
         requestParams,
         customer,
         universe);
@@ -1114,5 +1160,42 @@ public class UpgradeUniverseHandler {
 
   private static String booleanToStr(boolean toggle) {
     return toggle ? "ON" : "OFF";
+  }
+
+  /**
+   * Builds ExportTelemetryConfigParams from current universe state (audit, query, metrics from
+   * userIntent). Caller sets the one telemetry config being updated and upgrade options.
+   */
+  @VisibleForTesting
+  public ExportTelemetryConfigParams buildExportTelemetryConfigParamsFromUniverse(
+      Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    ExportTelemetryConfigParams params = new ExportTelemetryConfigParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodePrefix = details.nodePrefix;
+    params.clusters = details.clusters;
+    params.setTelemetryConfig(
+        TelemetryConfig.of(
+            userIntent.auditLogConfig, userIntent.queryLogConfig, userIntent.metricsExportConfig));
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.sleepAfterMasterRestartMillis = details.sleepAfterMasterRestartMillis;
+    params.sleepAfterTServerRestartMillis = details.sleepAfterTServerRestartMillis;
+    return params;
+  }
+
+  public UUID submitExportTelemetryConfigs(
+      ExportTelemetryConfigParams params, Customer customer, Universe universe) {
+    params.setUniverseUUID(universe.getUniverseUUID());
+    if (params.expectedUniverseVersion == null) {
+      params.expectedUniverseVersion = universe.getVersion();
+    }
+    params.verifyParams(universe, true);
+    return submitUpgradeTask(
+        TaskType.ConfigureExportTelemetryConfig,
+        CustomerTask.TaskType.ConfigureExportTelemetryConfig,
+        params,
+        customer,
+        universe);
   }
 }

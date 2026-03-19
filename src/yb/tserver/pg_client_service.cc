@@ -32,14 +32,17 @@
 #include "yb/cdc/cdc_state_table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
+#include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
@@ -51,6 +54,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
 
@@ -68,6 +72,7 @@
 #include "yb/tserver/pg_shared_mem_pool.h"
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
@@ -89,6 +94,8 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -166,7 +173,11 @@ namespace {
 template <class Resp>
 void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   if (!status.ok()) {
-    StatusToPB(status, resp->mutable_status());
+    if constexpr (HasMemberFunction_status<Resp>::value) {
+      StatusToPB(status, resp->mutable_status());
+    } else {
+      StatusToPB(status, resp->mutable_error()->mutable_status());
+    }
   }
   context->RespondSuccess();
 }
@@ -1869,6 +1880,58 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status ListSlotEntries(
+      const PgListSlotEntriesRequestPB& req, PgListSlotEntriesResponsePB* resp,
+      rpc::RpcContext* context) {
+    Status iteration_status;
+    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector()
+            .IncludeConfirmedFlushLSN()
+            .IncludeRestartLSN()
+            .IncludeXmin()
+            .IncludeRecordIdCommitTime()
+            .IncludeLastPubRefreshTime()
+            .IncludeActivePid(),
+        &iteration_status));
+
+    for (const auto& entry_result : range_result) {
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+      if (entry.key.tablet_id != kCDCSDKSlotEntryTabletId) {
+        continue;
+      }
+      RSTATUS_DCHECK(
+          entry.confirmed_flush_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have confirmed flush LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.restart_lsn.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have restart LSN", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.xmin.has_value(), IllegalState, "Slot entry for stream $0 does not have xmin",
+          entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.record_id_commit_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have record id commit time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.last_pub_refresh_time.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have last pub refresh time", entry.key.stream_id);
+      RSTATUS_DCHECK(
+          entry.active_pid.has_value(), IllegalState,
+          "Slot entry for stream $0 does not have active pid", entry.key.stream_id);
+
+      auto slot_entry = resp->add_slot_entries();
+      slot_entry->set_stream_id(entry.key.stream_id.ToString());
+      slot_entry->set_confirmed_flush_lsn(entry.confirmed_flush_lsn.value());
+      slot_entry->set_restart_lsn(entry.restart_lsn.value());
+      slot_entry->set_xmin(entry.xmin.value());
+      slot_entry->set_record_id_commit_time_ht(entry.record_id_commit_time.value());
+      slot_entry->set_last_pub_refresh_time(entry.last_pub_refresh_time.value());
+      slot_entry->set_active_pid(entry.active_pid.value());
+    }
+
+    return Status::OK();
+  }
+
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {
@@ -1929,8 +1992,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         }
 
         // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-        // yet by the client. So treat it is as an inactive case.
-        if (!active_time) {
+        // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+        // tablet's entries are added for internal usage only, do not use them for checking if the
+        // stream is active.
+        if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
           continue;
         }
 
@@ -1963,12 +2028,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto last_active_time_micros = (it != stream_to_latest_active_time.end()) ? it->second : 0;
       auto is_stream_active =
           current_time - last_active_time_micros <=
-          1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+          1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
       replication_slot->set_replication_slot_status(
           (is_stream_active) ? ReplicationSlotStatus::ACTIVE : ReplicationSlotStatus::INACTIVE);
 
       auto expiration_threshold_micros =
-          static_cast<int64_t>(1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+          static_cast<int64_t>(1000 * FLAGS_cdc_intent_retention_ms);
       int64_t idle_duration_micros;
       // If the active time has not been set yet implying no tables are present in the database
       // we use the consistent snapshot time to check if the slot/stream has expired or not
@@ -2114,8 +2179,10 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       auto active_time = entry.active_time;
 
       // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
+      // yet by the client. So treat it is as an inactive case. Also since the sys catalog
+      // tablet's entries are added for internal usage only, do not use them for checking if the
+      // stream is active.
+      if (!active_time || entry.key.tablet_id == master::kSysCatalogTabletId) {
         continue;
       }
 
@@ -2127,12 +2194,12 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
     *DCHECK_NOTNULL(active) =
         GetCurrentTimeMicros() - last_activity_time_micros <=
-        1000 * GetAtomicFlag(&FLAGS_ysql_cdc_active_replication_slot_window_ms);
+        1000 * FLAGS_ysql_cdc_active_replication_slot_window_ms;
 
     auto commit_idle_duration_micros =
         GetCurrentTimeMicros() - HybridTime(*record_id_commit_time_ht).GetPhysicalValueMicros();
     auto last_activity_idle_duration_micros = GetCurrentTimeMicros() - last_activity_time_micros;
-    auto expiration_threshold_micros = 1000 * GetAtomicFlag(&FLAGS_cdc_intent_retention_ms);
+    auto expiration_threshold_micros = 1000 * FLAGS_cdc_intent_retention_ms;
     *DCHECK_NOTNULL(expired) =
         (last_activity_time_micros == 0)
             ? (commit_idle_duration_micros > expiration_threshold_micros)
@@ -2642,6 +2709,15 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return Status::OK();
   }
 
+  Status GetTabletForKey(
+      const PgGetTabletForKeyRequestPB& req, PgGetTabletForKeyResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto tablet_metadata = VERIFY_RESULT(
+        client().GetTabletsMetadata(req.table_id(), req.partition_key()));
+    resp->set_tablet_id(tablet_metadata[0].tablet_id());
+    return Status::OK();
+  }
+
   Status ServersMetrics(
       const PgServersMetricsRequestPB& req, PgServersMetricsResponsePB* resp,
       rpc::RpcContext* context) {
@@ -2758,6 +2834,82 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         req.namespace_oid(), req.table_name(), &oid, &relfilenode));
     resp->set_table_oid(oid);
     resp->set_relfilenode(relfilenode);
+    return Status::OK();
+  }
+
+  Status QueryAutoAnalyze(
+      const PgQueryAutoAnalyzeRequestPB& req, PgQueryAutoAnalyzeResponsePB* resp,
+      rpc::RpcContext* context) {
+    auto table = std::make_unique<client::TableHandle>();
+    const client::YBTableName pg_auto_analyze_table =
+        stateful_service::GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE);
+    RETURN_NOT_OK(table->Open(pg_auto_analyze_table, &client()));
+    const client::YBqlReadOpPtr read_op = table->NewReadOp();
+    auto* const read_req = read_op->mutable_request();
+
+    table->AddColumns(
+        {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations,
+         yb::master::kPgAutoAnalyzeLastAnalyzeInfo, yb::master::kPgAutoAnalyzeCurrentAnalyzeInfo},
+        read_req);
+    auto session = client().NewSession(client().default_rpc_timeout());
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK_PREPEND(
+        session->TEST_ApplyAndFlush(read_op), "Failed to read from auto analyze table");
+
+    auto database_oid = req.database_oid();
+    auto rowblock = ql::RowsResult(read_op.get()).GetRowBlock();
+    auto& row_schema = rowblock->schema();
+    auto table_id_idx = row_schema.find_column(master::kPgAutoAnalyzeTableId);
+    auto mutations_idx = row_schema.find_column(master::kPgAutoAnalyzeMutations);
+    auto analyze_history_idx = row_schema.find_column(master::kPgAutoAnalyzeLastAnalyzeInfo);
+    for (const auto& row : rowblock->rows()) {
+        TableId table_id = row.column(table_id_idx).string_value();
+        auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table_id));
+        if (db_oid != database_oid)
+            continue;
+        auto pg_auto_analyze_entry = resp->add_rows();
+        auto table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
+        int64_t mutations = row.column(mutations_idx).int64_value();
+        pg_auto_analyze_entry->set_table_oid(table_oid);
+        pg_auto_analyze_entry->set_mutations(mutations);
+        auto last_analyze_qlvalue = row.column(analyze_history_idx);
+        if (!last_analyze_qlvalue.IsNull()
+            && last_analyze_qlvalue.value_case() == QLValuePB::kJsonbValue) {
+            pg_auto_analyze_entry->set_last_analyze_info(last_analyze_qlvalue.jsonb_value());
+        }
+    }
+    return Status::OK();
+  }
+
+  Status RemoteExec(
+      const PgRemoteExecRequestPB& req, PgRemoteExecResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& target_uuid = req.tserver_uuid();
+    auto remote_tservers = VERIFY_RESULT(tablet_server_.GetRemoteTabletServers());
+    client::internal::RemoteTabletServerPtr remote_tserver;
+    for (const auto& ts : remote_tservers) {
+      if (ts->permanent_uuid() == target_uuid) {
+        remote_tserver = ts;
+        break;
+      }
+    }
+    RSTATUS_DCHECK(
+        remote_tserver, IllegalState,
+        Format("Tserver $0 not found in live tserver list", target_uuid));
+
+    RETURN_NOT_OK(remote_tserver->InitProxy(&client()));
+    auto proxy = remote_tserver->proxy();
+    rpc::RpcController controller;
+    controller.set_deadline(context->GetClientDeadline());
+    auto s = proxy->PgRemoteExec(req, resp, &controller);
+
+    if (!s.ok() || resp->has_error()) {
+      auto error_status = s.ok() ? StatusFromPB(resp->error().status()) : s;
+      return error_status.CloneAndPrepend(Format(
+          "Failed to execute remote pg query ($0) on tserver $1",
+          req.query(), target_uuid));
+    }
+
     return Status::OK();
   }
 

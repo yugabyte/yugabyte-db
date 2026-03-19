@@ -97,6 +97,14 @@ public class PlacementInfo {
     // Multiple zones can have the same value. A lower value indicates higher zone priority.
     @ApiModelProperty public int leaderPreference;
 
+    // Start index of tserver statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int tsStsIndex = 0;
+
+    // Start index of master statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int masterStsIndex = 0;
+
     @Override
     public String toString() {
       return "(AZ="

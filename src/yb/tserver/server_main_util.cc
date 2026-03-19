@@ -19,9 +19,7 @@
 #include <boost/algorithm/string/trim.hpp>
 #include "yb/util/string_case.h"
 
-#if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
-#endif
 
 #include "yb/common/init.h"
 #include "yb/common/wire_protocol.h"
@@ -265,10 +263,8 @@ Status MasterTServerParseFlagsAndInit(
     return STATUS(InvalidArgument, "Error parsing command-line flags");
   }
 
-#if YB_ABSL_ENABLED
   // Must be called before installing a failure signal handler (in InitYB).
   absl::InitializeSymbolizer((*argv)[0]);
-#endif
 
   RETURN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
 

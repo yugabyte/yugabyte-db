@@ -61,9 +61,9 @@ INSERT INTO boolpart (a) VALUES
     (false),
     (NULL);
 EXPLAIN (COSTS OFF) SELECT * FROM boolpart WHERE a = false;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_f boolpart
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on boolpart_f boolpart_1
    Storage Filter: (NOT a)
 (2 rows)
 

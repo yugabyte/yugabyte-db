@@ -1,10 +1,13 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import javax.validation.Valid;
+import lombok.Getter;
+import lombok.Setter;
 import org.yb.cdc.CdcConsumer.XClusterRole;
 import play.data.validation.Constraints.MaxLength;
 import play.data.validation.Constraints.Pattern;
@@ -55,4 +58,9 @@ public class XClusterConfigEditFormData {
 
   @ApiModelProperty("The role that the target universe should have in the xCluster config")
   public XClusterRole targetRole;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

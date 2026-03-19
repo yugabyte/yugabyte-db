@@ -102,6 +102,7 @@ public class Universe extends Model {
   public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
   public static final String K8S_SET_MASTER_EXISTING_UNIVERSE_GFLAG =
       "k8sSetMasterJoinExistingUniverseGflag";
+  public static final String VOLUME_MIGRATED = "volumeMigrated";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();

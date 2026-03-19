@@ -10,6 +10,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -20,9 +21,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.TlsConfigUpdateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -445,6 +448,27 @@ public class CertsRotateTest extends UpgradeTaskTest {
     CertsRotateParams taskParams =
         getTaskParams(false, false, false, UpgradeOption.NON_RESTART_UPGRADE);
     assertThrows(RuntimeException.class, () -> submitTask(taskParams));
+    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
+  }
+
+  @Test
+  public void testCertsRotateNonRestartUpgradeRejectedForC2nOnlyWithDbBelow2025_2_1()
+      throws IOException, NoSuchAlgorithmException {
+    UUID rootCA = UUID.randomUUID();
+    UUID clientRootCA = rootCA;
+    prepareUniverse(false, true, true, rootCA, clientRootCA);
+    TestHelper.updateUniverseVersion(defaultUniverse, "2025.2.0.0-b1");
+    defaultUniverse.updateConfig(ImmutableMap.of(Universe.KEY_CERT_HOT_RELOADABLE, "true"));
+    defaultUniverse.save();
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.enableCertReload.getKey(), "true");
+    CertsRotateParams taskParams =
+        getTaskParams(true, false, true, UpgradeOption.NON_RESTART_UPGRADE);
+    PlatformServiceException e =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertTrue(
+        "Exception message should mention client-to-node-only and minimum version",
+        e.getMessage().contains("client-to-node-only")
+            && e.getMessage().contains(CertsRotateParams.HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION));
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 

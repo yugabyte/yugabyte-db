@@ -108,7 +108,7 @@ Proceed as follows:
       - Tablet: 318745aee32c463c81d4242924d679a2
     ```
 
-1. Wait until [xCluster safe time](../async-transactional-setup/#verify-replication) on Standby (B) is greater than the current time obtained on Primary (A).
+1. Wait until [xCluster safe time](../async-transactional-setup-manual/#verify-replication) on Standby (B) is greater than the current time obtained on Primary (A).
 
 1. Use `change_xcluster_role` to promote Standby (B) to ACTIVE as follows.
 

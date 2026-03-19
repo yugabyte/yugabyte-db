@@ -35,8 +35,6 @@ set(DOCDB_SHARED_SRCS
         )
 
 set(DOCDB_SHARED_DEPS
-        yb_dockv
-        yb_ash
         yb_util
         yb_common
         docdb_proto

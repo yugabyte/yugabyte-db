@@ -66,11 +66,14 @@ import com.yugabyte.yw.nodeagent.UpdateResponse;
 import com.yugabyte.yw.nodeagent.UpgradeInfo;
 import com.yugabyte.yw.nodeagent.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.UploadFileResponse;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckInput;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckOutput;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
 import io.grpc.ConnectivityState;
+import io.grpc.Context;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -687,6 +690,14 @@ public class NodeAgentClient {
       if (optional.isPresent() && optional.get().isActive()) {
         return optional;
       }
+      if (provider.isManualOnprem()) {
+        String errMsg =
+            String.format(
+                "Node agent must already be installed for %s but it is not installed or inactive",
+                ip);
+        log.error(errMsg);
+        throw new IllegalStateException(errMsg);
+      }
     }
     return Optional.empty();
   }
@@ -1116,6 +1127,18 @@ public class NodeAgentClient {
     return runAsyncTask(nodeAgent, builder.build(), DestroyServerOutput.class);
   }
 
+  public YnpPreflightCheckOutput runYnpPreflightCheck(
+      NodeAgent nodeAgent, YnpPreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setYnpPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), YnpPreflightCheckOutput.class);
+  }
+
   public synchronized void cleanupCachedClients() {
     try {
       cachedChannels.cleanUp();
@@ -1146,13 +1169,19 @@ public class NodeAgentClient {
             .describeTask(describeTaskRequest, responseObserver);
         return responseObserver.waitForResponse();
       } catch (StatusRuntimeException e) {
-        if (e.getStatus().getCode() != Code.DEADLINE_EXCEEDED) {
+        if (e.getStatus().getCode() == Code.DEADLINE_EXCEEDED) {
+          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
+        } else if (e.getStatus().getCode() == Code.CANCELLED && !Context.current().isCancelled()) {
+          // Client side did not cancel it.
+          log.info(
+              "Cancelled by server. Reconnecting to node agent {} to describe task {}",
+              nodeAgent,
+              taskId);
+        } else {
           // Best effort to abort.
           abortTask(nodeAgent, taskId);
           log.error("Error in describing task for node agent {} - {}", nodeAgent, e.getStatus());
           throw e;
-        } else {
-          log.info("Reconnecting to node agent {} to describe task {}", nodeAgent, taskId);
         }
       }
     }

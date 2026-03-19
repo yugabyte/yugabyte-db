@@ -113,6 +113,7 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
+  cgroups.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -250,6 +251,7 @@ set(UTIL_SRCS
   )
 
 set(UTIL_LIBS
+  absl
   boost_system
   boost_thread
   boost_atomic
@@ -272,7 +274,6 @@ if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
-    absl
     rt
     libbacktrace)
 endif()
@@ -351,6 +352,7 @@ ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
+ADD_YB_TEST(cgroups-test)
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)

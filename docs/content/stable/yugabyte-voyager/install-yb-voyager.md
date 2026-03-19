@@ -145,34 +145,42 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" lang="yum" %}}
 
-You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
+You can perform an airgapped installation of YugabyteDB Voyager on RHEL 8/9 and CentOS 8/9.
+
+### Prepare the installation bundle
 
 1. Download the airgapped bundle:
 
-    - For RHEL8:
+    For RHEL 8:
 
-        ```sh
-        wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
-        ```
+    ```sh
+    wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-8-x86_64.tar.gz
+    ```
 
-    - For RHEL9:
+    For RHEL 9:
 
-        ```sh
-        wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
-        ```
+    ```sh
+    wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest-rhel-9-x86_64.tar.gz
+    ```
 
-1. Extract the bundle.
+1. Extract the bundle:
 
     ```sh
     tar -xvf <tar-bundle-name>
     ```
 
-    It contains three packages - debezium, ora2pg, and yb-voyager.
+    The extracted bundle contains the following packages:
+
+    | Package | Version |
+    | :------ | :------ |
+    | YugabyteDB Voyager | \<voyager_version\> |
+    | Debezium | 2.5.2-\<voyager_version\> |
+    | Ora2pg | 23.2-yb.2 |
 
 1. Download the airgapped installation script into the extracted bundle directory:
 
     ```sh
-    wget -P </path/to/directory> raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
+    wget -P </path/to/directory> https://raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
     ```
 
 1. Make the script executable:
@@ -181,13 +189,84 @@ You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
     chmod +x /path/to/directory/install-voyager-airgapped.sh
     ```
 
-1. Transfer the folder (which contains the 3 packages and the installer script) to the airgapped machine.
-1. Install all the [dependencies](#dependencies-for-rhel-and-centos-8) on the airgapped machine.
-1. Run the [installer script](#installation-script) on the airgapped machine to check the dependencies and install voyager:
+1. Transfer the folder (containing the packages and installer script) to the airgapped machine.
+
+### Install dependencies
+
+Install the following dependencies on the airgapped machine _before_ running the installer script. If any dependency is missing, the script exits and lists the missing packages.
+
+**System tools**
+
+| Dependency | Version / Constraint |
+| :--------- | :------------------- |
+| binutils | ≥ 2.25 |
+| java | ≥ 17 |
+| make | – |
+| sqlite | – |
+| perl | – |
+| perl-DBI | – |
+| perl-App-cpanminus | – |
+| perl-ExtUtils-MakeMaker | – |
+
+**PostgreSQL client tools**
+
+Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+
+| Dependency | Required Version |
+| :--------- | :--------------- |
+| pg_dump | 17 |
+| pg_restore | 17 |
+| psql | 17 |
+
+**MySQL development libraries**
+
+| OS Version | Dependency |
+| :--------- | :---------- |
+| RHEL 8 / CentOS 8 | mysql-devel |
+| RHEL 9 / CentOS 9 | mysql-community-devel |
+
+**Oracle Instant Client (required versions)**
+
+Install the exact version of all Oracle Instant Client packages as follows:
+
+| Dependency | Required Version |
+| :--------- | :--------------- |
+| [oracle-instantclient-basic](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-basic-21.5.0.0.0-1.x86_64.rpm) | 21.5.0.0.0 |
+| [oracle-instantclient-devel](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-devel-21.5.0.0.0-1.x86_64.rpm) | 21.5.0.0.0 |
+| [oracle-instantclient-jdbc](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-jdbc-21.5.0.0.0-1.x86_64.rpm) | 21.5.0.0.0 |
+| [oracle-instantclient-sqlplus](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-sqlplus-21.5.0.0.0-1.x86_64.rpm) | 21.5.0.0.0 |
+| [oracle-instantclient-tools](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-tools-21.5.0.0.0-1.x86_64.rpm) | 21.5.0.0.0 |
+
+### Run the installer script
+
+1. After installing all the dependencies, run the installer script on the airgapped machine:
 
     ```sh
     ./install-voyager-airgapped.sh
     ```
+
+    The script:
+
+    - Checks whether all required dependencies are installed.
+    - Reports any missing dependencies and exits if any are not found.
+    - Installs Ora2pg, Debezium, and YugabyteDB Voyager if all checks pass.
+
+    **Script usage**
+
+    ```sh
+    ./install-voyager-airgapped.sh [options]
+    ```
+
+    | Argument | Description |
+    | :------- | :---------- |
+    | -d, --check-dependencies-only | Check dependencies only and exit without installing |
+    | -f, --force-install | Install packages without checking dependencies |
+    | -p, --pg-only | Check/install only PostgreSQL-related dependencies |
+    | -m, --mysql-only | Check/install only MySQL-related dependencies |
+    | -o, --oracle-only | Check/install only Oracle-related dependencies |
+    | -h, --help | Display help message |
+
+    Only one of `--pg-only`, `--mysql-only`, or `--oracle-only` can be specified at a time. If none are provided, the script checks dependencies for all database types.
 
 1. Check that yb-voyager is installed using the following command:
 
@@ -195,76 +274,21 @@ You can perform an airgapped installation on RHEL 8/9 and CentOS 8/9.
     yb-voyager version
     ```
 
-### Dependencies for RHEL 8/9 and CentOS 8/9
+   The components installed by the script are described in the following table:
 
-Binutils: Minimum version: 2.25
-
-Java: Minimum version: 17
-
-pg_dump: Minimum version: 14
-
-pg_restore: Minimum version: 14
-
-psql: Minimum version: 14
-
-#### Yum packages
-
-- make (no version dependency)
-- sqlite (no version dependency)
-- perl (no version dependency)
-- perl-DBI (no version dependency)
-- perl-App-cpanminus (no version dependency)
-- perl-ExtUtils-MakeMaker (no version dependency)
-- mysql-devel (For RHEL 8) (no version dependency)
-- mysql-community-devel (For RHEL 9) (no version dependency)
-- oracle-instantclient-tools with exact version 21.5.0.0.0
-- oracle-instantclient-basic with exact version 21.5.0.0.0
-- oracle-instantclient-devel with exact version 21.5.0.0.0
-- oracle-instantclient-jdbc with exact version 21.5.0.0.0
-- oracle-instantclient-sqlplus with exact version 21.5.0.0.0
-
-### Installation Script
-
-The script by default checks what dependencies are installed on the system and throws an error mentioning the missing dependencies. If all the dependencies are found to be installed, it proceeds with the installation of ora2pg, debezium, and yb-voyager.
-
-Usage:
-
-```sh
-./install-voyager-airgapped.sh [options]
-```
-
-The options are as follows.
-
-| Argument                       | Description/valid options                                                     |
-| :----------------------------- | :--------------------------------------------------------------------------- |
-| -d, --check-dependencies-only | Check the dependencies only, then exit without installing.                                           |
-| -f, --force-install           | Force install packages without checking dependencies.                       |
-| -p, --pg-only                 | Check and install only PostgreSQL source-related voyager dependencies.     |
-| -m, --mysql-only              | Check and install only MySQL source-related voyager dependencies.          |
-| -o, --oracle-only             | Check and install only Oracle source-related voyager dependencies.         |
-| -h, --help                    | Display this help message.                                                 |
-
-You can only specify one of `--pg-only`, `--oracle-only`, or `--mysql-only`. If none are provided, the script checks and installs dependencies for all database types. When one of the flags is specified, `--help` and `--check-dependencies-only` are specific to the selected database.
-
-### Oracle Instant Client installation help for Centos/RHEL
-
-You can download the oracle instant client rpms from the following links:
-
-- [oracle-instantclient-tools](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-tools-21.5.0.0.0-1.x86_64.rpm)
-
-- [oracle-instantclient-basic](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-basic-21.5.0.0.0-1.x86_64.rpm)
-
-- [oracle-instantclient-devel](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-devel-21.5.0.0.0-1.x86_64.rpm)
-
-- [oracle-instantclient-jdbc](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-jdbc-21.5.0.0.0-1.x86_64.rpm)
-
-- [oracle-instantclient-sqlplus](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-sqlplus-21.5.0.0.0-1.x86_64.rpm)
+    | Component | Version |
+    | :-------- | :------ |
+    | YugabyteDB Voyager | \<voyager_version\> |
+    | Debezium | 2.5.2-\<voyager_version\> |
+    | Ora2pg | 23.2-yb.2 |
 
 {{% /tab %}}
 
 {{% tab header="Ubuntu" lang="ubuntu" %}}
 
-You can perform an airgapped installation on Ubuntu 22 and later.
+You can perform an airgapped installation of YugabyteDB Voyager on Ubuntu 22.04 and later.
+
+### Prepare the installation bundle
 
 1. Download the airgapped bundle:
 
@@ -272,18 +296,24 @@ You can perform an airgapped installation on Ubuntu 22 and later.
     wget https://software.yugabyte.com/repos/airgapped/yb-voyager-latest_debian.tar.gz
     ```
 
-1. Extract the bundle.
+1. Extract the bundle:
 
     ```sh
     tar -xvf <tar-bundle-name>
     ```
 
-    It contains three packages - debezium, ora2pg, and yb-voyager.
+    The extracted bundle contains the following packages:
+
+    | Package | Version |
+    | :------ | :------ |
+    | YugabyteDB Voyager | \<voyager_version\> |
+    | Debezium | 2.5.2-\<voyager_version\> |
+    | Ora2pg | 23.2-yb.2 |
 
 1. Download the airgapped installation script into the extracted bundle directory:
 
     ```sh
-    wget -P </path/to/directory> raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
+    wget -P </path/to/directory> https://raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
     ```
 
 1. Make the script executable:
@@ -292,13 +322,83 @@ You can perform an airgapped installation on Ubuntu 22 and later.
     chmod +x /path/to/directory/install-voyager-airgapped.sh
     ```
 
-1. Transfer the folder (which contains the 3 packages and the installer script) to the airgapped machine.
-1. Install all the [dependencies](#dependencies-for-ubuntu) on the airgapped machine.
-1. Run the [install script](#install-script) on the airgapped machine to check the dependencies and install voyager:
+1. Transfer the folder (containing the packages and installer script) to the airgapped machine.
+
+### Install dependencies
+
+Install the following dependencies on the airgapped machine _before_ running the installer script. If any dependency is missing, the script exits and reports the missing packages.
+
+**System tools**
+
+| Dependency | Version / Constraint |
+| :--------- | :------------------- |
+| binutils | ≥ 2.25 |
+| java | ≥ 17 |
+| make | – |
+| sqlite3 | – |
+| perl | – |
+| libdbi-perl | – |
+| cpanminus | – |
+| libaio1 | – |
+
+**PostgreSQL client tools**
+
+Install the following PostgreSQL 17 client tools and make it available in your system PATH.
+
+| Dependency | Required Version |
+| :--------- | :--------------- |
+| pg_dump | 17 |
+| pg_restore | 17 |
+| psql | 17 |
+
+**MySQL development libraries**
+
+| Dependency |
+| :---------- |
+| libmysqlclient-dev |
+
+**Oracle Instant Client (required versions)**
+
+Install the exact version of all Oracle Instant Client packages as follows:
+
+| Dependency | Required Version |
+| :--------- | :--------------- |
+| [oracle-instantclient-basic](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb) | 21.5.0.0.0 |
+| [oracle-instantclient-devel](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-devel_21.5.0.0.0-1_amd64.deb) | 21.5.0.0.0 |
+| [oracle-instantclient-jdbc](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-jdbc_21.5.0.0.0-1_amd64.deb) | 21.5.0.0.0 |
+| [oracle-instantclient-sqlplus](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-sqlplus_21.5.0.0.0-1_amd64.deb) | 21.5.0.0.0 |
+| [oracle-instantclient-tools](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.deb) | 21.5.0.0.0 |
+
+### Run the installer script
+
+1. After installing all the dependencies, run the installer script on the airgapped machine:
 
     ```sh
     ./install-voyager-airgapped.sh
     ```
+
+    The script:
+
+    - Verifies that all required dependencies are installed.
+    - Reports any missing dependencies and exits if any are not found.
+    - Installs Ora2pg, Debezium, and YugabyteDB Voyager.
+
+    **Script usage**
+
+    ```sh
+    ./install-voyager-airgapped.sh [options]
+    ```
+
+    | Argument | Description |
+    | :------- | :---------- |
+    | -d, --check-dependencies-only | Check dependencies only and exit without installing |
+    | -f, --force-install | Install packages without checking dependencies |
+    | -p, --pg-only | Check/install only PostgreSQL-related dependencies |
+    | -m, --mysql-only | Check/install only MySQL-related dependencies |
+    | -o, --oracle-only | Check/install only Oracle-related dependencies |
+    | -h, --help | Display help message |
+
+    Only one of `--pg-only`, `--mysql-only`, or `--oracle-only` can be specified at a time. If none are provided, the script checks dependencies for all database types.
 
 1. Check that yb-voyager is installed using the following command:
 
@@ -306,69 +406,13 @@ You can perform an airgapped installation on Ubuntu 22 and later.
     yb-voyager version
     ```
 
-### Dependencies for Ubuntu
+   The components installed by the script are described in the following table:
 
-Binutils: Minimum version: 2.25
-
-Java: Minimum version: 17
-
-pg_dump: Minimum version: 14
-
-pg_restore: Minimum version: 14
-
-psql: Minimum version: 14
-
-#### APT packages
-
-- sqlite3 (no version dependency)
-- make (no version dependency)
-- perl (no version dependency)
-- libdbi-perl (no version dependency)
-- libaio1 (no version dependency)
-- cpanminus (no version dependency)
-- libmysqlclient-dev (no version dependency)
-- oracle-instantclient-tools with exact version 21.5.0.0.0
-- oracle-instantclient-basic with exact version 21.5.0.0.0
-- oracle-instantclient-devel with exact version 21.5.0.0.0
-- oracle-instantclient-jdbc with exact version 21.5.0.0.0
-- oracle-instantclient-sqlplus with exact version 21.5.0.0.0
-
-### Install script
-
-The script by default checks what dependencies are installed on the system and throws an error mentioning the missing dependencies. If all the dependencies are found to be installed, it proceeds with the installation of ora2pg, debezium, and yb-voyager.
-
-Usage:
-
-```sh
-./install-voyager-airgapped.sh [options]
-```
-
-The options are as follows.
-
-| Argument                       | Description/valid options                                                     |
-| :----------------------------- | :--------------------------------------------------------------------------- |
-| -d, --check-dependencies-only | Check the dependencies only, then exit without installing.                                           |
-| -f, --force-install           | Force install packages without checking dependencies.                       |
-| -p, --pg-only                 | Check and install only PostgreSQL source-related voyager dependencies.     |
-| -m, --mysql-only              | Check and install only MySQL source-related voyager dependencies.          |
-| -o, --oracle-only             | Check and install only Oracle source-related voyager dependencies.         |
-| -h, --help                    | Display this help message.                                                 |
-
-You can only specify one of `--pg-only`, `--oracle-only`, or `--mysql-only`. If none are provided, the script checks and installs dependencies for all database types. When one of the flags is specified, `--help` and `--check-dependencies-only` are specific to the selected database.
-
-### Oracle Instant Client installation help for Ubuntu
-
-You can download the oracle instant client RPM packages from the following links:
-
-- [oracle-instantclient-tools](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.deb)
-
-- [oracle-instantclient-basic](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb)
-
-- [oracle-instantclient-devel](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-devel_21.5.0.0.0-1_amd64.deb)
-
-- [oracle-instantclient-jdbc](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-jdbc_21.5.0.0.0-1_amd64.deb)
-
-- [oracle-instantclient-sqlplus](https://downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-sqlplus_21.5.0.0.0-1_amd64.deb)
+    | Component | Version |
+    | :-------- | :------ |
+    | YugabyteDB Voyager | \<voyager_version\> |
+    | Debezium | 2.5.2-\<voyager_version\> |
+    | Ora2pg | 23.2-yb.2 |
 
 {{% /tab %}}
 

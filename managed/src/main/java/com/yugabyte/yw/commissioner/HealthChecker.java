@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
@@ -171,6 +172,10 @@ public class HealthChecker {
 
   private final ClusterConsistencyChecker clusterConsistencyChecker;
 
+  private final ConnectivityChecker connectivityChecker;
+
+  private final ConfigHelper configHelper;
+
   @Inject
   public HealthChecker(
       Environment environment,
@@ -186,7 +191,8 @@ public class HealthChecker {
       NodeUniverseManager nodeUniverseManager,
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
-      YBClientService ybClientService) {
+      YBClientService ybClientService,
+      ConfigHelper configHelper) {
     this(
         environment,
         config,
@@ -201,9 +207,11 @@ public class HealthChecker {
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
         createConsistencyCheckExecutor(platformExecutorFactory, confGetter),
+        createConnectivityCheckExecutor(platformExecutorFactory, confGetter),
         fileHelperService,
         maintenanceService,
-        ybClientService);
+        ybClientService,
+        configHelper);
   }
 
   HealthChecker(
@@ -220,9 +228,11 @@ public class HealthChecker {
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor,
       ExecutorService consistencyCheckExecutor,
+      ExecutorService connectivityCheckExecutor,
       FileHelperService fileHelperService,
       MaintenanceService maintenanceService,
-      YBClientService ybClientService) {
+      YBClientService ybClientService,
+      ConfigHelper configHelper) {
     this.environment = environment;
     this.config = config;
     this.platformScheduler = platformScheduler;
@@ -239,6 +249,10 @@ public class HealthChecker {
     this.maintenanceService = maintenanceService;
     this.clusterConsistencyChecker =
         new ClusterConsistencyChecker(consistencyCheckExecutor, confGetter, ybClientService);
+    this.connectivityChecker =
+        new ConnectivityChecker(
+            connectivityCheckExecutor, confGetter, ybClientService, metricService);
+    this.configHelper = configHelper;
   }
 
   public void initialize() {
@@ -253,6 +267,11 @@ public class HealthChecker {
         Duration.ZERO /* initialDelay */,
         Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
         clusterConsistencyChecker::processAll);
+    platformScheduler.schedule(
+        connectivityChecker.getClass().getSimpleName(),
+        Duration.ZERO /* initialDelay */,
+        Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
+        connectivityChecker::processAll);
   }
 
   // The interval at which the checker will run.
@@ -328,7 +347,8 @@ public class HealthChecker {
             || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
             || checkName.equals(UNEXPECTED_PROCESSES_CHECK)
             || checkName.equals(CLOCK_SYNC_CHECK)
-            || checkName.equals(DDL_ATOMICITY_CHECK)) {
+            || checkName.equals(DDL_ATOMICITY_CHECK)
+            || checkName.equals(YNP_VERSION_CHECK)) {
           if (checkName.equals(DDL_ATOMICITY_CHECK) && !checkResult) {
             ddlAtomicitySuccessfulCheckTimestamp.put(
                 u.getUniverseUUID(), report.getTimestampIso().toInstant());
@@ -587,6 +607,17 @@ public class HealthChecker {
 
     return executorFactory.createFixedExecutor(
         "Health-Check-Cluster-Consistency-Pool", numParallelism, namedThreadFactory);
+  }
+
+  private static ExecutorService createConnectivityCheckExecutor(
+      PlatformExecutorFactory executorFactory, RuntimeConfGetter confGetter) {
+    int numParallelism = confGetter.getGlobalConf(GlobalConfKeys.connectivityCheckParallelism);
+
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Health-Check-Connectivity-Pool-%d").build();
+
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Connectivity-Pool", numParallelism, namedThreadFactory);
   }
 
   public CompletableFuture<Void> runHealthCheck(
@@ -1182,6 +1213,14 @@ public class HealthChecker {
     }
     if (!universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
       commandToRun.add("--cronbased");
+    }
+
+    Object ynpVersion =
+        configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
+    if (ynpVersion != null) {
+      commandToRun.add("--yba_ynp_version=" + ynpVersion.toString());
+    } else {
+      log.warn("YNP version not found in YugawareMetadata, skipping version skew check");
     }
     ShellResponse response =
         nodeUniverseManager

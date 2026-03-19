@@ -76,4 +76,25 @@ struct Header {
   }
 };
 
+struct DataBlock {
+  std::unique_ptr<std::byte[]> data;
+  size_t size = 0;
+
+  DataBlock() = default;
+
+  explicit DataBlock(size_t size) {
+    Allocate(size);
+  }
+
+  void Allocate(size_t sz) {
+    DCHECK(!data);
+    data.reset(new std::byte[sz]);
+    size = sz;
+  }
+
+  Slice AsSlice() const {
+    return Slice(data.get(), size);
+  }
+};
+
 } // namespace yb::hnsw

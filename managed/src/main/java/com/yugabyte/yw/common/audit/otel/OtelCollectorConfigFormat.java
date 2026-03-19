@@ -264,6 +264,7 @@ public class OtelCollectorConfigFormat {
     private TlsSettings tls;
     private String timeout;
     private String logs_endpoint;
+    private String metrics_endpoint;
     private AuthConfig auth;
   }
 
@@ -358,7 +359,7 @@ public class OtelCollectorConfigFormat {
   @Data
   @EqualsAndHashCode(callSuper = true)
   public static class BearerTokenAuthExtension extends Extension {
-    private String bearer_token;
+    private String token;
   }
 
   @Data

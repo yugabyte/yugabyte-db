@@ -344,6 +344,9 @@ public class CustomerTask extends Model {
     @EnumValue("ModifyMetricsExportConfig")
     ModifyMetricsExportConfig,
 
+    @EnumValue("ConfigureExportTelemetryConfig")
+    ConfigureExportTelemetryConfig,
+
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
 
@@ -391,6 +394,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("Install")
     Install,
+
+    @EnumValue("ProvisionUniverseNodes")
+    ProvisionUniverseNodes,
 
     @EnumValue("MasterFailover")
     MasterFailover,
@@ -581,6 +587,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Modified metrics export config for"
               : "Modifying metrics export config for";
+        case ConfigureExportTelemetryConfig:
+          return completed
+              ? "Configured export telemetry config for"
+              : "Configuring export telemetry config for";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in" : "Creating tablespaces in";
         case RotateAccessKey:
@@ -616,6 +626,8 @@ public class CustomerTask extends Model {
           return completed ? "Reprovisioned" : "Reprovisioning";
         case Install:
           return completed ? "Installed" : "Installing";
+        case ProvisionUniverseNodes:
+          return completed ? "Provisioned Universe Nodes" : "Provisioning Universe Nodes";
         case UpdateProxyConfig:
           return completed ? "Updated Proxy Config" : "Updating Proxy Config";
         case MasterFailover:

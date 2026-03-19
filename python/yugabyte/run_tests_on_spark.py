@@ -360,6 +360,24 @@ def copy_to_host(artifact_paths: List[str], dest_host: str) -> artifact_upload.F
         path_transformer=path_transformer)
 
 
+def upload_spark_stderr(
+        test_descriptor_str: str,
+        csi_id: str) -> None:
+    from pyspark import SparkFiles  # type: ignore
+    spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
+
+    test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
+    error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+    spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
+
+    error_log_dir_path = os.path.dirname(spark_stderr_dest)
+    file_util.mkdir_p(error_log_dir_path)
+
+    logging.info(f"Copying spark stderr {spark_stderr_src} to {spark_stderr_dest}")
+    shutil.copyfile(spark_stderr_src, spark_stderr_dest)
+    csi_report.upload_log(csi_id, time.time(), [spark_stderr_dest])
+
+
 def copy_spark_stderr(
         test_descriptor_str: str,
         csi_id: str,
@@ -491,6 +509,8 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
                 if csi_id:
                     csi_report.close_item(csi_id, final_time_sec, 'interrupted', [])
                     csi_report.upload_log(csi_id, final_time_sec, [error_output_path])
+                    upload_spark_stderr(test_descriptor_str, csi_id)
+                else:
                     if build_host:
                         copy_spark_stderr(test_descriptor_str, csi_id, build_host)
                 process.kill()
@@ -564,9 +584,14 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any, test_results: A
             else:
                 logging.warning("Artifact list does not exist: '%s'", artifact_list_path)
 
-            artifact_copy_result = copy_to_host(artifact_paths, build_host)
+            if not csi_id:
+                artifact_copy_result = copy_to_host(artifact_paths, build_host)
             if exit_code != 0:
-                spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id, build_host)
+                if not csi_id:
+                    spark_error_copy_result = copy_spark_stderr(test_descriptor_str, csi_id,
+                                                                build_host)
+                else:
+                    upload_spark_stderr(test_descriptor_str, csi_id)
 
             rel_artifact_paths = [
                 os.path.relpath(os.path.abspath(artifact_path), global_conf.yb_src_root)

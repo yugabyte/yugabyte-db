@@ -101,13 +101,14 @@ METRIC_DECLARE_counter(majority_sst_files_rejections);
 using namespace std::literals;
 
 using rocksdb::checkpoint::CreateCheckpoint;
-using rocksdb::UserFrontierPtr;
-using yb::tablet::TabletOptions;
-using yb::docdb::InitRocksDBOptions;
 
 DECLARE_bool(enable_ysql);
 
 namespace yb::client {
+
+using storage::UserFrontierPtr;
+using tablet::TabletOptions;
+using docdb::InitRocksDBOptions;
 
 namespace {
 
@@ -122,7 +123,7 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
 
   void SetUp() override {
     // To prevent automatic creation of the transaction status table.
-    SetAtomicFlag(false, &FLAGS_enable_ysql);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = false;
 
     ASSERT_NO_FATALS(QLDmlTestBase::SetUp());
 
@@ -345,7 +346,7 @@ void QLStressTest::TestRetryWrites(bool restarts) {
   // Used only when table is transactional.
   const double kTransactionalWriteProbability = 0.5;
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   const bool transactional = table_.table()->schema().table_properties().is_transactional();
   std::optional<TransactionManager> txn_manager;
@@ -998,9 +999,7 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
         // Check that first log was garbage collected, so remote bootstrap will be required.
         consensus::ReplicateMsgs replicates;
         int64_t starting_op_segment_seq_num;
-        return !leaders.front()
-                    ->log()
-                    ->GetLogReader()
+        return !VERIFY_RESULT(leaders.front()->log()->GetLogReader())
                     ->ReadReplicatesInRange(
                         100, 101, 0, log::ObeyMemoryLimit::kFalse, &replicates,
                         &starting_op_segment_seq_num)

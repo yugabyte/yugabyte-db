@@ -159,9 +159,6 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbCreateMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 static void
@@ -206,9 +203,6 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbDeleteMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 void
@@ -2213,6 +2207,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 	}
 
 	HandleYBStatus(status);
+}
+
+void
+YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+				   size_t *num_slot_entries)
+{
+	HandleYBStatus(YBCPgListSlotEntries(slot_entries, num_slot_entries));
 }
 
 void

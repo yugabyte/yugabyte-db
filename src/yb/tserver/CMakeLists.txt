@@ -104,6 +104,7 @@ YRPC_GENERATE(
   PROTO_FILES pg_client.proto)
 set(PG_CLIENT_YRPC_LIBS
   master_proto
+  tserver_service_proto
   yrpc)
 ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
@@ -272,6 +273,7 @@ set(TSERVER_SRCS
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_auto_flags_manager.cc
+  tserver_cgroup_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
@@ -317,6 +319,7 @@ set(TSERVER_DEPS
   yb_ash
   yb_client
   yb_pggate_flags
+  yb_pgresult_util
   yrpc
   ysql_upgrade
 )
@@ -350,6 +353,7 @@ set(TSERVER_MAIN_DEPS
     yb_process_wrapper
     yb_pgwrapper
     ysql_conn_mgr_wrapper
+    dist_rag_wrapper
     ${YB_BASE_LIBS})
 
 ADD_YB_LIBRARY(tserver_main_impl
@@ -420,6 +424,7 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+ADD_YB_TEST(tserver_cgroup_manager-test)
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)

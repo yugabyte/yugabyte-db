@@ -1,14 +1,18 @@
+import type { Mock } from 'vitest';
 import _ from 'lodash';
 import userEvent from '@testing-library/user-event';
-import { render } from '../../../test-utils';
+import { render } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { Provider } from 'react-redux';
+import { createStore } from 'redux';
+import { ThemeProvider } from '@material-ui/core';
+import { mainTheme } from '../../../redesign/theme/mainTheme';
 import { HAInstances } from './HAInstances';
 import { useLoadHAConfiguration } from '../hooks/useLoadHAConfiguration';
 import { HaConfig, HaInstanceState } from '../dtos';
 import { MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from '../replication/mockUtils';
-import { ThemeProvider } from '@material-ui/core';
-import { mainTheme } from '../../../redesign/theme/mainTheme';
 
-jest.mock('../hooks/useLoadHAConfiguration');
+vi.mock('../hooks/useLoadHAConfiguration');
 
 type HookReturnType = Partial<ReturnType<typeof useLoadHAConfiguration>>;
 
@@ -48,23 +52,33 @@ const mockConfig: HaConfig = {
 };
 
 const setup = (hookResponse: HookReturnType) => {
-  (useLoadHAConfiguration as jest.Mock<HookReturnType>).mockReturnValue(hookResponse);
-  const fetchRuntimeConfigs = jest.fn();
-  const setRuntimeConfig = jest.fn();
+  (useLoadHAConfiguration as Mock<() => HookReturnType>).mockReturnValue(hookResponse);
+  const fetchRuntimeConfigs = vi.fn();
+  const setRuntimeConfig = vi.fn();
 
   const mockRuntimeConfigPromise = {
     data: MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS,
     error: null,
     promiseState: 'SUCCESS'
   };
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
+  const store = createStore(() => ({
+    customer: { currentUser: { data: { timezone: 'UTC' } } }
+  }));
   return render(
-    <ThemeProvider theme={mainTheme}>
-      <HAInstances
-        fetchRuntimeConfigs={fetchRuntimeConfigs}
-        setRuntimeConfig={setRuntimeConfig}
-        runtimeConfigs={mockRuntimeConfigPromise}
-      />
-    </ThemeProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={mainTheme}>
+          <HAInstances
+            fetchRuntimeConfigs={fetchRuntimeConfigs}
+            setRuntimeConfig={setRuntimeConfig}
+            runtimeConfigs={mockRuntimeConfigPromise}
+          />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </Provider>
   );
 };
 
@@ -76,8 +90,8 @@ describe('HA instances list', () => {
 
   it('should render error component on failure', () => {
     const error = 'test-error-text';
-    const consoleError = jest.fn();
-    jest.spyOn(console, 'error').mockImplementation(consoleError);
+    const consoleError = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(consoleError);
     const component = setup({ error });
 
     expect(component.getByTestId('ha-generic-error')).toBeInTheDocument();
@@ -95,17 +109,17 @@ describe('HA instances list', () => {
     expect(component.getAllByRole('row')).toHaveLength(mockConfig.instances.length + 1);
   });
 
-  it('should show and close add instance modal', () => {
+  it('should show and close add instance modal', async () => {
     const component = setup({ config: mockConfig });
 
-    userEvent.click(component.getByRole('button', { name: /add instance/i }));
+    await userEvent.click(component.getByRole('button', { name: /add instance/i }));
     expect(component.getByTestId('ha-add-standby-instance-modal')).toBeInTheDocument();
 
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(component.queryByTestId('ha-add-standby-instance-modal')).not.toBeInTheDocument();
   });
 
-  it('should show and close delete modal', () => {
+  it('should show and close delete modal', async () => {
     const component = setup({ config: mockConfig });
 
     const deleteButton = component
@@ -113,25 +127,25 @@ describe('HA instances list', () => {
       .find((item) => !(item as HTMLButtonElement).disabled);
 
     if (deleteButton) {
-      userEvent.click(deleteButton);
+      await userEvent.click(deleteButton);
       expect(component.getByTestId('ha-delete-confirmation-modal')).toBeInTheDocument();
 
-      userEvent.click(component.getByRole('button', { name: /close/i }));
+      await userEvent.click(component.getByRole('button', { name: /close/i }));
       expect(component.queryByTestId('ha-delete-confirmation-modal')).not.toBeInTheDocument();
     } else {
       throw new Error('No enabled delete button found');
     }
   });
 
-  it('should show and close make active modal', () => {
+  it('should show and close make active modal', async () => {
     const config = _.cloneDeep(mockConfig);
     config.instances.forEach((item) => (item.is_leader = false)); // mark all instances as standby
     const component = setup({ config });
 
-    userEvent.click(component.getByRole('button', { name: /make active/i }));
+    await userEvent.click(component.getByRole('button', { name: /make active/i }));
     expect(component.getByTestId('ha-make-active-modal')).toBeInTheDocument();
 
-    userEvent.click(component.getByRole('button', { name: /cancel/i }));
+    await userEvent.click(component.getByRole('button', { name: /cancel/i }));
     expect(component.queryByTestId('ha-make-active-modal')).not.toBeInTheDocument();
   });
 });

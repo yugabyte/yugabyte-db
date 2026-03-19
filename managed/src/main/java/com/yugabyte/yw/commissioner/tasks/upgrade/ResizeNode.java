@@ -517,7 +517,7 @@ public class ResizeNode extends UpgradeTaskBase {
     Optional<NodeAgent> optional =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
             ? Optional.empty()
-            : nodeUniverseManager.maybeGetNodeAgent(
+            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                 getUniverse(), node, true /*check feature flag*/);
     params.skipAnsiblePlaybookForCGroup = optional.isPresent();
 

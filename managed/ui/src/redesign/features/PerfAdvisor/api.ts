@@ -20,34 +20,38 @@ class ApiService {
     return customerId ?? '';
   }
 
-  // Fetches list of all Troubleshooting Platform services
+  // Fetches list of all Perf Advisor services
   fetchPerfAdvisorList = () => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Fetches info about specific Troubleshooting Platform service
-  fetchPerfAdvisorUuid = (tpUuid: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  // Fetches info about specific Perf Advisor service
+  fetchPerfAdvisorUuid = (paUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
-  // Register current YBA (customer) to a Troubleshooting Platform service
+  // Register current YBA (customer) to a Perf Advisor service
   registerYBAToPerfAdvisor = (
-    tpUrl: string,
+    paUrl: string,
     ybaUrl: string,
     metricsUrl: string,
+    metricsUsername: string,
+    metricsPassword: string,
     apiToken: string,
     tpApiToken: string,
     metricsScrapePeriodSecs: number
   ) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform`;
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector`;
     return axios
       .post(requestURL, {
         customerUUID: this.getCustomerId(),
-        tpUrl,
+        paUrl,
         ybaUrl,
         metricsUrl,
+        metricsUsername,
+        metricsPassword,
         apiToken,
         tpApiToken,
         metricsScrapePeriodSecs
@@ -56,8 +60,8 @@ class ApiService {
   };
 
   // Edit/Update metadata about Perf Advisor service
-  updatePerfAdvisorMetadata = (data: any, tpUuid: string, forceUpdate: boolean) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  updatePerfAdvisorMetadata = (data: any, paUuid: string, forceUpdate: boolean) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     const params = {
       force: forceUpdate
     };
@@ -68,9 +72,9 @@ class ApiService {
       .then((resp) => resp.data);
   };
 
-  // Delete(Unregister) Troubleshooting Platform service
-  unRegisterPerfAdvisor = (tpUuid: string, forceUnregister: boolean) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}`;
+  // Unregister YBA (customer) from Perf Advisor service
+  unRegisterPerfAdvisor = (paUuid: string, forceUnregister: boolean) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/pa_collector/${paUuid}`;
     const params = {
       force: forceUnregister
     };
@@ -81,21 +85,27 @@ class ApiService {
       .then((resp) => resp.data);
   };
 
-  // Fetch registration details of universe to Troubleshooting Platform service
-  fetchUniverseRegistrationDetails = (tpUuid: string, universeUuid: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+  // Fetch Perf Advisor service registration details for a universe
+  fetchUniverseRegistrationDetails = (universeUuid: string) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.get(requestURL).then((res) => res.data);
   };
 
   // Enable Perf Advisor for current universe
-  attachUniverseToPerfAdvisor = (tpUuid: string, universeUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
-    return axios.put(requestUrl).then((resp) => resp.data);
+  attachUniverseToPerfAdvisor = (
+    paUuid: string,
+    universeUuid: string,
+    advancedObservability?: boolean
+  ) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector/${paUuid}`;
+    const params =
+      advancedObservability ? { advancedObservability: true } : undefined;
+    return axios.put(requestUrl, undefined, { params }).then((resp) => resp.data);
   };
 
-  // Delete universe registration
-  deleteUniverseRegistration = (tpUuid: string, universeUuid: string) => {
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/troubleshooting_platform/${tpUuid}/universes/${universeUuid}`;
+  // Disable Perf Advisor for current universe
+  deleteUniverseRegistration = (universeUuid: string) => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/pa_collector`;
     return axios.delete(requestUrl).then((resp) => resp.data);
   };
 }

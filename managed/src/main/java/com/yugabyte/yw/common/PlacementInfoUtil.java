@@ -7,6 +7,7 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType.PRI
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.datastax.oss.driver.shaded.guava.common.collect.Sets;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ArrayListMultimap;
@@ -618,6 +619,59 @@ public class PlacementInfoUtil {
     return Math.max(rf, result);
   }
 
+  public static Set<UUID> findNewlyAddedAZs(PlacementInfo newPi, PlacementInfo savedPi) {
+    return Sets.difference(newPi.getAllAZUUIDs(), savedPi.getAllAZUUIDs());
+  }
+
+  public static Set<UUID> findRetainedAZs(PlacementInfo newPi, PlacementInfo savedPi) {
+    return Sets.intersection(newPi.getAllAZUUIDs(), savedPi.getAllAZUUIDs());
+  }
+
+  /**
+   * Modify cluster's placementInfo stsIndex perAZ for K8s full move case.
+   *
+   * @param cluster
+   * @param nodeDetailsSet
+   */
+  public static void applyK8sStsIndexIncrement(Cluster cluster, Set<NodeDetails> nodeDetailsSet) {
+    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+      cluster
+          .placementInfo
+          .azStream()
+          .forEach(
+              pAz -> {
+                List<NodeDetails> toBeAddedNodes =
+                    nodeDetailsSet.stream()
+                        .filter(
+                            nD ->
+                                nD.getAzUuid().equals(pAz.uuid) && nD.state == NodeState.ToBeAdded)
+                        .collect(Collectors.toList());
+                boolean toBeAddedMasters =
+                    toBeAddedNodes.stream().filter(nD -> nD.isMaster).findAny().isPresent();
+                boolean toBeAddedTservers =
+                    toBeAddedNodes.stream().filter(nD -> nD.isTserver).findAny().isPresent();
+                List<NodeDetails> toBeDeletedNodes =
+                    nodeDetailsSet.stream()
+                        .filter(
+                            nD ->
+                                nD.getAzUuid().equals(pAz.uuid)
+                                    && nD.state == NodeState.ToBeRemoved)
+                        .collect(Collectors.toList());
+                boolean toBeDeletedMasters =
+                    toBeDeletedNodes.stream().filter(nD -> nD.isMaster).findAny().isPresent();
+                boolean toBeDeletedTservers =
+                    toBeDeletedNodes.stream().filter(nD -> nD.isTserver).findAny().isPresent();
+
+                if (toBeAddedMasters && toBeDeletedMasters) {
+                  pAz.masterStsIndex = pAz.masterStsIndex > 8 ? 0 : pAz.masterStsIndex + 1;
+                }
+                if (toBeAddedTservers && toBeDeletedTservers) {
+                  pAz.tsStsIndex = pAz.tsStsIndex > 8 ? 0 : pAz.tsStsIndex + 1;
+                }
+              });
+    }
+  }
+
   /**
    * Determines whether we should replace particular node (either because of new instance type or
    * new device specification). Note that this logic ignores the possibility of smart resize,
@@ -637,7 +691,8 @@ public class PlacementInfoUtil {
       Universe universe,
       ClusterOperationType clusterOpType) {
     if (!Objects.equals(
-        node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))) {
+            node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
+        && !(cluster.userIntent.providerType == CloudType.kubernetes)) {
       return true;
     }
     if (!cluster.userIntent.dedicatedNodes
@@ -649,7 +704,10 @@ public class PlacementInfoUtil {
       Cluster currentCluster = universe.getUniverseDetails().getClusterByUuid(cluster.uuid);
       DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
       DeviceInfo currentDeviceInfo = currentCluster.userIntent.getDeviceInfoForNode(node);
-      if (!Objects.equals(newDeviceInfo, currentDeviceInfo) && newDeviceInfo != null) {
+      if (!Objects.equals(newDeviceInfo, currentDeviceInfo)
+          && newDeviceInfo != null
+          && !(cluster.userIntent.providerType == CloudType.kubernetes
+              && currentDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
         LOG.debug("Device info has changed from {} to {}", currentDeviceInfo, newDeviceInfo);
         return true;
       }
@@ -1853,6 +1911,9 @@ public class PlacementInfoUtil {
       throw new IllegalStateException(msg);
     }
 
+    if (cluster.userIntent.providerType == CloudType.kubernetes) {
+      return;
+    }
     for (NodeDetails node : nodes) {
       String nodeType = node.cloudInfo.instance_type;
       String instanceType = cluster.userIntent.getInstanceTypeForNode(node);

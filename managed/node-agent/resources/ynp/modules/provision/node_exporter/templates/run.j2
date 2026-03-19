@@ -16,11 +16,11 @@ arch=$(uname -m)
 
 # Set the appropriate file name based on architecture
 if [[ "$arch" == "x86_64" ]]; then
-    node_exporter_package="node_exporter-1.9.1.linux-amd64.tar.gz"
-    node_exported_package_name="node_exporter-1.9.1.linux-amd64"
+    node_exporter_package="node_exporter-1.10.2.linux-amd64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-amd64"
 elif [[ "$arch" == "aarch64" ]]; then
-    node_exporter_package="node_exporter-1.9.1.linux-arm64.tar.gz"
-    node_exported_package_name="node_exporter-1.9.1.linux-arm64"
+    node_exporter_package="node_exporter-1.10.2.linux-arm64.tar.gz"
+    node_exported_package_name="node_exporter-1.10.2.linux-arm64"
 else
     echo "Unsupported architecture: $arch"
     exit 1
@@ -39,14 +39,15 @@ if ! id -u prometheus >/dev/null 2>&1; then
     os_type=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
     case "$os_type" in
         ubuntu|debian)
-            adduser --no-create-home --disabled-password --shell /bin/bash --ingroup {{ yb_user }} \
+            adduser --no-create-home --disabled-password \
+            --shell /sbin/nologin --ingroup {{ yb_user }} \
             --gecos "" prometheus
             ;;
         rhel|centos|fedora|rocky|almalinux|amzn|ol)
-            useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
+            useradd --shell /sbin/nologin --no-create-home -g {{ yb_user }} prometheus
             ;;
         sles)
-            useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
+            useradd --shell /sbin/nologin --no-create-home -g {{ yb_user }} prometheus
             ;;
         *)
             echo "Unsupported OS: $os_type"
@@ -55,6 +56,12 @@ if ! id -u prometheus >/dev/null 2>&1; then
     esac
 else
     echo "User 'prometheus' already exists."
+    # Ensure existing prometheus user has non-interactive shell
+    current_shell=$(getent passwd prometheus | cut -d: -f7)
+    if [[ "$current_shell" != "/sbin/nologin" ]]; then
+        usermod -s /sbin/nologin prometheus
+        echo "Updated prometheus user shell to /sbin/nologin."
+    fi
 fi
 
 # Set ownership and permissions

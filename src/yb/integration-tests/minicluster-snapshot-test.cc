@@ -704,9 +704,6 @@ class PgCloneInitiallyEmptyDBTest : public PostgresMiniClusterTest {
 class PgCloneTest : public PgCloneInitiallyEmptyDBTest {
  protected:
   void SetUp() override {
-    // (Auto-Analyze #28390)
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     PgCloneInitiallyEmptyDBTest::SetUp();
     ASSERT_OK(source_conn_->ExecuteFormat(
         "CREATE TABLE $0 (key INT PRIMARY KEY, value INT)", kSourceTableName));
@@ -854,6 +851,37 @@ TEST_F(PgCloneTest, CloneVectorIndex) {
   }
   LOG(INFO) << "Drop second clone";
   ASSERT_OK(source_conn_->ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName2));
+}
+
+TEST_F(PgCloneTest, CloneWithAlterDatabaseSet) {
+  // Ensure cloning succeeds even when the source database has a ALTER DATABASE.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      R"(ALTER DATABASE $0 SET "TimeZone" TO 'US/Central')", kSourceNamespaceName));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+}
+
+TEST_F(PgCloneTest, CloneWithPgStatistics) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE my_table (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(source_conn_->Execute(
+      "INSERT INTO my_table SELECT i, i % 3 FROM generate_series(1, 1000) AS i"));
+  ASSERT_OK(source_conn_->Execute("ANALYZE my_table"));
+
+  const auto stats_query =
+      "SELECT null_frac, avg_width, n_distinct "
+      "FROM pg_stats WHERE tablename = 'my_table' ORDER BY attname";
+  auto source_stats = ASSERT_RESULT(source_conn_->FetchAllAsString(stats_query));
+  LOG(INFO) << "Source stats: " << source_stats;
+  ASSERT_FALSE(source_stats.empty());
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto target_stats = ASSERT_RESULT(target_conn.FetchAllAsString(stats_query));
+  LOG(INFO) << "Target stats: " << target_stats;
+
+  ASSERT_EQ(source_stats, target_stats);
 }
 
 class TabletDataSizeMetricsTest : public PostgresMiniClusterTest {
@@ -1572,6 +1600,91 @@ TEST_F(PgCloneColocationTest, NoColocatedChildTables) {
   ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
   ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+}
+
+TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyDBTest) {
+  // Regression test for GitHub issue #29335.
+  // Create a partitioned table with many partitions, an index, and CHECK constraints
+  // in the source DB. ysql_dump's binary_upgrade mode sets OIDs for pg_class and pg_type entries,
+  // but CHECK constraint OIDs in pg_constraint are always dynamically allocated via
+  // GetNewObjectId. This forces the tserver to call ReservePgsqlOids during the clone's
+  // DDL replay, populating its OID cache with a stale range. This should be invalidated after
+  // the clone so if any objects are dropped and recreated, they will get a new OID instead of
+  // colliding with the hidden objects.
+  auto create_partitioned_table = [&](pgwrapper::PGConn& conn) -> Status {
+    RETURN_NOT_OK(conn.Execute(
+        "CREATE TABLE t (key INT, value INT, CHECK (key >= 0), CHECK (value >= 0)) "
+        "PARTITION BY RANGE (key)"));
+    for (int i = 0; i < 10; i++) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "CREATE TABLE t_partition_$0 PARTITION OF t FOR VALUES FROM ($1) TO ($2)",
+          i, i * 100, (i + 1) * 100));
+    }
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX t_idx ON t (value)"));
+    return Status::OK();
+  };
+
+  ASSERT_OK(create_partitioned_table(*source_conn_));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  // Create a snapshot schedule on the cloned DB so DROP will HIDE tables.
+  ASSERT_OK(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1,
+      kInterval, kRetention, kTimeout));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("DROP TABLE t CASCADE"));
+
+  // Recreate the table.
+  ASSERT_OK(create_partitioned_table(target_conn));
+}
+
+TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
+  const std::string kRenamedNamespaceName = "testdb_renamed";
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES (1, 10)"));
+
+  // Rename requires disconnecting from the source DB first.
+  source_conn_.reset();
+  auto default_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "ALTER DATABASE $0 RENAME TO $1", kSourceNamespaceName, kRenamedNamespaceName));
+
+  auto timestamp = ASSERT_RESULT(GetCurrentTime());
+
+  // Clone using the renamed DB name. This should succeed.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kRenamedNamespaceName,
+      timestamp.ToInt64()));
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, (std::tuple<int32_t, int32_t>{1, 10}));
+  }
+  ASSERT_OK(default_conn.ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  // Rename the DB back to the original name.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "ALTER DATABASE $0 RENAME TO $1", kRenamedNamespaceName, kSourceNamespaceName));
+
+  // Clone using the current (original) name.
+  ASSERT_OK(default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      timestamp.ToInt64()));
+  {
+    auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+    auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+    ASSERT_EQ(row, (std::tuple<int32_t, int32_t>{1, 10}));
+  }
+  ASSERT_OK(default_conn.ExecuteFormat("DROP DATABASE $0", kTargetNamespaceName1));
+
+  // Clone using the old renamed name.
+  auto status = default_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName2, kRenamedNamespaceName,
+      timestamp.ToInt64());
+  // The renamed name no longer exists, so this should fail.
+  ASSERT_NOK(status);
 }
 
 }  // namespace master

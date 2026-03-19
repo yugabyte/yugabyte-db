@@ -58,8 +58,10 @@
 #include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
@@ -78,6 +80,7 @@
 #include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
+#include "yb/yql/dist_rag_wrapper/dist_rag_wrapper.h"
 
 using std::string;
 using namespace std::placeholders;
@@ -96,6 +99,10 @@ using namespace std::chrono_literals;
 
 DEFINE_NON_RUNTIME_bool(start_redis_proxy, false,
     "Starts a redis proxy along with the tablet server");
+
+
+DEFINE_NON_RUNTIME_bool(enable_pg_dist_rag_service, false,
+    "Enable the Distributed RAG service.");
 
 DEFINE_NON_RUNTIME_bool(start_cql_proxy, true, "Starts a CQL proxy along with the tablet server");
 DEFINE_NON_RUNTIME_string(cql_proxy_broadcast_rpc_address, "",
@@ -237,6 +244,7 @@ struct Services {
   std::unique_ptr<boost::asio::io_service> io_service;
   scoped_refptr<Thread> io_service_thread;
   std::unique_ptr<LlvmProfileDumper> llvm_profile_dumper;
+  std::unique_ptr<DistRagServiceSupervisor> dist_rag_service_supervisor;
 };
 
 // StartServices borrows its output as a reference so that the Services object is not allocated
@@ -392,6 +400,16 @@ Status StartServices(Services& services) {
         services.io_service.get(), &services.io_service_thread));
   }
 
+  if (FLAGS_enable_pg_dist_rag_service) {
+    LOG(INFO) << "Starting Distributed RAG Service...";
+
+    services.dist_rag_service_supervisor =
+        std::make_unique<DistRagServiceSupervisor>(
+            *services.tablet_server);
+
+    RETURN_NOT_OK(services.dist_rag_service_supervisor->Start());
+  }
+
   services.llvm_profile_dumper = std::make_unique<LlvmProfileDumper>();
   return services.llvm_profile_dumper->Start();
 }
@@ -426,6 +444,11 @@ Status ShutdownServicesImpl(Services& services) {
   if (services.ysql_conn_mgr_supervisor) {
     LOG(WARNING) << "Stopping Ysql Connection Manager process";
     services.ysql_conn_mgr_supervisor->Stop();
+  }
+
+  if (services.dist_rag_service_supervisor) {
+    LOG(WARNING) << "Stopping Distributed RAG Service";
+    services.dist_rag_service_supervisor->Stop();
   }
 
   if (services.call_home) {
@@ -475,6 +498,12 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
+
+#ifdef __linux__
+  if (TServerCgroupManagementEnabled()) {
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+  }
+#endif
 
   Services services;
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(StartServices(services));

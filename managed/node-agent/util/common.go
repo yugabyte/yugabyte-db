@@ -21,34 +21,39 @@ import (
 
 const (
 	// Node agent common constants.
-	DefaultConfig           = "config"
-	preflightCheckScript    = "/pkg/scripts/preflight_check.sh"
-	earlyoomInstallScript   = "/pkg/scripts/earlyoom-installer.sh"
-	nodeAgentDir            = "/node-agent"
-	configDir               = "/config"
-	certsDir                = "/cert"
-	pexEnvDir               = "/pkg/devops/pex/pexEnv"
-	releaseDir              = "/release"
-	logsDir                 = "/logs"
-	DefaultShell            = "/bin/bash"
-	PlatformApiTokenHeader  = "X-AUTH-YW-API-TOKEN"
-	PlatformJwtTokenHeader  = "X-AUTH-YW-API-JWT"
-	JwtUserIdClaim          = "userId"
-	JwtClientIdClaim        = "clientId"
-	JwtClientTypeClaim      = "clientType"
-	JwtIssuer               = "https://www.yugabyte.com"
-	JwtSubject              = "NODE_AGENT"
-	JwtExpirationSecs       = 600 //in seconds
-	NodeAgentDefaultLog     = "node_agent.log"
-	NodeAgentGrpcDefaultLog = "grpc.log"
-	NodeHomeDirectory       = "/home/yugabyte"
-	NodeAgentRegistryPath   = ".yugabyte/node-agent-registry"
-	GetCustomersApiEndpoint = "/api/customers"
-	GetVersionEndpoint      = "/api/app_version"
-	UpgradeScript           = "node-agent-installer.sh"
-	RequestIdHeader         = "x-request-id"
-	CorrelationIdHeader     = "x-correlation-id"
-	RequestLogLevelHeader   = "x-request-log-level"
+	DefaultConfig            = "config"
+	preflightCheckScript     = "/pkg/scripts/preflight_check.sh"
+	earlyoomInstallScript    = "/pkg/scripts/earlyoom-installer.sh"
+	nodeAgentDir             = "/node-agent"
+	configDir                = "/config"
+	certsDir                 = "/cert"
+	pexEnvDir                = "/pkg/devops/pex/pexEnv"
+	releaseDir               = "/release"
+	logsDir                  = "/logs"
+	nodeAgentProvisionScript = "/pkg/scripts/node-agent-provision.sh"
+	nodeAgentProvisionYaml   = "/pkg/scripts/node-agent-provision.yaml"
+	scriptsDir               = "/pkg/scripts"
+	templatesDir             = "/pkg/templates"
+	upgradeScript            = "/pkg/bin/node-agent-installer.sh"
+	versionMetadataFile      = "/pkg/version_metadata.json"
+	DefaultShell             = "/bin/bash"
+	PlatformApiTokenHeader   = "X-AUTH-YW-API-TOKEN"
+	PlatformJwtTokenHeader   = "X-AUTH-YW-API-JWT"
+	JwtUserIdClaim           = "userId"
+	JwtClientIdClaim         = "clientId"
+	JwtClientTypeClaim       = "clientType"
+	JwtIssuer                = "https://www.yugabyte.com"
+	JwtSubject               = "NODE_AGENT"
+	JwtExpirationSecs        = 600 //in seconds
+	NodeAgentDefaultLog      = "node_agent.log"
+	NodeAgentGrpcDefaultLog  = "grpc.log"
+	NodeHomeDirectory        = "/home/yugabyte"
+	NodeAgentRegistryPath    = ".yugabyte/node-agent-registry"
+	GetCustomersApiEndpoint  = "/api/customers"
+	GetVersionEndpoint       = "/api/app_version"
+	RequestIdHeader          = "x-request-id"
+	CorrelationIdHeader      = "x-correlation-id"
+	RequestLogLevelHeader    = "x-request-log-level"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -99,6 +104,9 @@ const (
 	// JWT claims.
 	JwtClaimsExpiryKey  = "exp"
 	JwtClaimsSessionKey = "ses"
+
+	// GlobalRuntimeScopeUuid is the UUID for global scope for runtime configs.
+	GlobalRuntimeConfigScopeUuid = "00000000-0000-0000-0000-000000000000"
 )
 
 const (
@@ -155,6 +163,11 @@ func ExtractBaseURL(value string) (string, error) {
 	return baseUrl, nil
 }
 
+// Returns the platform endpoint for fetching runtime config for a given key in the scope.
+func RuntimeConfigEndpoint(cuuid string, scopeUuid string, key string) string {
+	return fmt.Sprintf("/api/customers/%s/runtime_config/%s/key/%s", cuuid, scopeUuid, key)
+}
+
 // Returns the platform endpoint for fetching providers.
 func PlatformGetProvidersEndpoint(cuuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers", cuuid)
@@ -163,6 +176,11 @@ func PlatformGetProvidersEndpoint(cuuid string) string {
 // Returns the platform endpoint for fetching the provider.
 func PlatformGetProviderEndpoint(cuuid, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
+}
+
+// Returns the platform endpoint for fetching the provider by name.
+func PlatformGetProviderByNameEndpoint(cuuid, name string) string {
+	return fmt.Sprintf("/api/customers/%s/providers?name=%s", cuuid, name)
 }
 
 // Returns the platform endpoint for fetching Users.
@@ -229,6 +247,16 @@ func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instanceType st
 // and adding node instance to the platform.
 func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes", cuuid, azid)
+}
+
+// Returns the platform endpoint for fetching node instances.
+func PlatformGetNodeInstancesEndpoint(cuuid string, puuid string) string {
+	return fmt.Sprintf("/api/customers/%s/providers/%s/nodes/list", cuuid, puuid)
+}
+
+// Returns the platform endpoint for fetching provider by node IP.
+func PlatformGetNodeInstanceByIpEndpoint(cuuid string, nodeIp string) string {
+	return fmt.Sprintf("/api/customers/%s/nodes?nodeIp=%s", cuuid, nodeIp)
 }
 
 // Returns the platform endpoint for validating the node configs.
@@ -306,15 +334,27 @@ func LogsDir() string {
 
 // Returns path to the installer/upgrade script.
 func UpgradeScriptPath() string {
-	return MustGetHomeDirectory() + "/pkg/bin/" + UpgradeScript
+	return MustGetHomeDirectory() + upgradeScript
 }
 
 func VersionFile() string {
-	return MustGetHomeDirectory() + "/pkg/version_metadata.json"
+	return MustGetHomeDirectory() + versionMetadataFile
 }
 
 func TemplateDir() string {
-	return MustGetHomeDirectory() + "/pkg/templates"
+	return MustGetHomeDirectory() + templatesDir
+}
+
+func ScriptsDir() string {
+	return MustGetHomeDirectory() + scriptsDir
+}
+
+func NodeAgentProvisioner() string {
+	return MustGetHomeDirectory() + nodeAgentProvisionScript
+}
+
+func NodeAgentProvisionYaml() string {
+	return MustGetHomeDirectory() + nodeAgentProvisionYaml
 }
 
 func IsDigits(str string) bool {

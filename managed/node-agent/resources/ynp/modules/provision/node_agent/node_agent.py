@@ -72,6 +72,7 @@ class InstallNodeAgent(BaseYnpModule):
             "code": "onprem",
             "details": {
                 "skipProvisioning": True,
+                "nodeExporterPort": context.get("node_exporter_port", 9300),
                 "cloudInfo": {
                     "onprem": {
                         "ybHomeDir": context.get("yb_home_dir", "/home/yugabyte"),
@@ -211,7 +212,8 @@ class InstallNodeAgent(BaseYnpModule):
 
     def _create_instance_if_not_exists(self, context, provider):
         yba_url = context.get('url')
-        skip_tls_verify = not yba_url.lower().startswith('https')
+        skip_tls_verify = not yba_url.lower().startswith('https') or \
+            context.get('skip_tls_verify', False)
         get_instance_type_url = self._get_instance_type(context.get('url'), context.get(
             'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
 

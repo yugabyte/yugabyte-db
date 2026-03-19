@@ -253,7 +253,7 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
   VALIDATE_MEMBER(doc, kDDLJsonQuery, String);
   query_info.query = doc[kDDLJsonQuery].GetString();
 
-  query_info.schema =
+  query_info.search_path_schema =
       HAS_MEMBER_OF_TYPE(doc, kDDLJsonSchema, IsString) ? doc[kDDLJsonSchema].GetString() : "";
   query_info.user =
       HAS_MEMBER_OF_TYPE(doc, kDDLJsonUser, IsString) ? doc[kDDLJsonUser].GetString() : "";
@@ -289,7 +289,7 @@ Result<XClusterDDLQueryInfo> GetDDLQueryInfo(
         VALIDATE_MEMBER(rel, kDDLJsonRelPgSchemaName, String);
         rel_info.relation_pgschema_name = rel[kDDLJsonRelPgSchemaName].GetString();
       } else {
-        rel_info.relation_pgschema_name = query_info.schema;
+        rel_info.relation_pgschema_name = query_info.search_path_schema;
       }
       rel_info.is_index =
           HAS_MEMBER_OF_TYPE(rel, kDDLJsonIsIndex, IsBool) ? rel[kDDLJsonIsIndex].GetBool() : false;
@@ -459,7 +459,7 @@ Status XClusterDDLQueueHandler::ProcessNewRelations(
     RETURN_NOT_OK(xcluster_context_.SetSourceTableInfoMappingForCreateTable(
         {namespace_name_, rel.relation_pgschema_name, rel.relation_name},
         PgObjectId(source_db_oid, rel.relfile_oid), rel.colocation_id, backfill_time_opt));
-    new_relations.insert({namespace_name_, query_info.schema, rel.relation_name});
+    new_relations.insert({namespace_name_, rel.relation_pgschema_name, rel.relation_name});
   }
 
   return Status::OK();
@@ -479,8 +479,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
   setup_query << Format("SET $0 TO $1;", kLocalVariableQueryId, query_info.query_id);
 
   // Set schema and role after setting the superuser extension variables.
-  if (!query_info.schema.empty()) {
-    setup_query << Format("SET SCHEMA '$0';", query_info.schema);
+  if (!query_info.search_path_schema.empty()) {
+    setup_query << Format("SET SCHEMA '$0';", query_info.search_path_schema);
   }
   if (!query_info.user.empty()) {
     setup_query << Format("SET ROLE $0;", query_info.user);
@@ -513,6 +513,7 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   if (s.ok()) {
     num_fails_for_this_ddl_ = 0;
     last_failed_query_.reset();
+    original_failed_status_ = Status::OK();
     return Status::OK();
   }
 
@@ -531,17 +532,18 @@ Status XClusterDDLQueueHandler::ProcessFailedDDLQuery(
   } else {
     last_failed_query_ = QueryIdentifier{query_info.ddl_end_time, query_info.query_id};
     num_fails_for_this_ddl_ = 1;
+    original_failed_status_ = s;
   }
 
-  last_failed_status_ = s;
   return s;
 }
 
 Status XClusterDDLQueueHandler::CheckForFailedQuery() {
   if (num_fails_for_this_ddl_ >= FLAGS_xcluster_ddl_queue_max_retries_per_ddl) {
-    return last_failed_status_.CloneAndPrepend(
-        "DDL replication is paused due to repeated failures. Manual fix is required, followed by a "
-        "leader stepdown of the target's ddl_queue tablet. ");
+    return original_failed_status_.CloneAndPrepend(Format(
+        "DDL replication is paused due to repeated failures ($0 retries). Manual fix is "
+        "required, followed by a leader stepdown of the target's ddl_queue tablet leader. ",
+        num_fails_for_this_ddl_));
   }
   return Status::OK();
 }
@@ -651,8 +653,8 @@ XClusterDDLQueueHandler::GetRowsToProcess(const HybridTime& commit_time) {
   // Use yb_disable_catalog_version_check since we do not need to read from the latest catalog (the
   // extension tables should not change).
   RETURN_NOT_OK(pg_conn_->ExecuteFormat(
-      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time = $0",
-      commit_time.GetPhysicalValueMicros()));
+      "SET ROLE NONE; SET yb_disable_catalog_version_check = 1; SET yb_read_time TO '$0 ht'",
+      commit_time.ToUint64()));
   auto rows = VERIFY_RESULT((pg_conn_->FetchRows<int64_t, int64_t, std::string>(Format(
       "/*+ MergeJoin(q r) */ "
       "SELECT q.$0, q.$1, q.$2 FROM $3 AS q "

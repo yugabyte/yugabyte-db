@@ -1810,7 +1810,7 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
   // We run with compactions disabled, because they may interefere with force-setting the OpId.
   ASSERT_OK(DisableCompactions());
   op_id_ = {1, 1};
-  rocksdb::UserFrontierPtr flushed_frontier;
+  storage::UserFrontierPtr flushed_frontier;
   for (int i = 1; i < 20; ++i) {
     const auto doc_key = MakeDocKey(i);
     const KeyBytes encoded_doc_key = doc_key.Encode();
@@ -1833,7 +1833,7 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
   ASSERT_EQ(new_consensus_frontier.hybrid_time(), consensus_frontier.hybrid_time());
   ASSERT_EQ(new_consensus_frontier.history_cutoff(),
             consensus_frontier.history_cutoff());
-  rocksdb::UserFrontierPtr new_user_frontier_ptr(new ConsensusFrontier(new_consensus_frontier));
+  storage::UserFrontierPtr new_user_frontier_ptr(new ConsensusFrontier(new_consensus_frontier));
 
   LOG(INFO) << "Attempting to change flushed frontier from " << consensus_frontier
             << " to " << new_consensus_frontier;

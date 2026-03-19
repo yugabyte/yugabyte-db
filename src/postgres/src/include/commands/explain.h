@@ -85,6 +85,8 @@ typedef struct ExplainState
 	bool		ybShowHints;	/* generate and display hints that will
 								 * produce the same plan as one Explained */
 	bool		ybShowUniqueIds;	/* show unique Path/Plan ids */
+	bool		ybShowPlanId;	/* display plan id */
+	bool		ybShowQueryId;	/* display query id */
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */
@@ -151,5 +153,7 @@ extern void ExplainCloseGroup(const char *objtype, const char *labelname,
 							  bool labeled, ExplainState *es);
 
 extern void YbExplainCommitStats(DestReceiver *dest);
+
+extern bool YbIsDebugMetricsCollectionNeeded(bool log_debug, bool log_dist);
 
 #endif							/* EXPLAIN_H */

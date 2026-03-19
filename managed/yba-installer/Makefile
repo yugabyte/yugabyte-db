@@ -32,11 +32,9 @@ CONFIG_EMBEDED_NAME:=$(CURDIR)/pkg/config/yba-ctl.yml
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 
 # get the perf advisor version to bundle
-PERF_ADVISOR_TARBALL ?= $(shell ls $(CURDIR)/perf_advisor-*.tar.gz 2>/dev/null | head -1)
-PERF_ADVISOR_VERSION ?= $(if $(PERF_ADVISOR_TARBALL),$(shell basename $(PERF_ADVISOR_TARBALL) | sed -E 's/perf_advisor-([0-9a-zA-Z\.\-]+)\.tar\.gz/\1/'),)
-PERF_ADVISOR_SUB_VERSION ?= $(shell echo $(PERF_ADVISOR_VERSION) | sed 's/-.*//')
+PERF_ADVISOR_VERSION ?= 2026.2.1.0-b4
 PA_BINARY_NAME ?= perf_advisor-$(PERF_ADVISOR_VERSION).tar.gz
-PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/perf-advisor-full/$(PERF_ADVISOR_SUB_VERSION)/$(PA_BINARY_NAME)
+PA_BINARY_URL := https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/perf-advisor/$(PERF_ADVISOR_VERSION)/$(PA_BINARY_NAME)
 
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
@@ -45,7 +43,7 @@ PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 PROMETHEUS_VERSION ?= 3.5.0
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
-POSTGRES_VERSION ?= 14.19
+POSTGRES_VERSION ?= 14.22
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 

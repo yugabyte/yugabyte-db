@@ -19,10 +19,11 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
-#include "yb/master/xcluster_rpc_tasks.h"
 
 #include "yb/rpc/messenger.h"
 

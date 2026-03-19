@@ -320,7 +320,7 @@ Status ReadableLogSegment::RestoreFooterBuilderAndLogIndex(LogSegmentFooterPB* f
 
   // As this is an active segment, set the min_start_time_running_txns as kInvalid since we want CDC
   // to stream records from this segment based on the tablet leader safe time.
-  if (GetAtomicFlag(&FLAGS_store_min_start_ht_running_txns)) {
+  if (FLAGS_store_min_start_ht_running_txns) {
     footer_builder->set_min_start_time_running_txns(HybridTime::kInvalid.ToUint64());
   }
 

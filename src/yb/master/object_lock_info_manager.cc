@@ -1149,32 +1149,19 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   if (!req.has_local_request_send_time_ms()) {
     return STATUS(InvalidArgument, "Missing required local_request_send_time_ms");
   }
-  auto master_ttl = GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms);
-  auto buffer = GetAtomicFlag(&FLAGS_ysql_operation_lease_ttl_client_buffer_ms);
+  auto master_ttl = FLAGS_master_ysql_operation_lease_ttl_ms;
+  auto buffer = FLAGS_ysql_operation_lease_ttl_client_buffer_ms;
   CHECK_GT(master_ttl, buffer);
   resp.mutable_info()->set_lease_expiry_time_ms(
       req.local_request_send_time_ms() + master_ttl - buffer);
   // Sanity check that the tserver has already registered with the same instance_seqno.
   RETURN_NOT_OK(master_.ts_manager()->LookupTS(req.instance()));
   auto object_lock_info = GetOrCreateObjectLockInfo(req.instance().permanent_uuid());
-  auto lock_variant = VERIFY_RESULT(object_lock_info->RefreshYsqlOperationLease(
-      req.instance(), MonoDelta::FromMilliseconds(master_ttl)));
+  auto lock_variant = VERIFY_RESULT(
+      object_lock_info->RefreshYsqlOperationLease(req, MonoDelta::FromMilliseconds(master_ttl)));
   if (auto* lease_info = std::get_if<SysObjectLockEntryPB::LeaseInfoPB>(&lock_variant)) {
     resp.mutable_info()->set_lease_epoch(lease_info->lease_epoch());
-    if (!req.has_current_lease_epoch() || lease_info->lease_epoch() != req.current_lease_epoch()) {
-      *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
-      // From the master leader's perspective this is not a new lease. But the tserver may not be
-      // aware it has received a new lease because it has not supplied its correct lease epoch.
-      LOG(INFO) << Format(
-          "TS $0 ($1) has provided $3 instead of its actual lease epoch $4 in its ysql op lease "
-          "refresh request. Marking its ysql lease as new",
-          req.instance().permanent_uuid(), req.instance().instance_seqno(),
-          req.has_current_lease_epoch() ? std::to_string(req.current_lease_epoch()) : "<none>",
-          lease_info->lease_epoch());
-      resp.mutable_info()->set_new_lease(true);
-    } else {
-      resp.mutable_info()->set_new_lease(false);
-    }
+    resp.mutable_info()->set_new_lease(false);
     return Status::OK();
   }
   auto* lockp = std::get_if<ObjectLockInfo::WriteLock>(&lock_variant);

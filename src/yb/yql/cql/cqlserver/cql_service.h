@@ -32,6 +32,8 @@
 #include "yb/yql/cql/ql/parser/parser_fwd.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
 
+#include "ybgate/ybgate_api.h"
+
 namespace yb {
 
 namespace tserver {
@@ -45,6 +47,7 @@ namespace cqlserver {
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
+extern const char* const kJwtIdentMapName;
 
 class CQLMetrics;
 class CQLProcessor;
@@ -164,6 +167,9 @@ class CQLServiceImpl : public CQLServerServiceIf,
     return jwt_allowed_audience_;
   }
 
+  const YbgMemoryContext& GetJwtIdentMemCtx() const {
+    return jwt_ident_memctx_;
+  }
 
  private:
   constexpr static int kRpcTimeoutSec = 5;
@@ -201,6 +207,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   Status InitJwtAuth();
   Status LoadJwtOptions(std::string* jwks_url);
   Status LoadJwtJwks(const std::string& jwks_url);
+  Status LoadIdentConf();
   Status ValidateJwtConfig();
 
   // CQLServer of this service.
@@ -277,6 +284,7 @@ class CQLServiceImpl : public CQLServerServiceIf,
   std::string jwt_matching_claim_key_ = "sub";
   std::vector<std::string> jwt_allowed_audience_;
   std::vector<std::string> jwt_allowed_issuers_;
+  YbgMemoryContext jwt_ident_memctx_;
 };
 
 }  // namespace cqlserver

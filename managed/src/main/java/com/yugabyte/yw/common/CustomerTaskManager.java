@@ -16,14 +16,18 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
+import com.yugabyte.yw.commissioner.tasks.CreatePitrConfig;
+import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule;
 import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.commissioner.tasks.SendUserNotification;
+import com.yugabyte.yw.commissioner.tasks.UpdatePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
@@ -37,17 +41,21 @@ import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -56,6 +64,7 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -880,6 +889,9 @@ public class CustomerTaskManager {
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
         break;
+      case ProvisionUniverseNodes:
+        taskParams = Json.fromJson(oldTaskParams, ProvisionUniverseNodesParams.class);
+        break;
       case KubernetesToggleImmutableYbc:
         taskParams = Json.fromJson(oldTaskParams, KubernetesToggleImmutableYbcParams.class);
         break;
@@ -916,6 +928,9 @@ public class CustomerTaskManager {
         }
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
+        break;
+      case ConfigureExportTelemetryConfig:
+        taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
@@ -959,6 +974,8 @@ public class CustomerTaskManager {
         taskParams = nodeTaskParams;
         break;
       case ReplaceNodeInUniverse:
+      case DecommissionNode:
+        // TODO: Revisit to avoid sending the whole payload.
         nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
         nodeName = oldTaskParams.get("nodeName").textValue();
         nodeTaskParams.nodeName = nodeName;
@@ -1100,6 +1117,18 @@ public class CustomerTaskManager {
         break;
       case ResumeUniverse:
         taskParams = Json.fromJson(oldTaskParams, ResumeUniverse.Params.class);
+        break;
+      case RestoreSnapshotSchedule:
+        taskParams = Json.fromJson(oldTaskParams, RestoreSnapshotScheduleParams.class);
+        break;
+      case DeletePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, DeletePitrConfig.Params.class);
+        break;
+      case CreatePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, CreatePitrConfigParams.class);
+        break;
+      case UpdatePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, UpdatePitrConfigParams.class);
         break;
       default:
         String errMsg =

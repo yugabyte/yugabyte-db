@@ -68,7 +68,7 @@ rocksdb::Status WriteBatchFormatter::MergeCF(
   return Status::OK();
 }
 
-Status WriteBatchFormatter::Frontiers(const rocksdb::UserFrontiers& range) {
+Status WriteBatchFormatter::Frontiers(const yb::storage::UserFrontiers& range) {
   StartOutputLine(__FUNCTION__, /* is_kv= */ false);
   out_ << range.ToString() << endl;
   return Status::OK();

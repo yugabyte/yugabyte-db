@@ -19,10 +19,6 @@
 [DEFAULT]
 version = 1.0.0
 ynp_driver = {{ ynp_driver }}
-# True only if the provisioning is initiated by YBA. Default is False.
-is_cloud = False
-# Cloud provider type. Default is onprem.
-cloud_type = onprem
 # Keep this as debug level for printing the shell file output.
 # Any previously defined vars are overridden here.
 {% for section_key in ynp_config %}
@@ -47,7 +43,32 @@ no_proxy =
 {% else %}
 no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
 {% endif %}
-node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
+# Minimum required space in data dirs in gigabytes. Default is 49GB.
+min_mount_point_dir_space_gb = {{ ynp_config['ynp'].min_mount_point_dir_space_gb | default(49) }}
+# Minimum required space in home directory in gigabytes. Default is 3GB.
+min_home_dir_space_gb = {{ ynp_config['ynp'].min_home_dir_space_gb | default(3) }}
+# Minimum required space in temp directory in gigabytes. Default is 1GB.
+min_tmp_dir_space_gb = {{ ynp_config['ynp'].min_tmp_dir_space_gb | default(1) }}
+# Minimum required space for prometheus in gigabytes. Default is 1GB.
+min_prometheus_space_gb = {{ ynp_config['ynp'].min_prometheus_space_gb | default(1) }}
+# Check clean directories only if set for first time installation.
+check_clean_dirs = {{ ynp_config['ynp'].check_clean_dirs | default(false) }}
+# Check available ports only if set for first time installation.
+check_available_ports = {{ ynp_config['ynp'].check_available_ports | default(false) }}
+# Define ports with default values if not provided.
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_http_port | default(9300) }}
+master_http_port = {{ ynp_config['ynp'].master_http_port | default(7000) }}
+master_rpc_port = {{ ynp_config['ynp'].master_rpc_port | default(7100) }}
+tserver_http_port = {{ ynp_config['ynp'].tserver_http_port | default(9000) }}
+tserver_rpc_port = {{ ynp_config['ynp'].tserver_rpc_port | default(9100) }}
+yb_controller_http_port = {{ ynp_config['ynp'].yb_controller_http_port | default(14000) }}
+yb_controller_rpc_port = {{ ynp_config['ynp'].yb_controller_rpc_port | default(18018) }}
+redis_server_http_port = {{ ynp_config['ynp'].redis_server_http_port | default(11000) }}
+redis_server_rpc_port = {{ ynp_config['ynp'].redis_server_rpc_port | default(6379) }}
+ycql_server_http_port = {{ ynp_config['ynp'].ycql_server_http_port | default(12000) }}
+ycql_server_rpc_port = {{ ynp_config['ynp'].ycql_server_rpc_port | default(9042) }}
+ysql_server_http_port = {{ ynp_config['ynp'].ysql_server_http_port | default(13000) }}
+ysql_server_rpc_port = {{ ynp_config['ynp'].ysql_server_rpc_port | default(5433) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
@@ -56,23 +77,27 @@ is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false
 is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
 skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(false) }}
 
-[Preprovision]
-is_cloud_only_module = True
+{%- if is_noroot_mode is false %}
+{%- if ynp_config['extra'].is_cloud is true %}
+[UpdateOS]
+{%- endif %}
 
+{%- if ynp_config['extra'].cloud_type != "onprem" %}
 [MountEphemeralDrive]
-is_cloud_only_module = True
+{%- endif %}
 
+{%- if ynp_config['extra'].is_cloud is true %}
 [InstallPackages]
-is_cloud_only_module = True
+{%- endif %}
 
 [ConfigureChrony]
 chrony_servers = {{ ynp_config['ynp'].chrony_servers | join(', ') }}
 
 [ConfigureClockbound]
 
-{% if ynp_config['ynp'].configure_thp_settings %}
+{%- if ynp_config['ynp'].configure_thp_settings %}
 [ConfigureTHP]
-{% endif %}
+{%- endif %}
 
 [CreateYugabyteUser]
 yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
@@ -91,6 +116,7 @@ kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%p_%t_%E
 vm_max_map_count = 262144
 
 [ConfigureOs.limits]
+# Add all the limits to be set in /etc/security/limits.conf.
 core = unlimited
 data = unlimited
 fsize = unlimited
@@ -101,14 +127,11 @@ nofile = 1048576
 msgqueue = 819200
 stack = 8192
 cpu = unlimited
-nproc = 12000
+nproc = 64000
 locks = unlimited
 
-[ConfigureSystemd]
-use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd }}
-service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
 
-{%- if 'extra' in ynp_config and ynp_config.extra.custom_ssh_port %}
+{%- if ynp_config['extra'].custom_ssh_port is defined and ynp_config['extra'].custom_ssh_port %}
 [ConfigureSshD]
 ip_address={{ ynp_config['ynp'].node_ip }}
 {%- endif %}
@@ -118,14 +141,23 @@ ip_address={{ ynp_config['ynp'].node_ip }}
 sudoers_commands = {{ynp_config['ynp'].sudoers_commands | join(',')}}
 {% endif %}
 
-[BackupUtils]
-
 [ConfigureNodeExporter]
 prometheus_user = prometheus
 
+[BackupUtils]
+
+[ConfigureRootSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
+{%- endif %}
+
+{%- if is_root_mode is false %}
+[ConfigureSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
+
 [ConfigureNetwork]
 ip_address={{ ynp_config['ynp'].node_ip }}
-ports = 7000 7100 9000 9100 18018 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(ynp_config['yba']) -}}
@@ -133,13 +165,13 @@ node_ip = {{ ynp_config['yba'].node_external_fqdn }}
 bind_ip = {{ ynp_config['ynp'].node_ip }}
 node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
 
-
 {%- if 'earlyoom' in ynp_config['ynp'] %}
 [InstallConfigureEarlyoom]
 earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
 earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
 {%- endif %}
 
-{%- if 'extra' in ynp_config and ynp_config.extra.is_ybm is true %}
+{%- if ynp_config['extra'].is_ybm is true %}
 [ConfigureYBMAMI]
+{%- endif %}
 {%- endif %}

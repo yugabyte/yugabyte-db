@@ -235,3 +235,35 @@ SELECT * FROM t_test ORDER BY k;
  11 |    11 |    11
 (7 rows)
 
+-- DEBUG without DIST should produce a warning and no debug metrics
+EXPLAIN (ANALYZE, DEBUG, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
+WARNING:  EXPLAIN option DEBUG requires DIST
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Index Scan using p1_pkey on p1 (actual rows=1 loops=1)
+   Index Cond: (k = 1)
+(2 rows)
+
+-- DEBUG with yb_explain_hide_non_deterministic_fields should produce a warning and no debug metrics
+SHOW yb_explain_hide_non_deterministic_fields;
+ yb_explain_hide_non_deterministic_fields 
+------------------------------------------
+ on
+(1 row)
+
+EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
+WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option DEBUG
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Index Scan using p1_pkey on p1 (actual rows=1 loops=1)
+   Index Cond: (k = 1)
+   Storage Table Read Requests: 1
+   Storage Table Read Ops: 1
+   Storage Table Rows Scanned: 1
+ Storage Read Requests: 1
+ Storage Read Ops: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 0
+ Storage Flush Requests: 0
+(10 rows)
+

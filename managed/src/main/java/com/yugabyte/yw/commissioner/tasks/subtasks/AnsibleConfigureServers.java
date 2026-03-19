@@ -167,7 +167,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     Optional<NodeAgent> optional =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
             ? Optional.empty()
-            : nodeUniverseManager.maybeGetNodeAgent(
+            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                 getUniverse(), nodeDetails, true /*check feature flag*/);
     taskParams().skipDownloadSoftware = optional.isPresent();
     if (optional.isPresent()

@@ -78,9 +78,10 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result createInstance(UUID configUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     PlatformInstance instance =
         HighAvailabilityConfig.doWithLock(
-            configUUID,
+            haConfig.getClusterKey(),
             config -> {
               PlatformInstanceFormData formData =
                   parseJsonAndValidate(request, PlatformInstanceFormData.class);
@@ -120,7 +121,7 @@ public class PlatformInstanceController extends AuthenticatedController {
                       config, formData.getCleanAddress(), formData.is_leader, formData.is_local);
 
               // Mark this instance as "failed over to" initially since it is a leader instance.
-              if (i.getIsLeader()) {
+              if (i.isLeader()) {
                 config.updateLastFailover();
               }
               // Reload from DB.
@@ -150,8 +151,9 @@ public class PlatformInstanceController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           if (!config.isLocalLeader()) {
             throw new PlatformServiceException(
@@ -164,7 +166,7 @@ public class PlatformInstanceController extends AuthenticatedController {
           if (!instanceUUIDValid) {
             throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
           }
-          if (instanceToDelete.get().getIsLocal()) {
+          if (instanceToDelete.get().isLocal()) {
             throw new PlatformServiceException(BAD_REQUEST, "Cannot delete local instance");
           }
           // Clear metrics for remote instance
@@ -235,8 +237,9 @@ public class PlatformInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot promote while shutdown is in progress");
     }
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.getOrBadRequest(configUUID);
     HighAvailabilityConfig.doWithLock(
-        configUUID,
+        haConfig.getClusterKey(),
         config -> {
           Optional<PlatformInstance> instance = PlatformInstance.get(instanceUUID);
 
@@ -248,12 +251,12 @@ public class PlatformInstanceController extends AuthenticatedController {
             throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");
           }
 
-          if (!instance.get().getIsLocal()) {
+          if (!instance.get().isLocal()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a remote platform instance");
           }
 
-          if (instance.get().getIsLeader()) {
+          if (instance.get().isLeader()) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Cannot promote a leader platform instance");
           }
@@ -269,14 +272,6 @@ public class PlatformInstanceController extends AuthenticatedController {
             }
             leader = leaderInstance.get().getAddress();
           }
-          // Validate we can reach current leader if force is not set.
-          if (force) {
-            log.warn("Connection test to the current leader is skipped");
-          } else if (!replicationManager.testConnection(
-              config, leader, config.getAcceptAnyCertificate())) {
-            throw new PlatformServiceException(
-                BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
-          }
 
           URL leaderUrl = Util.toURL(leader);
           // Make sure the backup file provided exists.
@@ -289,6 +284,35 @@ public class PlatformInstanceController extends AuthenticatedController {
                           new PlatformServiceException(
                               BAD_REQUEST,
                               "Could not find backup file from " + leaderUrl.getHost()));
+
+          // Validate we can reach current leader if force is not set.
+          if (force) {
+            log.warn("Connection test to the current leader is skipped");
+          } else {
+            boolean succeeded = false;
+            try {
+              succeeded = replicationManager.validateRemoteBackup(config, leader, backup.getName());
+            } catch (Exception e) {
+              log.error("Connection test to the current leader {} failed", leader, e);
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Could not connect to current leader and force parameter not set.");
+            }
+            if (succeeded) {
+              log.info(
+                  "Validation succeeded for backup {} from the current leader {}",
+                  backup.getName(),
+                  leader);
+            } else {
+              String errorMsg =
+                  String.format(
+                      "Validation failed for backup %s with the remote leader %s. Backup may be too"
+                          + " old. Force parameter can be set to true to bypass this check, but it"
+                          + " is not recommended",
+                      backup.getName(), leader);
+              log.error(errorMsg);
+              throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+            }
+          }
 
           // Cache local instance address before restore so we can query to new corresponding model.
           String localInstanceAddr = instance.get().getAddress();

@@ -32,6 +32,17 @@ export const LOKI_AUTH_TYPES = [
   }
 ];
 
+export const OTLP_AUTH_TYPES = [
+  { label: 'No Auth', value: 'NoAuth' },
+  { label: 'Basic Auth', value: 'BasicAuth' },
+  { label: 'Bearer Token', value: 'BearerToken' }
+];
+
+export const OTLP_PROTOCOLS = [
+  { label: 'gRPC', value: 'gRPC' },
+  { label: 'HTTP', value: 'HTTP' }
+];
+
 export const TelemetryType = {
   LOGS: 'logs',
   METRICS: 'metrics'

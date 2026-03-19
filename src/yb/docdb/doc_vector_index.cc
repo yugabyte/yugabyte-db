@@ -231,10 +231,13 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice indexed_table_key_prefix, DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
-      : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        options_(options), hybrid_time_(hybrid_time),
+      : table_id_(table_id),
+        indexed_table_key_prefix_(indexed_table_key_prefix),
+        options_(options),
+        hybrid_time_(hybrid_time),
         context_(std::move(vector_index_context)),
-        block_cache_(block_cache), mem_tracker_(mem_tracker),
+        block_cache_(block_cache),
+        mem_tracker_(mem_tracker),
         metric_entity_(metric_entity),
         metrics_(metric_entity) {
     DCHECK_ONLY_NOTNULL(context_.get());
@@ -306,7 +309,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
 
   Status Insert(
       const DocVectorIndexInsertEntries& entries,
-      const rocksdb::UserFrontiers& frontiers) override {
+      const storage::UserFrontiers& frontiers) override {
     typename LSM::InsertEntries lsm_entries;
     lsm_entries.reserve(entries.size());
     for (const auto& entry : entries) {

@@ -596,6 +596,9 @@ retry:
 		s->data.yb_allow_tables_without_primary_key =
 			yb_replication_slot->allow_tables_without_primary_key;
 
+		s->data.yb_detect_publication_changes_implicitly =
+			yb_replication_slot->detect_publication_changes_implicitly;
+
 		MyReplicationSlot = s;
 
 		/* Setup the per-table replica identity table. */
@@ -895,6 +898,7 @@ ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exi
 
 		if (slot_for_array)
 		{
+			pgstat_drop_replslot(slot_for_array);
 			slot_for_array->in_use = false;
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}

@@ -2,7 +2,11 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
@@ -17,13 +21,20 @@ import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
 @Slf4j
+@Retryable
+@Abortable
 public class RestoreSnapshotSchedule extends UniverseTaskBase {
   public static final List<State> RESTORATION_VALID_STATES =
       ImmutableList.of(State.RESTORING, State.RESTORED);
 
+  private final OperatorStatusUpdater kubernetesStatus;
+
   @Inject
-  protected RestoreSnapshotSchedule(BaseTaskDependencies baseTaskDependencies) {
+  protected RestoreSnapshotSchedule(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -97,9 +108,13 @@ public class RestoreSnapshotSchedule extends UniverseTaskBase {
       ensureStateIsRestored(client, universe, restorationUuid);
     } catch (Exception e) {
       log.error("{} hit exception: {}", getName(), e.getMessage());
+      kubernetesStatus.updatePitrRestoreStatus(
+          "The PITR restore task failed: " + e.getMessage(), getUserTaskUUID(), universe);
       throw new RuntimeException(e);
     }
 
+    kubernetesStatus.updatePitrRestoreStatus(
+        "The PITR restore task finished successfully", getUserTaskUUID(), universe);
     log.info("Completed {}", getName());
   }
 

@@ -37,8 +37,9 @@ cd "$yb_devops_home"
 log "There should be no pre-installed Python modules in the virtualenv"
 ( set -x; run_pip list )
 
+# this version constraint can be removed once we have updated yb-cassandra-driver
 log "Upgrading pip to latest version"
-(set -x; run_pip install --upgrade pip)
+(set -x; run_pip install --upgrade 'pip<23')
 
 log "Installing Python modules according to the ${REQUIREMENTS_FILE_NAME} file"
 ( set -x; run_pip install -r "${REQUIREMENTS_FILE_NAME}" )

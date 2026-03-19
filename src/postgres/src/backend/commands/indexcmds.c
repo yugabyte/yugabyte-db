@@ -74,6 +74,7 @@
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
+#include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
 #include "pgstat.h"
 #include "utils/guc.h"
@@ -126,6 +127,7 @@ static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
 static void YbWaitForBackendsCatalogVersion();
+static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -2193,184 +2195,43 @@ DefineIndex(Oid relationId,
 	}
 	else
 	{
-		bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
-
-		elog(LOG, "committing pg_index tuple with indislive=true");
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"indislive",
-										"index state change indislive=true");
 		/*
-		 * No need to break (abort) ongoing txns since this is an online schema
-		 * change.
-		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-		 * level 1).
+		 * To support concurrent create index statements, change backend type
+		 * to YB_INDEX_BACKFILL_DDL. A YB_INDEX_BACKFILL_DDL backend will be
+		 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in the
+		 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend will
+		 * appear as a lagging backend when the backfill phase takes long time,
+		 * causing the other CREATE INDEX CONCURRENTLY to time out during its
+		 * WaitForYsqlBackendsCatalogVersion call.
 		 */
-		 if (yb_should_run_in_autonomous_transaction)
-			YBDecrementDdlNestingLevel();
 
-		CommitTransactionCommand();
-
-		/*
-		 * The index is now visible, so we can report the OID.
-		 */
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
-									 indexRelationId);
-
-		/* Delay after committing pg_index update. */
-		pg_usleep(yb_index_state_flags_update_delay * 1000);
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"indisready",
-										"index state change indisready=true");
-
-		StartTransactionCommand();
-
-		if (yb_should_run_in_autonomous_transaction)
-			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
-		else
-			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-		/* Wait for all backends to have up-to-date version. */
-		YbWaitForBackendsCatalogVersion();
-
-		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
-
-		/*
-		 * Update the pg_index row to mark the index as ready for inserts.
-		 */
-		index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
-
-		elog(LOG, "committing pg_index tuple with indisready=true");
-		/*
-		 * No need to break (abort) ongoing txns since this is an online schema
-		 * change.
-		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-		 * level 1).
-		 */
-		if (yb_should_run_in_autonomous_transaction)
-			YBDecrementDdlNestingLevel();
-
-		CommitTransactionCommand();
-
-		/* Delay after committing pg_index update. */
-		pg_usleep(yb_index_state_flags_update_delay * 1000);
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"backfill",
-										"concurrent index backfill");
-
-		StartTransactionCommand();
-
-		if (yb_should_run_in_autonomous_transaction)
-			YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
-		else
-			YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
-
-		/* Wait for all backends to have up-to-date version. */
-		YbWaitForBackendsCatalogVersion();
-
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
-									 YB_PROGRESS_CREATEIDX_BACKFILLING);
-
-		/*
-		 * PG acquires ShareUpdateExclusiveLock on the main table for the
-		 * duration of the backfill so as to allow DMLs but prevent concurrent
-		 * schema changes, including parallel index creation requests. And it
-		 * acquires RowExclusiveLock on the index as backfill modifies data in
-		 * the index table.
-		 *
-		 * YB: Since backfill jobs run independently at each tablet, acquire
-		 * relevant locks here so as to hold them for the whole duration of the
-		 * backfill.
-		 */
-		LockRelationOid(relationId, ShareUpdateExclusiveLock);
-		LockRelationOid(indexRelationId, RowExclusiveLock);
-
-		/* TODO(jason): handle exclusion constraints, possibly not here. */
-
-		/* Do backfill. */
-
-		/*
-		 * YB: Do backfill if this is a separate DocDB table from the main
-		 * table.
-		 */
-		if (YBCIsLegacyModeForCatalogOps())
-			HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
-		else
+		/* Use volatile to ensure variables survive a siglongjmp */
+		volatile BackendType old_type = MyBackendType;
+		volatile bool yb_type_changed = false;
+		PG_TRY();
 		{
-			/*
-			 * To support concurrent create index statements, change backend type
-			 * to YB_INDEX_BACKFILL_DDL. A YB_INDEX_BACKFILL_DDL backend will be
-			 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in the
-			 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend will
-			 * appear as a lagging backend when the backfill phase takes long time,
-			 * causing the other CREATE INDEX CONCURRENTLY to time out during its
-			 * WaitForYsqlBackendsCatalogVersion call.
-			 */
-
-			/* Use volatile to ensure variables survive a siglongjmp */
-			volatile BackendType old_type = MyBackendType;
-			volatile YbcStatus s = NULL;
-
-			PG_TRY();
+			if (!YBCIsLegacyModeForCatalogOps() &&
+				GetCurrentTransactionNestLevel() == 1 &&
+				YbGetTriggerDepth() == 0)
 			{
 				MyBackendType = YB_INDEX_BACKFILL_DDL;
 				if (MyBEEntry)
 					MyBEEntry->st_backendType = MyBackendType;
-				s = YBCPgBackfillIndex(databaseId, indexRelationId);
+				yb_type_changed = true;
 			}
-			PG_FINALLY();
+			YbDefineIndexHelper(relationId, indexRelationId, databaseId);
+		}
+		PG_FINALLY();
+		{
+			/* Always restore if we changed it, even if an error occurred */
+			if (yb_type_changed)
 			{
 				MyBackendType = old_type;
 				if (MyBEEntry)
 					MyBEEntry->st_backendType = old_type;
 			}
-			PG_END_TRY();
-			HandleYBStatus(s);
 		}
-
-		Relation	yb_baserel = table_open(relationId, NoLock);
-
-		if (yb_enable_update_reltuples_after_create_index)
-		{
-			Oid			index_oids[1] = {indexRelationId};
-			Oid			database_oids[1] = {databaseId};
-			uint64_t	num_rows_read_from_table;
-			double		num_rows_backfilled;
-
-			HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
-													   &num_rows_read_from_table,
-													   &num_rows_backfilled,
-													   1));
-
-			/*
-			 * Ignore the update if there was an error getting backfill
-			 * progress.
-			 */
-			if (num_rows_backfilled != -1)
-			{
-				Relation	yb_indexrel = index_open(indexRelationId, NoLock);
-
-				yb_index_update_stats(yb_baserel,
-									  true,
-									  ((double) (num_rows_read_from_table)));
-				yb_index_update_stats(yb_indexrel,
-									  false,
-									  (num_rows_backfilled));
-				index_close(yb_indexrel, NoLock);
-			}
-		}
-
-		table_close(yb_baserel, NoLock);
-
-		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
-
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"postbackfill",
-										"operations after concurrent "
-										"index backfill");
+		PG_END_TRY();
 	}
 
 	/*
@@ -2398,6 +2259,157 @@ DefineIndex(Oid relationId,
 	return address;
 }
 
+static void
+YbDefineIndexHelper(Oid relationId,
+					Oid indexRelationId,
+					Oid databaseId)
+{
+	bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
+	elog(LOG, "committing pg_index tuple with indislive=true");
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indislive",
+									"index state change indislive=true");
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	 if (yb_should_run_in_autonomous_transaction)
+		YBDecrementDdlNestingLevel();
+
+	CommitTransactionCommand();
+
+	/*
+	 * The index is now visible, so we can report the OID.
+	 */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+								 indexRelationId);
+
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indisready",
+									"index state change indisready=true");
+
+	StartTransactionCommand();
+
+	if (yb_should_run_in_autonomous_transaction)
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
+
+	/*
+	 * Update the pg_index row to mark the index as ready for inserts.
+	 */
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
+
+	elog(LOG, "committing pg_index tuple with indisready=true");
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	if (yb_should_run_in_autonomous_transaction)
+		YBDecrementDdlNestingLevel();
+
+	CommitTransactionCommand();
+
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"backfill",
+									"concurrent index backfill");
+
+	StartTransactionCommand();
+
+	if (yb_should_run_in_autonomous_transaction)
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
+
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+								 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
+	/*
+	 * PG acquires ShareUpdateExclusiveLock on the main table for the
+	 * duration of the backfill so as to allow DMLs but prevent concurrent
+	 * schema changes, including parallel index creation requests. And it
+	 * acquires RowExclusiveLock on the index as backfill modifies data in
+	 * the index table.
+	 *
+	 * YB: Since backfill jobs run independently at each tablet, acquire
+	 * relevant locks here so as to hold them for the whole duration of the
+	 * backfill.
+	 */
+	LockRelationOid(relationId, ShareUpdateExclusiveLock);
+	LockRelationOid(indexRelationId, RowExclusiveLock);
+
+	/* TODO(jason): handle exclusion constraints, possibly not here. */
+
+	/* Do backfill. */
+
+	/*
+	 * YB: Do backfill if this is a separate DocDB table from the main
+	 * table.
+	 */
+	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
+
+	Relation	yb_baserel = table_open(relationId, NoLock);
+
+	if (yb_enable_update_reltuples_after_create_index)
+	{
+		Oid			index_oids[1] = {indexRelationId};
+		Oid			database_oids[1] = {databaseId};
+		uint64_t	num_rows_read_from_table;
+		double		num_rows_backfilled;
+
+		HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+												   &num_rows_read_from_table,
+												   &num_rows_backfilled,
+												   1));
+
+		/*
+		 * Ignore the update if there was an error getting backfill
+		 * progress.
+		 */
+		if (num_rows_backfilled != -1)
+		{
+			Relation	yb_indexrel = index_open(indexRelationId, NoLock);
+
+			yb_index_update_stats(yb_baserel,
+								  true,
+								  ((double) (num_rows_read_from_table)));
+			yb_index_update_stats(yb_indexrel,
+								  false,
+								  (num_rows_backfilled));
+			index_close(yb_indexrel, NoLock);
+		}
+	}
+
+	table_close(yb_baserel, NoLock);
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
+
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"postbackfill",
+									"operations after concurrent "
+									"index backfill");
+}
 
 /*
  * CheckPredicate
@@ -5216,17 +5228,17 @@ YbWaitForBackendsCatalogVersion()
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
-	/*
-	 * We don't get the current catalog version after
-	 * YBDecrementDdlNestingLevel(), so we have to send another RPC to fetch
-	 * it.  This is needed because YbGetCatalogCacheVersion() may be behind in
-	 * case other DDLs happened concurrently.  This also means the version we
-	 * are waiting on may be higher than necessary in case other DDLs finished
-	 * before we collect the version.
-	 */
-	uint64_t	catalog_version = YbGetMasterCatalogVersion();
+	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	uint64_t	new_catalog_version =
+		enable_inval_messages ? YbGetNewCatalogVersion() : YbGetMasterCatalogVersion();
 
-	Assert(catalog_version >= YbGetCatalogCacheVersion());
+	/*
+	 * We might have invoked AcceptInvalidationMessages after incrementing catalog version,
+	 * some other backends might have incremented catalog version again. So if we have
+	 * used YbGetNewCatalogVersion() as new_catalog_version, it can be smaller than
+	 * YbGetCatalogCacheVersion().
+	 */
+	Assert(enable_inval_messages || new_catalog_version >= YbGetCatalogCacheVersion());
 
 	int			num_lagging_backends = -1;
 	int			retries_left = 10;
@@ -5253,7 +5265,7 @@ YbWaitForBackendsCatalogVersion()
 								   " catalog version %" PRIu64 ".",
 								   num_lagging_backends,
 								   MyDatabaseId,
-								   catalog_version),
+								   new_catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
 								 " pg_stat_activity WHERE"
@@ -5264,7 +5276,7 @@ YbWaitForBackendsCatalogVersion()
 								 " backend_type != 'yb matview refresh' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
-								 catalog_version,
+								 new_catalog_version,
 								 MyDatabaseId)));
 			else
 			{
@@ -5276,12 +5288,12 @@ YbWaitForBackendsCatalogVersion()
 								   " database %u are still behind"
 								   " catalog version %" PRIu64 ".",
 								   MyDatabaseId,
-								   catalog_version)));
+								   new_catalog_version)));
 			}
 		}
 
 		YbcStatus	s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
-														   catalog_version,
+														   new_catalog_version,
 														   MyProcPid,
 														   &num_lagging_backends);
 

@@ -38,6 +38,8 @@
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
+#include "yb/storage/storage_test_util.h"
+
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 
@@ -159,12 +161,12 @@ class CompactionJobTest : public RocksDBTest {
         test::MakeLeftBoundaryValue(user_values.min_left.AsSlice()));
     smallest_values.user_values.push_back(
         test::MakeRightBoundaryValue(user_values.min_right.AsSlice()));
-    smallest_values.user_frontier = test::TestUserFrontier(smallest_values.seqno).Clone();
+    smallest_values.user_frontier = yb::storage::TestUserFrontier(smallest_values.seqno).Clone();
     largest_values.user_values.push_back(
         test::MakeLeftBoundaryValue(user_values.max_left.AsSlice()));
     largest_values.user_values.push_back(
         test::MakeRightBoundaryValue(user_values.max_right.AsSlice()));
-    largest_values.user_frontier = test::TestUserFrontier(largest_values.seqno).Clone();
+    largest_values.user_frontier = yb::storage::TestUserFrontier(largest_values.seqno).Clone();
     edit.AddTestFile(level,
                      FileDescriptor(file_number, 0, 10, 10),
                      smallest_values,
@@ -179,7 +181,7 @@ class CompactionJobTest : public RocksDBTest {
 
   void SetLastSequence(const SequenceNumber sequence_number) {
     versions_->SetLastSequence(sequence_number + 1);
-    test::TestUserFrontier frontier(sequence_number + 1);
+    yb::storage::TestUserFrontier frontier(sequence_number + 1);
     versions_->UpdateFlushedFrontier(frontier.Clone(), FrontierModificationMode::kUpdate);
   }
 
@@ -375,8 +377,8 @@ TEST_F(CompactionJobTest, SimpleDeletion) {
 namespace {
 
 void VerifyFrontier(const FileMetaData& meta, SequenceNumber min, SequenceNumber max) {
-  const auto& sfront = down_cast<test::TestUserFrontier&>(*meta.smallest.user_frontier);
-  const auto& lfront = down_cast<test::TestUserFrontier&>(*meta.largest.user_frontier);
+  const auto& sfront = down_cast<yb::storage::TestUserFrontier&>(*meta.smallest.user_frontier);
+  const auto& lfront = down_cast<yb::storage::TestUserFrontier&>(*meta.largest.user_frontier);
   ASSERT_EQ(min, sfront.Value());
   ASSERT_EQ(max, lfront.Value());
 }

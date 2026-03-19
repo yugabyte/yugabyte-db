@@ -76,6 +76,7 @@ METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_entity(table);
 
 DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+DECLARE_bool(skip_prefix_locks);
 
 using namespace std::literals;
 
@@ -93,6 +94,8 @@ class PgSingleTServerTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
     // Disable auto analyze to prevent query plan from changing.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
+    // disable skip_prefix_locks because serializable is being used
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_prefix_locks) = false;
     PgMiniTestBase::SetUp();
   }
 
@@ -1689,13 +1692,13 @@ class PgRocksDbIteratorLoggingTest : public PgSingleTServerTest {
     // This way we won't be logging system table operations needed to fetch PostgreSQL metadata.
     for (bool is_warmup : {true, false}) {
       if (!is_warmup) {
-        SetAtomicFlag(true, &FLAGS_rocksdb_use_logging_iterator);
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_use_logging_iterator) = true;
       }
       auto actual_num_rows = ASSERT_RESULT(conn.FetchRow<PGUint64>(count_stmt_str));
       const int expected_num_rows = config.last_row_to_scan - config.first_row_to_scan + 1;
       ASSERT_EQ(expected_num_rows, actual_num_rows);
     }
-    SetAtomicFlag(false, &FLAGS_rocksdb_use_logging_iterator);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_use_logging_iterator) = false;
   }
 
  private:

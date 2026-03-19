@@ -93,6 +93,17 @@ main(int argc, char **argv)
 
 	parseCommandLine(argc, argv);
 
+	/*
+	 * YB: If a working directory was specified, change to it before doing any
+	 * file operations.
+	 */
+	if (user_opts.yb_working_dir != NULL)
+	{
+		if (chdir(user_opts.yb_working_dir) != 0)
+			pg_fatal("could not change to working directory \"%s\": %s\n",
+					 user_opts.yb_working_dir, strerror(errno));
+	}
+
 	get_restricted_token();
 
 	if (!is_yugabyte_enabled() || user_opts.check)

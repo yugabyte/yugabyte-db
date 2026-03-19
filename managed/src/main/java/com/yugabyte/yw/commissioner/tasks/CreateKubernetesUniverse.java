@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -192,7 +193,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       installThirdPartyPackagesTaskK8s(
           universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
       Set<NodeDetails> tserversAdded =
-          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
+          getPodsToAdd(placement, null, ServerType.TSERVER, isMultiAz, false).values().stream()
+              .flatMap(nDSet -> nDSet.stream())
+              .collect(Collectors.toSet());
 
       // Check if we need to create read cluster pods also.
       List<Cluster> readClusters = taskParams().getReadOnlyClusters();
@@ -232,12 +235,11 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             readClusterPI,
             true);
         readOnlyTserversAdded =
-            getPodsToAdd(
-                readClusterPlacement.tservers,
-                null,
-                ServerType.TSERVER,
-                isReadClusterMultiAz,
-                true);
+            getPodsToAdd(readClusterPlacement, null, ServerType.TSERVER, isReadClusterMultiAz, true)
+                .values()
+                .stream()
+                .flatMap(nDSet -> nDSet.stream())
+                .collect(Collectors.toSet());
       }
 
       // Wait for new tablet servers to be responsive.

@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -81,6 +82,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
@@ -266,6 +268,7 @@ public class MainModule extends AbstractModule {
     bind(EncryptionAtRestManager.class).asEagerSingleton();
     bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
     bind(SetUniverseKey.class).asEagerSingleton();
+    bind(RedactSecretsFromAudit.class).asEagerSingleton();
     bind(RefreshKmsService.class).asEagerSingleton();
     bind(CustomerTaskManager.class).asEagerSingleton();
     bind(YamlWrapper.class).asEagerSingleton();
@@ -306,6 +309,7 @@ public class MainModule extends AbstractModule {
     bind(SoftwareUpgradeHelper.class).asEagerSingleton();
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
+    bind(OperatorResourceRestorer.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();

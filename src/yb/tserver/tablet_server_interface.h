@@ -62,6 +62,9 @@ class TabletServerIf : public LocalTabletServer {
   virtual TSTabletManager* tablet_manager() const = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
   virtual TSLocalLockManagerPtr ts_local_lock_manager() const = 0;
+#ifdef __linux__
+  virtual TServerCgroupManager* cgroup_manager() const = 0;
+#endif
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;
@@ -142,7 +145,8 @@ class TabletServerIf : public LocalTabletServer {
   virtual Result<std::vector<TserverMetricsInfoPB>> GetMetrics() const = 0;
 
   virtual Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) = 0;
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) = 0;
 
   virtual Result<tserver::PgTxnSnapshot> GetLocalPgTxnSnapshot(
       const PgTxnSnapshotLocalId& snapshot_id) = 0;

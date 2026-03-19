@@ -13,7 +13,6 @@
 
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 
-#include <string>
 #include <utility>
 
 #include "yb/common/pgsql_error.h"
@@ -45,7 +44,9 @@ Status ExplicitRowLockBuffer::Add(
 }
 
 Status ExplicitRowLockBuffer::Flush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
-  return IsEmpty() ? Status::OK() : DoFlush(error_info);
+  const auto empty = IsEmpty();
+  VLOG(5) << "Flush is_empty:" <<  empty << " intents_count= " << intents_.size();
+  return empty ? Status::OK() : DoFlush(error_info);
 }
 
 Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& error_info) {
@@ -54,9 +55,10 @@ Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& 
   auto status = DoFlushImpl();
   if (!status.ok()) {
     error_info.emplace(
-        info_->pg_wait_policy, TransactionError(status).value() == TransactionErrorCode::kNone
-                                   ? kInvalidOid
-                                   : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
+        info_->pg_wait_policy,
+        TransactionError(status).value() == TransactionErrorCode::kNone
+            ? kInvalidOid
+            : RelationOid::ValueFromStatus(status).value_or(kInvalidOid));
   }
   return status;
 }
@@ -64,23 +66,15 @@ Status ExplicitRowLockBuffer::DoFlush(std::optional<ErrorStatusAdditionalInfo>& 
 Status ExplicitRowLockBuffer::DoFlushImpl() {
   const auto intents_count = intents_.size();
   auto batch = ybctid_reader_.StartNewBatch(intents_count);
-  // The reader accepts Slice. It is required to keep data alive.
-  MemoryOptimizedTableYbctidSet intents;
-  intents.swap(intents_);
-  for (const auto& intent : intents) {
+  for (const auto& intent : intents_) {
     batch.Add(intent);
   }
   const auto existing_ybctids_count = VERIFY_RESULT(batch.Read(
       info_->database_id, table_locality_map_,
-      make_lw_function(
-          [&info = *info_](YbcPgExecParameters& params) {
-            params.rowmark = info.rowmark;
-            params.pg_wait_policy = info.pg_wait_policy;
-            params.docdb_wait_policy = info.docdb_wait_policy;
-          }))).size();
-  // Make a swap back to preserve memory allocated for buckets
-  intents.clear();
-  intents_.swap(intents);
+      {.rowmark = info_->rowmark,
+       .pg_wait_policy = info_->pg_wait_policy,
+       .docdb_wait_policy = info_->docdb_wait_policy,
+       .run_marker = PgSessionRunOperationMarker::ExplicitRowLock})).size();
   SCHECK_EQ(
       existing_ybctids_count, intents_count, NotFound, "Some of the requested ybctids are missing");
   return Status::OK();
@@ -90,10 +84,6 @@ void ExplicitRowLockBuffer::Clear() {
   intents_.clear();
   info_.reset();
   table_locality_map_.Clear();
-}
-
-bool ExplicitRowLockBuffer::IsEmpty() const {
-  return !info_;
 }
 
 } // namespace yb::pggate

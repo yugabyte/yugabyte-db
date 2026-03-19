@@ -4,7 +4,7 @@ module.exports = {
   root: true,
   env: {
     browser: true,
-    es2020: true
+    es2022: true
   },
   ignorePatterns: ['build/*'],
   settings: {
@@ -26,7 +26,7 @@ module.exports = {
   // .js / .jsx uses babel-eslint
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    ecmaVersion: 2020,
+    ecmaVersion: 2022,
     sourceType: 'module',
     tsconfigRootDir: __dirname,
     ecmaFeatures: {
@@ -34,10 +34,6 @@ module.exports = {
     },
     project: ['./tsconfig.json']
   },
-
-  // Plugins
-  // =================================
-  // plugins: ["import"],
 
   // Extend Other Configs
   // =================================
@@ -105,7 +101,7 @@ module.exports = {
     // TODO: Fix no-shadow in a separate diff
     '@typescript-eslint/no-shadow': 0,
     '@typescript-eslint/prefer-includes': 2,
-    '@typescript-eslint/prefer-nullish-coalescing': 2,
+    '@typescript-eslint/prefer-nullish-coalescing': 1,
     // TODO: Fix prefer-nullish-coalescing in a separate diff as it needs more investigation
     // due to conflict with no-unused-expressions which is result of react script version we are using
     '@typescript-eslint/prefer-optional-chain': 0,

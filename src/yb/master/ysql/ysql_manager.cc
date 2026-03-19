@@ -19,10 +19,13 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/schema_pbutil.h"
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_defaults.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
@@ -45,12 +48,13 @@ DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
     "Frequency at which the table to tablespace information will be updated in master "
     "from pg catalog tables. A value of -1 disables the refresh task.");
 
+DECLARE_bool(create_initial_sys_catalog_snapshot);
+DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 DECLARE_int32(heartbeat_interval_ms);
-
 DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
 
 namespace yb::master {

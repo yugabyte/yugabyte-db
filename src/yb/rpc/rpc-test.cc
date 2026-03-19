@@ -1078,7 +1078,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
   auto n_calls = 50;
 
-  SetAtomicFlag(true, &FLAGS_TEST_pause_calculator_echo_request);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_calculator_echo_request) = true;
   StringWaiterLogSink log_waiter("Unable to allocate read buffer because of limit");
 
   LOG(INFO) << "Start sending calls...";
@@ -1100,7 +1100,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
   auto wait_status = log_waiter.WaitFor(kTimeToWaitForOom);
 
-  SetAtomicFlag(false, &FLAGS_TEST_pause_calculator_echo_request);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_calculator_echo_request) = false;
   LOG(INFO) << "Resumed call function.";
 
   LOG(INFO) << "Waiting for the calls to be marked finished...";

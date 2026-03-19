@@ -791,7 +791,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // Recreate the same database and table.
   LOG(INFO) << "Re-create the same database";
@@ -827,7 +827,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersion) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // We need to make a new connection to the recreated database in order to have a
   // successful query of the re-created table.
@@ -869,7 +869,7 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionDropDB) {
   auto status = ResultToStatus(conn_test.Fetch("SELECT * FROM non_exist_table"));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), Format("base $0", new_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "base might have been dropped");
+  ASSERT_STR_CONTAINS(status.ToString(), "base may have been dropped");
 }
 
 // Test running a SQL script that makes the table pg_yb_catalog_version
@@ -1067,7 +1067,7 @@ TEST_F(PgCatalogVersionTest, FixCatalogVersionTable) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       Format("catalog version for database $0 was not found", yugabyte_db_oid));
-  ASSERT_STR_CONTAINS(status.ToString(), "Database might have been dropped by another user");
+  ASSERT_STR_CONTAINS(status.ToString(), "Database may have been dropped and recreated");
 
   // We can only make a new connection to database "template1" because now it
   // is the only database that has a row in pg_yb_catalog_version table.
@@ -2464,19 +2464,21 @@ TEST_F(PgCatalogVersionTest, AnalyzeAllTables) {
       "SELECT db_oid, current_version, length(messages) FROM pg_yb_invalidation_messages"));
   LOG(INFO) << "result:\n" << result;
   string expected = IsTransactionalDdlEnabled()
-      ? "13515, 2, 120; 13515, 3, 768; 13515, 4, 624; 13515, 5, 720; "
-        "13515, 6, 792; 13515, 7, 504; 13515, 8, 96; 13515, 9, 600; 13515, 10, 216; "
-        "13515, 11, 528; 13515, 12, 96; 13515, 13, 216; 13515, 14, 144; 13515, 15, 144; "
-        "13515, 16, 624; 13515, 17, 192; 13515, 18, 168; 13515, 19, 96; 13515, 20, 504; "
-        "13515, 21, 216; 13515, 22, 96; 13515, 23, 216; 13515, 24, 360; 13515, 25, 192; "
-        "13515, 26, 120; 13515, 27, 192; 13515, 28, 120; 13515, 29, 264; 13515, 30, 168; "
-        "13515, 31, 144; 13515, 32, 192; 13515, 33, 120; 13515, 34, 96; 13515, 35, 120; "
-        "13515, 36, 216; 13515, 37, 96; 13515, 38, 192; 13515, 39, 240; 13515, 40, 168; "
-        "13515, 41, 120; 13515, 42, 120; 13515, 43, 96"
-      : "13515, 2, 10776";
-  const string yugabyte_db_oid_str = Format("$0, ", yugabyte_db_oid);
-  // Replace 13515 with the real yugabyte_db_oid.
-  GlobalReplaceSubstring("13515, ", yugabyte_db_oid_str, &expected);
+      ? "$0, 2, 120; $0, 3, 768; $0, 4, 624; $0, 5, 720; "
+        "$0, 6, 792; $0, 7, 504; $0, 8, 96; $0, 9, 600; $0, 10, 216; "
+        "$0, 11, 528; $0, 12, 96; $0, 13, 216; $0, 14, 144; $0, 15, 144; "
+        "$0, 16, 624; $0, 17, 192; $0, 18, 168; $0, 19, 96; $0, 20, 504; "
+        "$0, 21, 216; $0, 22, 96; $0, 23, 216; $0, 24, 360; $0, 25, 192; "
+        "$0, 26, 120; $0, 27, 192; $0, 28, 120; $0, 29, 264; $0, 30, 168; "
+        "$0, 31, 144; $0, 32, 192; $0, 33, 120; $0, 34, 96; $0, 35, 120; "
+        "$0, 36, 216; $0, 37, 96; $0, 38, 48; $0, 39, 240; $0, 40, 168; "
+        "$0, 41, 120; $0, 42, 120; $0, 43, 96"
+      : "$0, 2, 10632";
+  expected = Format(expected, yugabyte_db_oid);
+  if (result != expected) {
+    LOG(INFO) << ASSERT_RESULT(conn_yugabyte.FetchAllAsString(
+        "SELECT db_oid, current_version, messages FROM pg_yb_invalidation_messages"));
+  }
   ASSERT_EQ(result, expected);
 }
 
@@ -3473,7 +3475,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 3) * num_logical_connections;
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 2) * num_logical_connections;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 }
 
@@ -3492,7 +3494,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   auto master_read_count_after = ASSERT_RESULT(GetMasterReadRPCCount());
   LOG(INFO) << ", master_read_count_before: " << master_read_count_before
             << ", master_read_count_after: " << master_read_count_after;
-  auto expected_count = (enable_ysql_conn_mgr ? 1 : 2) + 1;
+  auto expected_count = (enable_ysql_conn_mgr ? 0 : 1) + 1;
   ASSERT_EQ(master_read_count_after - master_read_count_before, expected_count);
 
   ASSERT_OK(conn.Execute("CREATE TABLE test_table(id int)"));
@@ -3513,7 +3515,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
   // Because latest master catalog version is used to do prefetch when rebuilding
   // relcache init file, we see the same number of master RPCs regardless of
   // whether connection manager is used or not.
-  ASSERT_EQ(master_read_count_after - master_read_count_before, 7);
+  ASSERT_EQ(master_read_count_after - master_read_count_before, 6);
 }
 
 TEST_P(PgCatalogVersionConnManagerTest,
@@ -3630,7 +3632,7 @@ TEST_P(PgCatalogVersionConnManagerTest,
     const int num_rebuild_rpcs = 2;
 
     // Each pg auth backend still costs 1 master RPC due to logical catalog version read.
-    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs + 1 * verify_count,
+    ASSERT_EQ(master_read_count_before + num_rebuild_rpcs,
               master_read_count_after);
   } else {
     // Bounded staleness only applies when connection manager is used.

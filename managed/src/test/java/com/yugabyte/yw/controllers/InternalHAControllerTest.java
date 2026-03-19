@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.PlatformInstance.State;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.FileWriter;
@@ -237,8 +238,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     PlatformInstance previousLeader =
         PlatformInstance.create(config, "http://ghi.com", true, false);
     PlatformInstance newLeader = PlatformInstance.create(config, "http://jkl.com", false, false);
-    previousLeader.setIsLeader(false);
-    newLeader.setIsLeader(true);
+    previousLeader.setState(State.STAND_BY);
+    newLeader.setState(State.LEADER);
     List<PlatformInstance> instancesToImport = new ArrayList<>();
     instancesToImport.add(newLeader);
     instancesToImport.add(previousLeader);
@@ -281,7 +282,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     int numLocalInstances = 0;
     for (JsonNode i : instancesJson) {
       PlatformInstance instance = Json.fromJson(i, PlatformInstance.class);
-      if (instance.getIsLocal()) {
+      if (instance.isLocal()) {
         numLocalInstances++;
       }
     }
@@ -301,12 +302,12 @@ public class InternalHAControllerTest extends FakeDBApplication {
     assertEquals(instancesJson.size(), 2);
     PlatformInstance local = Json.fromJson(instancesJson.get(0), PlatformInstance.class);
     assertEquals(local.getAddress(), "http://abc.com");
-    assertTrue(local.getIsLocal());
-    assertFalse(local.getIsLeader());
+    assertTrue(local.isLocal());
+    assertFalse(local.isLeader());
     PlatformInstance remoteLeader = Json.fromJson(instancesJson.get(1), PlatformInstance.class);
     assertEquals(remoteLeader.getAddress(), leaderAddr);
-    assertTrue(remoteLeader.getIsLeader());
-    assertFalse(remoteLeader.getIsLocal());
+    assertTrue(remoteLeader.isLeader());
+    assertFalse(remoteLeader.isLocal());
   }
 
   private String createInstances(JsonNode haConfigJson, String leaderAddr) {
@@ -319,8 +320,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     i1.setUuid(UUID.randomUUID());
     i1.setConfig(config);
     i1.setAddress(leaderAddr);
-    i1.setIsLeader(true);
-    i1.setIsLocal(false);
+    i1.setState(State.LEADER);
+    i1.setLocal(false);
     body.add(Json.toJson(i1));
     body.add(localInstance);
     String uri = SYNC_ENDPOINT + new Date().getTime();
@@ -476,8 +477,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     i1.setUuid(UUID.randomUUID());
     i1.setConfig(config);
     i1.setAddress("http://abcdef.com");
-    i1.setIsLeader(true);
-    i1.setIsLocal(false);
+    i1.setState(State.LEADER);
+    i1.setLocal(false);
     body.add(Json.toJson(i1));
     body.add(localInstance);
     String uri = SYNC_ENDPOINT + 0;

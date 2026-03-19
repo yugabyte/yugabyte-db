@@ -27,9 +27,10 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"
@@ -84,7 +85,7 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     poll_strand_.emplace(master->messenger()->io_service());
     poller_.Start(
         master->messenger()->scheduler(),
-        GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs) * 1s);
+        FLAGS_xcluster_safe_time_update_interval_secs * 1s);
   }
 }
 

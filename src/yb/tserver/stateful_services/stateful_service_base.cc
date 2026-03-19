@@ -333,7 +333,7 @@ void StatefulServiceBase::StartPeriodicTaskIfNeeded() {
 }
 
 uint32 StatefulServiceBase::PeriodicTaskIntervalMs() const {
-  return GetAtomicFlag(&FLAGS_stateful_service_periodic_task_interval_ms);
+  return FLAGS_stateful_service_periodic_task_interval_ms;
 }
 
 void StatefulServiceBase::ProcessTaskPeriodically() {

@@ -1899,10 +1899,10 @@ public class NodeManager extends DevopsBase {
             if (config.getBoolean("yb.cloud.enabled")) {
               // If low mem instance, configure small boot disk size.
               if (isLowMemInstanceType(taskParam.instanceType)) {
-                String lowMemBootDiskSizeGB = "8";
+                String lowMemBootDiskSizeGB = "12";
                 log.info(
-                    "Detected low memory instance type. "
-                        + "Setting up nodes using low boot disk size.");
+                    "Detected low memory instance type. Setting boot disk size to {}GB",
+                    lowMemBootDiskSizeGB);
                 commandArgs.add("--boot_disk_size_gb");
                 commandArgs.add(lowMemBootDiskSizeGB);
               }
@@ -2098,7 +2098,7 @@ public class NodeManager extends DevopsBase {
           }
 
           if (cloudType.equals(Common.CloudType.aws)) {
-            if (!taskParam.remotePackagePath.isEmpty()) {
+            if (!StringUtils.isEmpty(taskParam.remotePackagePath)) {
               commandArgs.add("--remote_package_path");
               commandArgs.add(taskParam.remotePackagePath);
             }
@@ -3107,12 +3107,12 @@ public class NodeManager extends DevopsBase {
       case GCP_CLOUD_MONITORING -> {
         GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
             (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
-        if (gcpCloudMonitoringConfig.getCredentials() != null) {
+        if (gcpCloudMonitoringConfig.getGcmCredentials() != null) {
           Path path =
               fileHelperService.createTempFile(
                   "otel_collector_gcp_creds_" + universeUUID + "_" + nodeUUID, ".json");
           String filePath = path.toAbsolutePath().toString();
-          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+          FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getGcmCredentials());
           commandArgs.add("--otel_col_gcp_creds_file");
           commandArgs.add(filePath);
         }

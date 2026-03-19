@@ -4,12 +4,12 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.SupportBundleHandler;
@@ -61,7 +61,7 @@ public class SupportBundleController extends AuthenticatedController {
   @Inject Commissioner commissioner;
   @Inject SupportBundleUtil supportBundleUtil;
   @Inject SupportBundleHandler sbHandler;
-  @Inject Config config;
+  @Inject RuntimeConfGetter confGetter;
 
   @ApiOperation(
       value = "Create support bundle for specific universe",
@@ -96,9 +96,9 @@ public class SupportBundleController extends AuthenticatedController {
           universe.getName());
     }
 
-    sbHandler.bundleDataVaidation(bundleData, universe);
+    sbHandler.bundleDataValidation(bundleData, universe);
 
-    SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
+    SupportBundle supportBundle = SupportBundle.create(bundleData, universe, confGetter);
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     UUID taskUUID = commissioner.submit(TaskType.CreateSupportBundle, taskParams);
@@ -179,7 +179,7 @@ public class SupportBundleController extends AuthenticatedController {
   public Result list(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
-    int retentionDays = config.getInt("yb.support_bundle.retention_days");
+    int retentionDays = confGetter.getStaticConf().getInt("yb.support_bundle.retention_days");
     SupportBundle.setRetentionDays(retentionDays);
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
     return PlatformResults.withData(supportBundles);
@@ -202,7 +202,7 @@ public class SupportBundleController extends AuthenticatedController {
   public Result get(UUID customerUUID, UUID universeUUID, UUID supportBundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
-    int retentionDays = config.getInt("yb.support_bundle.retention_days");
+    int retentionDays = confGetter.getStaticConf().getInt("yb.support_bundle.retention_days");
     SupportBundle.setRetentionDays(retentionDays);
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(supportBundleUUID);
     return PlatformResults.withData(supportBundle);
@@ -285,7 +285,7 @@ public class SupportBundleController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    sbHandler.bundleDataVaidation(bundleData, universe);
+    sbHandler.bundleDataValidation(bundleData, universe);
 
     return PlatformResults.withData(sbHandler.estimateBundleSize(customer, bundleData, universe));
   }

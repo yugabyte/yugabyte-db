@@ -24,9 +24,12 @@ SELECT * FROM pk_desc;
 \set query 'SELECT * FROM pk_desc ORDER BY k NULLS FIRST'
 :explain1run1
 
--- Testing yb_pushdown_strict_inequality
 SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
-/*+Set(yb_pushdown_strict_inequality false)*/ SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+-- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
+-- currently used during execution, not just planning.
+SET yb_test_skip_binding_scan_keys = true;
+SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
+RESET yb_test_skip_binding_scan_keys;
 
 CREATE TABLE  pk_multi(h int, r int, v text, PRIMARY KEY(h, r DESC));
 INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(1, 3, '1-3');
@@ -42,12 +45,15 @@ INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(
 \set query 'SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1)'
 :explain1run1
 
--- Test yb_pushdown_is_not_null
 CREATE TABLE inn_hash(k int PRIMARY KEY, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON inn_hash(v ASC);
 INSERT INTO inn_hash VALUES (1,NULL),(2,102),(3,NULL),(4,104),(5,105),(6,NULL);
 SELECT * FROM inn_hash WHERE v IS NOT NULL;
-/*+Set(yb_pushdown_is_not_null false)*/ SELECT * FROM inn_hash WHERE v IS NOT NULL;
+-- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
+-- currently used during execution, not just planning.
+SET yb_test_skip_binding_scan_keys = true;
+SELECT * FROM inn_hash WHERE v IS NOT NULL;
+RESET yb_test_skip_binding_scan_keys;
 
 -- Test unique secondary index ordering
 CREATE TABLE usc_asc(k int, v int);
@@ -575,11 +581,12 @@ drop table sample;
 create table t1(k1 int, k2 int, v0 int, v1 int, v2 int, primary key ((k1, k2) hash));
 alter table t1 drop column v0;
 create index on t1(k1, k2, v1);
--- prevents "all_ordinary_keys_bound"
-set yb_pushdown_is_not_null to false;
--- inequality prevents PK usage, IN sets a scan key flag that makes v1 wanted for rechecks
+-- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
+-- currently used during execution, not just planning.
+SET yb_test_skip_binding_scan_keys = true;
 \set query 'select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2)'
 :explain1run1
+RESET yb_test_skip_binding_scan_keys;
 drop table t1;
 
 -- Test row compares with shuffled column orders (tests internal attnum handling).

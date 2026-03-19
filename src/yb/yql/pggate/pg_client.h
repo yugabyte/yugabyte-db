@@ -44,6 +44,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/async_util.h"
 
@@ -72,12 +73,14 @@ struct DdlMode {
     (AlterDatabase)(AlterTable) \
     (CreateDatabase)(CreateTable)(CreateTablegroup) \
     (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable) \
-    (AcquireAdvisoryLock)(ReleaseAdvisoryLock)
+    (AcquireAdvisoryLock)(ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock)
 
 struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  PgsqlOps operations;
   HybridTime used_in_txn_limit;
 
   std::string ToString() const {
@@ -170,18 +173,21 @@ using WaitEventWatcher = std::function<PgWaitEventWatcher(ash::WaitStateCode, as
 
 class PgClient {
  public:
+  struct ProxyInitInfo {
+    rpc::ProxyCache& cache;
+    HostPort host_port;
+    MonoDelta resolve_cache_timeout;
+  };
+
   PgClient(
+      const ProxyInitInfo& proxy_init_info,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
       std::atomic<uint64_t>& next_perform_op_serial_no);
   ~PgClient();
 
-  Status Start(rpc::ProxyCache* proxy_cache,
-               rpc::Scheduler* scheduler,
-               const tserver::TServerSharedData& tserver_shared_object,
-               std::optional<uint64_t> session_id);
-  // TODO (dmitry): Consider joining of Interrupt and Shutdown into single method.
+  Status Start(rpc::Scheduler& scheduler, std::optional<uint64_t> session_id);
+
   void Interrupt();
-  void Shutdown();
 
   void SetTimeout(int timeout_ms);
   void ClearTimeout();
@@ -199,6 +205,8 @@ class PgClient {
   Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
   Result<tserver::PgListClonesResponsePB> ListDatabaseClones();
+
+  Result<tserver::PgQueryAutoAnalyzeResponsePB> QueryAutoAnalyze(PgOid db_oid);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -283,7 +291,7 @@ class PgClient {
 
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
-      std::optional<PgTablespaceOid> tablespace_oid);
+      bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);
 
   Result<bool> CheckIfPitrActive();
 
@@ -307,6 +315,8 @@ class PgClient {
 
   Result<tserver::PgCreateReplicationSlotResponsePB> CreateReplicationSlot(
       tserver::PgCreateReplicationSlotRequestPB* req, CoarseTimePoint deadline);
+
+  Result<tserver::PgListSlotEntriesResponsePB> ListSlotEntries();
 
   Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
 
@@ -338,6 +348,9 @@ class PgClient {
 
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata(bool local_only);
 
+  Result<std::string> GetTabletForKey(
+      const std::string& table_id, const std::string& partition_key);
+
   Result<tserver::PgServersMetricsResponsePB> ServersMetrics();
 
   Status SetCronLastMinute(int64_t last_minute);
@@ -366,6 +379,9 @@ class PgClient {
   Status CancelTransaction(const unsigned char* transaction_id);
 
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
+
+  Result<tserver::PgRemoteExecResponsePB> RemoteExec(
+      std::string_view query, const std::string& tserver_uuid);
 
  private:
   class Impl;

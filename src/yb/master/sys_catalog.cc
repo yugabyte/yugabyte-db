@@ -76,6 +76,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_auto_flags_manager.h"
+#include "yb/master/master_defaults.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
@@ -363,7 +364,9 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
-      tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
+      tablet::Primary::kTrue, kSysCatalogTableId, "" /* namespace_name */, kSystemNamespaceId,
+      table_name(),
+      TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), std::nullopt /* index_info */, 0 /* schema_version */,
       partition_schema, OpId{}, HybridTime{}, "" /* pg_table_id */,
       tablet::SkipTableTombstoneCheck::kTrue);
@@ -597,7 +600,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
 
   consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
   retryable_requests.SetServerClock(master_->clock());
-  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+  retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;

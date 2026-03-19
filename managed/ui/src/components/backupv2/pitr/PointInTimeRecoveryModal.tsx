@@ -352,6 +352,7 @@ export const PointInTimeRecoveryModal: FC<PointInTimeRecoveryModalProps> = ({
                                 setFieldValue('customTime' as never, time, true)
                               }
                               id="PitrRecoveryTimeSelector"
+                              format="hh:mm:ss A"
                             />
                           </Col>
                         </Row>

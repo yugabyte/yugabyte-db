@@ -329,6 +329,8 @@ class PgSession::RunHelper {
             << ", force_non_bufferable: " << force_non_bufferable_;
   }
 
+  void SetHasCatalogOps() { has_catalog_ops_ = true; }
+
   Status Apply(const PgTableDesc& table, PgsqlOpPtr op) {
     // Refer src/yb/yql/pggate/README for details about buffering.
     //
@@ -432,11 +434,10 @@ class PgSession::RunHelper {
     }
 
     return pg_session_.Perform(
-        std::move(ops_info_.ops),
-        {.use_catalog_session = IsCatalog(),
-         .cache_options = std::move(cache_options),
-         .in_txn_limit = in_txn_limit_
-        });
+        std::move(ops_info_.ops), {.use_catalog_session = IsCatalog(),
+                                   .has_catalog_ops = has_catalog_ops_,
+                                   .cache_options = std::move(cache_options),
+                                   .in_txn_limit = in_txn_limit_});
   }
 
  private:
@@ -485,6 +486,7 @@ class PgSession::RunHelper {
   const SessionType session_type_;
   const HybridTime in_txn_limit_;
   const ForceNonBufferable force_non_bufferable_;
+  bool has_catalog_ops_ = false;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -492,13 +494,15 @@ class PgSession::RunHelper {
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
+    PrivateTag,
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YbcPgCallbacks& pg_callbacks,
     YbcPgExecStatsState& stats_state,
     bool is_pg_binary_upgrade,
     std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-    BufferingSettings& buffering_settings)
+    BufferingSettings& buffering_settings,
+    RunRWOperationsHook&& hook)
     : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
       metrics_(stats_state),
@@ -512,7 +516,8 @@ PgSession::PgSession(
           buffering_settings_),
       is_major_pg_version_upgrade_(is_pg_binary_upgrade),
       wait_event_watcher_(wait_event_watcher),
-      tablespace_cache_(kTablespaceCacheCapacity) {
+      tablespace_cache_(kTablespaceCacheCapacity),
+      rw_operations_hook_{std::move(hook)} {
   Update(&buffering_settings_);
 }
 
@@ -760,12 +765,29 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   options.set_is_all_region_local(std::ranges::all_of(
       ops.operations(), [](const auto& op) { return op->locality_info().is_region_local; }));
 
-  // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
-  // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
-  options.set_use_xcluster_database_consistency(
-      yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
-        yb_non_ddl_txn_for_sys_tables_allowed));
+  // On xcluster target, user tables are read as of safe time but catalog table ops use regular
+  // time. This is because any DDL run on the target writes catalog entries as of current time -
+  // these entries may not be visible as of safe time. Catalog ops may be performed by actual DDL or
+  // as part of catalog cache lookups for metadata while parsing a query on a user table (for
+  // example, SELECT col1 from tbl1 may need to read pg_class for tbl1)
+  if (yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE) {
+    bool has_catalog_ops = false;
+    // Catalog ops are identified by one of the following
+    // DDL mode (TODO: #30401: consider switching this to a narrow check for catalog writes/reads)
+    has_catalog_ops = has_catalog_ops || pg_txn_manager_->IsDdlMode();
+    // Manual updates to catalog
+    has_catalog_ops = has_catalog_ops || yb_non_ddl_txn_for_sys_tables_allowed;
+    // Reads (typically catalog cache lookups) on catalog tables
+    if (YBCIsLegacyModeForCatalogOps()) {
+      // TODO: #30401: consider unifying these two checks.
+      has_catalog_ops = has_catalog_ops || ops_options.use_catalog_session;
+    } else {
+      has_catalog_ops = has_catalog_ops || ops_options.has_catalog_ops;
+    }
+    options.set_use_xcluster_database_consistency(!has_catalog_ops);
+  } else {
+    options.set_use_xcluster_database_consistency(false);
+  }
 
   if (yb_read_time != 0) {
     SCHECK(
@@ -1014,6 +1036,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
       *pg_txn_manager_, *first_table_op.table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
+  if (group_session_type != SessionType::kCatalog) {
+    RETURN_NOT_OK(rw_operations_hook_(options.marker));
+  }
   auto table_op = generator();
   RunHelper runner(
       this, group_session_type, options.in_txn_limit, options.force_non_bufferable);
@@ -1036,6 +1061,9 @@ Result<PerformFuture> PgSession::DoRunAsync(
             IllegalState, "Operations on different sessions can't be mixed");
         const bool is_ysql_catalog_table =
             table.schema().table_properties().is_ysql_catalog_table();
+        if (is_ysql_catalog_table) {
+          runner.SetHasCatalogOps();
+        }
         if (force_catalog_modification && is_ysql_catalog_table) {
           ApplyForceCatalogModification(*op);
         }
@@ -1126,7 +1154,8 @@ Status PgSession::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
   return pg_client_.ReleaseAdvisoryLock(&req, CoarseTimePoint());
 }
 
-Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
+Status PgSession::AcquireObjectLock(
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
   if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
     // Object locking feature is not enabled. YB makes best efforts to achieve necessary semantics
     // using mechanisms like catalog version update by DDLs, DDLs aborting on progress DMLs etc.
@@ -1137,13 +1166,40 @@ Status PgSession::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
     return Status::OK();
   }
   auto fastpath_lock_type = docdb::MakeObjectLockFastpathLockType(TableLockType(mode));
-  if (fastpath_lock_type && pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
+  if (!is_session_lock && fastpath_lock_type &&
+      pg_txn_manager_->TryAcquireObjectLock(lock_id, *fastpath_lock_type)) {
     return Status::OK();
   }
   VLOG(1) << "Lock acquisition via shared memory not available";
   return pg_txn_manager_->AcquireObjectLock(
       VERIFY_RESULT(FlushBufferedOperations(PgFlushDebugContext::AcquireLock(ToString(lock_id)))),
-      lock_id, mode, tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
+      lock_id, mode, is_session_lock,
+      tablespace_cache_.Get({lock_id.db_oid, lock_id.relation_oid}));
+}
+
+Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  if (!PREDICT_FALSE(pg_txn_manager_->IsTableLockingEnabledForCurrentTxn())) {
+    return Status::OK();
+  }
+  tserver::PgReleaseSessionObjectLockRequestPB req;
+  auto& options = *req.mutable_options();
+  RETURN_NOT_OK(pg_txn_manager_->CalculateIsolation(
+      false /* read_only, doesn't matter */,
+      pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
+      IsLocalObjectLockOp(false)));
+  RETURN_NOT_OK(SetupPerformOptions(
+      VERIFY_RESULT(FlushBufferedOperations(PgFlushDebugContext::ReleaseLock(ToString(lock_id)))),
+      &options));
+  if (release_all) {
+    options.clear_active_sub_transaction_id();
+  } else {
+    auto& lock_oid = *req.mutable_lock_oid();
+    lock_oid.set_database_oid(lock_id.db_oid);
+    lock_oid.set_relation_oid(lock_id.relation_oid);
+    lock_oid.set_object_oid(lock_id.object_oid);
+    lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
+  }
+  return pg_client_.ReleaseSessionObjectLock(&req, CoarseTimePoint());
 }
 
 YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(

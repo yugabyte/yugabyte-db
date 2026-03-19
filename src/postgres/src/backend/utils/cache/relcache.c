@@ -2231,7 +2231,9 @@ YbRaiseInvalidDBConnectionError()
 	ereport(FATAL,
 			(errcode(ERRCODE_CONNECTION_FAILURE),
 			 errmsg("could not reconnect to database"),
-			 errhint("Database might have been dropped by another user.")));
+			 errhint("Database may have been dropped and recreated. "
+					 "Ensure your client connection pool or metadata cache "
+					 "is refreshed to pick up the new database OID.")));
 }
 
 typedef enum YbPFetchTable
@@ -3117,6 +3119,17 @@ YbPrefetchRequiredDataImpl(YbRunWithPrefetcherContext *ctx,
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_AUTH_MEMBERS);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DATABASE);
 	YbRegisterTable(prefetcher, YB_PFETCH_TABLE_PG_DB_ROLE_SETTINGS);
+
+	/*
+	 * YB: Prefetch the LCV table for AP specifically, as YbPrefetchRequiredData
+	 * is called by AP in postgres.c.
+	 * When called by regular backends in postinit.c via
+	 * RelationCacheInitializePhase3, the LCV has already been read from the
+	 * systable, so no need to prefetch it.
+	 */
+	if (YbIsAuthPassthroughInProgress(MyProcPort))
+		YbTryRegisterLogicalClientVersionTableForPrefetching();
+
 	status = YbPrefetch(prefetcher);
 	if (status)
 		return status;

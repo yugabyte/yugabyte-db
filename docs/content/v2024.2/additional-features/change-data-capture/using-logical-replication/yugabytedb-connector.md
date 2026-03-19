@@ -1418,6 +1418,16 @@ To deploy the connector, you install the connector archive, configure the connec
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
 
+{{< note title="Note" >}}
+
+Using connector version `dz.2.5.2.yb.2025.2`, you may get the following error while deploying the connector:
+
+`ERROR: cannot export or import snapshot when ysql_enable_pg_export_snapshot is disabled.`
+
+Use connector version `dz.2.5.2.yb.2025.2.2`, or `dz.2.5.2.yb.2025.1.2` and earlier versions instead.
+
+{{< /note >}}
+
 ### Creating Kafka topics
 
 If [auto creation of topics](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) is not enabled in the Kafka Connect cluster then you will need to create the following topics manually:

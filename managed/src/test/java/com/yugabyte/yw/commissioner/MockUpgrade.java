@@ -35,7 +35,10 @@ public class MockUpgrade extends UpgradeTaskBase {
 
   // Task types that are created per node and should be added as simultaneous tasks
   public static final Set<TaskType> NODE_LEVEL_PRECHECK_TASKS =
-      Set.of(TaskType.CheckServiceLiveness, TaskType.CheckNodeCommandExecution);
+      Set.of(
+          TaskType.CheckServiceLiveness,
+          TaskType.CheckNodeCommandExecution,
+          TaskType.CheckNodeDataDirDiskSpace);
 
   private UpgradeContext context = DEFAULT_CONTEXT;
   private final UUID userTaskUUID = UUID.randomUUID();

@@ -1,4 +1,4 @@
-import type { Preview } from '@storybook/react';
+import type { Preview } from '@storybook/react-vite';
 import { ThemeProvider } from '@material-ui/core';
 import { mainTheme } from '../src/redesign/theme/mainTheme';
 

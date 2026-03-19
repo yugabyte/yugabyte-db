@@ -1157,19 +1157,22 @@ TEST_F(PgLibPqTest, BulkCopy) {
 
   int customer_key = 0;
   for (int i = 0; i != kNumBatches; ++i) {
-    ASSERT_OK(conn.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-    for (int j = 0; j != kBatchSize; ++j) {
-      conn.CopyStartRow(7);
-      conn.CopyPutInt32(++customer_key);
-      conn.CopyPutString(Format("Name $0 $1", i, j));
-      conn.CopyPutString(Format("Address $0 $1", i, j));
-      conn.CopyPutInt32(i);
-      conn.CopyPutString(std::to_string(999999876543210 + customer_key));
-      conn.CopyPutString(std::to_string(9876543210 + customer_key));
-      conn.CopyPutString(Format("Comment $0 $1", i, j));
-    }
-
-    ASSERT_OK(conn.CopyEnd());
+    ASSERT_OK(conn.CopyFromStdin(
+        kTableName,
+        [i, &customer_key](
+            PGConn::RowMaker<int32_t, std::string_view, std::string_view, int32_t,
+                             std::string_view, std::string_view, std::string_view>& row) {
+          for (int j = 0; j != kBatchSize; ++j) {
+            ++customer_key;
+            row(customer_key,
+                Format("Name $0 $1", i, j),
+                Format("Address $0 $1", i, j),
+                i,
+                std::to_string(999999876543210 + customer_key),
+                std::to_string(9876543210 + customer_key),
+                Format("Comment $0 $1", i, j));
+          }
+        }));
   }
 
   LOG(INFO) << "Finished copy";
@@ -3347,7 +3350,7 @@ class PgLibPqConcurrentDdlDml : public PgLibPqTest {
     options->extra_tserver_flags.push_back(Format("--enable_object_locking_for_table_locks=true"));
     options->extra_tserver_flags.push_back(Format("--ysql_yb_ddl_transaction_block_enabled=true"));
     options->extra_tserver_flags.push_back(
-        Format("--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false"));
+        Format("--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true"));
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 };

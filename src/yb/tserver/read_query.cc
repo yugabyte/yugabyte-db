@@ -399,7 +399,8 @@ Status ReadQuery::DoPerform() {
     // now cause intents_db scans to become less performant. Moving this initialization to only
     // cover cases where we avoid writes may cause inconsistency issues, as exposed by
     // PgOnConflictTest.OnConflict which fails if we move this code below.
-    request_scope_ = VERIFY_RESULT(RequestScope::Create(tablet()->transaction_participant()));
+    request_scope_ = VERIFY_RESULT(RequestScope::Create(
+        tablet()->transaction_participant(), /* allow_when_closing= */ false));
     // Serial number is used to check whether this operation was initiated before
     // transaction status request. So we should initialize it as soon as possible.
     read_time_.serial_no = request_scope_.request_id();
@@ -488,7 +489,7 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.local_limit = current_safe_time;
     }
     if (IsPgsqlFollowerReadAtAFollower()) {
-      if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
+      if (FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time &&
           current_safe_time < read_time_.read) {
         // We are given a read time. However, for Follower reads, it may be better
         // to redirect the query to the Leader instead of waiting on it.

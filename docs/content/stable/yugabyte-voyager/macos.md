@@ -28,7 +28,6 @@ Perform the following steps to install yb-voyager using brew for macOS:
     brew install postgresql@17
     ```
 
-
     After installing PostgreSQL 17, Homebrew displays instructions on how to add the PostgreSQL 17 binaries to your shell's PATH.
     These steps vary depending on your system's Homebrew installation path (for example: `/opt/homebrew` or `/usr/local`) and the shell you are using.
 
@@ -66,3 +65,12 @@ Perform the following steps to install yb-voyager using brew for macOS:
     ```sh
     yb-voyager version
     ```
+
+### Dependencies
+
+When installing YugabyteDB Voyager using Homebrew, the following dependencies are installed automatically as part of the formula.
+
+- `yugabyte/tap/debezium@2.5.2-\<voyager_version\>`
+- `postgresql@17`
+- `sqlite`
+- `go@1.24` (build-time)

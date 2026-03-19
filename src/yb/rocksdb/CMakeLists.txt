@@ -184,13 +184,13 @@ endif()
 
 ADD_YB_LIBRARY(rocksdb
                SRCS ${ROCKSDB_SRCS}
-               DEPS gflags gutil snappy z lz4 yb_common yb_util)
+               DEPS gflags gutil snappy z lz4 yb_common yb_storage yb_util)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
   tools/ldb_tool.cc
   tools/sst_dump_tool.cc)
-target_link_libraries(rocksdb_tools docdb_proto rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_tools docdb_proto rocksdb yb_rocksutil yb_storage)
 
 macro(ADD_YB_ROCKSDB_TOOL tool)
   add_executable(${tool} tools/${tool}.cc)
@@ -206,7 +206,7 @@ set(ROCKSDB_TEST_UTIL_SRCS
 )
 
 add_library(rocksdb_test_util ${ROCKSDB_TEST_UTIL_SRCS})
-target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_test_util gmock gtest rocksdb yb_rocksutil yb_storage_test_util)
 
 add_executable(db_bench tools/db_bench.cc tools/db_bench_tool.cc)
 target_link_libraries(db_bench rocksdb yb_ash)

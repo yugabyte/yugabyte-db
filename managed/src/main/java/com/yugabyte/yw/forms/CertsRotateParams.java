@@ -57,6 +57,29 @@ public class CertsRotateParams extends UpgradeTaskParams {
   @com.fasterxml.jackson.annotation.JsonIgnore
   public transient boolean clientRootCAExplicitlyNull = false;
 
+  /**
+   * Minimum DB version for which hot cert reload is supported when only client-to-node (C2N)
+   * encryption is enabled. For DB < this version with only C2N enabled, hot cert reload is
+   * disabled.
+   */
+  public static final String HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION = "2025.2.1.0-b0";
+
+  /**
+   * Returns true if hot cert reload is supported from a C2N/version perspective. Returns false when
+   * only client-to-node encryption is enabled and DB version is below 2025.2.1 (hot cert reload for
+   * C2N-only is available from DB >= 2025.2.1).
+   */
+  public static boolean isHotCertReloadSupportedForUniverse(
+      String ybSoftwareVersion,
+      boolean enableClientToNodeEncrypt,
+      boolean enableNodeToNodeEncrypt) {
+    if (!enableClientToNodeEncrypt || enableNodeToNodeEncrypt) {
+      return true;
+    }
+    return Util.compareYbVersions(ybSoftwareVersion, HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION, true)
+        >= 0;
+  }
+
   public boolean isKubernetesUpgradeSupported() {
     return true;
   }
@@ -140,6 +163,21 @@ public class CertsRotateParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "Non-restart certificate rotation cannot be performed when node-to-node certificates "
               + "have expired. Please use rolling or non-rolling upgrade option instead.");
+    }
+
+    // Hot cert reload for client-to-node-only is supported from DB >= 2025.2.1
+    if (!isHotCertReloadSupportedForUniverse(
+        softwareVersion,
+        userIntent.enableClientToNodeEncrypt,
+        userIntent.enableNodeToNodeEncrypt)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST,
+          "Non-restart certificate rotation is not supported for client-to-node-only universes "
+              + "with DB version below "
+              + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION
+              + ". Please use rolling or non-rolling upgrade, or upgrade DB to "
+              + HOT_CERT_RELOAD_C2N_ONLY_MIN_VERSION
+              + " or later.");
     }
   }
 

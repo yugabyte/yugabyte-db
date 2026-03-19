@@ -21,6 +21,22 @@ rightNav:
 
 ### 2026
 
+#### February 25, 2026
+
+##### New features
+
+<!-- [Migration Hub](../managed-migration/) provides a simplified migration experience when using YugabyteDB Voyager to migrate your data to YugabyteDB Aeon. Manage database migrations for your cluster, including database preparation, migration assessment, schema changes, and data migration.-->
+- Support for [exporting database query logs](../cloud-monitor/managed-integrations/) to [Amazon S3](https://aws.amazon.com/s3/).
+- Support for [exporting cluster metrics](../cloud-monitor/managed-integrations/) to [New Relic](https://docs.newrelic.com/).
+- Support for [backing up and restoring](../cloud-clusters/backup-clusters/) PostgreSQL users (aka roles) and their permissions (aka grants).
+- Ability to rename databases in a backup when [performing a restore](../cloud-clusters/backup-clusters/#restore-a-backup).
+
+##### Database
+
+- Production track updated to 2024.2.7.0.
+- Innovation track updated to 2024.2.8.0.
+- Early Access track updated to 2025.2.1.0.
+
 #### January 19, 2026
 
 ##### Improvements
@@ -32,7 +48,7 @@ rightNav:
 
 ##### Database
 
-- Early Access track updated to 2025.1.2.2
+- Early Access track updated to 2025.1.2.2.
 
 ### 2025
 
@@ -46,7 +62,7 @@ rightNav:
 
 - Production track updated to 2024.2.5.0.
 - Innovation track updated to 2024.2.6.1.
-- Early Access track updated to 2025.1.2.0
+- Early Access track updated to 2025.1.2.0.
 
 #### October 29, 2025
 
@@ -176,7 +192,7 @@ rightNav:
 ##### New features
 
 - Support for [Change Data Capture](../cloud-clusters/aeon-cdc/) (CDC) for streaming changes to external processes, applications, or other databases. If you have a new cluster running v2024.1.1 or later, CDC is available automatically. If you have a cluster that was upgraded to v2024.1.1 or later and want to use CDC, contact {{% support-cloud %}}.
-- Support for exporting [pgaudit logs](../cloud-monitor/logging-export/) to third-party tools (Datadog and Google Cloud Storage) for compliance with government, financial, or ISO certification audits.
+- Support for exporting [pgaudit logs](../cloud-monitor/logging-export/) to third-party tools (Datadog and Google Cloud Logging) for compliance with government, financial, or ISO certification audits.
 - General availability for [exporting cluster metrics](../cloud-monitor/managed-integrations/) from clusters deployed in AWS and GCP to [Prometheus](https://prometheus.io/docs/introduction/overview/).
 
 ##### Database

@@ -95,7 +95,7 @@ class GlobalStackTraceTracker {
 static GlobalStackTraceTracker global_tracker;
 
 void TrackStackTraceToggleCallback() {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     global_tracker.ResetTrackedStackTraces();
   }
 }
@@ -192,7 +192,7 @@ void GlobalStackTraceTracker::MergeLocalTracker(ThreadStackTraceTracker* tracker
 } // namespace
 
 void TrackStackTrace(StackTraceTrackingGroup group, size_t weight) {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     thread_tracker.Trace(group, weight);
   }
 }

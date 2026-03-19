@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.KmsConfig;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Objects;
+import org.apache.commons.lang3.StringUtils;
 
 @ApiModel(description = "Device information")
 public class DeviceInfo {
@@ -92,6 +93,64 @@ public class DeviceInfo {
     return result;
   }
 
+  public void mergeDeviceInfo(DeviceInfo other) {
+    if (other.storageType != null) {
+      this.storageType = other.storageType;
+    }
+    if (other.numVolumes != null) {
+      this.numVolumes = other.numVolumes;
+    }
+    if (other.mountPoints != null) {
+      this.mountPoints = other.mountPoints;
+    }
+    if (other.volumeSize != null) {
+      this.volumeSize = other.volumeSize;
+    }
+    if (other.diskIops != null) {
+      this.diskIops = other.diskIops;
+    }
+    if (StringUtils.isNotBlank(other.storageClass)) {
+      this.storageClass = other.storageClass;
+    }
+    if (other.throughput != null) {
+      this.throughput = other.throughput;
+    }
+  }
+
+  public void unsetFields(DeviceInfo other) {
+    if (other.storageType != null) {
+      this.storageType = null;
+    }
+    if (other.numVolumes != null) {
+      this.numVolumes = null;
+    }
+    if (other.mountPoints != null) {
+      this.mountPoints = null;
+    }
+    if (other.volumeSize != null) {
+      this.volumeSize = null;
+    }
+    if (other.diskIops != null) {
+      this.diskIops = null;
+    }
+    if (StringUtils.isNotBlank(other.storageClass)) {
+      this.storageClass = "";
+    }
+    if (other.throughput != null) {
+      this.throughput = null;
+    }
+  }
+
+  public boolean allNull() {
+    return this.storageType == null
+        && this.numVolumes == null
+        && this.mountPoints == null
+        && this.volumeSize == null
+        && this.diskIops == null
+        && StringUtils.isBlank(this.storageClass)
+        && this.throughput == null;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
@@ -102,6 +161,7 @@ public class DeviceInfo {
         && Objects.equals(diskIops, that.diskIops)
         && Objects.equals(throughput, that.throughput)
         && Objects.equals(mountPoints, that.mountPoints)
+        && Objects.equals(storageClass, that.storageClass)
         && storageType == that.storageType;
   }
 
@@ -210,5 +270,16 @@ public class DeviceInfo {
                   + " encryption.",
               cloudVolumeEncryption.kmsConfigUUID, kmsConfig.getKeyProvider()));
     }
+  }
+
+  public boolean onlyVolumeSizeChanged(DeviceInfo other) {
+    if (this.volumeSize < other.volumeSize) {
+      DeviceInfo thisClone = this.clone();
+      thisClone.volumeSize = other.volumeSize;
+      if (Objects.equals(thisClone, other)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

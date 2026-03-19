@@ -517,59 +517,82 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	return scan;
 }
 
+/*
+ * ybcinparallel_prepare
+ *
+ * Prepare the YB parallel scan state to fetch the key ranges from DocDB:
+ * make sure the relation and directions are set correctly.
+ * Returns the YBParallelPartitionKeys, which is expected to be a part of the
+ * parallel index scan state, and already initialized.
+ */
+static YBParallelPartitionKeys
+ybcinparallel_prepare(IndexScanDesc scan)
+{
+	Assert(scan->parallel_scan);
+	YBParallelPartitionKeys pscan;
+	ParallelIndexScanDesc target = scan->parallel_scan;
+	ScanDirection direction = ForwardScanDirection;
+
+	pscan = (YBParallelPartitionKeys) OffsetToPointer(target, target->ps_offset);
+	Relation	rel = scan->indexRelation;
+
+	/* If scan is by the PK, use the main relation instead */
+	if (rel->rd_index && rel->rd_index->indisprimary)
+	{
+		Assert(scan->heapRelation);
+		elog(LOG, "Scan is by PK, get parallel ranges from the main table");
+		rel = scan->heapRelation;
+	}
+	if (scan->yb_scan_plan)
+	{
+		if (IsA(scan->yb_scan_plan, IndexScan))
+			direction = ((IndexScan *) scan->yb_scan_plan)->indexorderdir;
+		else if (IsA(scan->yb_scan_plan, IndexOnlyScan))
+			direction = ((IndexOnlyScan *) scan->yb_scan_plan)->indexorderdir;
+	}
+	ybParallelPrepare(pscan, rel, scan->yb_exec_params, !ScanDirectionIsBackward(direction));
+	return pscan;
+}
+
 static void
 ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys, ScanKey orderbys, int norderbys)
 {
 	if (scan->opaque)
 	{
-		YbScanDesc	ybScan = (YbScanDesc) scan->opaque;
-
-		/* For rescan, end the previous scan. */
-		if (ybScan->pscan)
-			yb_init_partition_key_data(ybScan->pscan);
 		ybcinendscan(scan);
 		scan->opaque = NULL;
 	}
 
-	YbScanDesc	ybScan = ybcBeginScan(scan->heapRelation, scan->indexRelation,
-									  scan->xs_want_itup, nscankeys, scankey,
-									  scan->yb_scan_plan, scan->yb_rel_pushdown,
-									  scan->yb_idx_pushdown, scan->yb_aggrefs,
-									  scan->yb_distinct_prefixlen,
-									  scan->yb_exec_params,
-									  false /* is_internal_scan */ ,
-									  scan->fetch_ybctids_only);
+	YbScanDesc ybScan = YbBeginScan(scan->heapRelation,
+									scan->indexRelation,
+									scan->xs_want_itup,
+									nscankeys,
+									scankey,
+									scan->yb_scan_plan,
+									scan->yb_rel_pushdown,
+									scan->yb_idx_pushdown,
+									scan->yb_aggrefs,
+									scan->yb_distinct_prefixlen,
+									scan->yb_exec_params,
+									false,	/* is_internal_scan */
+									scan->fetch_ybctids_only);
 
 	/* For LSM indexes, we either recheck all rows or no rows. */
 	scan->xs_recheck = YbNeedsPgRecheck(ybScan);
 
 	scan->opaque = ybScan;
 	if (scan->parallel_scan)
-	{
-		ParallelIndexScanDesc target = scan->parallel_scan;
-		ScanDirection direction = ForwardScanDirection;
+		ybScan->pscan = ybcinparallel_prepare(scan);
+}
 
-		ybScan->pscan = (YBParallelPartitionKeys)
-			OffsetToPointer(target, target->ps_offset);
-		Relation	rel = scan->indexRelation;
-
-		/* If scan is by the PK, use the main relation instead */
-		if (scan->heapRelation &&
-			scan->heapRelation->rd_pkindex == RelationGetRelid(rel))
-		{
-			elog(LOG, "Scan is by PK, get parallel ranges from the main table");
-			rel = scan->heapRelation;
-		}
-		if (scan->yb_scan_plan)
-		{
-			if (IsA(scan->yb_scan_plan, IndexScan))
-				direction = ((IndexScan *) scan->yb_scan_plan)->indexorderdir;
-			else if (IsA(scan->yb_scan_plan, IndexOnlyScan))
-				direction = ((IndexOnlyScan *) scan->yb_scan_plan)->indexorderdir;
-		}
-		ybParallelPrepare(ybScan->pscan, rel, scan->yb_exec_params,
-						  !ScanDirectionIsBackward(direction));
-	}
+static void
+ybcinparallelrescan(IndexScanDesc scan)
+{
+	Assert(scan->opaque);
+	YbScanDesc	ybScan = (YbScanDesc) scan->opaque;
+	yb_rescan_partition_key_data(ybScan->pscan);
+	YBParallelPartitionKeys pscan PG_USED_FOR_ASSERTS_ONLY = ybcinparallel_prepare(scan);
+	Assert(pscan == ybScan->pscan);
 }
 
 /*
@@ -633,11 +656,11 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 											&low_bound, &low_bound_size,
 											&high_bound, &high_bound_size))
 					{
-						HandleYBStatus(YBCPgDmlBindRange(ybscan->handle,
-														 low_bound,
-														 low_bound_size,
-														 high_bound,
-														 high_bound_size));
+						HandleYBStatus(YBCPgDmlApplyParallelRange(ybscan->handle,
+																  low_bound,
+																  low_bound_size,
+																  high_bound,
+																  high_bound_size));
 						if (low_bound)
 							pfree((void *) low_bound);
 						if (high_bound)
@@ -778,7 +801,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->amrestrpos = NULL;
 	amroutine->amestimateparallelscan = yb_estimate_parallel_size;
 	amroutine->aminitparallelscan = yb_init_partition_key_data;
-	amroutine->amparallelrescan = NULL;
+	amroutine->amparallelrescan = ybcinparallelrescan;
 	amroutine->yb_amisforybrelation = true;
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;

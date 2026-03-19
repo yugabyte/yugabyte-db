@@ -103,6 +103,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.pekko.stream.Materializer;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -170,12 +171,14 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject
   public SessionController(
-      CustomWsClientFactory wsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
+      CustomWsClientFactory wsClientFactory,
+      RuntimeConfigFactory runtimeConfigFactory,
+      Materializer materializer) {
     WSClient wsClient =
         wsClientFactory.forCustomConfig(
             runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.apiHelper = new ApiHelper(wsClient);
+    this.apiHelper = new ApiHelper(wsClient, materializer);
   }
 
   @ApiModel(description = "Session information")

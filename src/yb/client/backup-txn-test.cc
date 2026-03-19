@@ -115,9 +115,8 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
 };
 
 TEST_F(BackupTxnTest, Simple) {
-  SetAtomicFlag(
-      std::chrono::duration_cast<std::chrono::microseconds>(1s).count() * kTimeMultiplier,
-      &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) =
+      std::chrono::duration_cast<std::chrono::microseconds>(1s).count() * kTimeMultiplier;
   ASSERT_NO_FATALS(WriteData());
 
   TxnSnapshotId snapshot_id = ASSERT_RESULT(snapshot_util_->StartSnapshot(table_));
@@ -296,7 +295,7 @@ void BackupTxnTest::TestDeleteSnapshot(bool compact_and_restart) {
   }
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 
-  SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 1000;
 
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());
 }
@@ -314,7 +313,7 @@ TEST_F(BackupTxnTest, DeleteWithCompaction) {
 }
 
 TEST_F(BackupTxnTest, CleanupAfterRestart) {
-  SetAtomicFlag(300000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 300000;
 
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
@@ -325,7 +324,7 @@ TEST_F(BackupTxnTest, CleanupAfterRestart) {
 
   ASSERT_FALSE(ASSERT_RESULT(snapshot_util_->ListSnapshots()).empty());
 
-  SetAtomicFlag(1000, &FLAGS_snapshot_coordinator_cleanup_delay_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_cleanup_delay_ms) = 1000;
   ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
 
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsCleaned());

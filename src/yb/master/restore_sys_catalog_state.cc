@@ -404,7 +404,7 @@ Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysTablesEntryPB* pb) {
   if (pb->schema().table_properties().is_ysql_catalog_table()) {
-    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    if (!FLAGS_enable_fast_pitr) {
       restoration_.restoring_system_tables.emplace(id);
       return false;
     }
@@ -822,7 +822,7 @@ Status RestoreSysCatalogState::CheckExistingEntry(
     restoration_.parent_to_child_tables[pb.parent_table_id()].push_back(id);
   }
   if (pb.schema().table_properties().is_ysql_catalog_table()) {
-    if (!GetAtomicFlag(&FLAGS_enable_fast_pitr)) {
+    if (!FLAGS_enable_fast_pitr) {
       LOG(INFO) << "PITR: Adding " << pb.name() << " for restoring. ID: " << id;
       restoration_.existing_system_tables.emplace(id, pb.name());
       return Status::OK();

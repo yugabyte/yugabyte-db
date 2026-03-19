@@ -138,22 +138,12 @@ The following PG15 features are not yet implemented but are planned for the futu
 | --------| ----------- |
 
 | [Merge command](https://www.postgresql.org/docs/15/sql-merge.html)
-| INSERT, UPDATE or DELETE in one statement. |
-
-| [Scram authentication as default](../../../secure/authentication/password-authentication#enable-scram-sha-256-authentication)
-| Scram authentication is [supported](../../../secure/authentication/password-authentication/#scram-sha-256) in YugabyteDB but still has md5 as default authentication method. |
+| INSERT, UPDATE, or DELETE in one statement. |
 
 | [Nondeterministic collations](https://www.postgresql.org/docs/12/collation.html#COLLATION-NONDETERMINISTIC)
 | Consider strings to be equal even if they consist of different bytes, for example, case-insensitive, or accent-insensitive comparisons. |
 
 {{%/table%}}
-
-### Features not yet implemented
-
-The following features supported in v2024.2 and earlier are not yet available in PostgreSQL 15-based versions:
-
-- [View terminated queries with yb_terminated_queries](../../../explore/observability/yb-pg-stat-get-queries/)
-- [PostgreSQL_FDW extension](../../../additional-features/pg-extensions/extension-postgres-fdw/)
 
 ## What's changed
 
@@ -200,6 +190,14 @@ SELECT pid, ssl, version FROM pg_stat_ssl;
 -----+---------+---------
 44345 |    t   | TLSv1.2 |
 ```
+
+### Default password encryption
+
+In versions of YugabyteDB prior to v2025.2 (and versions of PostgreSQL prior to 14), the default method for `password_encryption` was `md5`.
+
+Starting from YugabyteDB v2025.2, the default is `scram-sha-256`.
+
+Refer to [Password authentication methods](../../../secure/authentication/password-authentication/#password-authentication-methods).
 
 ### CREATE permission on public schema revoked for new users
 

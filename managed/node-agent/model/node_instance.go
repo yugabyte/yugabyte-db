@@ -8,14 +8,16 @@ import (
 )
 
 type BasicInfo struct {
-	Uuid   string `json:"uuid,omitempty"`
-	Code   string `json:"code,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Active bool   `json:"active,omitempty"`
+	Uuid    string `json:"uuid,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Active  bool   `json:"active,omitempty"`
+	Version int64  `json:"version,omitempty"`
 }
 
 // Provider is the provider object.
 type Provider struct {
+	Extra
 	BasicInfo
 	Cuuid               string            `json:"customerUUID,omitempty"`
 	AirGapInstall       bool              `json:"airGapInstall,omitempty"`
@@ -30,9 +32,26 @@ type Provider struct {
 	AllAccessKeys       []AccessKey       `json:"allAccessKeys,omitempty"`
 }
 
+func (p Provider) MarshalJSON() ([]byte, error) {
+	type Alias Provider
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+func (p *Provider) UnmarshalJSON(data []byte) error {
+	type Alias Provider
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = Provider(*alias)
+	return nil
+}
+
 // ProviderDetails contains the details object within a provider.
 // Only the required fields are added here.
 type ProviderDetails struct {
+	Extra
 	CloudInfo           CloudInfo `json:"cloudInfo"`
 	AirGapInstall       bool      `json:"airGapInstall,omitempty"`
 	InstallNodeExporter bool      `json:"installNodeExporter,omitempty"`
@@ -43,23 +62,124 @@ type ProviderDetails struct {
 	EnableNodeAgent     bool      `json:"enableNodeAgent,omitempty"`
 }
 
+// Register custom marshaller.
+func (p ProviderDetails) MarshalJSON() ([]byte, error) {
+	type Alias ProviderDetails
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+// Register custom unmarshaller.
+func (p *ProviderDetails) UnmarshalJSON(data []byte) error {
+	type Alias ProviderDetails
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = ProviderDetails(*alias)
+	return nil
+}
+
 type CloudInfo struct {
+	Extra
 	Onprem OnPremCloudInfo `json:"onprem,omitempty"`
 }
 
+// Register custom marshaller.
+func (p CloudInfo) MarshalJSON() ([]byte, error) {
+	// Create an alias to avoid infinite recursion.
+	type Alias CloudInfo
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+// Register custom unmarshaller.
+func (p *CloudInfo) UnmarshalJSON(data []byte) error {
+	// Create an alias to avoid infinite recursion.
+	type Alias CloudInfo
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = CloudInfo(*alias)
+	return nil
+}
+
 type OnPremCloudInfo struct {
+	Extra
 	YbHomeDir     string `json:"ybHomeDir,omitempty"`
 	UseClockbound bool   `json:"useClockbound,omitempty"`
 }
 
+// Register custom marshaller.
+func (p OnPremCloudInfo) MarshalJSON() ([]byte, error) {
+	type Alias OnPremCloudInfo
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+// Register custom unmarshaller.
+func (p *OnPremCloudInfo) UnmarshalJSON(data []byte) error {
+	// Create an alias to avoid infinite recursion.
+	type Alias OnPremCloudInfo
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = OnPremCloudInfo(*alias)
+	return nil
+}
+
 type AccessKey struct {
+	Extra
 	KeyInfo KeyInfo `json:"keyInfo"`
 }
 
+// Register custom marshaller.
+func (p AccessKey) MarshalJSON() ([]byte, error) {
+	// Create an alias to avoid infinite recursion.
+	type Alias AccessKey
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+// Register custom unmarshaller.
+func (p *AccessKey) UnmarshalJSON(data []byte) error {
+	// Create an alias to avoid infinite recursion.
+	type Alias AccessKey
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = AccessKey(*alias)
+	return nil
+}
+
 type KeyInfo struct {
+	Extra
 	KeyPairName              string `json:"keyPairName,omitempty"`
 	SshPrivateKeyContent     string `json:"sshPrivateKeyContent,omitempty"`
 	SkipKeyValidateAndUpload bool   `json:"skipKeyValidateAndUpload,omitempty"`
+}
+
+// Register custom mashaller.
+func (p KeyInfo) MarshalJSON() ([]byte, error) {
+	// Create an alias to avoid infinite recursion.
+	type Alias KeyInfo
+	alias := Alias(p)
+	return marshalUnknownExtraFields(&alias)
+}
+
+// Register custom unmarshaller.
+func (p *KeyInfo) UnmarshalJSON(data []byte) error {
+	// Create an alias to avoid infinite recursion.
+	type Alias KeyInfo
+	alias := &Alias{}
+	if err := unmarshalUnknownExtraFields(data, alias); err != nil {
+		return err
+	}
+	*p = KeyInfo(*alias)
+	return nil
 }
 
 // yyyy-MM-dd HH:mm:ss

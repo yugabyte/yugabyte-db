@@ -109,8 +109,7 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_RUNTIME_bool(
-    split_respects_tablet_replica_limits, false,
+DEFINE_RUNTIME_bool(split_respects_tablet_replica_limits, false,
     "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
     "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
     "the limit machinery determines the universe cannot support any more tablet replicas.");
@@ -121,12 +120,22 @@ METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
     yb::MetricUnit::kMilliseconds,
     "Time (milliseconds) for one run of the automatic tablet split manager.");
 
-METRIC_DEFINE_counter(
-    cluster, split_tablet_too_many_tablets,
+METRIC_DEFINE_counter(cluster, split_tablet_too_many_tablets,
     "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
     yb::MetricUnit::kRequests,
     "The number of SplitTablet operations failed because the cluster cannot host any more "
     "tablets.");
+
+METRIC_DEFINE_gauge_uint64(cluster, tablet_split_candidates,
+    "How many tablets are eligible for splitting",
+    yb::MetricUnit::kUnits,
+    "The number of tablets that are eligible for splitting in the current run.");
+
+METRIC_DEFINE_gauge_uint64(cluster, outstanding_tablet_splits,
+    "Current number of outstanding automatic tablet splits",
+    yb::MetricUnit::kUnits,
+    "The number of automatic tablet splits that are currently outstanding. This includes splits "
+    "with active tasks, splits with children still compacting, and splits pending scheduling.");
 
 namespace yb::master {
 
@@ -166,6 +175,10 @@ TabletSplitManager::TabletSplitManager(
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(master_metrics, 0)),
+    metric_tablet_split_candidates_(
+        METRIC_tablet_split_candidates.Instantiate(cluster_metrics, 0)),
+    metric_outstanding_tablet_splits_(
+        METRIC_outstanding_tablet_splits.Instantiate(cluster_metrics, 0)),
     metric_split_tablet_too_many_tablets_(
         METRIC_split_tablet_too_many_tablets.Instantiate(cluster_metrics)) {}
 
@@ -602,13 +615,11 @@ class OutstandingSplitState {
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
   bool CanSplitMoreGlobal() const {
-    const auto outstanding_splits =
-        splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
     if (FLAGS_outstanding_tablet_split_limit != 0 &&
-        outstanding_splits >= FLAGS_outstanding_tablet_split_limit) {
+        GetOutstandingSplitCount() >= FLAGS_outstanding_tablet_split_limit) {
       VLOG_WITH_FUNC(2) << Format(
           "Number of outstanding splits will be $0 ($1 + $2 + $3) >= $4, can't do more splits",
-          outstanding_splits, splits_with_task_.size(), compacting_splits_.size(),
+          GetOutstandingSplitCount(), splits_with_task_.size(), compacting_splits_.size(),
           splits_to_schedule_.size(), FLAGS_outstanding_tablet_split_limit);
       return false;
     }
@@ -690,6 +701,14 @@ class OutstandingSplitState {
 
   const SplitsToScheduleMap& GetSplitsToSchedule() const {
     return splits_to_schedule_;
+  }
+
+  size_t GetCandidateCount() const {
+    return new_split_candidates_.size();
+  }
+
+  size_t GetOutstandingSplitCount() const {
+    return splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
   }
 
   void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
@@ -835,9 +854,6 @@ void TabletSplitManager::DoSplitting(
         YB_LOG_EVERY_N_SECS(INFO, 30) << Format(
             "Found split with ongoing task. Task type: $0. Split parent id: $1.",
             task->type_name(), tablet_id);
-        if (!state.CanSplitMoreGlobal()) {
-          return;
-        }
       }
     }
   }
@@ -856,9 +872,6 @@ void TabletSplitManager::DoSplitting(
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
-      if (!state.CanSplitMoreGlobal()) {
-        break;
-      }
       if (state.HasSplitWithTask(tablet->id())) {
         VLOG(4) << Format("Should not split tablet $0 since it already has a split task",
                           tablet->id());
@@ -914,7 +927,6 @@ void TabletSplitManager::DoSplitting(
         RETURN_NOT_OK(
             CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()));
         RETURN_NOT_OK(AllReplicasHaveFinishedCompaction(*replicas));
-        RETURN_NOT_OK(state.CanSplitMoreOnReplicas(*replicas));
         return drive_info_opt.get().sst_files_size;
       };
       Result<uint64_t> result = ValidateAutomaticSplitCandidateTablet();
@@ -925,14 +937,13 @@ void TabletSplitManager::DoSplitting(
       }
       state.AddCandidate(tablet, result.get());
     }
-    if (!state.CanSplitMoreGlobal()) {
-      break;
-    }
   }
 
+  metric_tablet_split_candidates_->set_value(state.GetCandidateCount());
   // Sort candidates if required and add as many desired candidates to the list of splits to
   // schedule as possible (while respecting the limits on ongoing splits).
   state.ProcessCandidates();
+  metric_outstanding_tablet_splits_->set_value(state.GetOutstandingSplitCount());
   // Schedule any new splits and any splits that need to be restarted.
   ScheduleSplits(state.GetSplitsToSchedule(), epoch);
 }

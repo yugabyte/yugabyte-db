@@ -17,6 +17,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/util/flags.h"
 
+#include "yb/util/flag_validators.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
@@ -82,14 +83,26 @@ DEFINE_NON_RUNTIME_bool(
     ysql_minimal_catalog_caches_preload, false,
     "Fill postgres' caches with system items only");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching, false,
-    "If true, does selection of transactional backends based on logical client version");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching, "2026_02");
 
-DEFINE_RUNTIME_PREVIEW_bool(
-    ysql_conn_mgr_version_matching_connect_higher_version, true,
-    "If ysql_conn_mgr_version_matching is enabled is enabled, then connect to higher version "
-    "server if this flag is set to true");
+DEPRECATE_FLAG(bool, ysql_conn_mgr_version_matching_connect_higher_version, "2026_02");
+
+DEFINE_NON_RUNTIME_PREVIEW_string(
+    ysql_conn_mgr_alter_guc_adoption_strategy, "fluctuating",
+    "Defines strategy used by connection manager to adopt settings of ALTER statements modifying "
+    "GUCs. The possible values are 'fluctuating', 'gradual' and 'connection_static'. 'fluctuating'"
+    "means no handling is done, 'gradual' means existing sessions are gradually shifted to newer "
+    "backends i.e. they'll see new GUC settings done by ALTERS and 'connection_static' means "
+    "existing sessions will never see new GUC settings. In 'gradual' and 'connection_static' "
+    "modes, new sessions will always see effects of ALTERs executed before they were created");
+
+DEFINE_NON_RUNTIME_PREVIEW_int32(
+    ysql_conn_mgr_alter_guc_stale_backend_ttl_ms, -1,
+    "TTL of backends which don't have latest settings of ALTER GUC commands. When set to a "
+    "positive value, stale backends will be terminated uniformly till the TTL period after "
+    "execution of ALTER. -1 means that no action is taken on stale backends. 0 means that stale "
+    "idle backends are destroyed immediately after execution of ALTER and stale active backends "
+    "are destroyed when they get idle");
 
 DEFINE_NON_RUNTIME_bool(ysql_block_dangerous_roles, false,
     "Block roles that can potentially be used to escalate to superuser privileges. Intended to be "
@@ -141,7 +154,6 @@ DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
 DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
 DECLARE_string(placement_zone);
@@ -163,6 +175,9 @@ bool PreloadAdditionalCatalogListValidator(const char* flag_name, const std::str
 }  // namespace
 
 DEFINE_validator(ysql_catalog_preload_additional_table_list, PreloadAdditionalCatalogListValidator);
+DEFINE_validator(
+    ysql_conn_mgr_alter_guc_adoption_strategy,
+    FLAG_IN_SET_VALIDATOR("fluctuating", "gradual", "connection_static"));
 
 namespace yb::pggate {
 
@@ -213,9 +228,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
-      .ysql_conn_mgr_version_matching = &FLAGS_ysql_conn_mgr_version_matching,
-      .ysql_conn_mgr_version_matching_connect_higher_version =
-          &FLAGS_ysql_conn_mgr_version_matching_connect_higher_version,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,
       .ysql_sequence_cache_method = FLAGS_ysql_sequence_cache_method.c_str(),
       .ysql_conn_mgr_sequence_support_mode = FLAGS_ysql_conn_mgr_sequence_support_mode.c_str(),
@@ -235,8 +247,6 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_conn_mgr_stats_interval,
       .ysql_enable_read_request_cache_for_connection_auth =
           &FLAGS_ysql_enable_read_request_cache_for_connection_auth,
-      .ysql_yb_enable_implicit_dynamic_tables_logical_replication =
-          &FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication,
       .timestamp_history_retention_interval_sec =
           &FLAGS_timestamp_history_retention_interval_sec,
       .ysql_enable_scram_channel_binding = &FLAGS_ysql_enable_scram_channel_binding,

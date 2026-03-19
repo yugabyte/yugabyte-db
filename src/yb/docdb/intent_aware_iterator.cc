@@ -199,7 +199,7 @@ IntentAwareIterator::IntentAwareIterator(
     const FastBackwardScan use_fast_backward_scan,
     const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek)
     : read_time_(read_operation_data.read_time),
-      encoded_read_time_(read_operation_data.read_time),
+      encoded_read_time_(read_operation_data.read_time, read_operation_data.write_id),
       txn_op_context_(txn_op_context),
       upperbound_(&kKeyEntryTypeMaxByte, 1),
       lowerbound_(&kKeyEntryTypeMinByte, 1),
@@ -1070,7 +1070,7 @@ Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHyb
   return EncodedDocHybridTime();
 }
 
-Result<HybridTime> IntentAwareIterator::FindOldestRecord(
+Result<DocHybridTime> IntentAwareIterator::FindOldestRecord(
     Slice key_without_ht, HybridTime min_hybrid_time) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(key_without_ht) << ", " << min_hybrid_time;
 #define DOCDB_DEBUG
@@ -1082,19 +1082,19 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   if (!VERIFY_RESULT_REF(Fetch())) {
     VLOG_WITH_FUNC(4) << "Returning kInvalid";
-    return HybridTime::kInvalid;
+    return DocHybridTime::kInvalid;
   }
 
   EncodedDocHybridTime encoded_min_hybrid_time(min_hybrid_time, kMaxWriteId);
 
-  HybridTime result;
+  DocHybridTime result = DocHybridTime::kInvalid;
   if (intent_iter_->Initialized()) {
     auto intent_dht = VERIFY_RESULT(FindMatchingIntentRecordDocHybridTime(key_without_ht));
     VLOG_WITH_FUNC(4) << "Looking for Intent Record found ?  =  "
             << !intent_dht.empty();
     if (!intent_dht.empty() && intent_dht > encoded_min_hybrid_time) {
-      result = VERIFY_RESULT(intent_dht.Decode()).hybrid_time();
-      VLOG_WITH_FUNC(4) << " oldest_record_ht is now " << result;
+      result = VERIFY_RESULT(intent_dht.Decode());
+      VLOG_WITH_FUNC(4) << " oldest_record_dht is now " << result;
     }
   } else {
     VLOG_WITH_FUNC(4) << "intent_iter_ not Initialized";
@@ -1123,9 +1123,12 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
     auto regular_dht = VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
     VLOG_WITH_FUNC(4) << "Looking for Matching Regular Record found = " << regular_dht.ToString();
     if (!regular_dht.empty()) {
-      auto ht = VERIFY_RESULT(regular_dht.Decode()).hybrid_time();
-      if (ht > min_hybrid_time) {
-        result.MakeAtMost(ht);
+      auto decoded_dht = VERIFY_RESULT(regular_dht.Decode());
+      if (decoded_dht.hybrid_time() > min_hybrid_time) {
+        // MakeAtMost: pick the older (smaller) of the two DocHybridTimes.
+        if (!result.is_valid() || decoded_dht < result) {
+          result = decoded_dht;
+        }
       }
     }
   } else {
@@ -1245,7 +1248,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
       auto max_allowed = value.compare(encoded_read_time_.local_limit.AsSlice()) > 0
           ? encoded_read_time_.global_limit.AsSlice()
           : encoded_read_time_.read.AsSlice();
-      if (encoded_doc_ht.compare(max_allowed) > 0) {
+      if (encoded_doc_ht.compare(max_allowed) >= 0) {
         auto encoded_intent_doc_ht_result = DocHybridTime::EncodedFromStart(&value);
         if (!HandleStatus(encoded_intent_doc_ht_result)) {
           return;
@@ -1253,7 +1256,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
         regular_entry_ = { .key = entry->key, .value = value };
         return;
       }
-    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) > 0) {
+    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) >= 0) {
       // If a value does not contain the hybrid time of the intent that wrote the original
       // transaction, then it either (a) originated from a single-shard transaction or (b) the
       // intent hybrid time has already been garbage-collected during a compaction because the
@@ -1423,10 +1426,13 @@ const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
   return resolved_intent_txn_dht_;
 }
 
-EncodedReadHybridTime::EncodedReadHybridTime(const ReadHybridTime& read_time)
-    : read(read_time.read, kMaxWriteId),
-      local_limit(read_time.local_limit, kMaxWriteId),
-      global_limit(read_time.global_limit, kMaxWriteId),
+EncodedReadHybridTime::EncodedReadHybridTime(
+    const ReadHybridTime& read_time, IntraTxnWriteId write_id)
+    : read(read_time.read, write_id),
+      local_limit(read_time.local_limit, write_id),
+      global_limit(read_time.global_limit, write_id),
+      // We use kMaxWriteId for the in_txn_limit. write id is specified
+      // for reads to enforce uniqueness check during index backfill.
       in_txn_limit(read_time.in_txn_limit, kMaxWriteId),
       local_limit_gt_read(read_time.local_limit > read_time.read) {
 }

@@ -431,6 +431,16 @@ Status TransactionalWriter::operator()(
     DCHECK_EQ(subtransaction_id_, kMinSubTransactionId);
   }
 
+  if (is_top_level_key && intent_value.empty() &&
+      intent_types.Test(dockv::IntentType::kStrongWrite)) {
+    auto msg = Format("The top level key with strong write lock and empty value, expect "
+        "serializable level and skip_prefix_locks is enabled. "
+        "skip_prefix_locks: $0, isolation_level: $1, key: $2, intent_types: $3",
+        skip_prefix_locks_, isolation_level_, key->ToString(), intent_types);
+    RSTATUS_DCHECK_EQ(isolation_level_, SERIALIZABLE_ISOLATION, InvalidArgument, msg);
+    RSTATUS_DCHECK_EQ(skip_prefix_locks_, dockv::SkipPrefixLocks::kTrue, InvalidArgument, msg);
+  }
+
   std::array<Slice, 7> value = {{
       Slice(&transaction_value_type, 1),
       transaction_id_.AsSlice(),
@@ -772,6 +782,10 @@ Result<bool> ApplyIntentsContext::Entry(
 
     write_id_ = decoded_value.write_id;
 
+    if (dockv::IsTopLevelIntentKey(intent.doc_path) && decoded_value.body.empty()) {
+      return false;
+    }
+
     // Intents for row locks should be ignored (i.e. should not be written as regular records).
     if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
       return false;
@@ -1042,9 +1056,9 @@ void FrontierSchemaVersionUpdater::FlushSchemaVersion() {
     return;
   }
   frontiers_.Smallest().UpdateSchemaVersion(
-      schema_version_table_, min_schema_version_, rocksdb::UpdateUserValueType::kSmallest);
+      schema_version_table_, min_schema_version_, storage::UpdateUserValueType::kSmallest);
   frontiers_.Largest().UpdateSchemaVersion(
-      schema_version_table_, max_schema_version_, rocksdb::UpdateUserValueType::kLargest);
+      schema_version_table_, max_schema_version_, storage::UpdateUserValueType::kLargest);
   min_schema_version_ = std::numeric_limits<SchemaVersion>::max();
   max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 }

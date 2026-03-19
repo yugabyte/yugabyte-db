@@ -7,9 +7,15 @@ import static play.mvc.Results.ok;
 import api.v2.handlers.UniverseManagementHandler;
 import api.v2.handlers.UniverseUpgradesManagementHandler;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CleanupCollectionInfo;
 import api.v2.models.ClusterAddSpec;
+import api.v2.models.CollectFilesRequest;
+import api.v2.models.CollectFilesResponse;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
+import api.v2.models.RunScriptRequest;
+import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseCreateSpec;
@@ -228,6 +234,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
     return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
   }
 
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+  }
+
   @Override
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
@@ -238,5 +250,68 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public void operatorImportUniversePrecheck(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
     universeHandler.precheckOperatorImportUniverse(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public RunScriptResponse runScript(
+      Request request, UUID cUUID, UUID uniUUID, RunScriptRequest runScriptRequest)
+      throws Exception {
+    return universeHandler.runScript(request, cUUID, uniUUID, runScriptRequest);
+  }
+
+  @Override
+  public CollectFilesResponse createFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest)
+      throws Exception {
+    return universeHandler.createFileCollection(request, cUUID, uniUUID, collectFilesRequest);
+  }
+
+  // Override Http method to stream binary file to client (like detachUniverseHttp)
+  @Override
+  public Result downloadFileCollectionHttp(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUUID, Boolean cleanupDbNodesAfter)
+      throws Exception {
+    InputStream is =
+        universeHandler.downloadFileCollection(
+            request, cUUID, uniUUID, collectionUUID, cleanupDbNodesAfter);
+    String filename = universeHandler.getFileCollectionFileName(collectionUUID);
+    return ok(is)
+        .withHeader("Content-Disposition", "attachment; filename=" + filename)
+        .as("application/gzip");
+  }
+
+  @Override
+  public InputStream downloadFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUUID, Boolean cleanupDbNodesAfter)
+      throws Exception {
+    return universeHandler.downloadFileCollection(
+        request, cUUID, uniUUID, collectionUUID, cleanupDbNodesAfter);
+  }
+
+  @Override
+  public CleanupCollectionInfo deleteFileCollection(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UUID collectionUUID,
+      Boolean deleteFromDbNodes,
+      Boolean deleteFromYba)
+      throws Exception {
+    // Default: delete from DB nodes = true, delete from YBA = false
+    boolean dbNodes = deleteFromDbNodes == null || deleteFromDbNodes;
+    boolean yba = deleteFromYba != null && deleteFromYba;
+
+    int nodesCleaned =
+        universeHandler.deleteFileCollection(request, cUUID, uniUUID, collectionUUID, dbNodes, yba);
+
+    String message =
+        String.format(
+            "File collection deleted (DB nodes: %s, YBA local: %s)",
+            dbNodes ? "yes" : "no", yba ? "yes" : "no");
+
+    return new CleanupCollectionInfo()
+        .collectionUuid(collectionUUID)
+        .nodesCleaned(nodesCleaned)
+        .message(message);
   }
 }

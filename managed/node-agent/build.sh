@@ -238,27 +238,46 @@ format() {
     popd
 }
 
+run_test() {
+    local dir=$1
+    pushd "$project_dir"
+    echo "Running tests in ${dir}..."
+    set +e
+    go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+    status=$?
+    set -e
+    popd
+    return $status
+}
+
 run_tests() {
+    local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
     pushd "$project_dir"
-    for dir in */ ; do
-        # Remove trailing slash.
-        dir=$(echo "${dir}" | sed 's/\/$//')
-        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
-            echo "Skipping directory ${dir}"
-            continue
+    if [ -n "$testone_path" ]; then
+        run_test "$testone_path"
+        if [ $? -ne 0 ]; then
+            failed_tests+=("$testone_path")
         fi
-        echo "Running tests in ${dir}..."
-        set +e
-        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
-        status=$?
-        if [ $status -ne 0 ]; then
-            echo "Tests failed for $dir"
-            failed_tests+=("$dir")
-        fi
-        set -e
-    done
+    else
+        for dir in */ ; do
+            # Remove trailing slash.
+            dir=$(echo "${dir}" | sed 's/\/$//')
+            if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+                echo "Skipping directory ${dir}"
+                continue
+            fi
+            if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
+                echo "Skipping directory ${dir} for testone"
+                continue
+            fi
+            run_test "$dir"
+            if [ $? -ne 0 ]; then
+                failed_tests+=("$dir")
+            fi
+        done
+    fi
     popd
     if [ ${#failed_tests[@]} -ne 0 ]; then
         echo "Failed tests: ${failed_tests[*]}"
@@ -337,17 +356,19 @@ prepare=false
 build=false
 clean=false
 test=false
+testone=false
 package=false
 version=0
 update_dependencies=false
 build_pymodule=false
+testone_path=""
 
 
 show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies|build-pymodule>
+./build.sh <fmt|prepare|build|clean|test|testone <package>|package <version>|update-dependencies|build-pymodule>
 EOT
 exit 1
 }
@@ -371,6 +392,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     test)
       test=true
+      ;;
+    testone)
+      testone=true
+      shift
+      if [[ $# -gt 0 ]]; then
+        testone_path=$1
+      fi
       ;;
     package)
       package=true
@@ -449,6 +477,17 @@ if [ "$test" == "true" ]; then
     echo "Running tests..."
     prepare
     run_tests
+fi
+
+if [ "$testone" == "true" ]; then
+    if [ -z "$testone_path"  ]; then
+        echo "Test path is not specified for testone"
+        exit 1
+    fi
+    help_needed=false
+    echo "Running test for ${testone_path}..."
+    prepare
+    run_tests "$testone_path"
 fi
 
 if [ "$package" == "true" ]; then

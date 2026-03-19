@@ -198,7 +198,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           "");
       retryable_requests.SetServerClock(clock_);
-      retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+      retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,

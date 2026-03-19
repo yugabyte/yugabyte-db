@@ -35,6 +35,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   tserver::TSTabletManager* tablet_manager() const override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
+#ifdef __linux__
+  tserver::TServerCgroupManager* cgroup_manager() const override { return nullptr; }
+#endif
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;
@@ -163,7 +166,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
-      const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) override;
+      const std::string& database_name, bool simple_query_protocol = false,
+      const std::optional<CoarseTimePoint>& deadline = std::nullopt) override;
 
   Master* master_ = nullptr;
   scoped_refptr<MetricEntity> metric_entity_;

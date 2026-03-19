@@ -33,8 +33,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.pb.h"
-#include "yb/master/master_backup.proxy.h"
-#include "yb/master/mini_master.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/filename.h"
@@ -61,6 +59,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+
+#include "yb/client/snapshot_test_util.h"
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
@@ -90,6 +90,10 @@ DECLARE_uint64(TEST_delay_before_get_locks_status_ms);
 DECLARE_uint64(TEST_wait_row_mark_exclusive_count);
 DECLARE_uint32(ddl_verification_timeout_multiplier);
 DECLARE_bool(TEST_pause_apply_tablet_split);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
+DECLARE_bool(flush_rocksdb_on_shutdown);
+DECLARE_bool(cleanup_intents_sst_files);
+DECLARE_bool(rocksdb_disable_compactions);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -306,19 +310,9 @@ TEST_F(PgTabletSplitTest, TestConflictResolutionChecksConflictsAgainstEmptyKey) 
 
 TEST_F(PgTabletSplitTest, TestDisableSplitWhenTableIsBeingHidden) {
   // Create snapshot to prevent deletion and force table into hidden state.
-  {
-    auto proxy = ASSERT_RESULT(cluster_->GetLeaderMasterProxy<master::MasterBackupProxy>());
-    master::CreateSnapshotScheduleRequestPB req;
-    auto table_identifier = req.mutable_options()->mutable_filter()->mutable_tables()->add_tables();
-    table_identifier->mutable_namespace_()->set_name("yugabyte");
-    table_identifier->mutable_namespace_()->set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-    req.mutable_options()->set_interval_sec(2);
-    req.mutable_options()->set_retention_duration_sec(5);
-    rpc::RpcController rpc;
-    master::CreateSnapshotScheduleResponsePB resp;
-    ASSERT_OK(proxy.CreateSnapshotSchedule(req, &resp, &rpc));
-    ASSERT_OK(ResponseStatus(resp));
-  }
+  client::SnapshotTestUtil snapshot_util(*cluster_, client_->proxy_cache());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      "yugabyte", client::WaitSnapshot::kFalse, 2s, 5s));
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
@@ -1876,6 +1870,157 @@ TEST_F(PgDelayedSplitAtFollower, TestDelayedSplitAtFollower) {
   }
 
   ASSERT_TRUE(found) << " The row is not found";
+}
+
+TEST_F(PgTabletSplitTest, TestWriteId) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Step 1: Create a table and insert 1000 rows.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Step 2: Start txn1, insert one new row, then flush tablet. The row is flushed to intents sst1
+  // file is with WriteId 0.
+  auto conn_txn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_txn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_txn1.Execute("INSERT INTO t VALUES (10001, 1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_disable_compactions) = true;
+
+  // Step 3: Insert second row in txn1. This row will be flushed to intents sst2 file with WriteId 1
+  ASSERT_OK(conn_txn1.Execute("INSERT INTO t VALUES (10003, 2)"));
+
+  // Step 4: Start txn2 and insert one new row. txn2 is never committed, so this ensure intents file
+  // sst2 will not be removed after txn1 is committed.
+  auto conn_txn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_txn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn_txn2.Execute("INSERT INTO t VALUES (10004, 4)"));
+
+  // Step 5: Trigger split and wait for split to complete. After split, intents sst2 file is
+  // generated.
+  ASSERT_OK(SplitSingleTablet(table_id));
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+  LOG(INFO) << "split done";
+
+  // Step 6: Update the row in txn1 and commit txn1. The row has WriteId 2.
+  ASSERT_OK(conn_txn1.Execute("UPDATE t SET v = 3 where k = 10003"));
+  ASSERT_OK(conn_txn1.CommitTransaction());
+
+  // Wait few seconds to ensure the txn is applied and the intents sst1 is removed. The regular db
+  // will be flushed before sst1 was removed.
+  SleepFor(15s * kTimeMultiplier);
+  LOG(INFO) << "Starting shutdown";
+
+  // Step 7: Restart the tserver with gflags to ensure intents are not flushed during shutdown.
+  // During bootstrap, we will replay all entries after split_op, so the write in step 6 will be
+  // replayed and inserts to intents db with WriteId 0 (note it is not 2 because the metadata of
+  // txn1 was gone after sst1 was removed). Without the fix, it will cause FATAL:
+  // "Corruption (yb/docdb/rocksdb_writer.cc:770): Unexpected write id. Expected: 2, found: 0".
+  // With the fix, we skip applying txn1 to regular db because it had been applied, it will not
+  // trigger the FATAL.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  auto* tserver = cluster_->mini_tablet_server(0);
+  ASSERT_OK(tserver->Restart());
+  ASSERT_OK(tserver->WaitStarted());
+
+  // Verify rows exist after restart.
+  auto conn_verify = ASSERT_RESULT(Connect());
+  for (const auto& [k, expected_v] : std::vector<std::pair<int, int>>{{10001, 1}, {10003, 3}}) {
+    auto val = ASSERT_RESULT(conn_verify.FetchRow<int32_t>(
+        Format("SELECT v FROM t WHERE k = $0", k)));
+    ASSERT_EQ(val, expected_v) << "Mismatch for k=" << k;
+  }
+}
+
+// Test that reproduces the bug where a transaction's intents are never applied
+// when the parent tablet is hidden before the transaction commits.
+//
+// Scenario:
+// 1. A transaction writes intents to the parent tablet (before split).
+// 2. The tablet is split and the parent is hidden by the master.
+// 3. The transaction commits. The coordinator tries to send UPDATE_TRANSACTION_OP
+//    (APPLYING status) to the parent tablet. The master's tablet location lookup
+//    returns NotFound because the parent is hidden (catalog_manager.cc), without
+//    including the child tablet IDs in the error (unlike the "deleted" case which
+//    does include them). The coordinator marks the parent as "applied" without
+//    actually sending APPLYING to the child tablets.
+// 4. The child tablets never apply the intents. Eventually, Poll detects the
+//    transaction as "aborted" (removed from status tablet) and removes the intents.
+// 5. The committed data is lost.
+TEST_F(PgTabletSplitTest, TestCommitAfterParentHidden) {
+  constexpr int kKey = 1000000;
+  constexpr int kValue = 42;
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Create table with 1 tablet.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT) SPLIT INTO 1 TABLETS"));
+
+  // Insert enough data to create SST files so the tablet can be split.
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT generate_series(1, 1000), 0"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Create a snapshot schedule on the database. This is critical to reproduce the bug:
+  // Without a snapshot schedule, after split the parent tablet is DELETED (not hidden),
+  // and the master returns NotFound WITH SplitChildTabletIdsData. The coordinator then
+  // correctly retries APPLYING with the child tablets.
+  // With a snapshot schedule, IsHideOnly() returns true, so the parent is HIDDEN.
+  // The master returns NotFound WITHOUT SplitChildTabletIdsData for hidden tablets
+  // (catalog_manager.cc:12341), causing the coordinator to incorrectly mark the parent
+  // as applied and remove the transaction without ever sending APPLYING to children.
+  client::SnapshotTestUtil snapshot_util(*cluster_, client_->proxy_cache());
+  ASSERT_RESULT(snapshot_util.CreateSchedule(
+      "yugabyte", client::WaitSnapshot::kFalse, 60s, 600s));
+  LOG(INFO) << "Created snapshot schedule, waiting for first snapshot";
+  SleepFor(5s * kTimeMultiplier);
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Get the parent tablet ID before the split so we can verify it's hidden later.
+  auto parent_tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_id));
+  LOG(INFO) << "Parent tablet ID: " << parent_tablet_id;
+
+  // Start a transaction and write a row. The intents are stored on the parent tablet.
+  // Importantly, we do NOT write anything after the split, so the coordinator only
+  // knows about the parent tablet in its involved_tablets_ map.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES ($0, $1)", kKey, kValue));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Trigger tablet split.
+  LOG(INFO) << "Triggering tablet split on table_id: " << table_id;
+  ASSERT_OK(SplitSingleTablet(table_id));
+
+  // Wait for split to complete (2 active child tablets).
+  LOG(INFO) << "Waiting for split completion";
+  ASSERT_OK(WaitForSplitCompletion(table_id, 2));
+
+  // Explicitly wait for the parent tablet to be HIDDEN in the master's catalog.
+  LOG(INFO) << "Waiting for parent tablet to be hidden";
+  ASSERT_OK(WaitForTabletHidden(cluster_.get(), parent_tablet_id));
+
+  // Clear MetaCache on all tservers' internal YBClients. This is critical because:
+  // The coordinator's tserver may have the parent tablet cached in its MetaCache
+  // from before the split.
+  LOG(INFO) << "Clearing MetaCache on all tservers";
+  ClearAllMetaCachesOnTServers(cluster_.get());
+
+  LOG(INFO) << "Committing transaction";
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Wait for the transaction to be fully processed and cleaned up:
+  // 1. Coordinator fails to send APPLYING to hidden parent -> marks as applied -> removes txn
+  // 2. Child tablets' Poll detects the transaction as "aborted" (unknown at status tablet)
+  //    and removes the intents.
+  SleepFor(10s * kTimeMultiplier);
+
+  auto read_conn = ASSERT_RESULT(Connect());
+  auto val = ASSERT_RESULT(read_conn.FetchRow<int32_t>(
+      Format("SELECT v FROM t WHERE k = $0", kKey)));
+  ASSERT_EQ(val, kValue);
 }
 
 } // namespace yb::pgwrapper

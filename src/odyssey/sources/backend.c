@@ -82,13 +82,25 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 		return;
 	}
 	od_hash_t keyhash = strtoul(stmt_name, NULL, 16);
-	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash)) {
-		od_debug(&instance->logger, context, NULL, server, 
-			"Evicted %u hashmap entry from server", keyhash);
-	}
-	else {
-		od_error(&instance->logger, context, NULL, server, 
-			"failed to evict %u hashmap entry from server", keyhash);
+	char **matched_keys = NULL;
+	int matched_count = 0;
+	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
+					      &matched_keys, &matched_count)) {
+		if (matched_count > 1) {
+			od_error(&instance->logger, context, NULL, server,
+				 "Got a hashmap collision for %08x. Evicted %d entries:",
+				 keyhash, matched_count);
+			for (int i = 0; i < matched_count; i++) {
+				od_error(&instance->logger, context, NULL, server,
+					 "  [%d] %s", i, matched_keys[i]);
+			}
+		} else {
+			od_debug(&instance->logger, context, NULL, server,
+				 "Evicted %08x hashmap entry from server", keyhash);
+		}
+		for (int i = 0; i < matched_count; i++)
+			free(matched_keys[i]);
+		free(matched_keys);
 	}
 }
 
@@ -134,7 +146,7 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 			 "HINT: %s", error.hint);
 		hint_len = strlen(error.hint);
 
-		if (strcmp(error.hint, "Database might have been dropped by another user") == 0)
+		if (strcmp(error.hint, "Database may have been dropped and recreated") == 0)
 		{
 			/* Reset the route and close the client */
 			yb_mark_routes_inactive(server->global->router,
@@ -275,6 +287,19 @@ static inline int yb_send_parameter_status_sync(od_io_t *io, char *name,
 		return -1;
 	}
 	return 0;
+}
+
+static inline int64_t yb_parse_logical_client_version(char *value)
+{
+	char *endptr;
+	long long parsed_lcv;
+
+	errno = 0;
+	parsed_lcv = strtoll(value, &endptr, 10);
+	if (errno != 0 || endptr == value || *endptr != '\0')
+		return -1;
+
+	return (int64_t)parsed_lcv;
 }
 
 static inline int od_backend_startup(od_server_t *server,
@@ -488,8 +513,23 @@ static inline int od_backend_startup(od_server_t *server,
 				name_len, name, value_len, value, flags);
 
 			/* Parse the yb_logical_client_version to store it in server */
-			if (strlen(name) == 25 && strcmp("yb_logical_client_version", name) == 0) {
-				server->logical_client_version = atoi(value);
+			if (strlen(name) == 25 &&
+			    strcmp(YB_LOGICAL_CLIENT_VERSION_STR, name) == 0) {
+				int64_t parsed_lcv =
+					yb_parse_logical_client_version(value);
+				if (parsed_lcv == -1) {
+					od_error(
+						&instance->logger, "startup",
+						NULL, server,
+						"failed to parse yb_logical_client_version: %.*s",
+						value_len, value);
+					machine_msg_free(msg);
+					return -1;
+				}
+				server->yb_logical_client_version = parsed_lcv;
+				yb_od_router_expire_stale_lcv_servers(
+					server->global->router,
+					server->yb_logical_client_version);
 				machine_msg_free(msg);
 				break;
 			}
@@ -1067,6 +1107,20 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	od_debug(&instance->logger, context, client, server,
 		 "%.*s = %.*s, flags: 0x%X", name_len, name, value_len, value,
 		 flags);
+
+	/* YB: This means that the connection executed a command that bumped up LCV */
+	if (!server_only && strcmp(YB_LOGICAL_CLIENT_VERSION_STR, name) == 0) {
+		int64_t new_lcv = yb_parse_logical_client_version(value);
+		if (new_lcv == -1) {
+			od_error(
+				&instance->logger, context, NULL, server,
+				"failed to parse yb_logical_client_version: %.*s",
+				value_len, value);
+			return -1;
+		}
+		yb_od_router_expire_stale_lcv_servers(server->global->router,
+						      new_lcv);
+	}
 
 	/*
 	 * YB: It is possible that an earlier set variable becomes unset due

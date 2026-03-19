@@ -9,6 +9,8 @@ public class NodeUIApiHelper extends ApiHelper {
 
   @Inject
   public NodeUIApiHelper(CustomWsClientFactory wsClientFactory, Config config) {
-    super(wsClientFactory.forCustomConfig(config.getValue(Util.YB_NODE_UI_WS_KEY)));
+    super(
+        wsClientFactory.forCustomConfig(config.getValue(Util.YB_NODE_UI_WS_KEY)),
+        wsClientFactory.getMaterializer());
   }
 }

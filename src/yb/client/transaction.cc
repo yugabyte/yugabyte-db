@@ -613,8 +613,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       UniqueLock lock(mutex_);
       auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
+        auto should_abort = state_.load(std::memory_order_acquire) == TransactionState::kRunning;
         lock.unlock();
         callback(status);
+        // Since the backend cannot recover from this commit failure, abort explicitly so the
+        // status tablet is notified immediately; otherwise the transaction could remain alive until
+        // all strong references drop and the status tablet expires it due to missed heartbeats.
+        if (should_abort) {
+          Abort(TransactionRpcDeadline());
+        }
         return;
       }
       state_.store(seal_only ? TransactionState::kSealed : TransactionState::kCommitted,
@@ -1197,6 +1204,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   void SetBackgroundTransaction(const YBTransactionPtr& background_transaction) {
+    std::lock_guard l(mutex_);
     background_transaction_ = background_transaction;
   }
 
@@ -2002,7 +2010,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     MonoDelta timeout;
     if (status != TransactionStatus::CREATED && status != TransactionStatus::PROMOTED) {
-      if (GetAtomicFlag(&FLAGS_transaction_disable_heartbeat_in_tests)) {
+      if (FLAGS_transaction_disable_heartbeat_in_tests) {
         HeartbeatDone(Status::OK(), /* request= */ {}, /* response= */ {}, status, transaction,
                       send_to_new_tablet);
         return;
@@ -2285,7 +2293,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         transaction_status_move_tablets_.erase(tablet_id);
       }
 
-      if (PREDICT_TRUE(GetAtomicFlag(&FLAGS_replicate_transaction_promotion))) {
+      if (PREDICT_TRUE(FLAGS_replicate_transaction_promotion)) {
         tserver::UpdateTransactionRequestPB req;
 
         auto& state = *req.mutable_state();
@@ -2631,7 +2639,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // that transaction and is passed on to the session level txn's status tablet, which creates a
   // wait-on-dependency from session level transaction -> regular transaction. This is necessary to
   // detect deadlocks involving advisory locks and row-level locks (and object locks in future).
-  std::weak_ptr<YBTransaction> background_transaction_;
+  std::weak_ptr<YBTransaction> background_transaction_ GUARDED_BY(mutex_);
 
   mutable std::mutex async_write_query_mutex_;
   std::unordered_map<TabletId, AsyncWriteQuery> inflight_async_writes_

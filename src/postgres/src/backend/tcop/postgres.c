@@ -4603,7 +4603,18 @@ YBRefreshCacheWrapperImpl(uint64_t catalog_master_version, bool is_retry,
 				 " for database %u",
 				 message_lists.num_lists,
 				 local_catalog_version, shared_catalog_version, MyDatabaseId);
-			YbUpdateCatalogCacheVersion(shared_catalog_version);
+			if (full_refresh_allowed)
+				YbUpdateCatalogCacheVersion(shared_catalog_version);
+			else
+				/*
+				 * We don't want to update pg_stat_activity catalog version in the
+				 * middle of transaction. As of 2026-03-04, if full_refresh_allowed
+				 * is false it implies we are in the middle of a transaction. If we
+				 * change to allow full refresh in the middle of transaction in the
+				 * future, make sure we continue not to update pg_stat_activity
+				 * catalog version here.
+				 */
+				YbUpdateCatalogCacheVersionNoPgStat(shared_catalog_version);
 			if (yb_test_delay_after_applying_inval_message_ms > 0)
 				pg_usleep(yb_test_delay_after_applying_inval_message_ms * 1000L);
 			if (!yb_enable_invalidate_table_cache_entry || YbGetNeedInvalidateAllTableCache())
@@ -4858,14 +4869,21 @@ YBPrepareCacheRefreshIfNeeded(ErrorData *edata,
 			 * Report the original error, but add a context mentioning that a
 			 * possibly-conflicting, concurrent DDL transaction happened.
 			 */
-			ereport(edata->elevel,
-					(errcode(edata->sqlerrcode),
-					 errmsg("%s", edata->message),
-					 edata->detail ? errdetail("%s", edata->detail) : 0,
-					 edata->hint ? errhint("%s", edata->hint) : 0,
-					 !(*YBCGetGFlags()->TEST_hide_details_for_pg_regress) ?
-					 (errcontext("Catalog Version Mismatch: A DDL occurred "
-								 "while processing this query. Try again.")) : 0));
+			if (!(*YBCGetGFlags()->TEST_hide_details_for_pg_regress))
+			{
+				const char *ddl_error_context =
+					"Catalog Version Mismatch: "
+					"A DDL occurred while processing this query. "
+					"Try again.";
+				MemoryContext oldcontext = MemoryContextSwitchTo(edata->assoc_context);
+
+				if (edata->context)
+					edata->context = psprintf("%s; %s", edata->context, ddl_error_context);
+				else
+					edata->context = pstrdup(ddl_error_context);
+				MemoryContextSwitchTo(oldcontext);
+			}
+			ThrowErrorData(edata);
 		}
 		else
 		{
@@ -5031,8 +5049,12 @@ YBCheckSharedCatalogCacheVersion()
 	if (need_global_cache_refresh)
 		YBRefreshCacheWrapper(YB_CATCACHE_VERSION_UNINITIALIZED,
 							  false /* is_retry */ );
-	else if (yb_test_preload_catalog_tables)
-		YBRefreshCache();
+	else
+	{
+		yb_pgstat_set_catalog_version(local_catalog_version);
+		if (yb_test_preload_catalog_tables)
+			YBRefreshCache();
+	}
 }
 
 /*
@@ -5221,6 +5243,31 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	}
 
 	/*
+	 * If a non-atomic (in-procedure) COMMIT has been executed during this
+	 * top-level query (e.g., inside a CALL or DO block), we cannot safely
+	 * retry. Retrying would re-execute the entire CALL/DO from the beginning,
+	 * but the already-committed work would persist, potentially leading to
+	 * duplicate inserts or other incorrect behavior.
+	 *
+	 * The GUC yb_enable_retry_after_non_atomic_commit can be set to true to
+	 * revert to the old behavior if a customer depends on it.
+	 */
+	if (yb_is_non_atomic_commit_done && !yb_enable_retry_after_non_atomic_commit)
+	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "a COMMIT has already been executed inside "
+								 "the stored procedure or DO block. Retrying "
+								 "would re-execute already-committed work. "
+								 "Set yb_enable_retry_after_non_atomic_commit "
+								 "to true to override.");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
+		if (yb_debug_log_internal_restarts)
+			elog(LOG, "%s", retry_err);
+		return false;
+	}
+
+	/*
 	 * In READ COMMITTED isolation, if the current statement is a DDL, then we
 	 * don't support retrying it, if transactional DDL is enabled. This is
 	 * because we don't support savepoint rollback for DDLs, so we can't rely
@@ -5307,21 +5354,14 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		return false;
 	}
 
-	if (IsYBReadCommitted())
-	{
-		if (YBGetDdlNestingLevel() != 0)
-		{
-			const char *retry_err = ("query layer retries aren't supported "
-									 "for DDLs inside a read committed "
-									 "isolation transaction block");
-
-			edata->message = psprintf("%s (%s)", edata->message, retry_err);
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "%s", retry_err);
-			return false;
-		}
-	}
-	else if (!(is_read || is_dml))
+	/*
+	 * pg_client_session rejects read restarts in DDL mode.
+	 * Retrying in that case is not only wasteful but also results in a non-retryable error
+	 * instead of the expected read restart error. For that reason, reject read restarts
+	 * for non DML statements.
+	 * However, allow retries on conflict errors in read committed isolation.
+	 */
+	if ((!IsYBReadCommitted() || is_read_restart_error) && !(is_read || is_dml))
 	{
 		/*
 		 * if !read committed, we only support retries with
@@ -5860,6 +5900,14 @@ yb_exec_query_wrapper(MemoryContext exec_context,
 	 * The retry counts are accumulated per query within pg_stat_statements.
 	 */
 	YbResetRetryCounts();
+
+	/*
+	 * Reset the flag that tracks whether a non-atomic (in-procedure) COMMIT
+	 * has been executed. This flag is set in _SPI_commit() and checked in
+	 * yb_is_retry_possible() to prevent unsafe retries of CALL/DO statements
+	 * that have already committed work.
+	 */
+	yb_is_non_atomic_commit_done = false;
 
 	for (int attempt = 0; retry; ++attempt)
 	{
@@ -6555,6 +6603,8 @@ PostgresMain(const char *dbname, const char *username)
 			send_ready_for_query = false;
 
 			yb_refresh_stats_before_exec = true;
+
+			YbToggleSessionStatsTimer(yb_enable_pg_stat_statements_rpc_stats);
 		}
 
 		/*
@@ -6673,6 +6723,8 @@ PostgresMain(const char *dbname, const char *username)
 			yb_is_multi_statement_query = false;
 			/* New Query => Did not sent any data for the current query. */
 			YBMarkDataNotSentForCurrQuery();
+			/* Unclamp uncertainty window at the start of each new query. */
+			YBCPgSetClampUncertaintyWindow(false);
 		}
 
 		switch (firstchar)
@@ -7234,15 +7286,29 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				if (YbIsClientYsqlConnMgr())
 				{
-					/*
-					 * Do not rely on cache during authentication passthrough.
-					 * "ALTER ROLE" does not change the catalog version due to this
-					 * local cache may have an invalid cache.
-					 *
-					 * TODO (GH #21998): Invalidate cache specific to the role credentials and
-					 * logic permissions.
-					 */
-					ResetCatalogCaches();
+					MyProcPort->yb_is_auth_passthrough_req = true;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
+
+
+					if (!YBCIsSysTablePrefetchingStarted() &&
+						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
+					{
+						/*
+						 * Use catalog table entries from the Tserver's response
+						 * cache to avoid forwarding an RPC to master for each
+						 * catalog table read.
+						 * YbPrefetchRequiredData registers (among others)
+						 * pg_authid, pg_database, pg_db_role_setting and
+						 * pg_yb_logical_client_version catalog tables for
+						 * prefetching.
+						 * Only "prefetch registered" catalog tables are read
+						 * from the Tserver's response cache when prefetching is
+						 * started.
+						 */
+						start_xact_command();
+						YbPrefetchRequiredData(false);
+						finish_xact_command();
+					}
 
 					/* Store a copy of the old context */
 					char	   *db_name = MyProcPort->database_name;
@@ -7280,8 +7346,6 @@ PostgresMain(const char *dbname, const char *username)
 						(struct sockaddr_in *) (&MyProcPort->raddr.addr);
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
-					MyProcPort->yb_is_auth_passthrough_req = true;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
 
 					/* Start authentication */
 					{
@@ -7334,6 +7398,12 @@ PostgresMain(const char *dbname, const char *username)
 						yb_abort_xact_command();
 					}
 
+					/*
+					 * NOTE: We don't need to free previous
+					 * MyProcPort fields since they should be allocated in the
+					 * transaction MemoryContext which has been free'd now
+					 */
+
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
 					MyProcPort->yb_has_auth_passthrough_failed = false;
@@ -7347,12 +7417,17 @@ PostgresMain(const char *dbname, const char *username)
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
-					/*
-					 * NOTE: We don't need to free previous
-					 * MyProcPort->authn_id since it was allocated in the
-					 * transaction MemoryContext which has been free'd now
-					 */
 					MyProcPort->authn_id = authn_id;
+
+
+					/*
+					 * Stop prefetching to allow invalidation messages to be processed.
+					 * Refer to `YBRefreshCacheUsingInvalMsgs` for more details.
+					 * If this is skipped, the local cache is never invalidated,
+					 * and the subsequent queries will use the stale cache.
+					 */
+					if (YBCIsSysTablePrefetchingStarted())
+						YBCStopSysTablePrefetching();
 
 					send_ready_for_query = true;
 				}

@@ -887,7 +887,7 @@ public class XClusterConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
-  static XClusterConfigTaskParams getRestartTaskParams(
+  public static XClusterConfigTaskParams getRestartTaskParams(
       YBClientService ybService,
       XClusterConfig xClusterConfig,
       Universe sourceUniverse,
@@ -957,7 +957,7 @@ public class XClusterConfigController extends AuthenticatedController {
         isForceBootstrap);
   }
 
-  static XClusterConfigTaskParams getDbScopedRestartTaskParams(
+  public static XClusterConfigTaskParams getDbScopedRestartTaskParams(
       XClusterConfig xClusterConfig,
       Universe sourceUniverse,
       Universe targetUniverse,

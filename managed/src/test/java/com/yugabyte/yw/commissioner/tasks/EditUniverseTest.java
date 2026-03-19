@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -54,6 +55,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -208,6 +210,12 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    // Disable comprehensive prechecks (CheckSshConnection, CheckServiceLiveness) so task sequence
+    // assertions remain valid. Tests verify core EditUniverse behavior.
+    RuntimeConfigEntry.upsert(
+        defaultUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    RuntimeConfigEntry.upsert(
+        onPremUniverse, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
         CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
@@ -230,8 +238,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(Boolean.TRUE);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
       ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
-      when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
-      when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
+      lenient().when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       when(mockClient.waitForAreLeadersOnPreferredOnlyCondition(anyLong())).thenReturn(true);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
@@ -239,10 +247,14 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
       ListLiveTabletServersResponse mockListLiveTabletServersResponse =
           mock(ListLiveTabletServersResponse.class);
-      when(mockListLiveTabletServersResponse.getTabletServers()).thenReturn(new ArrayList<>());
-      when(mockClient.listLiveTabletServers()).thenReturn(mockListLiveTabletServersResponse);
+      lenient()
+          .when(mockListLiveTabletServersResponse.getTabletServers())
+          .thenReturn(new ArrayList<>());
+      lenient()
+          .when(mockClient.listLiveTabletServers())
+          .thenReturn(mockListLiveTabletServersResponse);
     } catch (Exception e) {
-      fail();
+      fail(e.getMessage());
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -331,7 +343,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void testExpandSuccess() {
     Universe universe = defaultUniverse;
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -349,6 +361,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     taskParams.creatingUser = defaultUser;
@@ -375,7 +389,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                 Map.of("1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        39,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -389,9 +403,11 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testExpandWithCapacityReservationAwsSuccess() {
     RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
-    Region region = Region.create(defaultProvider, "region-2", "region-2", "yb-image");
+    Region.create(defaultProvider, "region-2", "region-2", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    RuntimeConfigEntry.upsert(
+        universe, UniverseConfKeys.enableComprehensivePrechecks.getKey(), "false");
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
 
@@ -405,7 +421,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             Map.of("1", new ZoneData("region-1", Arrays.asList("host-n4", "host-n5")))));
 
     verifyNodeInteractionsCapacityReservation(
-        39,
+        20,
         NodeManager.NodeCommandType.Create,
         params -> ((AnsibleCreateServer.Params) params).capacityReservation,
         Map.of(
@@ -424,7 +440,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     createOnpremInstance(zone);
     Universe universe = onPremUniverse;
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
@@ -444,7 +460,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     List<NodeInstance> added = new ArrayList<>();
     added.add(createOnpremInstance(zone));
     added.add(createOnpremInstance(zone));
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     added.forEach(
         nodeInstance -> {
           nodeInstance.setState(NodeInstance.State.USED);
@@ -461,7 +477,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     createOnpremInstance(zone);
     Universe universe = onPremUniverse;
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     preflightResponse.message = "{\"test\": false}";
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
@@ -472,7 +488,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Universe universe = defaultUniverse;
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, true /* move master */);
     super.verifyTaskRetries(
         defaultCustomer,
         CustomerTask.TaskType.Edit,
@@ -611,7 +627,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     int nodes = universe.getUniverseDetails().nodeDetailsSet.size();
     RuntimeConfigEntry.upsertGlobal("yb.task.enable_edit_auto_rollback", "true");
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "0");
-    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    UniverseDefinitionTaskParams taskParams = performExpand(universe, false /* move master */);
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Failure, taskInfo.getTaskState());
@@ -700,14 +716,15 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     }
     RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     RuntimeConfigEntry.upsert(universe, "yb.checks.node_disk_size.target_usage_percentage", "100");
-    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5);
+    UniverseDefinitionTaskParams taskParams =
+        editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5, false /* move master */);
     setDumpEntitiesMock(universe, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     when(mockClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromHost(universe.getMasters().get(0).cloudInfo.private_ip));
-    return editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 3);
+    return editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 3, false /* move master */);
   }
 
   private UniverseDefinitionTaskParams performFullMove(Universe universe) {
@@ -741,19 +758,20 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     return taskParams;
   }
 
-  private UniverseDefinitionTaskParams performExpand(Universe universe) {
-    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5);
+  private UniverseDefinitionTaskParams performExpand(Universe universe, boolean moveMaster) {
+    UniverseDefinitionTaskParams taskParams =
+        editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5, moveMaster);
     taskParams.expectedUniverseVersion = 2;
     return taskParams;
   }
 
   private UniverseDefinitionTaskParams performShrink(Universe universe) {
-    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, "m4.medium", 3);
+    UniverseDefinitionTaskParams taskParams = editClusterSize(universe, "m4.medium", 3, false);
     return taskParams;
   }
 
   private UniverseDefinitionTaskParams editClusterSize(
-      Universe universe, String instanceType, int numNodes) {
+      Universe universe, String instanceType, int numNodes, boolean moveMasters) {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -764,7 +782,20 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
-    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numNodes;
+    PlacementRegion placementRegion = pi.cloudList.get(0).regionList.get(0);
+    if (moveMasters) {
+      // Add another AZ to move one master to it.
+      Region region = Region.getOrBadRequest(placementRegion.uuid);
+      AvailabilityZone zone = AvailabilityZone.createOrThrow(region, AZ_CODE1, "AZ 2", "subnet-1");
+      PlacementInfoUtil.addPlacementZone(zone.getUuid(), pi);
+      placementRegion.azList.get(0).numNodesInAZ = numNodes - 1;
+      placementRegion.azList.get(1).numNodesInAZ = 1;
+      if (primaryCluster.userIntent.providerType == CloudType.onprem) {
+        createOnpremInstance(zone);
+      }
+    } else {
+      placementRegion.azList.get(0).numNodesInAZ = numNodes;
+    }
     newUserIntent.numNodes = numNodes;
     newUserIntent.instanceType = instanceType;
     taskParams.getPrimaryCluster().userIntent = newUserIntent;

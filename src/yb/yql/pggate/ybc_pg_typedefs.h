@@ -59,6 +59,9 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
 
+// Handle to a global view read scan.
+YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
+
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)
@@ -202,6 +205,13 @@ typedef enum {
   kHigherPriorityRange,
   kHighestPriority
 } YbcTxnPriorityRequirement;
+
+// Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
+typedef struct {
+  const YbcPgTypeEntity *type_entity;
+  uint64_t datum;
+  bool is_null;
+} YbcPgKeyValue;
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -649,7 +659,18 @@ typedef struct {
   uint64_t active_pid;
   bool expired;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
 } YbcReplicationSlotDescriptor;
+
+typedef struct {
+  const char *stream_id;
+  uint64_t confirmed_flush_lsn;
+  uint64_t restart_lsn;
+  uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
+  uint64_t last_pub_refresh_time;
+  uint64_t active_pid;
+} YbcSlotEntryDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
@@ -986,6 +1007,12 @@ typedef struct {
   int num_lists;
 } YbcCatalogMessageLists;
 
+typedef struct {
+  YbcPgOid table_oid;
+  uint64_t mutations;
+  char* last_analyze_info;
+} YbcAutoAnalyzeInfo;
+
 typedef enum {
   /*
    * Taken from XClusterNamespaceInfoPB.XClusterRole in
@@ -1039,6 +1066,13 @@ typedef struct {
   int (*comparator)(uint64_t datum1, bool isnull1, uint64_t datum2, bool isnull2, void *sortstate);
   void *sortstate;
 } YbcSortKey;
+
+typedef struct {
+  // We cannot use the PGresult symbol inside pggate because of circular dependency.
+  // So the response PB is stored in this uint8_t* and later converted to PGresult.
+  uint8_t* pgresult;
+  size_t pgresult_size;
+} YbcRemotePgExecResult;
 
 #ifdef __cplusplus
 }  // extern "C"

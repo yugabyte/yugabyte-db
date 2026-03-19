@@ -267,7 +267,10 @@ class TransactionStatusManager {
 
   // Registers new request assigning next serial no to it. So this serial no could be used
   // to check whether one request happened before another one.
-  virtual Result<int64_t> RegisterRequest() = 0;
+  //
+  // If allow_when_closing is true, then register should succeed during shutdown, otherwise it
+  // would fail.
+  virtual Result<int64_t> RegisterRequest(bool allow_when_closing) = 0;
 
   // request_id - is request id returned by RegisterRequest, that should be unregistered.
   virtual void UnregisterRequest(int64_t request_id) = 0;
@@ -299,8 +302,10 @@ class NODISCARD_CLASS RequestScope {
   RequestScope(const RequestScope&) = delete;
   void operator=(const RequestScope&) = delete;
 
-  static Result<RequestScope> Create(TransactionStatusManager* status_manager) {
-    return RequestScope(status_manager, VERIFY_RESULT(status_manager->RegisterRequest()));
+  static Result<RequestScope> Create(
+      TransactionStatusManager* status_manager, bool allow_when_closing) {
+    return RequestScope(
+        status_manager, VERIFY_RESULT(status_manager->RegisterRequest(allow_when_closing)));
   }
 
  private:
@@ -512,9 +517,9 @@ std::ostream& operator<<(std::ostream& out, const PostApplyTransactionMetadata& 
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const char* kGlobalTransactionsTableName;
-extern const std::string kMetricsSnapshotsTableName;
-extern const std::string kTransactionTablePrefix;
+inline constexpr const char* kGlobalTransactionsTableName = "transactions";
+inline constexpr const char* kMetricsSnapshotsTableName = "metrics";
+inline constexpr const char* kTransactionTablePrefix = "transactions_";
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 

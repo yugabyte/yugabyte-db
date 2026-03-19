@@ -19,6 +19,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
@@ -279,7 +280,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.ResumeUniverse,
           TaskType.PauseXClusterUniverses,
           TaskType.ResumeXClusterUniverses,
-          TaskType.DecommissionNode);
+          TaskType.DecommissionNode,
+          TaskType.ProvisionUniverseNodes);
 
   // Tasks that are allowed to run if cluster placement modification task failed.
   // This mapping blocks/allows actions on the UI done by a mapping defined in
@@ -308,6 +310,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.DestroyUniverse,
           TaskType.DestroyKubernetesUniverse,
           TaskType.ReinstallNodeAgent,
+          TaskType.ProvisionUniverseNodes,
           TaskType.CreateSupportBundle,
           TaskType.CreateBackupSchedule,
           TaskType.CreateBackupScheduleKubernetes,
@@ -552,6 +555,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       log.error(msg);
       return false;
     }
+    Architecture arch = universe.getUniverseDetails().arch;
+    if (arch != null) {
+      try {
+        release.getLocalReleasePathStringForArchitecture(arch);
+        return true;
+      } catch (Exception e) {
+        log.error("Error validating local release for universe: {}", e.getMessage(), e);
+        return false;
+      }
+    }
+    log.debug(
+        "Universe arch not set, falling back to validating all local release artifacts for "
+            + "version {}",
+        release.getVersion());
     Set<String> localFilePaths = release.getLocalReleasePathStrings();
     for (String path : localFilePaths) {
       Path localPath = Paths.get(path);
@@ -1320,6 +1337,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return universe;
   }
 
+  public SubTaskGroup getUpdateParentTaskParamsTask(Consumer<TaskInfo> taskInfoConsumer) {
+    SubTaskGroup updateParentTaskParamsSubTaskGroup =
+        createSubTaskGroup("UpdateParentTaskParams")
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    UpdateParentTaskParams.Params params = new UpdateParentTaskParams.Params();
+    params.setTaskInfoConsumer(taskInfoConsumer);
+    UpdateParentTaskParams task = createTask(UpdateParentTaskParams.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    updateParentTaskParamsSubTaskGroup.addSubTask(task);
+    return updateParentTaskParamsSubTaskGroup;
+  }
+
   public SubTaskGroup getAnsibleConfigureYbcServerTasks(
       AnsibleConfigureServers.Params params, Universe universe) {
     String subGroupDescription =
@@ -1428,6 +1458,44 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     UniverseUpdateSucceeded.Params params = new UniverseUpdateSucceeded.Params();
     params.setUniverseUUID(universeUuid);
     UniverseUpdateSucceeded task = createTask(UniverseUpdateSucceeded.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to register the universe with the first PA Collector for the customer. Only
+   * runs when yb.pa.auto_registration.enabled is true; uses
+   * yb.pa.auto_registration.advanced_observability for the advanced observability flag.
+   */
+  public SubTaskGroup createRegisterUniverseWithPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("RegisterUniverseWithPaCollector", SubTaskGroupType.ConfigureUniverse);
+    RegisterUniverseWithPaCollector.Params params = new RegisterUniverseWithPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    RegisterUniverseWithPaCollector task = createTask(RegisterUniverseWithPaCollector.class);
+    task.initialize(params);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Create a subtask to unregister the universe from the PA Collector. No-op if the universe is not
+   * registered. Clears paCollectorUuid from universe details on success or on PA unregister failure
+   * so destroy can proceed.
+   */
+  public SubTaskGroup createUnregisterUniverseFromPaCollectorTask(UUID universeUuid) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup(
+            "UnregisterUniverseFromPaCollector", SubTaskGroupType.RemovingUnusedServers);
+    UnregisterUniverseFromPaCollector.Params params =
+        new UnregisterUniverseFromPaCollector.Params();
+    params.setUniverseUUID(universeUuid);
+    UnregisterUniverseFromPaCollector task = createTask(UnregisterUniverseFromPaCollector.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
@@ -1899,12 +1967,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createPersistResizeNodeTask(
       UserIntent newUserIntent, UUID clusterUUID, boolean onlyPersistDeviceInfo) {
+    return createPersistResizeNodeTask(
+        newUserIntent,
+        clusterUUID,
+        onlyPersistDeviceInfo,
+        null /* skipMasterAZs */,
+        null /* skipTserverAZs */);
+  }
+
+  public SubTaskGroup createPersistResizeNodeTask(
+      UserIntent newUserIntent,
+      UUID clusterUUID,
+      boolean onlyPersistDeviceInfo,
+      Set<UUID> skipMasterAZs,
+      Set<UUID> skipTserverAZs) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.newUserIntent = newUserIntent;
     params.clusterUUID = clusterUUID;
     params.onlyPersistDeviceInfo = onlyPersistDeviceInfo;
+    params.skipMasterAZs = skipMasterAZs;
+    params.skipTserverAZs = skipTserverAZs;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());

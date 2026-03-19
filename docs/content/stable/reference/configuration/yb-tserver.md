@@ -110,7 +110,6 @@ Specifies the queue size for the tablet server to serve reads and writes from ap
 
 {{% tags/wrap %}}
 {{<tags/feature/restart-needed>}}
-{{<tags/feature/ea idea="1807">}}
 Default: `""`
 {{% /tags/wrap %}}
 
@@ -424,7 +423,7 @@ In v2025.2 and later, bitmap scan is enabled by default in new universes when yo
 
 In addition, when upgrading a deployment to v2025.2 or later, if the universe has the cost-based optimizer enabled (`on`), YugabyteDB will enable bitmap scan.
 
-Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+Both [enable_bitmapscan](#enable-bitmapscan) (enabled by default) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -488,7 +487,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_enable_optimizer_statistics
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -499,7 +498,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -512,7 +511,7 @@ See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If th
 ##### yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -670,6 +669,35 @@ Default: `20000`
 {{% /tags/wrap %}}
 
 Sets the maximum batch size per transaction when using [COPY FROM](../../../api/ysql/the-sql-language/statements/cmd_copy/).
+
+#### Bucket-based index scan optimization
+
+##### yb_enable_derived_equalities
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables derivation of additional equalities for columns that are generated or computed using an expression. Used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/).
+
+##### yb_enable_derived_saops
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2275">}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enable derivation of IN clauses for columns generated or computed using a `yb_hash_code` expression. Such derivation is only done for index paths that consider bucket-based merge. Disabled if `yb_max_saop_merge_streams` is 0.
+
+##### yb_max_saop_merge_streams
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="2275">}}
+Default: `0`
+{{% /tags/wrap %}}
+
+Maximum number of buckets to process in parallel. A value greater than 0 enables bucket-based merge (used for [bucket-based indexes](../../../develop/data-modeling/bucket-based-index-ysql/)). Disabled if the cost-based optimizer is not enabled (`yb_enable_cbo=false`). Recommended value is 64.
 
 ## Networking
 
@@ -2241,7 +2269,7 @@ The maximum duration (in milliseconds) for the cooldown period between successiv
 Default: `2`
 {{% /tags/wrap %}}
 
-The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze). 
+The exponential factor by which the per table cooldown period is scaled up each time from the value ysql_auto_analyze_min_cooldown_per_table to the value ysql_auto_analyze_max_cooldown_per_table. For more details, see [Auto Analyze service](../../../additional-features/auto-analyze).
 
 ##### --ysql_auto_analyze_batch_size
 
@@ -2423,6 +2451,19 @@ If you are using YugabyteDB Anywhere, as with other flags, set `allowed_preview_
 
 After adding a preview flag to the `allowed_preview_flags_csv` list, you still need to set the flag using **Edit Flags** as well.
 {{</note>}}
+
+##### --ysql_enable_write_pipelining
+
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="1298">}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables concurrent replication of multiple write operations in a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
+
+Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
 ## Security
 
@@ -2776,7 +2817,7 @@ For details on the expected behaviour when used with the sequence cache clause, 
 ##### --ysql_yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2793,7 +2834,7 @@ See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter
 ##### --ysql_yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 

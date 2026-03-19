@@ -29,9 +29,17 @@
 
 namespace yb::pggate {
 
+struct YbctidReaderOptions {
+  std::optional<int> rowmark{};
+  std::optional<int> pg_wait_policy{};
+  std::optional<int> docdb_wait_policy{};
+  std::optional<PgSessionRunOperationMarker> run_marker{};
+};
+
 class YbctidReader {
  public:
   using ReadResult = Result<std::span<LightweightTableYbctid>>;
+  using Options = YbctidReaderOptions;
 
   class BatchAccessor {
    public:
@@ -50,10 +58,9 @@ class YbctidReader {
     }
 
     ReadResult Read(
-        PgOid database_id, const TableLocalityMap& tables_locality,
-        const ExecParametersMutator& exec_params_mutator) {
+        PgOid database_id, const TableLocalityMap& tables_locality, const Options& options = {}) {
       RSTATUS_DCHECK(IsActive(), IllegalState, "Read from inactive batch is not allowed");
-      return reader_.Read(database_id, tables_locality, exec_params_mutator);
+      return reader_.Read(database_id, tables_locality, options);
     }
 
    private:
@@ -91,8 +98,7 @@ class YbctidReader {
   }
 
   ReadResult Read(
-      PgOid database_id, const TableLocalityMap& tables_locality,
-      const ExecParametersMutator& exec_params_mutator);
+      PgOid database_id, const TableLocalityMap& tables_locality, const Options& options);
 
   const PgSessionPtr& session_;
   BuffersPtr holders_ = std::make_shared<Buffers>();

@@ -86,7 +86,7 @@ ConsensusFrontier CreateConsensusFrontier(
   return f;
 }
 
-rocksdb::FileMetaData CreateFile(rocksdb::UserFrontierPtr largest_frontier = nullptr) {
+rocksdb::FileMetaData CreateFile(storage::UserFrontierPtr largest_frontier = nullptr) {
   rocksdb::FileMetaData f;
   f.fd = rocksdb::FileDescriptor(1, 0, 0, 0);
   f.smallest = rocksdb::MakeFileBoundaryValues("smallest", 100, rocksdb::kTypeValue);

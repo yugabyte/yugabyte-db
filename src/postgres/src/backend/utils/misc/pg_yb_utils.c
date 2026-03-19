@@ -93,6 +93,7 @@
 #include "commands/yb_cmds.h"
 #include "common/ip.h"
 #include "common/pg_yb_common.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "executor/ybExpr.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -134,6 +135,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
 
 static uint64_t yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
@@ -241,19 +243,25 @@ YbGetCatalogCacheVersionForTablePrefetching()
 }
 
 void
-YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+YbUpdateCatalogCacheVersionNoPgStat(uint64_t catalog_cache_version)
 {
 	yb_catalog_cache_version = catalog_cache_version;
-	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set local catalog version: %" PRIu64,
-						yb_catalog_cache_version)));
+				(errmsg("set db %u local catalog version: %" PRIu64,
+						MyDatabaseId, yb_catalog_cache_version)));
 }
 
 void
-SendLogicalClientCacheVersionToFrontend()
+YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
+{
+	YbUpdateCatalogCacheVersionNoPgStat(catalog_cache_version);
+	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
+}
+
+static void
+yb_send_logical_client_version_to_frontend(int64_t logical_client_version)
 {
 	StringInfoData buf;
 
@@ -262,19 +270,31 @@ SendLogicalClientCacheVersionToFrontend()
 
 	/* Use 'r' for a YB_PARAMETER_STATUS message */
 	pq_beginmessage(&buf, 'r');
-	pq_sendstring(&buf, "yb_logical_client_version");	/* Key */
-	char		yb_logical_client_cache_version_str[16];
+	pq_sendstring(&buf, YB_LOGICAL_CLIENT_VERSION_STR); /* Key */
+	char yb_logical_client_cache_version_str[16];
 
 	snprintf(yb_logical_client_cache_version_str, 16, "%" PRIu64,
-			 yb_logical_client_cache_version);
-	pq_sendstring(&buf, yb_logical_client_cache_version_str);	/* Value */
+			 logical_client_version);
+	pq_sendstring(&buf, yb_logical_client_cache_version_str); /* Value */
 	/* No flags are needed for this variable */
-	pq_sendbyte(&buf, 0);		/* flags */
+	pq_sendbyte(&buf, 0); /* flags */
 
 	pq_endmessage(&buf);
 
 	/* Ensure the message is sent to the frontend */
 	pq_flush();
+}
+
+void
+YbSendLogicalClientCacheVersionToFrontend()
+{
+	yb_send_logical_client_version_to_frontend(yb_logical_client_cache_version);
+}
+
+void
+YbSendMasterLogicalClientVersionToFrontend()
+{
+	yb_send_logical_client_version_to_frontend(YbGetMasterLogicalClientVersion());
 }
 
 void
@@ -290,8 +310,8 @@ YbSetNewCatalogVersion(uint64_t new_version)
 	yb_new_catalog_version = new_version;
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
-				(errmsg("set new catalog version: %" PRIu64,
-						yb_new_catalog_version)));
+				(errmsg("set db %u new catalog version: %" PRIu64,
+						MyDatabaseId, yb_new_catalog_version)));
 }
 
 void
@@ -1223,6 +1243,8 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 
 			if (yb_enable_query_diagnostics)
 				YbQueryDiagnosticsInstallHook();
+
+			YbQpmInit();
 		}
 
 		/*
@@ -1953,6 +1975,8 @@ YBPgTypeOidToStr(Oid type_id)
 			return "CSTRINGARRAY";
 		case BSONOID:
 			return "BSON";
+		case GRAPHIDOID:
+			return "GRAPHID";
 		default:
 			return "user_defined_type";
 	}
@@ -2115,10 +2139,11 @@ YBCGetDatabaseOidByRelid(Oid relid)
 {
 	Relation	relation = RelationIdGetRelation(relid);
 	bool		relisshared = relation->rd_rel->relisshared;
+	bool		belongs_to_yb_system_db = relation->belongs_to_yb_system_db;
 
 	RelationClose(relation);
 	return YBCGetDatabaseOidFromShared(relisshared,
-									   relation->belongs_to_yb_system_db);
+									   belongs_to_yb_system_db);
 }
 
 Oid
@@ -2212,7 +2237,6 @@ bool		yb_enable_expression_pushdown = true;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
 bool		yb_enable_optimizer_statistics = false;
-bool		yb_bypass_cond_recheck = true;
 bool		yb_make_next_ddl_statement_nonbreaking = false;
 bool		yb_make_next_ddl_statement_nonincrementing = false;
 bool		yb_plpgsql_disable_prefetch_in_for_query = false;
@@ -2256,6 +2280,16 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 	.max_cols_size_to_compare = 10 * 1024
 };
 
+YbQpmConfiguration yb_qpm_configuration = {
+	.track = YB_QPM_TRACK_NONE,
+	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
+	.max_cache_size = 5000,
+	.track_catalog_queries = true,
+	.plan_format = EXPLAIN_FORMAT_JSON,
+	.verbose_plans = false,
+	.compress_text = true
+};
+
 bool		yb_speculatively_execute_pl_statements = false;
 bool		yb_whitelist_extra_stmts_for_pl_speculative_execution = false;
 
@@ -2269,6 +2303,10 @@ bool		yb_debug_log_docdb_error_backtrace = false;
 bool		yb_debug_original_backtrace_format = false;
 
 bool		yb_debug_log_internal_restarts = false;
+
+bool		yb_is_non_atomic_commit_done = false;
+
+bool		yb_enable_retry_after_non_atomic_commit = false;
 
 bool		yb_test_system_catalogs_creation = false;
 
@@ -2725,8 +2763,9 @@ YBAddDdlTxnState(YbDdlMode mode)
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	ddl_transaction_state.num_create_function_stmts =
 		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
@@ -3324,9 +3363,21 @@ YBCommitTransactionContainingDDL()
 				 "local catalog version of db %u "
 				 "kept at %" PRIu64, database_oid, MyDatabaseId, YbGetCatalogCacheVersion());
 
-		if (YbIsClientYsqlConnMgr())
+		if (YbIsClientYsqlConnMgr() ||
+			(YbIsYsqlConnMgrEnabled() &&
+			 YbCheckTserverResponseCacheForAuthGflags()))
 		{
-			/* Wait for tserver hearbeat */
+			/*
+			 * Wait for tserver heartbeat in case this was a conn mgr backend or
+			 * if conn mgr is enabled and tserver response cache is used for
+			 * auth processing to allow heartbeat to signal cache invalidation.
+			 *
+			 * YbIsClientYsqlConnMgr() is false if any DDL (which might change
+			 * authorization/login privileges) was triggered by a direct-to-PG
+			 * connection. This would be a vulnerability if a stale tserver
+			 * response cache is used for auth processing, hence the extra
+			 * condition to allow wait.
+			 */
 			int32_t		sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
 
 			elog(LOG_SERVER_ONLY,
@@ -4399,7 +4450,10 @@ YBTxnDdlProcessUtility(PlannedStmt *pstmt,
 			if (YbShouldIncrementLogicalClientVersion(pstmt) &&
 				YbIsClientYsqlConnMgr() &&
 				YbIncrementMasterLogicalClientVersionTableEntry())
+			{
 				elog(LOG, "Logical client version incremented");
+				YbSendMasterLogicalClientVersionToFrontend();
+			}
 		}
 
 		if (prev_ProcessUtility)
@@ -4493,6 +4547,9 @@ YbInvalidateTableCacheForAlteredTables()
 		{
 			YbDatabaseAndRelfileNodeOid *object_id =
 				(YbDatabaseAndRelfileNodeOid *) lfirst(lc);
+
+			YBC_LOG_INFO("Invalidating table cache entry for table %u:%u",
+						 object_id->database_oid, object_id->relfilenode_id);
 
 			/*
 			 * This is safe to do even for tables which don't exist or have
@@ -6623,6 +6680,7 @@ YbRegisterSysTableForPrefetching(int sys_table_id)
 			break;
 
 		case YBCatalogVersionRelationId:	/* pg_yb_catalog_version */
+		case YBLogicalClientVersionRelationId:	/* pg_yb_logical_client_version */
 			fetch_ybctid = false;
 			yb_switch_fallthrough();
 
@@ -6756,6 +6814,14 @@ YbTryRegisterCatalogVersionTableForPrefetching()
 {
 	if (YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
 		YbRegisterSysTableForPrefetching(YBCatalogVersionRelationId);
+}
+
+void
+YbTryRegisterLogicalClientVersionTableForPrefetching()
+{
+	/* Only check existence as checking LCV type may require an RPC to the master. */
+	if (YbLogicalClientVersionTableExists())
+		YbRegisterSysTableForPrefetching(YBLogicalClientVersionRelationId);
 }
 
 static bool
@@ -8348,9 +8414,12 @@ YbCheckTserverResponseCacheForAuthGflags()
 bool
 YbUseTserverResponseCacheForAuth(uint64_t shared_catalog_version)
 {
-	if (!YbIsAuthBackend())
+	if (!(YbIsAuthBackend() || YbIsAuthPassthroughInProgress(MyProcPort)))
 		return false;
-	/* We should only see auth backend if connection manager is enabled. */
+	/*
+	 * We should only see auth backend or auth passthrough in progress if
+	 * connection manager is enabled.
+	 */
 	Assert(YbIsYsqlConnMgrEnabled());
 
 	if (!YbCheckTserverResponseCacheForAuthGflags())
@@ -8533,6 +8602,138 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	return (Datum) 0;
 }
 
+Datum
+yb_stat_auto_analyze(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	int			i;
+
+#define YB_AUTO_ANALYZE_TABLE_COLS 5
+
+	InitMaterializedSRF(fcinfo, 0);
+	YbcAutoAnalyzeInfo *auto_analyze_info = NULL;
+	size_t		num_rows = 0;
+
+	HandleYBStatus(YBCQueryAutoAnalyze(MyDatabaseId, &auto_analyze_info, &num_rows));
+
+	for (i = 0; i < num_rows; ++i)
+	{
+		YbcAutoAnalyzeInfo *row_info = (YbcAutoAnalyzeInfo *) auto_analyze_info + i;
+		Datum		values[YB_AUTO_ANALYZE_TABLE_COLS];
+		bool		nulls[YB_AUTO_ANALYZE_TABLE_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+		Relation rel = RelationIdGetRelation(row_info->table_oid);
+		/*
+		 * A table could be deleted, but auto analyze hasn't cleaned up its
+		 * entry from its service table yet.
+		 */
+		if (!RelationIsValid(rel))
+			continue;
+		values[0] = ObjectIdGetDatum(row_info->table_oid);
+		values[1] = CStringGetTextDatum(get_namespace_name(RelationGetNamespace(rel)));
+		values[2] = CStringGetTextDatum(RelationGetRelationName(rel));
+		values[3] = UInt64GetDatum(row_info->mutations);
+		if (strlen(row_info->last_analyze_info))
+		{
+			values[4] = DirectFunctionCall1(jsonb_in, CStringGetDatum(row_info->last_analyze_info));
+		}
+		else
+		{
+			nulls[4] = true;
+		}
+
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc, values, nulls);
+		RelationClose(rel);
+	}
+
+#undef YB_AUTO_ANALYZE_TABLE_COLS
+
+	return (Datum) 0;
+}
+
+/*
+ * Return the tablet ID that would contain the row identified by the given
+ * key values. Supports both same-database and cross-database lookups.
+ *
+ * Table and database are identified by OID and name; key/row values are
+ * validated and encoded into a partition key in the pggate layer, then the
+ * tserver looks up the tablet containing that partition key.
+ *
+ * Arguments:
+ *   db_name   - name of the database containing the table
+ *   table_oid - OID of the table (in the target database)
+ *   row_values - record of key column values (PK columns only, or full row)
+ *
+ * Returns: tablet ID as text (hex string).
+ */
+Datum
+yb_get_tablet_for_key(PG_FUNCTION_ARGS)
+{
+	char	   *db_name = text_to_cstring(PG_GETARG_TEXT_PP(0));
+	Oid			table_oid = PG_GETARG_OID(1);
+	Oid			db_oid = get_database_oid(db_name, false);
+
+	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(2);
+	Oid			tupType = HeapTupleHeaderGetTypeId(rec);
+	int32		tupTypmod = HeapTupleHeaderGetTypMod(rec);
+	TupleDesc	rec_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	int			num_rec_cols = rec_tupdesc->natts;
+
+	if (num_rec_cols == 0)
+	{
+		ReleaseTupleDesc(rec_tupdesc);
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("at least one key column value is required for yb_get_tablet_for_key")));
+	}
+
+	/* Deform the tuple to get values and nulls. */
+	HeapTupleData tuple;
+	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+	ItemPointerSetInvalid(&tuple.t_self);
+	tuple.t_tableOid = InvalidOid;
+	tuple.t_data = rec;
+
+	Datum	   *values = (Datum *) palloc(num_rec_cols * sizeof(Datum));
+	bool	   *nulls = (bool *) palloc(num_rec_cols * sizeof(bool));
+	heap_deform_tuple(&tuple, rec_tupdesc, values, nulls);
+
+	/* Build key values array to pass to pggate (validates, encodes). */
+	YbcPgKeyValue *key_values = (YbcPgKeyValue *) palloc(num_rec_cols * sizeof(YbcPgKeyValue));
+
+	for (int i = 0; i < num_rec_cols; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(rec_tupdesc, i);
+		Oid			type_oid = attr->atttypid;
+
+		/* UNKNOWNOID values are stored as cstrings; convert to text datum. */
+		if (type_oid == UNKNOWNOID && !nulls[i])
+		{
+			values[i] = CStringGetTextDatum(DatumGetCString(values[i]));
+			type_oid = TEXTOID;
+		}
+
+		key_values[i].type_entity = YBCPgFindTypeEntity(type_oid);
+		key_values[i].datum = values[i];
+		key_values[i].is_null = nulls[i];
+	}
+
+	pfree(values);
+	pfree(nulls);
+	ReleaseTupleDesc(rec_tupdesc);
+
+	/* Pggate validates key values, encodes the partition key. */
+	const char *tablet_id = NULL;
+	HandleYBStatus(YBCGetTabletForKey(db_oid, table_oid, key_values, num_rec_cols, &tablet_id));
+
+	pfree(key_values);
+	Assert(tablet_id != NULL);
+
+	PG_RETURN_TEXT_P(cstring_to_text(tablet_id));
+}
+
 YbcPgStatement
 YbNewSample(Relation rel,
 			int targrows,
@@ -8561,7 +8762,7 @@ YbNewUpdateForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewUpdate(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8576,7 +8777,7 @@ YbNewDelete(Relation rel, YbcPgTransactionSetting transaction_setting)
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewDelete(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8585,7 +8786,7 @@ YbNewInsertForDb(Oid db_oid, Relation rel, YbcPgTransactionSetting transaction_s
 {
 	YbcPgStatement result = NULL;
 	HandleYBStatus(YBCPgNewInsert(db_oid, YbGetRelfileNodeId(rel),
-								  YbBuildTableLocalityInfo(rel), &result, transaction_setting));
+								  YbBuildTableLocalityInfo(rel), transaction_setting, &result));
 	return result;
 }
 
@@ -8610,7 +8811,7 @@ YbNewTruncateColocatedImpl(Relation rel, YbcPgTransactionSetting transaction_set
 						   YbcPgStatement *result)
 {
 	return YBCPgNewTruncateColocated(YBCGetDatabaseOid(rel), YbGetRelfileNodeId(rel),
-									 YbBuildTableLocalityInfo(rel), result, transaction_setting);
+									 YbBuildTableLocalityInfo(rel), transaction_setting, result);
 }
 
 YbcPgStatement

@@ -418,6 +418,11 @@ export function createKMSProviderConfigResponse(result) {
   };
 }
 
+export function refreshKMSConfig(configUUID) {
+  const endpoint = getCustomerEndpoint() + `/kms_configs/${configUUID}/refresh`;
+  return axios.put(endpoint);
+}
+
 export function editKMSProviderConfig(configUUID, body) {
   const endpoint = getCustomerEndpoint() + `/kms_configs/${configUUID}/edit`;
   const request = axios.post(endpoint, body);

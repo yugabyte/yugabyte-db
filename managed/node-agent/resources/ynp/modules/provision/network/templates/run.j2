@@ -1,15 +1,19 @@
 echo "Start network configuration"
 {% if no_proxy %}
-# Add it to bashrc for root, and yugabyte user
 no_proxy_env='export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"'
+
+# Add to current user's bashrc (works for both root and yb_user)
 if ! grep -qxF "$no_proxy_env" ~/.bashrc >/dev/null 2>&1; then
     echo "$no_proxy_env" >> ~/.bashrc
 fi
-# Run as yugabyte user to add to the bashrc.
-if ! grep -qxF "$no_proxy_env" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
-    # no_proxy_env already expanded in the subshell.
-    su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{yb_home_dir}}/.bashrc"
+
+# Root mode: Also add to yb_user's bashrc
+if [ "$SUDO_ACCESS" = "true" ]; then
+  if ! grep -qxF "$no_proxy_env" {{ yb_home_dir }}/.bashrc >/dev/null 2>&1; then
+      su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{ yb_home_dir }}/.bashrc"
+  fi
 fi
+
 # Export it for the current session.
 export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"
 {% endif %}

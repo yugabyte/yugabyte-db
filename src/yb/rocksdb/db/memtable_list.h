@@ -189,7 +189,8 @@ class MemTableList {
 
   // Returns accumulated frontier from all tables.
   // Initial value could be passed as `frontier`.
-  UserFrontierPtr GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type);
+  yb::storage::UserFrontierPtr GetFrontier(
+      yb::storage::UserFrontierPtr frontier, yb::storage::UpdateUserValueType type);
 
   // Returns total number of memtables in the list that have been
   // completely flushed and logged.

@@ -95,6 +95,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
@@ -261,6 +262,7 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "Delay set catalog version table mode by this many times of heartbeat responses "
     "after tserver starts");
 
+DECLARE_bool(enable_qos);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
@@ -377,7 +379,12 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       xcluster_context_(new TserverXClusterContext()),
       object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
       object_lock_shared_state_manager_(
-          new docdb::ObjectLockSharedStateManager(object_lock_tracker_)) {
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_))
+#ifdef __linux__
+      ,
+      cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
+#endif
+      {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -507,7 +514,7 @@ Status TabletServer::Init() {
   connectivity_poller_.emplace(*this, permanent_uuid());
   DoUpdateMasterAddresses();
 
-  if (GetAtomicFlag(&FLAGS_allow_encryption_at_rest)) {
+  if (FLAGS_allow_encryption_at_rest) {
     // Create the encrypted environment that will allow users to enable encryption.
     std::vector<std::string> master_addresses;
     for (const auto& list : *opts_.GetMasterAddresses()) {
@@ -799,7 +806,7 @@ void TabletServer::Shutdown() {
   // Fix them and ensure PG is stopped here.
   ysql_lease_manager_->Shutdown();
   auto relinquish_lease_future = ysql_lease_manager_->RelinquishLease(
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_ysql_lease_refresher_rpc_timeout_ms)));
+      MonoDelta::FromMilliseconds(FLAGS_ysql_lease_refresher_rpc_timeout_ms));
 
   connectivity_poller_->Shutdown();
 
@@ -1301,7 +1308,7 @@ void TabletServer::RelcacheInitConnectionDone(
 
 void TabletServer::MakeRelcacheInitConnection(std::promise<Status>* p, const std::string& dbname) {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto status = ResultToStatus(CreateInternalPGConn(dbname, deadline));
+  auto status = ResultToStatus(CreateInternalPGConn(dbname, false, deadline));
   if (status.ok()) {
     LOG(INFO) << "Relcache init connection to database " << dbname << " succeeded";
   } else {
@@ -1916,7 +1923,7 @@ void TabletServer::DoGarbageCollectionOfInvalidationMessages(
 
 Status TabletServer::CheckYsqlLaggingCatalogVersions() {
   auto deadline = CoarseMonoClock::Now() + default_client_timeout();
-  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", deadline));
+  auto pg_conn = VERIFY_RESULT(CreateInternalPGConn("template1", false, deadline));
   const std::string query = "SELECT datid, local_catalog_version FROM "
                             "yb_pg_stat_get_backend_local_catalog_version(NULL) "
                             "ORDER BY datid ASC, local_catalog_version ASC";
@@ -2452,10 +2459,11 @@ void TabletServer::SetCronLeaderLease(MonoTime cron_leader_lease_end) {
 }
 
 Result<pgwrapper::PGConn> TabletServer::CreateInternalPGConn(
-    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline) {
   return pgwrapper::CreateInternalPGConnBuilder(
              pgsql_proxy_bind_address(), database_name, GetSharedMemoryPostgresAuthKey(), deadline)
-      .Connect();
+      .Connect(simple_query_protocol);
 }
 
 Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) {

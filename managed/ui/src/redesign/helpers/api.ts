@@ -14,6 +14,7 @@ import {
   UniverseNamespace,
   YBPSuccess
 } from './dtos';
+import type { YbdbRelease } from '../features/universe/universe-actions/software-upgrade/dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
@@ -120,6 +121,11 @@ export const universeQueryKey = {
     ...universeQueryKey.detail(universeUuid),
     ,
     'namespaces'
+  ],
+  detailsV2: (universeUuid: string | undefined) => [
+    ...universeQueryKey.ALL,
+    'detailsV2',
+    universeUuid
   ]
 };
 
@@ -211,6 +217,11 @@ export const telemetryProviderQueryKey = {
   ALL: ['telemetryProvider'],
   list: () => [...telemetryProviderQueryKey.ALL, 'list'],
   detail: (telemetryProviderId: string) => [...telemetryProviderQueryKey.ALL, telemetryProviderId]
+};
+
+export const dbReleaseQueryKey = {
+  ALL: ['dbReleaseg'],
+  list: () => [...dbReleaseQueryKey.ALL, 'list']
 };
 
 // --------------------------------------------------------------------------------------
@@ -391,9 +402,7 @@ class ApiService {
     this.cancellers.findUniverseByName = source.cancel;
 
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find?name=${universeName}`;
-    return axios
-      .get<string[]>(requestUrl, { cancelToken: source.token })
-      .then((resp) => resp.data);
+    return axios.get<string[]>(requestUrl, { cancelToken: source.token }).then((resp) => resp.data);
   };
 
   fetchUniverseList = (): Promise<Universe[]> => {
@@ -652,6 +661,11 @@ class ApiService {
   getDBVersions = (): Promise<string[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  getDbReleases = (): Promise<YbdbRelease[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release`;
+    return axios.get<YbdbRelease[]>(requestUrl).then((response) => response.data);
   };
 
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {

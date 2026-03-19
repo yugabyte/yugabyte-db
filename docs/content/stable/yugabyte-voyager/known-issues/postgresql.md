@@ -884,7 +884,7 @@ HINT:  To enable this preview feature, set the GFlag ysql_yb_enable_advisory_loc
 
 **GitHub**: Issue [#11084](https://github.com/yugabyte/yugabyte-db/issues/11084)
 
-**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/11/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
+**Description**: If your application queries or PL/pgSQL objects rely on [Two-Phase Commit protocol](https://www.postgresql.org/docs/current/two-phase.html) that allows multiple distributed systems to work together in a transactional manner in the source PostgreSQL database, these functionalities will not work after migrating to YugabyteDB. Currently, Two-Phase Commit is not implemented in YugabyteDB and will throw the following error when you attempt to execute the commands:
 
 ```sql
 ERROR:  PREPARE TRANSACTION not supported yet
@@ -1392,12 +1392,12 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue 1731](https://github.com/yugabyte/yb-voyager/issues/1731)
 
-**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, or `CIRCLE`.
+**Description**: For live migration, the migration skips data from source databases that have the following data types on any column: `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
 
 For live migration with fall-forward/fall-back, the migration skips data from source databases that have the following data types on any column:
 
-- `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSVECTOR`, `TSQUERY`, `CIRCLE`, or `ARRAY OF ENUMS` are always skipped.
-- `HSTORE` datatype is supported with [YugabyteDB connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) and skipped with [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/).
+- Always skipped (both connectors): `POINT`, `LINE`, `LSEG`, `BOX`, `PATH`, `POLYGON`, `TSQUERY`, `CIRCLE`, `VECTOR`, or `TIMETZ`.
+- Skipped by [YugabyteDB gRPC Connector](../../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/): `HSTORE`, `TSVECTOR`, `CITEXT`, `LTREE`, or `ARRAY OF ENUMS`. (These are supported by the [YugabyteDB Connector](../../../additional-features/change-data-capture/using-logical-replication/yugabytedb-connector/) (default).)
 
 Refer to [cutover to target](../../reference/cutover-archive/cutover/#yugabytedb-grpc-vs-yugabytedb-connector) for how or when to configure these connectors.
 
@@ -1518,37 +1518,6 @@ CREATE OR REPLACE VIEW public.v1 AS
 
 ## Performance optimizations
 
-### Hash-sharding with indexes on the timestamp/date columns
-
-**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
-**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
-
-Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../reference/configuration/postgresql-compatibility/) in YugabyteDB.
-
-**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE orders (
-    order_id int PRIMARY,
-    ...
-    created_at timestamp
-);
-
-CREATE INDEX idx_orders_created ON orders(created_at);
-```
-
-Suggested change to the schema is to add the ASC/DESC clause as follows:
-
-```sql
-CREATE INDEX idx_orders_created ON orders(created_at DESC);
-```
-
----
-
 ### Hotspots with range-sharded timestamp/date indexes
 
 **Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
@@ -1649,33 +1618,6 @@ CREATE TABLE event_log (
 SELECT * FROM event_log WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND event_logged_at >= NOW() - INTERVAL '1 month';
 ```
 
-### Redundant indexes
-
-**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another.
-
-**Workaround**: Remove the redundant index from the schema.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE orders (
-    order_id int PRIMARY,
-    product_id int,
-    ...
-);
-
-CREATE INDEX idx_orders_order_id on orders(order_id);
-CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
-```
-
-Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
-
-```sql
-CREATE INDEX idx_orders_order_id on orders(order_id);
-```
-
 ---
 
 ### Index on low-cardinality column
@@ -1686,23 +1628,13 @@ In YugabyteDB, you can specify three kinds of columns when using [CREATE INDEX](
 
 Design the index to evenly distribute data across all nodes and optimize performance based on query patterns. Avoid using low-cardinality columns, such as boolean values, ENUMs, or days of the week, as sharding keys, as they result in data being distributed across only a few tablets.
 
-#### Single column index
-
-Using a single-column index on a low-cardinality column leads to uneven data distribution, regardless of the sharding strategy.
-
 **Workaround**:
 
-It is recommended to drop the index if it is not required.
+Make the index range-sharded to distribute data of the index evenly across all nodes to avoid hotspots.
 
-If the index is used in queries, combine it with a high-cardinality column to create either a multi-column index with the sharding key on the high-cardinality column or a multi-column range-sharding index. This ensures better data distribution across all nodes.
+- For Voyager versions v2025.9.1 or later, Voyager automatically modifies all the [B-tree](https://en.wikipedia.org/wiki/B-tree) secondary indexes to be range-sharded during the export schema phase.
 
-#### Multi-column index
-
-In a multi-column index with a low cardinality column as the sharding key, the data will be unevenly distributed.
-
-**Workaround**:
-
-Make the index range-sharded to distribute data based on the combined values of all columns, or reorder the index columns to place the high-cardinality column first. This enables sharding on the high-cardinality column and ensures even distribution across all nodes.
+- For Voyager versions earlier than v2025.9.1, you must manually modify the index to be range-sharded.
 
 **Example**:
 
@@ -1717,39 +1649,14 @@ CREATE TABLE orders (
     status order_statuses
 );
 
---single column index on column having only 5 values
-CREATE INDEX idx_order_status on orders (status);
-
---multi column index on first column with only 5 values
 CREATE INDEX idx_order_status_order_id on orders (status, order_id);
 ```
 
-Since the number of distinct values of the column `status` is 5, there will be a maximum of 5 tablets created, limiting the scalability.
-
-Suggested change to both types of indexes is one of the following.
-
-Make it a multi-column range-index:
+Make the index as range-sharded to distribute the data evenly:
 
 ```sql
---These indexes will distribute the data on the combine value of both and as order_id is high cardinality column, it will make sure that data is distributed evenly
-
---adding order_id and making it a range-sharded index explictly
-CREATE INDEX idx_order_status on orders(status ASC, order_id);
-
 --making it a range-sharded index explictly
 CREATE INDEX idx_order_status_order_id on orders (status ASC, order_id);
-```
-
-Make it multi-column with a sharding key on a high-cardinality column:
-
-```sql
---these indexes will distribute the data on order_id first and then each shard is clustered on status
-
---making it multi column by adding order_id as first column
-CREATE INDEX idx_orders_status on orders(order_id, status);
-
---reordering the columns to place the order_id first and then keeping status.
-CREATE INDEX idx_order_status_order_id on orders (order_id, status);
 ```
 
 ---
@@ -2030,3 +1937,63 @@ CREATE TABLE users (
   CONSTRAINT users_username_unique UNIQUE (username)
 );
 ```
+
+### Hash-sharding with indexes on the timestamp/date columns
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
+
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../reference/configuration/postgresql-compatibility/) in YugabyteDB.
+
+**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(created_at);
+```
+
+Suggested change to the schema is to add the ASC/DESC clause as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
+
+---
+
+### Redundant indexes
+
+**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another.
+
+**Workaround**: Remove the redundant index from the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    product_id int,
+    ...
+);
+
+CREATE INDEX idx_orders_order_id on orders(order_id);
+CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
+```
+
+Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
+
+```sql
+CREATE INDEX idx_orders_order_id on orders(order_id);
+```
+
+---

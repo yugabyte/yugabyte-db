@@ -9,8 +9,6 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
-bool version_matching = false;
-bool version_matching_connect_higher_version = false;
 /*
  * YB TODO(mkumar): GH#24724 Implement a solution to process the quries
  * in batches rather than only increasing the size of query array.
@@ -292,6 +290,12 @@ od_frontend_attach(od_client_t *client, char *context,
 
 		/* connect to server, if necessary */
 		if (server->io.io) {
+			od_debug(&instance->logger, "frontend-attach", client,
+				 server, "updating client lcv from %d to %d",
+				 client->yb_logical_client_version,
+				 server->yb_logical_client_version);
+			client->yb_logical_client_version =
+				server->yb_logical_client_version;
 			return OD_OK;
 		}
 
@@ -326,41 +330,38 @@ od_frontend_attach(od_client_t *client, char *context,
 			return OD_ESERVER_CONNECT;
 		}
 
-		/* In case we create a new server but the logical client version of
+		/* YB: In case we create a new server but the logical client version of
 		 * transactional backend is greater than the client's version then disconnect
 		 * the client. This can happen for existing logical connections that are
 		 * authenticated but during issuing the query, some ALTER ROLE SET or
 		 * ALTER DATABASE set command has been executed that bumped up the
 		 * current_version in pg_yb_logical_client_version.
 		*/
-		if (version_matching &&
-			!version_matching_connect_higher_version &&
-			 client->logical_client_version < server->logical_client_version) {
+		/* 
+		 * FIXME: What if there was a backend available at same version but was
+		 * active and we tried to create a new server
+		 */
+		if (instance->config.yb_alter_guc_adoption_strategy ==
+			    YB_GUC_ADOPTION_CONNECTION_STATIC &&
+		    client->yb_logical_client_version <
+			    server->yb_logical_client_version) {
 			od_log(&instance->logger, context, client, server,
 			       "no matching server version found for client as client's logical version = %d "
-				    "and server's logical version = %d",
-			       client->logical_client_version,
-			       server->logical_client_version);
+			       "and server's logical version = %d",
+			       client->yb_logical_client_version,
+			       server->yb_logical_client_version);
 			return OD_ESERVER_CONNECT;
 		}
 
-		/* In case we create a new server but the logical client version of
-		 * transactional backend is greater than the client's version then disconnect
-		 * the client. This can happen for existing logical connections that are
-		 * authenticated but during issuing the query, some ALTER ROLE SET or
-		 * ALTER DATABASE set command has been executed that bumped up the
-		 * current_version in pg_yb_logical_client_version.
-		*/
-		if (version_matching &&
-			!version_matching_connect_higher_version &&
-			 client->logical_client_version < server->logical_client_version) {
-			od_log(&instance->logger, context, client, server,
-			       "no matching server version found for client as client's logical version = %d "
-				    "and server's logical version = %d",
-			       client->logical_client_version,
-			       server->logical_client_version);
-			return OD_ESERVER_CONNECT;
+		if (client->yb_logical_client_version !=
+		    server->yb_logical_client_version) {
+			od_debug(&instance->logger, "frontend-attach", client,
+				 server, "updating client lcv from %d to %d",
+				 client->yb_logical_client_version,
+				 server->yb_logical_client_version);
 		}
+		client->yb_logical_client_version =
+			server->yb_logical_client_version;
 
 		return OD_OK;
 	}
@@ -2185,13 +2186,23 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	case OD_EATTACH_TOO_MANY_CONNECTIONS:
 		assert(server == NULL);
 		assert(client->route != NULL);
-		od_frontend_fatal(
-			client, KIWI_TOO_MANY_CONNECTIONS,
-			"too many active clients for user (pool_size for "
-			"user %s.%s reached %d)",
-			client->startup.database.value,
-			client->startup.user.value,
-			client->rule != NULL ? client->rule->pool->size : -1);
+		if (instance->config.yb_enable_multi_route_pool) {
+			od_frontend_fatal(
+				client, KIWI_TOO_MANY_CONNECTIONS,
+				"too many active clients across all pools, so no space for "
+				"pool %s.%s reached max connections limit %d",
+				client->startup.database.value,
+				client->startup.user.value,
+				instance->config.yb_ysql_max_connections);
+		} else {
+			od_frontend_fatal(
+				client, KIWI_TOO_MANY_CONNECTIONS,
+				"too many active clients for user (pool_size for "
+				"user %s.%s reached %d)",
+				client->startup.database.value,
+				client->startup.user.value,
+				client->rule != NULL ? client->rule->pool->size : -1);
+		}
 		break;
 
 	case OD_ECLIENT_READ:
@@ -2562,55 +2573,6 @@ void od_frontend(void *arg)
 	od_router_status_t router_status;
 	router_status = od_router_route(router, client);
 
-	od_route_t *route = (od_route_t *)client->route;
-	od_route_lock(route);
-
-	/* If the client's version is greater than existing maximum version
-	 * for pool,mark all existing idle and active backends for removal.
-	 */
-
-	const char *version_matching_flag =
-		getenv("YB_YSQL_CONN_MGR_VERSION_MATCHING");
-	version_matching = version_matching_flag != NULL &&
-			   strcmp(version_matching_flag, "true") == 0;
-
-	const char *version_matching_connect_higher_version_flag = getenv(
-		"YB_YSQL_CONN_MGR_VERSION_MATCHING_CONNECT_HIGHER_VERSION");
-	version_matching_connect_higher_version =
-		version_matching_connect_higher_version_flag &&
-		strcmp(version_matching_connect_higher_version_flag, "true") ==
-			0;
-
-	if (version_matching && client->logical_client_version >
-	    route->max_logical_client_version) {
-		od_debug(
-			&instance->logger, "auth backend", client, NULL,
-			"invalidate all existing active and idle backends of the route"
-			", with user = %s, db = %s, having %d idle backends and %d active backends",
-			(char *)route->yb_user_name,
-			(char *)route->yb_database_name,
-			route->server_pool.count_idle,
-			route->server_pool.count_active);
-		route->max_logical_client_version =
-			client->logical_client_version;
-		od_list_t *target = &route->server_pool.idle;
-		od_list_t *i, *n;
-		od_list_foreach_safe(target, i, n)
-		{
-			od_server_t *server_idle =
-				od_container_of(i, od_server_t, link);
-			server_idle->marked_for_close = true;
-		}
-		target = &route->server_pool.active;
-		od_list_foreach_safe(target, i, n)
-		{
-			od_server_t *server_active =
-				od_container_of(i, od_server_t, link);
-			server_active->marked_for_close = true;
-		}
-	}
-	od_route_unlock(route);
-
 	/* routing is over */
 	od_atomic_u32_dec(&router->clients_routing);
 
@@ -2722,7 +2684,7 @@ void od_frontend(void *arg)
 	}
 
 	/* setup client and run main loop */
-	route = client->route;
+	od_route_t *route = client->route;
 
 	od_frontend_status_t status;
 	status = OD_UNDEF;
@@ -3058,9 +3020,10 @@ int yb_auth_via_auth_backend(od_client_t *client)
 	rc = od_backend_connect(server, "auth backend", NULL,
 							control_conn_client);
 	/*Store the client's logical_client_version as auth backend's logical_client_version*/
-	od_debug(&instance->logger, "auth backend", control_conn_client, server,
-		 "auth's backend logical client version = %d", server->logical_client_version);
-	client->logical_client_version = server->logical_client_version;
+	od_debug(&instance->logger, "auth backend", client, server,
+		 "setting client's logical client version to %d",
+		 server->yb_logical_client_version);
+	client->yb_logical_client_version = server->yb_logical_client_version;
 
 	control_conn_client->yb_is_authenticating = false;
 	if (rc == NOT_OK_RESPONSE) {

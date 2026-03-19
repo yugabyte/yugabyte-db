@@ -23,46 +23,6 @@ std::string FileBoundaryValuesBase::ToString() const {
   return yb::Format("{ seqno: $0 user_frontier: $1 }", seqno, user_frontier);
 }
 
-void UserFrontier::Update(const UserFrontier* rhs, UpdateUserValueType type, UserFrontierPtr* out) {
-  if (!rhs) {
-    return;
-  }
-  if (*out) {
-    (**out).Update(*rhs, type);
-  } else {
-    *out = rhs->Clone();
-  }
-}
-
-bool UserFrontier::Dominates(const UserFrontier& rhs, UpdateUserValueType update_type) const {
-  // Check that this value, if updated with the given rhs, stays the same, and hence "dominates" it.
-  std::unique_ptr<UserFrontier> copy = Clone();
-  copy->Update(rhs, update_type);
-  return Equals(*copy);
-}
-
-void UpdateUserFrontier(UserFrontierPtr* value, const UserFrontierPtr& update,
-                        UpdateUserValueType type) {
-  if (*value) {
-    (**value).Update(*update, type);
-  } else {
-    *value = update;
-  }
-}
-
-void UpdateUserFrontier(UserFrontierPtr* value, UserFrontierPtr&& update,
-                        UpdateUserValueType type) {
-  if (*value) {
-    (**value).Update(*update, type);
-  } else {
-    *value = std::move(update);
-  }
-}
-
-std::string UserFrontiers::ToString() const {
-  return ::yb::Format("{ smallest: $0 largest: $1 }", Smallest(), Largest());
-}
-
 std::string SstFileMetaData::Name() const {
   return MakeTableFileName(/* path= */ "", name_id);
 }
@@ -83,7 +43,7 @@ std::string LiveFileMetaData::ToString() const {
 
 void UpdateUserValue(
     UserBoundaryValues* values, UserBoundaryTag tag, const Slice& new_value,
-    UpdateUserValueType type) {
+    yb::storage::UpdateUserValueType type) {
   int compare_sign = static_cast<int>(type);
   for (auto& value : *values) {
     if (value.tag == tag) {
@@ -97,34 +57,30 @@ void UpdateUserValue(
 }
 
 void UpdateUserValue(
-    UserBoundaryValues* values, const UserBoundaryValueRef& new_value, UpdateUserValueType type) {
+    UserBoundaryValues* values, const UserBoundaryValueRef& new_value,
+    yb::storage::UpdateUserValueType type) {
   UpdateUserValue(values, new_value.tag, new_value.AsSlice(), type);
 }
 
 void UpdateUserValue(
-    UserBoundaryValues* values, const UserBoundaryValue& new_value, UpdateUserValueType type) {
+    UserBoundaryValues* values, const UserBoundaryValue& new_value,
+    yb::storage::UpdateUserValueType type) {
   UpdateUserValue(values, new_value.tag, new_value.AsSlice(), type);
 }
 
 void UpdateUserValues(
-    const UserBoundaryValueRefs& source, UpdateUserValueType type, UserBoundaryValues* values) {
+    const UserBoundaryValueRefs& source, yb::storage::UpdateUserValueType type,
+    UserBoundaryValues* values) {
   for (const auto& user_value : source) {
     UpdateUserValue(values, user_value, type);
   }
 }
 
 void UpdateUserValues(
-    const UserBoundaryValues& source, UpdateUserValueType type, UserBoundaryValues* values) {
+    const UserBoundaryValues& source, yb::storage::UpdateUserValueType type,
+    UserBoundaryValues* values) {
   for (const auto& user_value : source) {
     UpdateUserValue(values, user_value, type);
-  }
-}
-
-void UpdateFrontiers(UserFrontiersPtr& frontiers, const UserFrontiers& update) {
-  if (frontiers) {
-    frontiers->MergeFrontiers(update);
-  } else {
-    frontiers = update.Clone();
   }
 }
 

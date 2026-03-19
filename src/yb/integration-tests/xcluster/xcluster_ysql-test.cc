@@ -25,6 +25,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.h"
@@ -159,6 +160,14 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     return 3s * FLAGS_cdc_parent_tablet_deletion_task_retry_secs * kTimeMultiplier;
   }
 };
+
+TEST_F(XClusterYsqlTest, RejectSequencesDataTableInManualSetup) {
+  ASSERT_OK(SetUpWithParams({1}, {1}, 1, 1));
+
+  auto setup_status = SetupUniverseReplication({kPgSequencesDataTableId});
+  ASSERT_NOK(setup_status);
+  ASSERT_STR_CONTAINS(setup_status.ToString(), "sequences_data");
+}
 
 TEST_F(XClusterYsqlTest, GenerateSeries) {
   ASSERT_OK(SetUpWithParams({4}, {4}, 3, 1));
@@ -470,7 +479,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
 
   // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
   // optimization will kick in:
-  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = -1;
 
   // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
   // be replicated and visible on the consumer side.
@@ -486,7 +495,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt)
   // No wait here; see next test for why this matters.
   ASSERT_OK(conn.Execute("COMMIT"));
 
-  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
 
   ASSERT_OK(VerifyWrittenRecords());
   ASSERT_OK(DeleteUniverseReplication());
@@ -1859,8 +1868,7 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredFlushed) {
         // Check that first log was garbage collected, so remote bootstrap will be required.
         consensus::ReplicateMsgs replicates;
         int64_t starting_op;
-        return !tablet_peer->log()
-                    ->GetLogReader()
+        return !VERIFY_RESULT(tablet_peer->log()->GetLogReader())
                     ->ReadReplicatesInRange(
                         1, 2, 0, log::ObeyMemoryLimit::kFalse, &replicates, &starting_op)
                     .ok();

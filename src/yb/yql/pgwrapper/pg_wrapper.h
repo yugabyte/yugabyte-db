@@ -205,5 +205,10 @@ class PgSupervisor : public ProcessSupervisor {
   }
 };
 
+// Formats a gflag value for use in postgresql.conf.
+// String-type flags are single-quoted (with internal quotes escaped), unless already quoted.
+// Non-string-type flags are returned as-is.
+std::string FormatPgGFlagValue(const std::string& value, const std::string& type);
+
 }  // namespace pgwrapper
 }  // namespace yb

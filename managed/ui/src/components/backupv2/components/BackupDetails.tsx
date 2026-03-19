@@ -11,7 +11,7 @@ import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 import { Backup_States, IBackup, ICommonBackupInfo, ITable, Keyspace_Table } from '..';
-import { fetchIncrementalBackup } from '.././common/BackupAPI';
+import { addIncrementalBackup, fetchIncrementalBackup, getKMSConfigs } from '../common/BackupAPI';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { BACKUP_REFETCH_INTERVAL, RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -27,8 +27,6 @@ import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { find, findIndex, isFunction } from 'lodash';
 import { formatBytes } from '@app/utils/Formatters';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
-import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
-
 import { YBConfirmModal } from '../../modals';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';

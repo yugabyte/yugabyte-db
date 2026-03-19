@@ -64,7 +64,7 @@ Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](h
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. In addition, xCluster does not support truncate operations. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+- Making DDL (SQL-level changes such as creating or dropping tables or indexes) changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 - DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 
@@ -116,9 +116,6 @@ For example, use xCluster Replication for the following deployments:
 
 Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
-(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup-manual/).)
 
-For more information on xCluster Replication in YugabyteDB, see the following:
-
-- [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
-- [xCluster Replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
+For more information on xCluster Replication in YugabyteDB, see [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).

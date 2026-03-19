@@ -18,6 +18,8 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { MenuItemsContainer } from '../UniverseDetail/compounds/MenuItemsContainer';
 import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
 
+const PRECHECK_ACTIONS = ['START', 'STOP', 'ADD', 'DECOMMISSION', 'REPLACE'];
+
 export default class NodeAction extends Component {
   constructor() {
     super();
@@ -73,7 +75,9 @@ export default class NodeAction extends Component {
   static getCaption(actionType, dedicatedTo) {
     let caption = null;
     if (actionType === 'STOP') {
-      caption = dedicatedTo ? 'Stop ' + NodeAction.processName(dedicatedTo) : 'Stop Processes';
+      caption = dedicatedTo
+        ? `Enter ${NodeAction.processName(dedicatedTo)} Maintenance Mode'`
+        : 'Enter Maintenance Mode';
     } else if (actionType === 'REMOVE') {
       caption = 'Remove Node';
     } else if (actionType === 'DELETE') {
@@ -83,12 +87,14 @@ export default class NodeAction extends Component {
     } else if (actionType === 'REBOOT') {
       caption = 'Reboot Node';
     } else if (actionType === 'START') {
-      caption = dedicatedTo ? 'Start ' + NodeAction.processName(dedicatedTo) : 'Start Processes';
+      caption = dedicatedTo
+        ? `Exit ${NodeAction.processName(dedicatedTo)} Maintenance Mode`
+        : 'Exit Maintenance Mode';
     } else if (actionType === 'ADD') {
       caption = 'Add Node';
     } else if (actionType === 'REPLACE') {
       caption = 'Replace Node';
-    }  else if (actionType === 'DECOMMISSION') {
+    } else if (actionType === 'DECOMMISSION') {
       caption = 'Decommission Node';
     } else if (actionType === 'CONNECT') {
       caption = 'Connect';
@@ -401,6 +407,7 @@ export default class NodeAction extends Component {
                     onHide={this.closeModal}
                     nodeInfo={currentRow}
                     actionType={this.state.actionType}
+                    precheckNodeActions={PRECHECK_ACTIONS}
                   />
                 </Fragment>
               ) : null}
@@ -448,6 +455,7 @@ export default class NodeAction extends Component {
                   onHide={this.closeModal}
                   nodeInfo={currentRow}
                   actionType={this.state.actionType}
+                  precheckNodeActions={PRECHECK_ACTIONS}
                 />
               </>
             )

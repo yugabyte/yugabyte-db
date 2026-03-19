@@ -112,3 +112,11 @@ DELETE FROM base WHERE k IN (23, 33);
 DELETE FROM base WHERE k IN (34, 44, 47);
 
 SELECT * FROM base ORDER BY k;
+
+-- GH-30373
+-- The scans set "reference row marks" which should NOT be explained as part of EXPLAIN's output.
+CREATE TABLE gh30373 (id INT PRIMARY KEY);
+INSERT INTO gh30373 VALUES(1);
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (ANALYZE ON) UPDATE gh30373 a SET id = b.id+1 FROM gh30373 b WHERE a.id=b.id;
+ROLLBACK;

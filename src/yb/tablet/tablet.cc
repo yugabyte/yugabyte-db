@@ -32,6 +32,7 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <tuple>
 #include <utility>
 
 #include <boost/container/static_vector.hpp>
@@ -47,6 +48,7 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction_error.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
@@ -388,14 +390,14 @@ class MetricsScope {
                rocksdb::Statistics& intentsdb_statistics) :
       MetricsScope(
           global_metrics, regulardb_statistics, intentsdb_statistics,
-          GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)) { }
+          FLAGS_batch_tablet_metrics_update) { }
 
   ~MetricsScope() {
     if (!IsBatchedMetricsUpdate()) {
       return;
     }
 
-    if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
+    if (FLAGS_dump_metrics_to_trace) {
       TraceScopedMetrics();
     }
 
@@ -458,7 +460,7 @@ class YSQLMetricsScope : public MetricsScope {
       return;
     }
 
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+    if (FLAGS_ysql_analyze_dump_metrics &&
         metrics_capture_ != PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_NONE) {
       scoped_tablet_metrics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
       scoped_docdb_statistics_.CopyToPgsqlResponse(&pgsql_response_, metrics_capture_);
@@ -507,9 +509,9 @@ void InitFrontiers(const RemoveIntentsData& data, docdb::ConsensusFrontiers& fro
   InitFrontiers(data.op_id, data.log_ht, HybridTime::kInvalid, frontiers);
 }
 
-rocksdb::UserFrontierPtr GetMutableMemTableFrontierFromDb(
+storage::UserFrontierPtr GetMutableMemTableFrontierFromDb(
     rocksdb::DB* db,
-    rocksdb::UpdateUserValueType type) {
+    storage::UpdateUserValueType type) {
   if (FLAGS_TEST_disable_getting_user_frontier_from_mem_table) {
     return nullptr;
   }
@@ -675,7 +677,7 @@ class Tablet::RegularRocksDbListener : public Tablet::RocksDbListener {
       return;
     }
     {
-      auto smallest = db->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+      auto smallest = db->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
       if (smallest) {
         down_cast<docdb::ConsensusFrontier&>(*smallest).MakeExternalSchemaVersionsAtMost(
             table_id_to_min_schema_version);
@@ -743,7 +745,7 @@ Tablet::Tablet(const TabletInitData& data)
     regulardb_statistics_ =
         rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_);
     intentsdb_statistics_ =
-        (GetAtomicFlag(&FLAGS_export_intentdb_metrics)
+        (FLAGS_export_intentdb_metrics
              ? rocksdb::CreateDBStatistics(table_metrics_entity_, tablet_metrics_entity_, true)
              : rocksdb::CreateDBStatistics(nullptr, nullptr, true));
 
@@ -903,7 +905,7 @@ struct Tablet::IntentsDbFlushFilterState {
   boost::container::small_vector<int64_t, 4> largest_flushed_index;
   boost::container::small_vector<rocksdb::FlushAbility, 4> flush_ability;
 
-  void AddLargestFlushedIndex(const rocksdb::UserFrontierPtr& flushed_frontier) {
+  void AddLargestFlushedIndex(const storage::UserFrontierPtr& flushed_frontier) {
     if (!flushed_frontier) {
       largest_flushed_index.push_back(std::numeric_limits<int64_t>::min());
       return;
@@ -1292,11 +1294,11 @@ Status Tablet::OpenIntentsDB(const rocksdb::Options& common_options) {
   // unintended cleanup of intent SST files.
   transaction_participant_->SetIntentRetainOpIdAndTime(
       metadata_->cdc_sdk_min_checkpoint_op_id(),
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms),
       /* min_start_ht_cdc_unstreamed_txns */ HybridTime::kInvalid);
   RETURN_NOT_OK(transaction_participant_->SetDB(
       doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
-  if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+  if (FLAGS_cdc_immediate_transaction_cleanup) {
     CleanupIntentFiles();
   }
   return Status::OK();
@@ -1406,7 +1408,7 @@ void Tablet::DoCleanupIntentFiles() {
   // transactions to have time larger than best_file_max_ht by calling
   // transaction_participant_->WaitMinRunningHybridTime outside of ScopedReadOperation.
   bool has_deletions_blocked_by_running_transations = false;
-  while (GetAtomicFlag(&FLAGS_cleanup_intents_sst_files)) {
+  while (FLAGS_cleanup_intents_sst_files) {
     auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
     if (!scoped_read_operation.ok()) {
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Failed to acquire scoped read operation";
@@ -1448,7 +1450,7 @@ void Tablet::DoCleanupIntentFiles() {
 
     auto min_start_ht_cdc_unstreamed_txns =
         transaction_participant_->GetMinStartHTCDCUnstreamedTxns();
-    if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup) &&
+    if (FLAGS_cdc_immediate_transaction_cleanup &&
         metadata_->is_under_cdc_sdk_replication()) {
       if (!min_start_ht_cdc_unstreamed_txns.is_valid() ||
           min_start_ht_cdc_unstreamed_txns <= best_file_max_ht) {
@@ -1835,7 +1837,7 @@ Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx,
     const docdb::LWKeyValueWriteBatchPB& put_batch,
     HybridTime hybrid_time,
-    const rocksdb::UserFrontiers& frontiers) {
+    const storage::UserFrontiers& frontiers) {
   auto transaction_id = VERIFY_RESULT(
       FullyDecodeTransactionId(put_batch.transaction().transaction_id()));
 
@@ -1856,10 +1858,8 @@ Status Tablet::WriteTransactionalBatch(
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
-    return STATUS(
-        TryAgain,
-        Format("Transaction metadata missing: $0, looks like it was just aborted", transaction_id),
-        Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+    return CreateAbortedStatus(
+        "Transaction metadata missing: $0, looks like it was just aborted", transaction_id);
   }
 
   auto isolation_level = prepare_batch_data->first;
@@ -1877,7 +1877,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
@@ -1940,7 +1940,7 @@ Status Tablet::ApplyKeyValueRowOperations(
 }
 
 void Tablet::WriteToRocksDB(
-    const rocksdb::UserFrontiers& frontiers,
+    const storage::UserFrontiers& frontiers,
     rocksdb::WriteBatch* write_batch,
     docdb::StorageDbType storage_db_type) {
   rocksdb::DB* dest_db = nullptr;
@@ -2504,7 +2504,7 @@ docdb::ApplyTransactionState Tablet::ApplyIntents(const TransactionApplyData& da
 template <class Ids>
 Status Tablet::RemoveIntentsImpl(
     const RemoveIntentsData& data, RemoveReason reason, const Ids& ids) {
-  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_skip_remove_intent))) {
+  if (PREDICT_FALSE(FLAGS_TEST_skip_remove_intent)) {
     return Status::OK();
   }
   auto scoped_read_operation = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
@@ -2707,7 +2707,7 @@ Status Tablet::SetAllCDCRetentionBarriersUnlocked(
           << min_start_ht_cdc_unstreamed_txns;
       txn_participant->SetIntentRetainOpIdAndTime(
           cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, min_start_ht_cdc_unstreamed_txns);
-      if (GetAtomicFlag(&FLAGS_cdc_immediate_transaction_cleanup)) {
+      if (FLAGS_cdc_immediate_transaction_cleanup) {
         CleanupIntentFiles();
       }
     }
@@ -2731,7 +2731,7 @@ Status Tablet::SetAllInitialCDCRetentionBarriers(
     log->set_cdc_min_replicated_index(cdc_wal_index);
   }
   auto intent_retention_duration =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+      MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms);
 
   auto min_start_ht_cdc_unstreamed_txns = GetMinStartHTCDCUnstreamedTxns(log);
 
@@ -2782,7 +2782,7 @@ Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
   VLOG_WITH_PREFIX(1) << "Duration since last blocked: " << duration_since_last_blocked;
 
   if (duration_since_last_blocked >
-      GetAtomicFlag(&FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs)) {
+      FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) {
     VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
 
     if (log) {
@@ -2854,7 +2854,8 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   }
 
   auto table_info_ptr = VERIFY_RESULT(metadata_->AddTable(
-      table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
+      table_info.table_id(), table_info.namespace_name(), table_info.namespace_id(),
+      table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, index_info,
       table_info.schema_version(), op_id, ht, table_info.pg_table_id(),
       SkipTableTombstoneCheck(table_info.skip_table_tombstone_check()),
@@ -3061,9 +3062,16 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
   return serialized_backfill_spec;
 }
 
-Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
-    pgwrapper::PGConn* conn, const string& query, double* num_rows_backfilled_in_index) {
-  auto result = conn->Fetch(query);
+// On success, returns
+// - backfilled_until
+// - num rows processed in table
+// - num rows backfilled to index
+// On failure, returns one of
+// - TryAgain: for retryable errors
+// - IllegalState: for nonretryable errors
+Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
+    pgwrapper::PGConn* conn, const string& query) {
+  auto result = conn->FetchRow<std::string, double>(query);
   if (!result.ok()) {
     const auto libpq_error_msg = AuxilaryMessage(result.status()).value();
     LOG(WARNING) << "libpq query \"" << query << "\" returned " << result.status() << ": "
@@ -3075,26 +3083,21 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
     }
     return STATUS(IllegalState, libpq_error_msg);
   }
-  auto& res = result.get();
-  CHECK_EQ(PQntuples(res.get()), 1);
-  CHECK_EQ(PQnfields(res.get()), 2);
-  const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
-  *num_rows_backfilled_in_index = CHECK_RESULT(pgwrapper::GetValue<double>(res.get(), 0, 1));
-  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
-
+  const auto [returned_spec, num_rows_backfilled_in_index] = *result;
   PgsqlBackfillSpecPB spec;
   spec.ParseFromString(a2b_hex(returned_spec));
   VLOG(3) << "Returned backfill spec: { " << spec.ShortDebugString() << " }";
-  return spec;
+  VLOG(4) << "Returned backfill spec (raw): " << returned_spec;
+  return std::make_tuple(spec.next_row_key(), spec.count(), num_rows_backfilled_in_index);
 }
 
 struct BackfillParams {
   explicit BackfillParams(const CoarseTimePoint deadline, bool is_ysql)
       : start_time(CoarseMonoClock::Now()),
         deadline(deadline),
-        rate_per_sec(GetAtomicFlag(&FLAGS_backfill_index_rate_rows_per_sec)),
-        batch_size(GetAtomicFlag(&FLAGS_backfill_index_write_batch_size)) {
-    auto grace_margin_ms = GetAtomicFlag(&FLAGS_backfill_index_timeout_grace_margin_ms);
+        rate_per_sec(FLAGS_backfill_index_rate_rows_per_sec),
+        batch_size(FLAGS_backfill_index_write_batch_size) {
+    auto grace_margin_ms = FLAGS_backfill_index_timeout_grace_margin_ms;
     if (grace_margin_ms < 0) {
       // We need: grace_margin_ms >= 1000 * batch_size / rate_per_sec;
       // To be safe, set it to twice that number or the default margin, whichever is higher.
@@ -3175,7 +3178,7 @@ void SlowdownBackfillForTests() {
 
 // Assume that we are already in the Backfilling mode.
 Status Tablet::BackfillIndexesForYsql(
-    const std::vector<IndexInfo>& indexes,
+    const IndexInfo& index,
     const std::string& backfill_from,
     const CoarseTimePoint deadline,
     const HybridTime read_time,
@@ -3184,12 +3187,11 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     bool is_xcluster_target,
     uint64_t* number_of_rows_processed,
-    std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+    double* num_rows_backfilled_in_index,
     std::string* backfilled_until) {
-  DCHECK_EQ(indexes.size(), 1) << "We don't support batching index backfill in YSQL yet";
   LOG(INFO) << "Begin " << __func__ << " of tablet " << tablet_id() << " at " << read_time
             << " from row \"" << strings::b2a_hex(backfill_from)
-            << "\" for indexes " << AsString(indexes);
+            << "\" for index " << AsString(index);
   SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline, true /* is_ysql */);
@@ -3201,22 +3203,23 @@ Status Tablet::BackfillIndexesForYsql(
   auto conn = VERIFY_RESULT(pgwrapper::SetDefaultTransactionIsolation(
       std::move(conn_result), IsolationLevel::SNAPSHOT_ISOLATION));
 
-  // Construct query string.
-  std::string index_oids;
-  {
-    std::stringstream ss;
-    for (auto& index : indexes) {
-      // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
-      // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
-      int index_oid = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
-      ss << index_oid << ",";
-    }
-    index_oids = ss.str();
-    index_oids.pop_back();
+  if (is_xcluster_target) {
+    // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
+    // a point in time.
+    // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
+    // hold up the xCluster safe time, and thus backfill would get stuck.
+    RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
   }
+
+  // Cannot use Oid type because for large OID such as 2147500041, it overflows Postgres
+  // lexer <ival> type. Use int to output as -2147467255 that is accepted by <ival>.
+  int index_oid_int = VERIFY_RESULT(GetPgsqlTableOid(index.table_id()));
   std::string partition_key = metadata_->partition()->partition_key_start();
 
-  *number_of_rows_processed = 0;
+  // Caller should have initialized these counters to zero.
+  DCHECK_EQ(*number_of_rows_processed, 0);
+  DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
+
   do {
     std::string serialized_backfill_spec =
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
@@ -3225,33 +3228,16 @@ Status Tablet::BackfillIndexesForYsql(
     // [-,0-9a-f].
     std::string query_str = Format(
         "BACKFILL INDEX $0 WITH x'$1' READ TIME $2 PARTITION x'$3';",
-        index_oids,
+        index_oid_int,
         b2a_hex(serialized_backfill_spec),
         read_time.ToUint64(),
         b2a_hex(partition_key));
     VLOG(1) << __func__ << ": libpq query string: " << query_str;
 
-    if (is_xcluster_target) {
-      // For xCluster targets, we don't need to use the xCluster safe time as we are reading at
-      // a point in time.
-      // For automatic mode colocated indexes, this is necessary since the ddl_queue table would
-      // hold up the xCluster safe time, and thus backfill would get stuck.
-      RETURN_NOT_OK(conn.Execute("SET yb_xcluster_consistency_level = tablet;"));
-    }
-
-    double num_rows_backfilled_in_index_in_batch = 0.0;
-    const auto spec = VERIFY_RESULT(QueryPostgresToDoBackfill(
-        &conn,
-        query_str,
-        &num_rows_backfilled_in_index_in_batch));
-    *number_of_rows_processed += spec.count();
-    *backfilled_until = spec.next_row_key();
-    if (num_rows_backfilled_in_index.find(indexes[0].table_id()) ==
-        num_rows_backfilled_in_index.end()) {
-      num_rows_backfilled_in_index.emplace(indexes[0].table_id(), 0);
-    }
-    num_rows_backfilled_in_index[indexes[0].table_id()] +=
-        num_rows_backfilled_in_index_in_batch;
+    const auto tup = VERIFY_RESULT(QueryPostgresToDoBackfill(&conn, query_str));
+    *backfilled_until = std::get<0>(tup);
+    *number_of_rows_processed += std::get<1>(tup);
+    *num_rows_backfilled_in_index += std::get<2>(tup);
 
     VLOG(2) << "Processed " << *number_of_rows_processed << " base table rows so far in this "
             << "chunk. Setting backfilled_until to \"" << b2a_hex(*backfilled_until) << "\"";
@@ -3323,10 +3309,10 @@ void SleepToThrottleRate(
 
 }  // namespace
 
-Result<RequestScope> Tablet::CreateRequestScope() {
+Result<RequestScope> Tablet::CreateRequestScope(bool allow_when_closing) {
   RequestScope scope;
   if (transaction_participant_) {
-    return RequestScope::Create(transaction_participant_.get());
+    return RequestScope::Create(transaction_participant_.get(), allow_when_closing);
   }
   return scope;
 }
@@ -4033,7 +4019,7 @@ void Tablet::FlushIntentsDbIfNecessary(const yb::OpId& lastest_log_entry_op_id) 
 
   auto intents_frontier = intents_db_
                               ? GetMutableMemTableFrontierFromDb(
-                                    intents_db_.get(), rocksdb::UpdateUserValueType::kLargest)
+                                    intents_db_.get(), storage::UpdateUserValueType::kLargest)
                               : nullptr;
   if (intents_frontier) {
     auto index_delta =
@@ -4123,7 +4109,7 @@ Result<HybridTime> Tablet::OldestMutableMemtableWriteHybridTime() const {
   for (auto* db : { regular_db_.get(), intents_db_.get() }) {
     if (db) {
       auto mem_frontier =
-          GetMutableMemTableFrontierFromDb(db, rocksdb::UpdateUserValueType::kSmallest);
+          GetMutableMemTableFrontierFromDb(db, storage::UpdateUserValueType::kSmallest);
       if (mem_frontier) {
         const auto hybrid_time =
             static_cast<const docdb::ConsensusFrontier&>(*mem_frontier).hybrid_time();
@@ -5205,7 +5191,7 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
       ? transaction_participant_->MinRunningHybridTime()
       : HybridTime::kMax;
 
-  auto smallest = regular_db_->CalcMemTableFrontier(rocksdb::UpdateUserValueType::kSmallest);
+  auto smallest = regular_db_->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
   if (smallest) {
     result = std::min(
         result, down_cast<const docdb::ConsensusFrontier&>(*smallest).hybrid_time());

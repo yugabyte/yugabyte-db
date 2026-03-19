@@ -39,8 +39,13 @@
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
 #include "yb/util/date_time.h"
+#include "yb/util/flags/flag_tags.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/result.h"
+
+DEFINE_RUNTIME_bool(no_pretty_hybrid_times, false,
+    "If true, hybrid times converted to human readable form will always formatted as plain "
+    "numbers.");
 
 using std::string;
 
@@ -48,14 +53,10 @@ namespace yb {
 
 namespace {
 
+// This is overridden by FLAGS_no_pretty_hybrid_times when that flag is true.
 std::atomic<bool> pretty_to_string_mode_{false};
 
 }
-
-const HybridTime HybridTime::kMin(kMinHybridTimeValue);
-const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
-const HybridTime HybridTime::kInitial(kInitialHybridTimeValue);
-const HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
 
 bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v).ok();
@@ -81,7 +82,7 @@ string HybridTime::ToString() const {
       return "<initial>";
     default:
       auto logical = GetLogicalValue();
-      if (!pretty_to_string_mode_.load(std::memory_order_acquire)) {
+      if (FLAGS_no_pretty_hybrid_times || !pretty_to_string_mode_.load(std::memory_order_acquire)) {
         if (logical) {
           return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), logical);
         } else {
@@ -139,7 +140,6 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
 Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   boost::trim(input);
 
-  HybridTime ht;
   // The HybridTime is given in microseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
   if (std::regex_match(input, int_regex)) {

@@ -4,6 +4,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"node-agent/util"
 	"node-agent/ynp/config"
@@ -26,6 +27,7 @@ import (
 	"node-agent/ynp/module/provision/otelcol"
 	"node-agent/ynp/module/provision/pglogotelcol"
 	"node-agent/ynp/module/provision/rebootnode"
+	"node-agent/ynp/module/provision/rootsystemd"
 	"node-agent/ynp/module/provision/sshd"
 	"node-agent/ynp/module/provision/systemd"
 	"node-agent/ynp/module/provision/tailscale"
@@ -37,6 +39,7 @@ import (
 	"node-agent/ynp/module/provision/yugabyte"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -60,11 +63,31 @@ const (
 	DPKG PackageManager = "dpkg"
 
 	YNPVersionFile = "ynp_version"
+
+	// ExitCodeFatal represents a fatal error that should abort immediately.
+	ExitCodeFatal = 2
+	// ExitCodeNonFatal represents a non-fatal error.
+	ExitCodeNonFatal = 1
 )
+
+// ScriptExitError wraps a script failure with its exit code.
+type ScriptExitError struct {
+	ExitCode int
+	Err      error
+}
+
+func (e *ScriptExitError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ScriptExitError) Unwrap() error {
+	return e.Err
+}
 
 type ProvisionCommand struct {
 	ctx            context.Context
 	iniConfig      *config.INIConfig
+	args           *config.Args
 	modules        map[string]config.Module
 	osVersion      string
 	osFamily       OSFamily
@@ -75,31 +98,76 @@ type ProvisionCommand struct {
 func NewProvisionCommand(
 	ctx context.Context,
 	iniConfig *config.INIConfig,
-	args config.Args,
+	args *config.Args,
 ) config.Command {
 	command := &ProvisionCommand{
 		ctx:       ctx,
 		iniConfig: iniConfig,
+		args:      args,
 		modules:   make(map[string]config.Module),
-	}
-	err := command.discoverOSInfo()
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to discover OS info: %v", err)
-	}
-	err = command.discoverPackageManager()
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to discover package manager: %v", err)
-	}
-	err = command.registerModules(args)
-	if err != nil {
-		util.FileLogger().Fatalf(command.ctx, "Failed to load module: %v", err)
 	}
 	return command
 }
 
+// Init initializes the ProvisionCommand.
+func (pc *ProvisionCommand) Init() error {
+	err := pc.discoverOSInfo()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to discover OS info: %v", err)
+		return err
+	}
+	err = pc.discoverPackageManager()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to discover package manager: %v", err)
+		return err
+	}
+	err = pc.RegisterModules()
+	if err != nil {
+		util.FileLogger().Errorf(pc.ctx, "Failed to load module: %v", err)
+		return err
+	}
+	return nil
+}
+
+// runPrechecks validates user privileges and version compatibility.
+func (pc *ProvisionCommand) runPrechecks() error {
+	currentUser, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("Failed to get current user: %v", err)
+	}
+	expectedUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
+	if pc.args.NoRoot {
+		// Ensure user is the specific yb_user
+		if currentUser.Username != expectedUser {
+			return fmt.Errorf(
+				"--noroot mode must be run as '%s' user, not '%s'\n\n"+
+					"Please login as %s and run: ./node-provision.sh --noroot",
+				expectedUser, currentUser.Username, expectedUser)
+		}
+		util.FileLogger().
+			Infof(pc.ctx, "Running --noroot as correct user: %s", currentUser.Username)
+
+		// Version compatibility check
+		if err := pc.compareYnpVersion(false /*strict*/); err != nil {
+			return err
+		}
+	} else {
+		// Requirement: If --root is passed OR if neither flag is passed, user MUST be root (UID 0)
+		if currentUser.Uid != "0" {
+			return fmt.Errorf(
+				"Provisioning requires root privileges.\n"+
+					"Current user '%s' is not root. Please run with sudo or as the root user.\n"+
+					"If you intended to run without root, use the --noroot flag.",
+				currentUser.Username)
+		}
+		util.FileLogger().Infof(pc.ctx, "Running with root privileges.")
+	}
+	return nil
+}
+
 // Register the modules after initializing their base paths.
-func (pc *ProvisionCommand) registerModules(args config.Args) error {
-	modulesPath := filepath.Join(args.YnpBasePath, "modules", "provision")
+func (pc *ProvisionCommand) RegisterModules() error {
+	modulesPath := filepath.Join(pc.args.YnpBasePath, "modules", "provision")
 	// Start of YBM specific modules.
 	pc.registerModule(configurecoredump.NewConfigureCoredump(modulesPath))
 	pc.registerModule(disablednfautomatic.NewDisabledDnfAutomatic(modulesPath))
@@ -132,9 +200,10 @@ func (pc *ProvisionCommand) registerModules(args config.Args) error {
 	pc.registerModule(rebootnode.NewRebootNode(modulesPath))
 	pc.registerModule(sshd.NewConfigureSshD(modulesPath))
 	pc.registerModule(systemd.NewConfigureSystemd(modulesPath))
-	pc.registerModule(updateos.NewPreprovision(modulesPath))
+	pc.registerModule(updateos.NewUpdateOS(modulesPath))
 	pc.registerModule(ybmami.NewConfigureYBMAMI(modulesPath))
 	pc.registerModule(yugabyte.NewCreateYugabyteUser(modulesPath))
+	pc.registerModule(rootsystemd.NewConfigureRootSystemd(modulesPath))
 
 	return nil
 }
@@ -166,26 +235,32 @@ func (pc *ProvisionCommand) requiredCloudOnlyOSPkgs() []string {
 	return []string{"gzip"}
 }
 
+func (pc *ProvisionCommand) isModuleEnabled(moduleName string) bool {
+	return slices.Contains(pc.iniConfig.Sections(), moduleName)
+}
+
 func (pc *ProvisionCommand) Validate() error {
 	return pc.validateRequiredPackages()
 }
 
 func (pc *ProvisionCommand) DryRun() error {
-	installScript, precheckScript, err := pc.generateTemplate(nil /*specificModulePtr*/)
+	installScript, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
-	util.FileLogger().Infof(pc.ctx, "Install Script: %s", installScript)
-	util.FileLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
+	// Do not clean up the scripts for dry run.
+	util.ConsoleLogger().Infof(pc.ctx, "Install Script: %s", installScript)
+	util.ConsoleLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
 	return nil
 }
 
 func (pc *ProvisionCommand) RunPreflightChecks() error {
-	_, precheckScript, err := pc.generateTemplate(nil /*specificModule*/)
+	_, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
-	if err := pc.compareYnpVersion(); err != nil {
+	defer os.Remove(precheckScript)
+	if err := pc.compareYnpVersion(true /*strict*/); err != nil {
 		return err
 	}
 	return pc.runScript("precheck", precheckScript)
@@ -200,43 +275,80 @@ func (pc *ProvisionCommand) ListModules() error {
 	return nil
 }
 
-func (pc *ProvisionCommand) Execute(specificModules []string) error {
-	if err := pc.validateSpecificModules(specificModules); err != nil {
+func (pc *ProvisionCommand) Execute() error {
+	if err := pc.runPrechecks(); err != nil {
 		return err
 	}
-	runScript, precheckScript, err := pc.generateTemplate(specificModules)
+	runScript, precheckScript, err := pc.generateTemplate()
 	if err != nil {
 		return err
 	}
+	defer os.Remove(runScript)
+	defer os.Remove(precheckScript)
 	errMsg := []string{}
-	err = pc.runScript("provision", runScript)
-	if err != nil {
-		errMsg = append(errMsg, fmt.Sprintf("Provisioning failed: %v", err))
+	var exitCode int
+	if runErr := pc.runScript("provision", runScript); runErr != nil {
+		errMsg = append(errMsg, fmt.Sprintf("Provisioning failed: %v", runErr))
+		var scriptErr *ScriptExitError
+		if errors.As(runErr, &scriptErr) {
+			exitCode = scriptErr.ExitCode
+		} else {
+			exitCode = ExitCodeNonFatal
+		}
 	}
-	err = pc.runScript("precheck", precheckScript)
-	if err != nil {
-		errMsg = append(errMsg, fmt.Sprintf("Precheck failed: %v", err))
+	if precheckErr := pc.runScript("precheck", precheckScript); precheckErr != nil {
+		errMsg = append(errMsg, fmt.Sprintf("Precheck failed: %v", precheckErr))
+		var scriptErr *ScriptExitError
+		if errors.As(precheckErr, &scriptErr) {
+			if exitCode == 0 || scriptErr.ExitCode == ExitCodeFatal {
+				exitCode = scriptErr.ExitCode
+			}
+		}
 	}
 	if err := pc.saveYnpVersion(); err != nil {
 		return err
 	}
 	if len(errMsg) > 0 {
-		return fmt.Errorf("%s", strings.Join(errMsg, "; "))
+		return &ScriptExitError{
+			ExitCode: exitCode,
+			Err:      fmt.Errorf("%s", strings.Join(errMsg, "; ")),
+		}
 	}
 	return nil
 }
 
 func (pc *ProvisionCommand) Cleanup() {}
 
-func (pc *ProvisionCommand) validateSpecificModules(specificModules []string) error {
+// validateEnabledModules checks if the modules specified in the INI config are registered and valid.
+// A non-existing module can be registered as long as it is not consumed but it must exist
+// if it is referenced in the INI config for consumption.
+func (pc *ProvisionCommand) validateEnabledModules() error {
 	unknownModules := []string{}
-	for _, moduleName := range specificModules {
+	for _, moduleName := range pc.args.SpecificModules {
 		if _, ok := pc.modules[moduleName]; !ok {
 			unknownModules = append(unknownModules, moduleName)
 		}
 	}
 	if len(unknownModules) > 0 {
 		return fmt.Errorf("unknown modules specified: %s", strings.Join(unknownModules, ", "))
+	}
+	// Go over all the enabled modules.
+	for _, key := range pc.iniConfig.Sections() {
+		if key == config.DefaultINISection {
+			// Default section is not a module, skip.
+			continue
+		}
+		module, ok := pc.modules[key]
+		if ok {
+			// Make sure the module is valid e.g template path is correct.
+			err := module.Validate()
+			if err != nil {
+				return fmt.Errorf("Validation failed for module %s: %v", module.Name(), err)
+			}
+		} else {
+			// Module defined in config.ini exists.
+			return fmt.Errorf("Module %s is defined in INI but not registered in the command", key)
+		}
 	}
 	return nil
 }
@@ -291,23 +403,58 @@ func (pc *ProvisionCommand) checkPackage(pkg string) error {
 	return nil
 }
 
+// tempDir returns the effective temp directory to be used.
+func (pc *ProvisionCommand) tempDir() string {
+	dir := "/tmp"
+	defaultValue := pc.iniConfig.DefaultSectionValue()
+	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
+		dir = tmp
+	}
+	return dir
+}
+
+// createTempFile creates a temporary file in the effective temp directory with the given pattern.
+// If close is true, the file is closed before returning.
+func (pc *ProvisionCommand) createTempFile(pattern string) (*os.File, error) {
+	tmpDir := pc.tempDir()
+	file, err := os.CreateTemp(tmpDir, pattern)
+	if err != nil {
+		util.FileLogger().
+			Errorf(pc.ctx, "Failed to create temp file in %s with pattern %s: %v", tmpDir, pattern, err)
+		return nil, err
+	}
+	return file, nil
+}
+
 func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 	cmd := exec.Command("/bin/bash", "-lc", scriptPath)
 	out, err := cmd.CombinedOutput()
 	util.FileLogger().Infof(pc.ctx, "%s(%s) Output: %s", name, scriptPath, string(out))
+	exitCode := 1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "%s(%s) Error: %v", name, scriptPath, err)
 	}
-	exitCode := cmd.ProcessState.ExitCode()
 	if exitCode != 0 {
-		return fmt.Errorf("Script %s(%s) failed with exit code %d", name, scriptPath, exitCode)
+		return &ScriptExitError{
+			ExitCode: exitCode,
+			Err: fmt.Errorf(
+				"Script %s(%s) failed with exit code %d",
+				name,
+				scriptPath,
+				exitCode,
+			),
+		}
 	}
 	return nil
 }
 
 // prepareGenerateTemplate performs any preparation needed before generating templates.
 func (pc *ProvisionCommand) prepareGenerateTemplate() error {
-	if config.GetBool(pc.iniConfig.DefaultSectionValue(), "is_ybm", false) {
+	// Special case for YBM AMI module.
+	if pc.isModuleEnabled(ybmami.ModuleName) {
 		util.FileLogger().Infof(pc.ctx, "Copying template files for YBM")
 		if err := pc.copyTemplatesFilesForYBM(pc.iniConfig.DefaultSectionValue()); err != nil {
 			return err
@@ -318,11 +465,14 @@ func (pc *ProvisionCommand) prepareGenerateTemplate() error {
 
 // generateTemplate generates the install and precheck scripts. If the optional specificModules are
 // provided, only those modules are processed.
-func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, string, error) {
-	allTemplates := make([]*config.RenderedTemplates, 0)
+func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
+	if err := pc.validateEnabledModules(); err != nil {
+		return "", "", err
+	}
 	if err := pc.prepareGenerateTemplate(); err != nil {
 		return "", "", err
 	}
+	allTemplates := make([]*config.RenderedTemplates, 0)
 	// Process in the order of sections in the ini file.
 	for _, key := range pc.iniConfig.Sections() {
 		if key == config.DefaultINISection {
@@ -330,20 +480,21 @@ func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, 
 		}
 		module, ok := pc.modules[key]
 		if !ok {
-			util.FileLogger().Infof(pc.ctx, "Module not found: %s", key)
+			return "", "", fmt.Errorf(
+				"Module %s is defined in INI but not registered in the command",
+				key,
+			)
+		}
+		if len(pc.args.SpecificModules) > 0 && !slices.Contains(pc.args.SpecificModules, key) {
+			util.FileLogger().
+				Infof(pc.ctx, "Skipping %s because it is not in the specific modules list", key)
 			continue
 		}
-		if len(specificModules) > 0 && !slices.Contains(specificModules, key) {
+		if len(pc.args.SkipModules) > 0 && slices.Contains(pc.args.SkipModules, key) {
+			util.FileLogger().Infof(pc.ctx, "Skipping %s because it is in the skip list", key)
 			continue
 		}
 		values := pc.iniConfig.SectionValue(key)
-		if config.GetBool(values, "is_cloud", false) {
-			if config.GetBool(values, "is_onprem_only_module", false) {
-				continue
-			}
-		} else if config.GetBool(values, "is_cloud_only_module", false) {
-			continue
-		}
 		if key == nodeagent.ModuleName && !config.GetBool(values, "is_install_node_agent", false) {
 			util.FileLogger().Infof(pc.ctx, "Skipping %s because is_install_node_agent is %v\n",
 				key,
@@ -387,16 +538,31 @@ func (pc *ProvisionCommand) generateTemplate(specificModules []string) (string, 
 	return runScript, precheckScript, nil
 }
 
+func (pc *ProvisionCommand) addFatalHelpersForRun(f *os.File) {
+	fmt.Fprint(f, `
+add_fatal_result() {
+    local check="$1"
+    local message="$2"
+    echo "FATAL ERROR: $check - $message"
+    exit 2
+}
+`)
+}
+
 func (pc *ProvisionCommand) addExitCodeCheck(f *os.File, moduleName string) {
 	fmt.Fprintf(f, `
-		exit_code=$?
-        if [ $exit_code -ne 0 ]; then
-            parent_exit_code=$exit_code
-            err="Module %s failed with code $exit_code"
-            errors+=("$err")
-            echo "$err"
-        fi
-       `, moduleName)
+exit_code=$?
+if [ $exit_code -ne 0 ]; then
+    parent_exit_code=$exit_code
+    err="Module %s failed with code $exit_code"
+    errors+=("$err")
+    echo "$err"
+    if [ $exit_code -eq 2 ]; then
+        echo "FATAL error in module %s. Aborting immediately."
+        exit 2
+    fi
+fi
+`, moduleName, moduleName)
 }
 
 func (pc *ProvisionCommand) printExitErrors(f *os.File) {
@@ -412,63 +578,74 @@ func (pc *ProvisionCommand) printExitErrors(f *os.File) {
 
 func (pc *ProvisionCommand) addResultHelper(f *os.File) {
 	fmt.Fprintf(f, `
-            # Initialize the JSON results array
-            json_results='{
+# Initialize the JSON results array
+json_results='{
 "results":[
 '
-            add_result() {
-                local check="$1"
-                local result="$2"
-                local message="$3"
-                if [ "${#json_results}" -gt 20 ]; then
-                    json_results+=',
+add_result() {
+    local check="$1"
+    local result="$2"
+    local message="$3"
+    if [ "${#json_results}" -gt 20 ]; then
+        json_results+=',
 '
-                fi
-                json_results+='    {
+    fi
+    json_results+='    {
 '
-                json_results+='      "check": "'$check'",
+    json_results+='      "check": "'$check'",
 '
-                json_results+='      "result": "'$result'",
+    json_results+='      "result": "'$result'",
 '
-                json_results+='      "message": "'$message'"
+    json_results+='      "message": "'$message'"
 '
-                json_results+='    }'
-            }
-	`)
+    json_results+='    }'
+}
+add_fatal_result() {
+    local check="$1"
+    local message="$2"
+    echo "FATAL ERROR: $check - $message"
+    add_result "$check" "FATAL" "$message"
+    json_results+='
+]}'
+    echo "$json_results"
+	if [ -n "$PRECHECK_RESULT_FILE" ]; then
+		echo "$json_results" > "$PRECHECK_RESULT_FILE"
+	fi
+    exit 2
+}
+`)
 }
 
 func (pc *ProvisionCommand) printResultHelper(f *os.File) {
 	fmt.Fprintf(f, `
-            print_results() {
-                any_fail=0
-                if [[ $json_results == *'"result": "FAIL"'* ]]; then
-                    any_fail=1
-                fi
-                json_results+='
+print_results() {
+    any_fail=0
+    if [[ $json_results == *'"result": "FAIL"'* ]]; then
+        any_fail=1
+    fi
+    json_results+='
 ]}'
 
-                # Output the JSON
-                echo "$json_results"
+    # Output the JSON
+    echo "$json_results"
+	if [ -n "$PRECHECK_RESULT_FILE" ]; then
+		echo "$json_results" > "$PRECHECK_RESULT_FILE"
+	fi
+    if [ $any_fail -eq 1 ]; then
+        echo "Pre-flight checks failed, Please fix them before continuing."
+        exit 1
+    fi
+    echo "Pre-flight checks successful"
+}
 
-                # Exit with status code 1 if any check has failed
-                if [ $any_fail -eq 1 ]; then
-                    echo "Pre-flight checks failed, Please fix them before continuing."
-                    exit 1
-                else
-                    echo "Pre-flight checks successful"
-                fi
-            }
-
-            print_results
-			`)
+print_results
+`)
 }
 
 func (pc *ProvisionCommand) populateSudoCheck(f *os.File) {
 	fmt.Fprintf(f, "\n######## Check the SUDO Access #########\n")
 	fmt.Fprintf(f, "SUDO_ACCESS=\"false\"\n")
 	fmt.Fprintf(f, "if [ $(id -u) = 0 ]; then\n")
-	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
-	fmt.Fprintf(f, "elif sudo -n pwd >/dev/null 2>&1; then\n")
 	fmt.Fprintf(f, "  SUDO_ACCESS=\"true\"\n")
 	fmt.Fprintf(f, "fi\n")
 }
@@ -478,24 +655,33 @@ func (pc *ProvisionCommand) buildScript(
 	phase string,
 	createSubshell bool,
 ) (string, error) {
-	defaultValue := pc.iniConfig.DefaultSectionValue()
-	dir := "/tmp"
-	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
-		dir = tmp
-	}
-	f, err := os.CreateTemp(dir, "*.sh")
+	f, err := pc.createTempFile("tmp*")
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	defaultValue := pc.iniConfig.DefaultSectionValue()
 	f.WriteString("#!/bin/bash\n\n")
 	if defaultValue["loglevel"] == "DEBUG" {
 		f.WriteString("set -x\n")
 	}
+	if pc.args.PreflightCheckOutFile != "" {
+		dir := filepath.Dir(pc.args.PreflightCheckOutFile)
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			util.FileLogger().
+				Errorf(pc.ctx, "Failed to create directory for precheck result file: %v", err)
+			return "", err
+		}
+	}
+	// Set the precheck result file variable in the script.
+	fmt.Fprintf(f, "\nPRECHECK_RESULT_FILE=%s\n", pc.args.PreflightCheckOutFile)
 	if createSubshell {
 		// Initialize parent exit code and errors array.
 		fmt.Fprintf(f, "parent_exit_code=0\n")
 		fmt.Fprintf(f, "errors=()\n")
+		// Add fatal error helpers for run phase.
+		pc.addFatalHelpersForRun(f)
 	} else {
 		// Result helper function works only in the same shell.
 		pc.addResultHelper(f)
@@ -563,6 +749,18 @@ func (pc *ProvisionCommand) discoverOSInfo() error {
 	return nil
 }
 
+// Visible for testing only.
+func (pc *ProvisionCommand) SetOSInfo(
+	family OSFamily,
+	distro, version string,
+	packageManager PackageManager,
+) {
+	pc.osFamily = family
+	pc.osDistribution = distro
+	pc.osVersion = version
+	pc.packageManager = packageManager
+}
+
 func (pc *ProvisionCommand) copyTemplatesFilesForYBM(ctx map[string]any) error {
 	ynpDir, _ := ctx["ynp_dir"].(string)
 	modulesPath := filepath.Join(ynpDir, "modules/provision")
@@ -600,11 +798,12 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 		return nil
 	}
 	// Ensure yb_home_dir exists.
-	if err := os.MkdirAll(ybHomeDir, 0755); err != nil {
+	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
+	if err := os.MkdirAll(yugabyteDir, 0755); err != nil {
 		return err
 	}
 
-	ynpVersionFile := filepath.Join(ybHomeDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
 	if err := os.WriteFile(ynpVersionFile, []byte(currentYnpVersion), 0644); err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to write YNP version to file: %v", err)
 		return err
@@ -612,6 +811,11 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 	if details, err := util.UserInfo(ybUser); err == nil {
 		if details.CurrentUserID == 0 && !details.IsCurrent {
 			// Change ownership only if running as root and yb_user is different from current user.
+			if err := os.Chown(yugabyteDir, int(details.UserID), int(details.GroupID)); err != nil {
+				util.FileLogger().
+					Errorf(pc.ctx, "Cannot change ownership of .yugabyte dir: %v", err)
+				return err
+			}
 			if err := os.Chown(ynpVersionFile, int(details.UserID), int(details.GroupID)); err != nil {
 				util.FileLogger().
 					Errorf(pc.ctx, "Cannot change ownership of version file: %v", err)
@@ -642,41 +846,56 @@ func parseVersion(version string) ([3]int, error) {
 	return result, nil
 }
 
-func (pc *ProvisionCommand) compareYnpVersion() error {
+// compareYnpVersion compares the current YNP major version with the stored version.
+// In strict mode (preflight checks), missing file or values are errors.
+// In non-strict mode (prechecks), they are silently ignored.
+func (pc *ProvisionCommand) compareYnpVersion(strict bool) error {
 	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ybHomeDir == "" || versionStr == "" {
-		err := fmt.Errorf("yb_home_dir or version missing in context")
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+		if strict {
+			err := fmt.Errorf("yb_home_dir or version missing in context")
+			util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	currentYnpVersion, err := parseVersion(versionStr)
+	currentVersion, err := parseVersion(versionStr)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
-		return err
+		if strict {
+			util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
+			return err
+		}
+		return nil
 	}
 
-	ynpVersionFile := ybHomeDir + "/ynp_version"
+	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
+	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
-		return err
-	}
-	storedYnpVersion, err := parseVersion(strings.TrimSpace(string(data)))
-	if err != nil {
-		util.FileLogger().Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
-		return err
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)
+			return err
+		}
+		return nil
 	}
 
-	if currentYnpVersion[0] != storedYnpVersion[0] {
-		err := fmt.Errorf(
-			"The major versions are different. Current: %v, Stored: %v. Please run reprovision again on the node",
-			currentYnpVersion,
-			storedYnpVersion,
-		)
-		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
-		return err
+	storedVersion, err := parseVersion(strings.TrimSpace(string(data)))
+	if err != nil {
+		if strict {
+			util.FileLogger().
+				Errorf(pc.ctx, "Error parsing version from the ynp_version file: %v", err)
+			return err
+		}
+		return nil
+	}
+
+	if currentVersion[0] != storedVersion[0] {
+		return fmt.Errorf(
+			"Major version mismatch detected. Current: %d, Stored: %d",
+			currentVersion[0], storedVersion[0])
 	}
 	return nil
 }

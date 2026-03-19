@@ -222,7 +222,7 @@ Status SnapshotOperation::DoReplicated(int64_t leader_term, Status* complete_sta
     docdb::ConsensusFrontier frontier;
     frontier.set_op_id(op_id());
     frontier.set_hybrid_time(hybrid_time());
-    LOG(INFO) << "Forcing modify flushed frontier to " << frontier.op_id();
+    LOG_DETAIL << "Forcing modify flushed frontier to " << frontier.op_id();
     return VERIFY_RESULT(tablet_safe())->ModifyFlushedFrontier(
         frontier, rocksdb::FrontierModificationMode::kUpdate);
   }

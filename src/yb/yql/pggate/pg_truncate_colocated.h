@@ -25,7 +25,7 @@ namespace yb::pggate {
 class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kTruncate> {
  public:
   static Result<std::unique_ptr<PgTruncateColocated>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting) {
     std::unique_ptr<PgTruncateColocated> result{new PgTruncateColocated{
@@ -36,7 +36,7 @@ class PgTruncateColocated final : public PgStatementLeafBase<PgDmlWrite, StmtOp:
 
  private:
   PgTruncateColocated(
-      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting)
+      const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting)
       : BaseType(pg_session, transaction_setting) {}
 
   PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {

@@ -96,8 +96,8 @@ Specify the instance to use for the universe nodes:
 
 #### Additional AWS fields
 
-- Choose the AWS **EBS Type** between IO1, GP2, and GP3.
-- Specify the **Provisioned IOPS** (IO1 and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
+- Choose the AWS **EBS Type** between IO1, IO2, GP2, and GP3.
+- Specify the **Provisioned IOPS** (IO1, IO2, and GP3 only) and **Provisioned Throughput** (GP3 only) for your disk in advance to ensure a consistent performance level.
 
 ### Security Configurations
 

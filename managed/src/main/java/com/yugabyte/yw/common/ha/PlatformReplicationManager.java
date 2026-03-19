@@ -27,10 +27,12 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.PlatformInstance.State;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -41,6 +43,9 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -51,6 +56,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -68,6 +75,14 @@ public class PlatformReplicationManager {
 
   private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
 
+  // Format is backup_26-02-05-20-42.tgz.
+  private static final Pattern BACKUP_FILE_PATTERN =
+      Pattern.compile("([a-zA-Z]+_)(\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})(\\..*)");
+
+  // The date time format is always in UTC.
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("yy-MM-dd-HH-mm").withZone(ZoneId.of("UTC"));
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
@@ -81,6 +96,8 @@ public class PlatformReplicationManager {
   private final ConfigHelper configHelper;
 
   private final RuntimeConfGetter confGetter;
+
+  private final OperatorResourceRestorer operatorResourceRestorer;
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -102,13 +119,15 @@ public class PlatformReplicationManager {
       FileDataService fileDataService,
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      OperatorResourceRestorer operatorResourceRestorer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.configHelper = configHelper;
     this.confGetter = confGetter;
+    this.operatorResourceRestorer = operatorResourceRestorer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -243,7 +262,7 @@ public class PlatformReplicationManager {
         "Demoting local instance {} in favor of leader {}",
         localInstance.getAddress(),
         requestLeaderAddr);
-    if (!localInstance.getIsLocal()) {
+    if (!localInstance.isLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
     validateSwitchLeaderRequestForStaleness(config, requestLeaderAddr, requestLastFailover);
@@ -264,25 +283,25 @@ public class PlatformReplicationManager {
     // Stop the old backup schedule.
     stopAndDisable();
 
-    boolean wasLeader = localInstance.getIsLeader();
+    boolean wasLeader = localInstance.isLeader();
     // Demote the local instance to follower.
     localInstance.demote();
 
     // Set the existing leader to follower to avoid uniqueness violation.
     config.getInstances().stream()
-        .sorted(Comparator.comparing(PlatformInstance::getIsLeader).reversed())
+        .sorted(Comparator.comparing(PlatformInstance::isLeader).reversed())
         .forEach(
             i -> {
               boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
-              if (i.getIsLeader() ^ isNewLeader) {
+              if (i.isLeader() ^ isNewLeader) {
                 // Update only when there is a difference.
                 log.debug(
                     "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
                     i.getAddress(),
                     i.getUuid(),
-                    i.getIsLeader(),
+                    i.isLeader(),
                     isNewLeader);
-                i.setIsLeader(isNewLeader);
+                i.setState(State.LEADER);
                 i.update();
               }
             });
@@ -311,17 +330,17 @@ public class PlatformReplicationManager {
         localConfig.isPresent() ? localConfig.get().getLocal().orElse(null) : null;
     if (localInstance != null) {
       config.getInstances().stream()
-          .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
+          .sorted(Comparator.comparing(PlatformInstance::isLocal).reversed())
           .forEach(
               i -> {
                 log.debug(
                     "Updating instance {}(uuid={}, isLocal={}, isLeader={})",
                     i.getAddress(),
                     i.getUuid(),
-                    i.getIsLocal(),
-                    i.getIsLeader());
+                    i.isLocal(),
+                    i.isLeader());
                 boolean isLocal = i.getAddress().equals(localInstance.getAddress());
-                i.updateIsLocal(isLocal);
+                i.updateLocal(isLocal);
                 if (isLocal) {
                   updated.set(isLocal);
                 }
@@ -363,6 +382,10 @@ public class PlatformReplicationManager {
                 log.info("Cleaning up received backups from {}", instance.getAddress());
                 replicationHelper.cleanupReceivedBackups(Util.toURL(instance.getAddress()), 0);
               } catch (Exception ignored) {
+                log.warn(
+                    "Error cleaning up received backups from {} - {}",
+                    instance.getAddress(),
+                    ignored.getMessage());
               }
             });
   }
@@ -412,7 +435,7 @@ public class PlatformReplicationManager {
     // Get the leader instance. It must be present as the leader sends the request.
     PlatformInstance leaderInstance =
         newInstances.stream()
-            .filter(PlatformInstance::getIsLeader)
+            .filter(PlatformInstance::isLeader)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -447,7 +470,7 @@ public class PlatformReplicationManager {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     if (config.isPresent()) {
       // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
-      if (i.getIsLeader()) {
+      if (i.isLeader()) {
         Optional<PlatformInstance> existingLeader = config.get().getLeader();
         if (existingLeader.isPresent()
             && !existingLeader.get().getAddress().equals(i.getAddress())) {
@@ -459,11 +482,11 @@ public class PlatformReplicationManager {
         // Since we sync instances after sending backups, the leader instance has the source of
         // truth as to when the last backup has been successfully sent to followers.
         existingInstance.get().setLastBackup(i.getLastBackup());
-        existingInstance.get().setIsLeader(i.getIsLeader());
+        existingInstance.get().setState(i.isLeader() ? State.LEADER : State.STAND_BY);
         existingInstance.get().update();
         i = existingInstance.get();
       } else {
-        i.setIsLocal(false);
+        i.setLocal(false);
         i.setConfig(config.get());
         i.save();
       }
@@ -481,6 +504,30 @@ public class PlatformReplicationManager {
       log.error("Error testing connection to {}", address);
     }
     return result;
+  }
+
+  /* Validate the backup locally by checking the time against node agent upgrade time.
+   * This is a best effort that should work majority of the cases.
+   * TODO: This will become unnecessary once PLAT-16195 is done.
+   */
+  public boolean validateBackup(String backupName) {
+    Matcher matcher = BACKUP_FILE_PATTERN.matcher(backupName);
+    if (matcher.find()) {
+      String timePart = matcher.group(2);
+      Instant instant = Instant.from(DATE_TIME_FORMATTER.parse(timePart));
+      log.info("Checking backup time {} and instant {} locally", timePart, instant);
+      // Weird to have the backup validation depend on the node agent upgrade, but this is just a
+      // best effort until PLAT-16195 is done.
+      return replicationHelper.isLiveNodeAgentUpgradePendingAt(instant) == false;
+    }
+    log.error("Backup file name {} doesn't match expected pattern", backupName);
+    return false;
+  }
+
+  /* Makes a remote call to validate the backup. */
+  public boolean validateRemoteBackup(
+      HighAvailabilityConfig config, String remoteAddress, String backupName) {
+    return replicationHelper.validateRemoteBackup(config, remoteAddress, backupName);
   }
 
   @VisibleForTesting
@@ -840,8 +887,21 @@ public class PlatformReplicationManager {
   public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
     boolean succeeded =
         restoreBackup(input, false /* k8sRestoreYbaDbOnRestart */, false /*skipOldFiles*/);
+    // Apply stored operator resources to Kubernetes whose persisted resourceVersion
+    // is strictly greater than the live Kubernetes version, or that are absent.
+    if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      try {
+        operatorResourceRestorer.restoreOperatorResources();
+      } catch (Exception e) {
+        log.error("Failed to restore operator resources to Kubernetes", e);
+        succeeded = false;
+      }
+    }
     if (succeeded) {
-      config.refresh();
+      // Refetch the latest HA config using the cluster key as UUID can get changed.
+      config =
+          HighAvailabilityConfig.getByClusterKey(config.getClusterKey())
+              .orElseThrow(() -> new IllegalStateException("HA config not found"));
       // Fix the local instance after restore.
       updateLocalInstanceAfterRestore(config);
       // Keep the local instance as follower after restore.

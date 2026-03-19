@@ -110,11 +110,13 @@ Transactional replication comes in three modes:
 
 #### Automatic mode
 
-{{<tags/feature/ea idea="153">}}In this mode all aspects of replication are handled automatically, including schema changes.
+In this mode, all aspects of replication are handled automatically, including schema changes.
+
+This is the recommended mode for new deployments.
 
 #### Semi-automatic mode
 
-Provides operationally simpler setup and management of replication compared to manual mode, as well as fewer steps for performing DDL changes. This is the recommended mode for new deployments.
+Provides operationally simpler setup and management of replication compared to manual mode, as well as fewer steps for performing DDL changes.
 
 {{<lead link="https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p">}}
 To learn more, watch [Simplified schema management with xCluster DB Scoped](https://www.youtube.com/live/vYyn2OUSZFE?si=i3ZkBh6QqHKukB_p)
@@ -257,12 +259,6 @@ The following deployment scenarios are not yet supported:
 
 ### YSQL
 
-- `CREATE TABLE AS` and `SELECT INTO` DDL statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
-
-- Materialized views
-
-  [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
-
 - Modifications of Array Types
 
   While xCluster is active, array types whose base types are row types, domains, and multi-ranges should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via bootstrap. [#24079](https://github.com/yugabyte/yugabyte-db/issues/24079)
@@ -315,14 +311,10 @@ Improper use can compromise replication consistency and lead to data divergence.
 #### Transactional Automatic mode
 
 - Global objects like Users, Roles, and Tablespaces are not replicated. These objects must be manually managed on the standby universe.
-- DDLs related to Materialized Views (`CREATE`, `DROP`, and `REFRESH`) are not replicated. You can manually run these on both universes by setting the YSQL configuration parameter `yb_xcluster_ddl_replication.enable_manual_ddl_replication` to `true`.
-- `ALTER COLUMN TYPE`, `ADD COLUMN ... SERIAL`, and `ALTER LARGE OBJECT` DDLs are not supported.
+- `ALTER LARGE OBJECT` DDLs are not supported.
 - DDLs related to `PUBLICATION` and `SUBSCRIPTION` are not supported.
-- Replication of colocated tables is not yet supported.  See {{<issue 25926>}}.
 - Rewinding of sequences (for example, restarting a sequence so it will repeat values) is discouraged because it may not be fully rolled back during unplanned failovers.
-- The `TRUNCATE` command is only supported in v2025.1.1 and later.
-- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode.
-- If using pg_partman on v2025.1.0 or earlier, enable the cron job on the source cluster only. After switchover or failover, move the cron job to the new primary. Refer to pg_partman [Limitations](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
+- While Automatic mode is active, you can only `CREATE`, `DROP`, or `ALTER` the following extensions: file_fdw, fuzzystrmatch, pgcrypto, postgres_fdw, sslinfo, uuid-ossp, hypopg, pg_stat_monitor, and pgaudit. All other extensions must be created _before_ setting up automatic mode. For pg_partman, refer to [pg_partman and xCluster](../../../additional-features/pg-extensions/extension-pgpartman/#xcluster).
 
 #### Transactional Semi-Automatic and Manual mode
 
@@ -333,6 +325,10 @@ Improper use can compromise replication consistency and lead to data divergence.
 - `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 - The `TRUNCATE` command is not supported.
+
+- `CREATE TABLE AS` and `SELECT INTO DDL` statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
+
+- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by xCluster in semi-automatic and manual modes. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
 - Sequence data is not replicated by these modes. Serial columns use sequences internally. Avoid serial columns in primary keys, as both universes would generate the same sequence numbers, resulting in conflicting rows. It is recommended to use UUIDs instead.
 
@@ -359,6 +355,10 @@ Improper use can compromise replication consistency and lead to data divergence.
   While xCluster is active, user-defined composite, enum, and range types and arrays of those types should not be created, altered, or dropped. Create these types before xCluster is set up. If you need to modify these types, you must first drop xCluster replication, make the necessary changes, and then re-enable xCluster via [bootstrap](#replication-bootstrapping).
 
 - The `TRUNCATE` command is not supported.
+
+- `CREATE TABLE AS` and `SELECT INTO DDL` statements are not supported. You can work around this by breaking the DDL into a `CREATE TABLE` followed by `INSERT SELECT`.
+
+- [Materialized views](../../../explore/ysql-language-features/advanced-features/views/#materialized-views) are not replicated by non-transactional xCluster. When setting up replication for a database, materialized views need to be excluded. You can create them on the target universe after the replication is set up. When refreshing, make sure to refresh on both sides.
 
 - pg_partman
 

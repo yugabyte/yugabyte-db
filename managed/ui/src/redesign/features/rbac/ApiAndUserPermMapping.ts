@@ -778,11 +778,11 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.GET,
         endpoint: '/universes/$uniUUID<[^/]+>/universe_resources'
     },
+
     GET_UNIVERSE_PERF_ADVISOR_STATUS: {
       requestType: ApiRequestType.GET,
-      endpoint: '/troubleshooting_platform/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
+      endpoint: '/pa_collector/$paUUID<[^/]+>/universes/$uniUUID<[^/]+>'
     },
-
 
     MODIFY_BACKUP_STATE: {
         requestType: ApiRequestType.PUT,

@@ -34,6 +34,7 @@
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
 
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -72,6 +73,30 @@ class PgWrapperTestHelper: public PgCommandTestBase {
 
 } // namespace
 
+TEST(FormatPgGFlagValueTest, QuotingBehavior) {
+  // Pre-quoted string values should pass through unchanged.
+  ASSERT_EQ(FormatPgGFlagValue("'read committed'", "string"), "'read committed'");
+  ASSERT_EQ(FormatPgGFlagValue("'serializable'", "string"), "'serializable'");
+
+  // Unquoted string values should be wrapped in single quotes.
+  // ysql_default_transaction_isolation: spaces cause PG config parse failure without quotes.
+  ASSERT_EQ(FormatPgGFlagValue("read committed", "string"), "'read committed'");
+  ASSERT_EQ(FormatPgGFlagValue("repeatable read", "string"), "'repeatable read'");
+  // ysql_datestyle: comma+space causes PG config parse failure without quotes.
+  ASSERT_EQ(FormatPgGFlagValue("ISO, MDY", "string"), "'ISO, MDY'");
+  // ysql_timezone: no spaces, quoting is harmless.
+  ASSERT_EQ(FormatPgGFlagValue("America/New_York", "string"), "'America/New_York'");
+  ASSERT_EQ(FormatPgGFlagValue("GMT+5", "string"), "'GMT+5'");
+  ASSERT_EQ(FormatPgGFlagValue("none", "string"), "'none'");
+
+  // Internal single quotes should be escaped by doubling.
+  ASSERT_EQ(FormatPgGFlagValue("foo'bar", "string"), "'foo''bar'");
+  ASSERT_EQ(FormatPgGFlagValue("foo'''bar", "string"), "'foo''''''bar'");
+
+  // Non-string types should pass through unchanged without quoting.
+  ASSERT_EQ(FormatPgGFlagValue("42", "int32"), "42");
+  ASSERT_EQ(FormatPgGFlagValue("true", "bool"), "true");
+}
 
 YB_DEFINE_ENUM(FlushOrCompaction, (kFlush)(kFlushRegularOnly)(kCompaction));
 
@@ -714,7 +739,6 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_max_connections=42");
     options->extra_tserver_flags.emplace_back("--ysql_log_min_duration_statement=13");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_expression_pushdown=false");
-    options->extra_tserver_flags.emplace_back("--ysql_yb_bypass_cond_recheck=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_pg_locks=false");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_min_txn_age=100");
     options->extra_tserver_flags.emplace_back("--ysql_yb_locks_max_transactions=3");
@@ -722,6 +746,9 @@ class PgWrapperOverrideFlagsTest : public PgWrapperFlagsTest {
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replication_commands=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_replica_identity=true");
     options->extra_tserver_flags.emplace_back("--ysql_yb_enable_docdb_vector_type=false");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_default_transaction_isolation=read committed");
+    options->extra_tserver_flags.emplace_back("--ysql_datestyle=ISO, YMD");
   }
 };
 
@@ -730,7 +757,6 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_max_connections", "42"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_log_min_duration_statement", "13"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_min_txn_age", "100"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_locks_max_transactions", "3"));
@@ -738,6 +764,8 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replication_commands", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_replica_identity", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_datestyle", "ISO, YMD"));
+  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_default_transaction_isolation", "read committed"));
 }
 
 class PgWrapperAutoFlagsTest : public PgWrapperFlagsTest {
@@ -766,9 +794,6 @@ TEST_F_EX(
     PgWrapperFlagsTest, TestAutoFlagOnNewCluster, PgWrapperAutoFlagsTest) {
   // New clusters should start with Target value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "true"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "true"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "true"));
 
@@ -788,9 +813,6 @@ TEST_F_EX(
     PgWrapperAutoFlagsDisabledTest) {
   // Old clusters that have upgraded to new version should have Initial value
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_expression_pushdown", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_bypass_cond_recheck", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_strict_inequality", "false"));
-  ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_pushdown_is_not_null", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_docdb_vector_type", "false"));
 

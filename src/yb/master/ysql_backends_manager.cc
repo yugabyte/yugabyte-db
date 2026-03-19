@@ -23,9 +23,11 @@
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
-
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tserver_admin.proxy.h"
@@ -92,7 +94,7 @@ Status CheckLeadership(
     return l->first_failed_status();
   }
   if (catalog_manager->TimeSinceElectedLeader() <
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms))) {
+      MonoDelta::FromMilliseconds(FLAGS_master_ts_ysql_catalog_lease_ms)) {
     return SetupError(
         resp->mutable_error(),
         STATUS(
@@ -769,7 +771,9 @@ MonoTime BackendsCatalogVersionTS::ComputeDeadline() const {
 
 bool BackendsCatalogVersionTS::SendRequest(int attempt) {
   tserver::WaitForYsqlBackendsCatalogVersionRequestPB req;
+  ash::WaitStateInfoPtr wait_state;
   if (auto job = job_.lock()) {
+    wait_state = job->wait_state();
     req.set_database_oid(job->database_oid());
     req.set_catalog_version(job->target_version());
     if (job->requestor_ts_uuid() == permanent_uuid()) {
@@ -780,6 +784,7 @@ bool BackendsCatalogVersionTS::SendRequest(int attempt) {
     AbortTask(STATUS(Aborted, "job was destroyed"));
     return false;
   }
+  ADOPT_WAIT_STATE(wait_state);
 
   ts_admin_proxy_->WaitForYsqlBackendsCatalogVersionAsync(req, &resp_, &rpc_, BindRpcCallback());
   VLOG(1) << "Send " << description() << " to " << permanent_uuid()

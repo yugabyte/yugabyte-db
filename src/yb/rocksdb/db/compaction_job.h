@@ -188,7 +188,7 @@ class CompactionJob {
   // Stores the approx size of keys covered in the range of each subcompaction
   std::vector<uint64_t> sizes_;
 
-  UserFrontierPtr largest_user_frontier_;
+  yb::storage::UserFrontierPtr largest_user_frontier_;
 };
 
 }  // namespace rocksdb

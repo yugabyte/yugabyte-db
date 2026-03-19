@@ -89,7 +89,8 @@ public class V383 {
       UPDATE_PROFILE,
       SUPER_ADMIN_ACTIONS,
       XCLUSTER,
-      DEBUG
+      DEBUG,
+      TROUBLESHOOT
     }
 
     public ResourceType resourceType;

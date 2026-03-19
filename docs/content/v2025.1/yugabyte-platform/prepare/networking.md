@@ -61,6 +61,8 @@ When two database clusters are connected via [xCluster replication](../../manage
 
 In addition, YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
 
+YugabyteDB Anywhere uses ICMP to verify connectivity between universes during xCluster setup. If your network policy blocks ICMP traffic and you want to skip this connectivity precheck, you can disable it by setting the **Enable network connectivity check for xCluster** Universe Runtime Configuration option (config key `yb.xcluster.network_connectivity_check.enabled`) to false. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+
 ### Overriding default port assignments
 
 When [deploying a universe](../../create-deployments/create-universe-multi-zone/), you can customize the following ports:
@@ -169,7 +171,7 @@ In Azure, you will need to identify the specific [Virtual Networks](https://lear
 
 When YBA and database cluster nodes are all deployed in the same VPC, configuring the network requirements involves setting up the appropriate network security groups (NSGs) to allow the network configuration. NSGs can either be set up on the subnets directly or specified to YBA for associating with the database cluster VMs.
 
-When YBA and database nodes are deployed in different VPCs (for example, in a multi-region universe), the setup is more complex. Use [VPC peering](https://learn.microsoft.com/en-us/azure/virtual-network/tutorial-connect-virtual-networks-porta), as well as setting up the appropriate NSGs. In the VPC peering approach, peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region. [Routes for the peering connections](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview#:~:text=Virtual%20network%20(VNet)%20peering) can be automatically configured by Azure or configured manually. If you deploy YBA in a different VPC than where you intend to deploy database VMs, then this VPC must also be part of the VPC mesh.
+When YBA and database nodes are deployed in different VPCs (for example, in a multi-region universe), the setup is more complex. Use [VPC peering](https://learn.microsoft.com/en-us/azure/virtual-network/tutorial-connect-virtual-networks), as well as setting up the appropriate NSGs. In the VPC peering approach, peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region. [Routes for the peering connections](https://learn.microsoft.com/en-us/azure/virtual-network/virtual-networks-udr-overview#:~:text=Virtual%20network%20(VNet)%20peering) can be automatically configured by Azure or configured manually. If you deploy YBA in a different VPC than where you intend to deploy database VMs, then this VPC must also be part of the VPC mesh.
 
   </div>
 </div>

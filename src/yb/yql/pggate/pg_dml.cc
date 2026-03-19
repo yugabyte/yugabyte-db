@@ -61,7 +61,7 @@ Status PgDml::SecondaryIndexQueryWrapper::Execute() {
   return query_->Exec(params_);
 }
 
-PgDml::PgDml(const PgSession::ScopedRefPtr& pg_session)
+PgDml::PgDml(const PgSessionPtr& pg_session)
     : PgStatement(pg_session) {}
 
 PgDml::~PgDml() = default;

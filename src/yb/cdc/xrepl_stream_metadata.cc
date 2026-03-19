@@ -135,12 +135,13 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<std::string> replication_slot_name;
   std::vector<TableId> unqualified_table_ids;
   std::optional<uint32_t> db_oid_to_get_sequences_for;
+  std::optional<bool> detect_publication_changes_implicitly;
 
   RETURN_NOT_OK(client->GetCDCStream(
       stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
       &consistent_snapshot_option, &stream_creation_time, &replica_identity_map,
       &replication_slot_name, &unqualified_table_ids, &replication_slot_lsn_type,
-      &replication_slot_ordering_mode));
+      &replication_slot_ordering_mode, &detect_publication_changes_implicitly));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -209,6 +210,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   replication_slot_name_ = replication_slot_name;
   replication_slot_lsn_type_ = replication_slot_lsn_type;
   replication_slot_ordering_mode_ = replication_slot_ordering_mode;
+  detect_publication_changes_implicitly_ = detect_publication_changes_implicitly;
 
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);

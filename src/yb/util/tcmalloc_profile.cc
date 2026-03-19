@@ -21,14 +21,11 @@
 
 #include "yb/util/tcmalloc_util.h"
 
-#if YB_ABSL_ENABLED
 #include "absl/debugging/symbolize.h"
-#endif
 
 #include "yb/gutil/casts.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
-#include "yb/util/symbolize.h"
 
 DEFINE_RUNTIME_int32(dump_heap_snapshot_min_interval_sec, 600,
     "The minimum time to wait between dumping heap snapshots. A value of <= 0 means the logging is "
@@ -64,11 +61,7 @@ void SortSamplesByOrder(std::vector<Sample>* samples, SampleOrder order) {
 #if YB_GPERFTOOLS_TCMALLOC || YB_GOOGLE_TCMALLOC
 namespace {
 bool Symbolize(void *pc, char *out, int out_size) {
-#if YB_ABSL_ENABLED
   return absl::Symbolize(pc, out, out_size);
-#else
-  return GlogSymbolize(pc, out, out_size);
-#endif
 }
 }  // namespace
 #endif

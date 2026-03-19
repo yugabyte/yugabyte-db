@@ -23,6 +23,8 @@ export interface OtherAdvancedProps {
   awsArnString: string;
   useSystemd: boolean;
   accessKeyCode: string;
+  enableIPV6: boolean;
+  enableExposingService: boolean;
 }
 
 export interface AccessKey {

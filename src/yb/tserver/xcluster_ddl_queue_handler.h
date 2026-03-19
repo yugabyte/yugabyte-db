@@ -40,7 +40,10 @@ struct XClusterDDLQueryInfo {
   std::string query;
   int version = 0;
   std::string command_tag;
-  std::string schema;
+  // The source session's current_schema() at DDL time (i.e. the first usable schema in
+  // search_path). Not to be confused with RelationInfo::relation_pgschema_name, which is the
+  // actual PG schema of a specific relation.
+  std::string search_path_schema;
   std::string user;
   std::string json_for_oid_assignment;
   bool is_manual_execution = false;
@@ -61,8 +64,8 @@ struct XClusterDDLQueryInfo {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        query, ddl_end_time, query_id, version, command_tag, schema, user, json_for_oid_assignment,
-        is_manual_execution, relation_map, variables);
+        query, ddl_end_time, query_id, version, command_tag, search_path_schema, user,
+        json_for_oid_assignment, is_manual_execution, relation_map, variables);
   }
 };
 
@@ -178,7 +181,7 @@ class XClusterDDLQueueHandler {
   // Keep track of how many times we've repeatedly failed a DDL.
   int num_fails_for_this_ddl_ = 0;
   std::optional<QueryIdentifier> last_failed_query_;
-  Status last_failed_status_;
+  Status original_failed_status_;
 
   // Cache of the DDL batch in replicated_ddl table. This only set when we are certain that it is up
   // to date with the persisted state. It is set to nullopt in all other cases and needs to be

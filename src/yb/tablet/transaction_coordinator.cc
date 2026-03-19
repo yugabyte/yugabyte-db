@@ -139,8 +139,8 @@ namespace yb {
 namespace tablet {
 
 std::chrono::microseconds GetTransactionTimeout() {
-  const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
-                         GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
+  const double timeout = FLAGS_transaction_max_missed_heartbeat_periods *
+                         FLAGS_transaction_heartbeat_usec;
   // Cast to avoid -Wimplicit-int-float-conversion.
   return timeout >= static_cast<double>(std::chrono::microseconds::max().count())
       ? std::chrono::microseconds::max()
@@ -296,8 +296,8 @@ class TransactionState {
       return false;
     }
     auto retain_until = deadlock_time_.AddMicroseconds(
-        GetAtomicFlag(&FLAGS_clear_deadlocked_txns_info_older_than_heartbeats) *
-        GetAtomicFlag(&FLAGS_transaction_heartbeat_usec));
+        FLAGS_clear_deadlocked_txns_info_older_than_heartbeats *
+        FLAGS_transaction_heartbeat_usec);
     return retain_until > context_.coordinator_context().clock().Now();
   }
 
@@ -1403,7 +1403,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       }
     }
 
-    if (GetAtomicFlag(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms)) {
+    if (FLAGS_TEST_inject_random_delay_on_txn_status_response_ms) {
       if (response->status().size() > 0 && response->status(0) == TransactionStatus::PENDING) {
         AtomicFlagRandomSleepMs(&FLAGS_TEST_inject_random_delay_on_txn_status_response_ms);
       }
@@ -1789,9 +1789,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
           << "Request to unknown transaction " << id << ": "
           << state.ShortDebugString();
-      return STATUS_EC_FORMAT(
-          Expired, PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED),
-          "Transaction $0 expired or aborted by a conflict", id);
+      return CreateExpiredStatus("Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {

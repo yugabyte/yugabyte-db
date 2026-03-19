@@ -159,7 +159,9 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   // Clear any previous RocksDB files in the superblock. Each session should create a new list
   // based the checkpoint directory files.
   kv_store->clear_rocksdb_files();
-  auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_);
+  auto status = tablet->snapshots().CreateCheckpoint(checkpoint_dir_,
+      tablet::CreateCheckpointIn::kSubDir,
+      tablet::TabletSnapshots::UseTryLock::kTrue);
   if (status.ok()) {
     auto max_retries = FLAGS_rbs_init_max_number_of_retries;
     if (max_retries != 0) {
@@ -229,7 +231,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
 
   std::optional<OpId> min_synced_op_id;
   // Copy the retryable requests if it exists.
-  if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
+  if (FLAGS_enable_flush_retryable_requests) {
     Status s = tablet_peer_->FlushBootstrapState();
     if (s.ok() || s.IsAlreadyPresent()) {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
@@ -569,7 +571,7 @@ Status RemoteBootstrapSession::OpenLogSegment(
   auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
   // Otherwise entries at end of previously active log segment could be missing.
-  if (opened_log_segment_active_) {
+  if (opened_log_segment_active_ && segment_seqno != opened_log_segment_seqno_) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }

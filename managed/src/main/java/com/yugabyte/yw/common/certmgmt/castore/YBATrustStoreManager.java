@@ -25,6 +25,8 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -45,7 +47,6 @@ public class YBATrustStoreManager implements TrustStoreManager {
   public static final String BCFKS_TRUSTSTORE_FILE_NAME = "ybBcfksCaCerts";
 
   public static final String PKCS12_TRUSTSTORE_FILE_NAME = "ybPkcs12CaCerts";
-  public static final String PKCS12_TRUSTSTORE_CONVERTED_FILE_NAME = "ybPkcs12CaCerts.backup";
   private static final String YB_JAVA_HOME_PATHS = "yb.wellKnownCA.trustStore.javaHomePaths";
 
   private final RuntimeConfGetter runtimeConfGetter;
@@ -296,8 +297,12 @@ public class YBATrustStoreManager implements TrustStoreManager {
           // Backup up converted YBA trust store in DB and remove legacy from backup.
           FileData.upsertFileInDB(trustStoreInfo.getPath(), false);
           File legacyKeystoreFile = new File(loadedStore.getLeft().getPath());
+          String legacyBackupFileName =
+              String.format(
+                  "ybPkcs12CaCerts_%s.backup",
+                  DateTimeFormatter.ISO_LOCAL_DATE.format(Instant.now()));
           File legacyKeystoreBackupFile =
-              new File(getTrustStorePath(trustStoreHome, PKCS12_TRUSTSTORE_CONVERTED_FILE_NAME));
+              new File(getTrustStorePath(trustStoreHome, legacyBackupFileName));
           FileUtils.moveFile(legacyKeystoreFile, legacyKeystoreBackupFile);
           FileData.deleteFileFromDB(legacyKeystoreFile.getPath());
           // Just in case also store backup of old truststore in the DB.

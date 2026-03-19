@@ -34,7 +34,12 @@ xCluster safe time is the transactionally consistent time across all tables in a
 
 ## Setup
 
-Transactional xCluster can be set up in the following ways:
+Transactional xCluster can be in the following ways, depending on the version of YugabyteDB you are deploying.
 
-- [Semi-automatic mode](../async-transactional-setup-semi-automatic/): Provides operationally simpler setup and management of replication, as well as fewer steps for performing DDL changes.
-- [Fully Manual mode](../async-transactional-setup-manual/): Manual setup and management of replication. DDL changes require manually updating the xCluster configuration.
+For v2024.2.0 and later, use Semi-automatic mode.
+
+| Mode | Description | GA | Deprecated |
+| :--- | :--- | :--- | :--- |
+| Automatic | Handles all aspects of replication for both data and schema changes.<br>Automatic will be available as [Early Access](/stable/releases/versioning/#early-access-ea) in v2025.1. | | |
+| [Semi-automatic](../async-transactional-setup-semi-automatic/) | Compared to manual mode, provides operationally simpler setup and management of replication, and fewer steps for performing DDL changes. | v2024.2.0 | v2025.2.1 |
+| [Manual](../async-transactional-setup-manual/) | Manual setup and management of replication. DDL changes require manually updating the xCluster configuration.<br>Manual will be deprecated in v2025.1. | v2.18.1 | v2025.1 |

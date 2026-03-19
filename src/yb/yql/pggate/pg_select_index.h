@@ -36,12 +36,12 @@ class PgSelectIndex : public PgSelect {
   [[nodiscard]] bool IsPgSelectIndex() const override { return true; }
 
   static Result<std::unique_ptr<PgSelectIndex>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+      const PgSessionPtr& pg_session, const PgObjectId& index_id,
       const YbcPgTableLocalityInfo& locality_info,
       std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
 
  protected:
-  explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgSelectIndex(const PgSessionPtr& pg_session);
 
  private:
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is

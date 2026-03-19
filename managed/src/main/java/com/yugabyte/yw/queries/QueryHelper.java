@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -39,6 +40,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pekko.stream.Materializer;
 import org.yb.perf_advisor.Utils;
 import play.libs.Json;
 import play.libs.ws.WSClient;
@@ -101,6 +103,7 @@ public class QueryHelper {
   private final RuntimeConfGetter confGetter;
   private final ExecutorService threadPool;
   private final WSClient wsClient;
+  private final Materializer materializer;
 
   public enum QueryApi {
     YSQL,
@@ -117,18 +120,25 @@ public class QueryHelper {
   public QueryHelper(
       RuntimeConfGetter confGetter,
       PlatformExecutorFactory platformExecutorFactory,
-      CustomWsClientFactory customWsClientFactory) {
+      CustomWsClientFactory customWsClientFactory,
+      Materializer materializer) {
 
     this(
         confGetter,
         createExecutor(platformExecutorFactory),
-        createWsClient(customWsClientFactory, confGetter));
+        createWsClient(customWsClientFactory, confGetter),
+        materializer);
   }
 
-  public QueryHelper(RuntimeConfGetter confGetter, ExecutorService threadPool, WSClient wsClient) {
+  public QueryHelper(
+      RuntimeConfGetter confGetter,
+      ExecutorService threadPool,
+      WSClient wsClient,
+      Materializer materializer) {
     this.confGetter = confGetter;
     this.threadPool = threadPool;
     this.wsClient = wsClient;
+    this.materializer = materializer;
   }
 
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -262,14 +272,22 @@ public class QueryHelper {
             {
               callable =
                   new LiveQueryExecutor(
-                      node.nodeName, ip, node.ysqlServerHttpPort, QueryApi.YSQL, this.wsClient);
+                      node.nodeName,
+                      ip,
+                      node.ysqlServerHttpPort,
+                      QueryApi.YSQL,
+                      new ApiHelper(this.wsClient, materializer));
 
               Future<JsonNode> future = threadPool.submit(callable);
               futures.add(future);
 
               callable =
                   new LiveQueryExecutor(
-                      node.nodeName, ip, node.yqlServerHttpPort, QueryApi.YCQL, this.wsClient);
+                      node.nodeName,
+                      ip,
+                      node.yqlServerHttpPort,
+                      QueryApi.YCQL,
+                      new ApiHelper(this.wsClient, materializer));
               future = threadPool.submit(callable);
               futures.add(future);
               break;

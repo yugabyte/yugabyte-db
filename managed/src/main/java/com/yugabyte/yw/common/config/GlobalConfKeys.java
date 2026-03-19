@@ -279,6 +279,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Application Logs Regex Pattern",
           "Regex pattern used to filter application log files when creating support bundles.",
+          ConfDataType.RawStringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> supportBundleApplicationLogsSdfPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.application_logs_sdf_pattern",
+          ScopeType.GLOBAL,
+          "Application Logs SDF Pattern",
+          "SimpleDateFormat pattern used to parse dates from application log file names when"
+              + " creating support bundles.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
@@ -1507,6 +1516,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval at which the XCluster Metrics Scheduler runs",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xClusterMasterAddressSyncInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_master_address_sync_interval",
+          ScopeType.GLOBAL,
+          "XCluster Master Address Sync Interval",
+          "Interval at which the XCluster Master Address Sync Scheduler runs to keep"
+              + " source master addresses up to date on target universe replication groups",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybcClientMaxUnavailableRetries =
       new ConfKeyInfo<>(
           "ybc.client_settings.max_unavailable_retries",
@@ -1659,6 +1677,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Max Number of Parallel cluster consistency checks",
           "Max Number of Parallel cluster consistency checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> connectivityCheckParallelism =
+      new ConfKeyInfo<>(
+          "yb.health.connectivity_check_parallelism",
+          ScopeType.GLOBAL,
+          "Max Number of Parallel connectivity checks",
+          "Max Number of Parallel connectivity checks",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcGroupClaim =
@@ -1925,6 +1951,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable AWS signing region for S3 access",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableS3BackupProxy =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_s3_backup_proxy",
+          ScopeType.GLOBAL,
+          "Enable S3 Backup Proxy",
+          "Enable proxy configuration for S3 backup storage",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> capacityReservationMaxRetries =
       new ConfKeyInfo<>(
           "yb.task.capacity_reservation.max_retries",
@@ -1968,6 +2002,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " \\/some\\/path\\/.+",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> logWSRequests =
+      new ConfKeyInfo<>(
+          "yb.log.logWSRequests",
+          ScopeType.GLOBAL,
+          "Log WS Requests",
+          "When enabled, logs outgoing WS client request details (method, URL, proxy host) at debug"
+              + " level",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowLocalLoginWithSso =
       new ConfKeyInfo<>(
           "yb.security.allow_local_login_with_sso",
@@ -2001,4 +2044,78 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable running platform HA restore operations in a transaction",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentUpgradeRestartWaitTime =
+      new ConfKeyInfo<>(
+          "yb.node_agent.upgrade_restart_wait_time",
+          ScopeType.GLOBAL,
+          "Node Agent Upgrade Restart Wait Time",
+          "Maximum time to wait for node agent to restart after an upgrade",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  // File Collection configs (Internal - for troubleshooting APIs)
+  public static final ConfKeyInfo<Duration> fileCollectionDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Download Timeout",
+          "Maximum time to wait for downloading collected files from all DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionNodeDownloadTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.node_download_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Per-Node Download Timeout",
+          "Maximum time to wait for downloading collected files from a single DB node",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> fileCollectionCleanupTimeout =
+      new ConfKeyInfo<>(
+          "yb.file_collection.cleanup_timeout",
+          ScopeType.GLOBAL,
+          "File Collection Cleanup Timeout",
+          "Maximum time to wait for cleaning up collected files from DB nodes",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConnectivityMetricCollection =
+      new ConfKeyInfo<>(
+          "yb.metrics.enable_connectivity_metric_collection",
+          ScopeType.GLOBAL,
+          "Enable Connectivity Metric Collection",
+          "Enable connectivity metric collection for all universes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowExistingDuplicateAz =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_existing_duplicate_az",
+          ScopeType.GLOBAL,
+          "Allow Duplicates in Existing AZs",
+          "Allow duplicates in already existing availability zones",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> disableYnpNodePreflightCheck =
+      new ConfKeyInfo<>(
+          "yb.node_agent.disable_ynp_node_preflight_check",
+          ScopeType.GLOBAL,
+          "Disable YNP Node Preflight Check",
+          "Disable preflight check in YNP node agent provision",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_batch_size",
+          ScopeType.GLOBAL,
+          "Background Redaction Batch Size for Audit",
+          "Batch size for redacting secrets from audit entries",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> bgRedactAuditInterval =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_interval",
+          ScopeType.GLOBAL,
+          "Background Redaction Interval for Audit",
+          "Background interval for redacting secrets from audit entries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

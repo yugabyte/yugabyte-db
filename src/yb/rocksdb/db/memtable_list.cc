@@ -134,7 +134,8 @@ int MemTableList::NumNotFlushed() const {
 
 // Usually immutable mem table list is empty, and frontier could be taken from active mem table.
 // So we implement logic to avoid doing clone when there is just one frontier source.
-UserFrontierPtr MemTableList::GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type) {
+yb::storage::UserFrontierPtr MemTableList::GetFrontier(
+    yb::storage::UserFrontierPtr frontier, yb::storage::UpdateUserValueType type) {
   for (const auto& mem : current_->memlist_) {
     auto current = mem->GetFrontier(type);
     if (!current) {
@@ -371,7 +372,7 @@ Status MemTableList::InstallMemtableFlushResults(
   mu->AssertHeld();
 
   // flush was successful
-  UserFrontiersPtr frontiers;
+  yb::storage::UserFrontiersPtr frontiers;
   for (size_t i = 0; i < mems.size(); ++i) {
     // All the edits are associated with the first memtable of this batch.
     DCHECK(i == 0 || mems[i]->GetEdits()->NumEntries() == 0);
@@ -406,8 +407,8 @@ Status MemTableList::InstallMemtableFlushResults(
       break;
     }
 
-    LOG_TO_BUFFER(log_buffer, "[%s] Level-0 commit table #%" PRIu64 " started",
-                cfd->GetName().c_str(), m->file_number_);
+    LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Level-0 commit table #%" PRIu64 " started",
+                         cfd->GetName().c_str(), m->file_number_);
 
     // this can release and reacquire the mutex.
     s = vset->LogAndApply(cfd, mutable_cf_options, &m->edit_, mu, db_directory);
@@ -421,9 +422,9 @@ Status MemTableList::InstallMemtableFlushResults(
     uint64_t mem_id = 1;  // how many memtables have been flushed.
     do {
       if (s.ok()) { // commit new state
-        LOG_TO_BUFFER(log_buffer, "[%s] Level-0 commit table #%" PRIu64
-                                ": memtable #%" PRIu64 " done",
-                    cfd->GetName().c_str(), m->file_number_, mem_id);
+        LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Level-0 commit table #%" PRIu64
+                                         ": memtable #%" PRIu64 " done",
+                             cfd->GetName().c_str(), m->file_number_, mem_id);
         assert(m->file_number_ > 0);
         current_->Remove(m, to_delete);
       } else {

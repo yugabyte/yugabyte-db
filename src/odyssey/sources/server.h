@@ -71,15 +71,23 @@ struct od_server {
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
 
-	/* logical client version of the server. This field is populated 
+	/*
+	 * YB: logical client version of the server. This field is populated 
 	 * after backend is spawned.
 	 */
-	int64_t logical_client_version;
+	int64_t yb_logical_client_version;
 
-	/* If true, this server is marked for expiration to be
+	/*
+	 * YB: If true, this server is marked for expiration to be
 	 * eventually cleaned by cron job
 	 */
-	bool marked_for_close;
+	bool yb_marked_for_close;
+
+	/*
+	 * YB: Expiry time for the server in microseconds. The cron thread will
+	 * cleanup the server object if idle at or after this time
+	 */
+	uint64_t yb_expiry_time_us;
 
 	/*
 	 * The ID of the logical client that has sent parse message to the backend
@@ -116,8 +124,9 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->yb_replication_connection = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
-	server->logical_client_version = 0;
-	server->marked_for_close = false;
+	server->yb_logical_client_version = UINT64_MAX;
+	server->yb_marked_for_close = false;
+	server->yb_expiry_time_us = UINT64_MAX;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);

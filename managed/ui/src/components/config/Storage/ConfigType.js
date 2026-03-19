@@ -24,28 +24,5 @@ export const storageConfigTypes = {
         component: YBTextInputWithLabel
       }
     ]
-  },
-  AZ: {
-    title: 'Azure Storage',
-    fields: [
-      {
-        id: 'AZ_CONFIGURATION_NAME',
-        label: 'Configuration Name',
-        placeHolder: 'Configuration Name',
-        component: YBTextInputWithLabel
-      },
-      {
-        id: 'AZ_BACKUP_LOCATION',
-        label: 'Container URL',
-        placeHolder: 'Container URL',
-        component: YBTextInputWithLabel
-      },
-      {
-        id: 'AZURE_STORAGE_SAS_TOKEN',
-        label: 'SAS Token',
-        placeHolder: 'SAS Token',
-        component: YBTextInputWithLabel
-      }
-    ]
   }
 };

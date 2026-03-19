@@ -9,21 +9,36 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.pekko.Done;
+import org.apache.pekko.stream.Materializer;
+import org.apache.pekko.stream.javadsl.Sink;
 import org.apache.pekko.stream.javadsl.Source;
 import org.apache.pekko.util.ByteString;
 import play.libs.Json;
+import play.libs.ws.SourceBodyWritable;
 import play.libs.ws.WSClient;
 import play.libs.ws.WSRequest;
 import play.libs.ws.WSResponse;
@@ -35,13 +50,17 @@ import play.mvc.Http;
 public class ApiHelper {
 
   private static final Duration DEFAULT_GET_REQUEST_TIMEOUT = Duration.ofSeconds(10);
+  private static Pattern FILENAME_PATTERN = Pattern.compile(".*filename=\"([^\"]+)\".*");
 
   @Getter(onMethod_ = {@VisibleForTesting})
   private final WSClient wsClient;
 
+  private final Materializer materializer;
+
   @Inject
-  public ApiHelper(WSClient wsClient) {
+  public ApiHelper(WSClient wsClient, Materializer materializer) {
     this.wsClient = wsClient;
+    this.materializer = materializer;
   }
 
   @Getter
@@ -156,6 +175,83 @@ public class ApiHelper {
         .getBodyOrThrow();
   }
 
+  public JsonNode postWithoutBody(
+      String url, Map<String, String> headers, Map<String, String> params) {
+    return handleHttpRequest(
+            requestWithHeaders(url, headers, params, null /* timeout */), r -> r.post(""))
+        .getBodyOrThrow();
+  }
+
+  /**
+   * POST binary body and stream response body to the consumer. Does not buffer the full response in
+   * memory. Throws on non-2xx or on failure. The consumer must read from the stream; the stream is
+   * closed after the consumer returns (or on exception).
+   */
+  public void postBinaryRequest(
+      String url,
+      byte[] body,
+      String contentType,
+      @Nullable Map<String, String> headers,
+      @Nullable Duration timeout,
+      Consumer<InputStream> bodyStreamConsumer) {
+    WSRequest request = requestWithHeaders(url, headers, null /* queryParams */, timeout);
+    request.setBody(new SourceBodyWritable(Source.single(ByteString.fromArray(body)), contentType));
+    try {
+      CompletionStage<WSResponse> futureResponse = request.setMethod("POST").stream();
+      WSResponse response = futureResponse.toCompletableFuture().get();
+      if (response.getStatus() < 200 || response.getStatus() >= 300) {
+        throw new PlatformServiceException(
+            response.getStatus(),
+            String.format(
+                "HTTP request to %s failed with status %d %s:\n%s",
+                url, response.getStatus(), response.getStatusText(), response.getBody()));
+      }
+      Source<ByteString, ?> responseBody = response.getBodyAsSource();
+      PipedInputStream pis = new PipedInputStream();
+      PipedOutputStream pos = new PipedOutputStream(pis);
+      responseBody
+          .runWith(
+              Sink.foreach(
+                  bs -> {
+                    try {
+                      pos.write(bs.toArray());
+                    } catch (IOException e) {
+                      throw new RuntimeException(e);
+                    }
+                  }),
+              materializer)
+          .whenComplete(
+              (v, e) -> {
+                try {
+                  pos.close();
+                } catch (IOException ignored) {
+                  // signal EOF to reader
+                }
+              });
+      try {
+        bodyStreamConsumer.accept(pis);
+      } finally {
+        try {
+          pis.close();
+        } catch (IOException ignored) {
+        }
+      }
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof RuntimeException) {
+        throw (RuntimeException) cause;
+      }
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, cause.getMessage());
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    } catch (PlatformServiceException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
   public HttpResponse putHttpRequest(
       String url,
       JsonNode data,
@@ -163,6 +259,77 @@ public class ApiHelper {
       @Nullable Duration timeout) {
     return handleHttpRequest(
         requestWithHeaders(url, headers, null /* queryParams */, timeout), r -> r.put(data));
+  }
+
+  public File downloadFile(String url, Map<String, String> headers, File targetDirectory) {
+    WSRequest request =
+        requestWithHeaders(url, headers, null /* queryParams */, null /* timeout */);
+    request.setFollowRedirects(true);
+
+    // Make the request
+    CompletionStage<WSResponse> futureResponse = request.setMethod("GET").stream();
+
+    CompletionStage<File> downloadedFile =
+        futureResponse.thenCompose(
+            res -> {
+              if (res.getStatus() != Http.Status.OK) {
+                throw new RuntimeException(
+                    "Request to "
+                        + url
+                        + " failed with status "
+                        + res.getStatus()
+                        + " "
+                        + res.getStatusText());
+              }
+
+              Source<ByteString, ?> responseBody = res.getBodyAsSource();
+
+              String filename = null;
+              Optional<String> contentDisposition = res.getSingleHeader("Content-Disposition");
+              if (contentDisposition.isPresent()) {
+                Matcher matcher = FILENAME_PATTERN.matcher(contentDisposition.get());
+                if (matcher.matches()) {
+                  filename = matcher.group(1);
+                }
+              }
+              if (filename == null) {
+                filename =
+                    String.format(
+                        "attachment.%s", RandomStringUtils.insecure().nextAlphanumeric(8));
+              }
+
+              File file = targetDirectory.toPath().resolve(filename).toFile();
+              try {
+                FileOutputStream outputStream = new FileOutputStream(file);
+                // The sink that writes to the output stream
+                Sink<ByteString, CompletionStage<Done>> outputWriter =
+                    Sink.foreach(bytes -> outputStream.write(bytes.toArray()));
+
+                // materialize and run the stream
+                CompletionStage<File> result =
+                    responseBody
+                        .runWith(outputWriter, materializer)
+                        .whenComplete(
+                            (value, error) -> {
+                              // Close the output stream whether there was an error or not
+                              try {
+                                outputStream.close();
+                              } catch (IOException e) {
+                                log.warn("Failed to close output stream to the file " + file, e);
+                              }
+                            })
+                        .thenApply(v -> file);
+                return result;
+              } catch (FileNotFoundException e) {
+                throw new RuntimeException("Failed to write response to a file " + file, e);
+              }
+            });
+
+    try {
+      return downloadedFile.toCompletableFuture().get();
+    } catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException("Failed to download file from " + url, e);
+    }
   }
 
   public JsonNode putRequest(String url, JsonNode data) {

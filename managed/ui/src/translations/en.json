@@ -52,6 +52,7 @@
       "actions": "Actions",
       "enabled": "Enabled",
       "disabled": "Disabled",
+      "recommended": "Recommended",
       "duration": {
         "seconds": "Seconds",
         "minutes": "Minutes",
@@ -264,6 +265,93 @@
         "forceUpgrade": "Force Upgrade",
         "forceApply": "Force Apply"
       },
+      "dbUpgrade": {
+        "upgradeModal": {
+          "modalTitle": "Upgrade Database",
+          "fields": {
+            "maxNodesPerBatch": "Max nodes per batch:",
+            "waitBetweenBatches": "Wait between batches:",
+            "seconds": "seconds",
+            "validationError": {
+              "maxNodesPerBatchMinimum": "Max nodes per batch must be a positive number.",
+              "maxNodesPerBatchMaximum": "Max nodes per batch must be less than or equal to the maxium batch size {{max}}.",
+              "waitBetweenBatchesMinimum": "Wait between batches must be a positive number."
+            }
+          },
+          "stepper": {
+            "dbVersion": "DATABASE VERSION",
+            "upgradeMethod": "UPGRADE METHOD",
+            "upgradePlan": "UPGRADE PLAN",
+            "upgradePace": "UPGRADE PACE"
+          },
+          "dbVersionStep": {
+            "stepTitle": "Database Version",
+            "stepDescription": "What database version do you want to upgrade to?",
+            "currentVersion": "Current Version",
+            "targetVersion": "Target Version",
+            "runPreupgradeCheck": "Run Pre-upgrade Check",
+            "upgradeInfoCard": {
+              "ysqlMajorVersionUpgrade": "YSQL Major Upgrade",
+              "ysqlMajorVersionUpgradeInfo": "This major upgrade upgrades your cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "upgradeInfo": "Upgrades the cluster to <versionString>v{{targetVersion}}</versionString>.",
+              "finalizationRequired": "Finalization required",
+              "finalizationRequiredTooltip": "After upgrading, you must finalize the upgrade to complete the process. Until finalized, some features may be restricted.",
+              "rollbackAvailable": "<bold>Rollback available</bold> — Until finalization (back to v{{currentVersion}})",
+              "rollbackAvailableAnytime": "<bold>Rollback available</bold> — Anytime after upgrade (back to v{{currentVersion}})",
+              "temporaryRestrictions": "Temporary Restrictions",
+              "ddlAndSomeOperationsBlocked": "DDLs and <underline>some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "someOperationsBlocked": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is completed.",
+              "someOperationsBlockedFinalization": "<underline>Some operations</underline> are blocked and will remain unavailable until the upgrade is finalized or rolled back.",
+              "clusterMayHaveSlowerPerformance": "The cluster may have slower performance.",
+              "learnMoreAboutUpgrade": "Learn more about the upgrade"
+            }
+          },
+          "upgradeMethodStep": {
+            "stepTitle": "Upgrade Method",
+            "express": {
+              "title": "Express upgrade",
+              "description": "Runs straight through; rollback is only allowed after the upgrade is completed."
+            },
+            "canary": {
+              "title": "Canary upgrade",
+              "tag": "Advanced",
+              "description": "Includes monitoring pauses and mid-upgrade rollback opportunities."
+            },
+            "upgradePace": {
+              "title": "Upgrade Pace",
+              "rolling": "Rolling upgrade",
+              "concurrent": "Concurrent upgrade of all nodes."
+            },
+            "recommendationLabel": "Recommendation",
+            "recommendationMessage": "PG 15 is a major upgrade with meaningful changes. Canary Upgrade is recommended to limit the impact on the Universe if a rollback is needed."
+          },
+          "upgradePlanStep": {
+            "stepTitle": "Upgrade Plan",
+            "stepDescription": "The upgrade runs in a controlled sequence. Add pauses to monitor and evaluate the Universe before proceeding.",
+            "upgradeStage": {
+              "upgradeMasterServers": "Upgrade Master Servers",
+              "upgradePrimaryClusterTServers": "Upgrade Primary Cluster T-Servers",
+              "upgradeReadReplicaTServers": "Upgrade Read Replica T-Servers"
+            },
+            "executionOrder": "Execution Order",
+            "addMonitoringPause": "Add monitoring pause",
+            "pauseToMonitorUpgrade": "Pause to monitor upgrade",
+            "pauseAfterFirstAzTooltip": "<bold>Pause after the first AZ</bold> to validate the upgrade on a single AZ and keep a faster rollback path if needed.",
+            "pauseRequiresManualResume": "Every pause requires you to manually resume the upgrade."
+          },
+          "upgradePaceStep": {
+            "stepTitle": "Upgrade Pace"
+          },
+          "submitLabel": {
+            "next": "Next",
+            "upgrade": "Upgrade"
+          },
+          "toast": {
+            "dbUpgradeInitiated": "Database upgrade initiated",
+            "dbUpgradeFailed": "Database upgrade request failed"
+          }
+        }
+      },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
@@ -337,9 +425,17 @@
         "disableTitle": "Disable Performance Monitoring",
         "enablePaUniverseSuccess": "Successfully enabled  Performance Monitoring to the universe",
         "enablePaUniverseFailure": "Failed to  Performance Monitoring to the universe",
-        "disbalePaUniverseSuccess": "Successfully disbled Performance Monitoring for the universe",
-        "disablePaUniverseFailure": "Failed to disable  Performance Monitoring to the universe",
-        "subText": "Are you sure you want to {{action}}  Performance Monitoring for the universe <strong>{{universeName}}</strong>?"
+        "disablePaUniverseSuccess": "Successfully disabled Performance Monitoring for the universe",
+        "disablePaUniverseFailure": "Failed to disable Performance Monitoring to the universe",
+        "subText": "Are you sure you want to {{action}} Performance Monitoring for the universe <strong>{{universeName}}</strong>?",
+        "enableAdvancedObservability": "Enable Advanced Observability",
+        "enableAdvancedObservabilitySubText": "Enable Advanced Observability for universe <strong>{{universeName}}</strong>? This will enable additional metrics export to Prometheus.",
+        "enableAdvancedObservabilitySuccess": "Successfully enabled Advanced Observability for the universe",
+        "enableAdvancedObservabilityFailure": "Failed to enable Advanced Observability for the universe",
+        "disableAdvancedObservabilityTitle": "Disable Advanced Observability",
+        "disableAdvancedObservabilitySubText": "Disable Advanced Observability for universe <strong>{{universeName}}</strong>? This will disable additional metrics export to Prometheus.",
+        "disableAdvancedObservabilitySuccess": "Successfully disabled Advanced Observability for the universe",
+        "disableAdvancedObservabilityFailure": "Failed to disable Advanced Observability for the universe"
       },
       "pgCompatibility": {
         "modalTitle": "Edit Enhanced Postgres Compatibility",
@@ -573,11 +669,13 @@
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
         "identConfLocal": "map-name idp-user/group/role database-username",
+        "ycqlIdentConfLocal": "idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
         "pgConfDescription": "CSV formatted line represented list of postgres setting assignments.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
-        "identConfPostgreSQL": "PostgreSQL. ",
-        "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "identConfPostgreSQL": "PostgreSQL",
+        "identConfDescriptionSecond": ". Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
+        "ycqlIdentConfDescriptionSecond": " except the omission of the map-name. Enter each mapping as a new row, comprising the external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
         "readLess": "Read Less",
@@ -600,6 +698,18 @@
         "title": "Helm Overrides",
         "universeOverrides": "Universe Overrides",
         "yamlErrorsTitle": "Errors in helm YAML"
+      },
+      "azOverrides": {
+        "modalTitle": "AZ Resource Overrides",
+        "sectionTitle": "Availability Zone Overrides",
+        "editAZOverrides": "Edit AZ Overrides",
+        "addStorageOverrides": "Add Storage Overrides",
+        "editStorageOverrides": "Edit storage overrides",
+        "addAZ": "Add AZ",
+        "addAnotherAZ": "Add Another AZ",
+        "availabilityZone": "Availability Zone",
+        "volumeCount": "Volume count",
+        "volumeSizeGib": "Volume size (Gib)"
       },
       "instanceConfig": {
         "assignPublicIP": "Assign Public IP",
@@ -626,6 +736,7 @@
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
         "k8VolumeSizeUnit": "Gib",
+        "storageClass": "Storage Class",
         "cpuArch": "CPU Architecture",
         "x86_64": "x86 (Intel)",
         "aarch64": "AArch6 (ARM)",
@@ -780,6 +891,8 @@
         "paServiceUrlLabel": "Performance Monitoring Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "ybPlatformMetricsUsernameLabel": "Yugabyte Platform Metrics Username",
+        "ybPlatformMetricsPasswordLabel": "Yugabyte Platform Metrics Password",
         "apiTokenLabel": "YBA API Token",
         "tpApiTokenLabel": "Performance Monitoring Token",
         "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
@@ -1202,6 +1315,7 @@
               "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both {{sourceUniverseTerm}} and {{targetUniverseTerm}} universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
             },
             "pitrInfoText": "Configure point-in-time recovery (PITR) settings",
+            "currentRetentionPeriod": "Current: {{retentionPeriod}}",
             "retentionPeriod": {
               "label": "Snapshot Retention Period",
               "tooltip": "A longer snapshot retention period requires more disk space."
@@ -2901,6 +3015,9 @@
       "authType": "Authentication Type",
       "siteURL": "Site URL",
       "splunkToken": "Splunk Access Token",
+      "splunkTokenTooltip": "Indicate this is the Splunk HEC token and where to generate it",
+      "splunkURLTooltip": "Clarify required format (include protocol and port, e.g., https://<host>:8088)",
+      "splunkURLPlaceholder": "https://<host>:8088/services/collector/event",
       "endpointURL": "Endpoint URL",
       "source": "Source (Optional)",
       "sourceType": "Source Type (Optional)",
@@ -2923,6 +3040,26 @@
         "apiTokenTooltip": "Create an access token with <bold>ingest metrics</bold>,  <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope in Manage > Access Tokens in your Dynatrace.",
         "apiTokenHelper": "The access policy token needs <bold>ingest metrics</bold>, <bold>ingest logs</bold>, <bold>ingest OpenTelemetry traces</bold> and <bold>read API tokens</bold> scope.",
         "apiTokenValidationError": "The access token should start with 6-character prefix, followed by 24-character public identifier, and 64-character string secret portion."
+      },
+      "otlp": {
+        "endpoint": "Endpoint URL",
+        "endpointTooltip": "OTLP receiver endpoint (e.g. https://otlp-gateway.example.com/otlp). For HTTP, /v1/logs and /v1/metrics are used when optional endpoints are not set.",
+        "protocol": "Protocol",
+        "protocolGrpc": "gRPC",
+        "protocolHttp": "HTTP",
+        "logsEndpoint": "Logs endpoint",
+        "logsEndpointTooltip": "Optional. HTTP only. Override URL for logs; if empty, main endpoint is used.",
+        "logsEndpointPlaceholder": "https://example.com:4318/v1/logs",
+        "metricsEndpoint": "Metrics endpoint",
+        "metricsEndpointTooltip": "Optional. HTTP only. Override URL for metrics; if empty, main endpoint is used.",
+        "metricsEndpointPlaceholder": "https://example.com:4318/v1/metrics",
+        "timeoutSeconds": "Timeout (seconds)",
+        "timeoutSecondsPlaceholder": "Optional",
+        "compression": "Compression",
+        "bearerToken": "Bearer Token",
+        "validationEndpointRequired": "Endpoint is required",
+        "validationProtocolRequired": "Protocol is required",
+        "validationFieldRequired": "This field is required"
       },
       "deleteModalTitle": "Delete Export Configuration",
       "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
@@ -3680,7 +3817,15 @@
         },
         "accessKeyLabel": "Access Key",
         "accessKeyRequired": "Access Key is required",
-        "arnField": "Instance Profile ARN"
+        "arnField": "Instance Profile ARN",
+        "ipv6Field": {
+          "label": "Enable IPV6",
+          "subText": "Use IPV6 networking for connections between the DB servers."
+        },
+        "networkAccessField": {
+          "label": "Enable Public Network Access",
+          "subText": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet."
+        }
       },
       "reviewAndSummary": {
         "daily": "Daily",

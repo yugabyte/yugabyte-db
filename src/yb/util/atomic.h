@@ -379,20 +379,8 @@ AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
 }
 
 template <class T>
-T GetAtomicFlag(T* flag) {
-  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  return atomic_flag.load(std::memory_order::relaxed);
-}
-
-template <class U, class T>
-void SetAtomicFlag(U value, T* flag) {
-  std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  atomic_flag.store(value);
-}
-
-template <class T>
 void AtomicFlagSleepMs(T* flag) {
-  auto value = GetAtomicFlag(flag);
+  auto value = *flag;
   if (PREDICT_FALSE(value != 0)) {
     std::this_thread::sleep_for(std::chrono::milliseconds(value));
   }
@@ -400,7 +388,7 @@ void AtomicFlagSleepMs(T* flag) {
 
 template <class T>
 void AtomicFlagRandomSleepMs(T* flag) {
-  auto value = GetAtomicFlag(flag);
+  auto value = *flag;
   if (value != 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(RandomUniformInt<T>(0, value)));
   }

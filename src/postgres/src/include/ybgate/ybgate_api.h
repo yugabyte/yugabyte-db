@@ -257,6 +257,27 @@ extern void HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts,
  */
 extern int	YbgGetPgVersion();
 
+/*-----------------------------------------------------------------------------
+ * Ident Conf
+ *-----------------------------------------------------------------------------
+ */
+
+/*
+ * Read the ident config file and create a List of IdentLine records for
+ * the contents.
+ *
+ * Serves the purpose of load_ident from hba.c but with more control over file
+ * path and memory context so that this can be called from YCQL.
+ *
+ * Caller is responsible to free the memory context in case of errors.
+ */
+extern YbgStatus YbgLoadIdent(const char *ident_file_path,
+							  YbgMemoryContext ident_context);
+
+extern YbgStatus YbgCheckUsermap(const char *usermap_name, const char *pg_role,
+								 const char *auth_user, bool case_insensitive,
+								 bool *matched);
+
 #ifdef __cplusplus
 }
 #endif

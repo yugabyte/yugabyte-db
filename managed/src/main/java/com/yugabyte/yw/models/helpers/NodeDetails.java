@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -565,5 +566,26 @@ public class NodeDetails {
       return cloudInfo.instance_type;
     }
     throw new IllegalStateException("Cloud info or instance type is not set");
+  }
+
+  @JsonIgnore
+  public boolean isServerType(ServerType serverType) {
+    switch (serverType) {
+      case TSERVER:
+      case CONTROLLER:
+        return isTserver;
+      case EITHER:
+        return isTserver || isMaster;
+      case MASTER:
+        return isMaster;
+      case REDISSERVER:
+        return isRedisServer;
+      case YQLSERVER:
+        return isYqlServer;
+      case YSQLSERVER:
+        return isYsqlServer;
+      default:
+        return false;
+    }
   }
 }

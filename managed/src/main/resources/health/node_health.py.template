@@ -274,6 +274,12 @@ YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
 YB_THP_SETTINGS_CHECK = MetricDefinition(
     "yb_thp_settings_check",
     "Check that THP settings are applied")
+YB_NODE_YNP_VERSION = MetricDefinition(
+    "yb_node_ynp_version",
+    "YNP version on the node")
+YB_NODE_YNP_VERSION_SKEW = MetricDefinition(
+    "yb_node_ynp_version_skew",
+    "YNP version skew between YBA and node")
 
 ###################################################################################################
 # Reporting
@@ -567,7 +573,7 @@ class NodeChecker():
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
-                 ybdb_inbuilt_ybc):
+                 ybdb_inbuilt_ybc, yba_ynp_version):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -610,6 +616,7 @@ class NodeChecker():
         self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.check_thp = check_thp
         self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
+        self.yba_ynp_version = yba_ynp_version
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -2393,6 +2400,68 @@ class NodeChecker():
                     ["Found running process: {}, should be disabled".format(pid)], has_error=True)
         return e.fill_and_return_entry([], has_error=False)
 
+    def check_ynp_version(self):
+        logging.info("Checking YNP version on node {}".format(self.node))
+        e = self._new_entry("YNP Version")
+        metrics = []
+
+        yugabyte_dir = os.path.join(self.yb_home_dir, ".yugabyte")
+        ynp_version_file = os.path.join(yugabyte_dir, "ynp_version")
+        cmd = 'if [ -f "{}" ]; then cat "{}"; else echo ""; fi'.format(
+            ynp_version_file, ynp_version_file)
+        node_ynp_version = self._check_output(cmd).strip()
+
+        if check_for_errors(node_ynp_version):
+            node_ynp_version = ""
+
+        # If file is missing or empty, report placeholder metric and skip skew check
+        if not node_ynp_version:
+            version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+                .add_value(0, [Label("ynp_version", "unknown")])
+            skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW).add_value(0)
+            metrics.extend([version_metric, skew_metric])
+            return e.fill_and_return_entry(
+                ["YNP version file not found or empty at {}".format(ynp_version_file)],
+                has_error=False,
+                metrics=metrics)
+
+        # Report the node YNP version metric
+        version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+            .add_value(1, [Label("ynp_version", node_ynp_version)])
+        metrics.append(version_metric)
+
+        # Check for version skew using semver comparison
+        skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW)
+        if self.yba_ynp_version:
+            is_greater = is_semver_greater(self.yba_ynp_version, node_ynp_version)
+            if is_greater is None:
+                # Could not parse one or both versions - report as warning, no skew error
+                skew_metric.add_value(0)
+                metrics.append(skew_metric)
+                return e.fill_and_return_warning_entry(
+                    ["Unable to parse versions for comparison: YBA={}, Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    metrics=metrics)
+            elif is_greater:
+                # YBA version is strictly greater than node version - skew detected
+                skew_metric.add_value(1, [
+                    Label("yba_ynp_version", self.yba_ynp_version),
+                    Label("node_ynp_version", node_ynp_version)])
+                metrics.append(skew_metric)
+                return e.fill_and_return_entry(
+                    ["YNP version skew: YBA={} > Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    has_error=True,
+                    metrics=metrics)
+
+        # No skew: either versions match, node is ahead/equal, or no YBA version provided
+        skew_metric.add_value(0)
+        metrics.append(skew_metric)
+        return e.fill_and_return_entry(
+            ["YNP version: {}".format(node_ynp_version)],
+            has_error=False,
+            metrics=metrics)
+
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
@@ -2464,6 +2533,29 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
 def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
+
+def parse_semver(version_str):
+    """Parse a semver string like '1.2.3' into a tuple of ints.
+       Supports optional pre-release suffix after a hyphen (ignored for comparison).
+       Returns None if the version string is invalid."""
+    if not version_str:
+        return None
+    base_version = version_str.split('-')[0].strip()
+    parts = base_version.split('.')
+    try:
+        return tuple(int(p) for p in parts)
+    except (ValueError, TypeError):
+        return None
+
+
+def is_semver_greater(version_a, version_b):
+    """Returns True if version_a > version_b using semantic versioning.
+       Returns None if either version cannot be parsed."""
+    parsed_a = parse_semver(version_a)
+    parsed_b = parse_semver(version_b)
+    if parsed_a is None or parsed_b is None:
+        return None
+    return parsed_a > parsed_b
 
 def is_service_running(service_name):
     env = os.environ.copy()
@@ -2712,6 +2804,8 @@ def main():
                         help='Add verbose output')
     parser.add_argument('--cronbased', default=False, required=False, action='store_true',
                         help='Set to true if the node is cronbased instead of systemd')
+    parser.add_argument('--yba_ynp_version', type=str, default=None, required=False,
+                        help='YNP version from YBA side for skew comparison.')
 
     args = parser.parse_args()
 
@@ -2739,7 +2833,7 @@ def main():
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
-        n.ybdb_inbuilt_ybc)
+        n.ybdb_inbuilt_ybc, args.yba_ynp_version)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -2861,6 +2955,8 @@ def main():
 
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
+
+    coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
     for e in entries:

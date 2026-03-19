@@ -103,7 +103,7 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	if (!node->ss.ss_currentScanDesc)
 		node->ss.ss_currentScanDesc = CreateYbBitmapTableScanDesc(node);
 
-	ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
+	ybScan = node->ss.ss_currentScanDesc->ybscan;
 
 	/*
 	 * If the bitmaps have exceeded work_mem just select everything from the
@@ -247,7 +247,6 @@ ExecYbBitmapTableScan(PlanState *pstate)
 static TableScanDesc
 CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 {
-	YbScanDesc	ybScan;
 	YbPushdownExprs *yb_pushdown;
 	TableScanDesc tsdesc;
 
@@ -268,29 +267,29 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 											  &plan.rel_pushdown),
 											 scanstate->ss.ps.state);
 
-
-	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
-						  NULL /* index */ ,
-						  false /* xs_want_itup */ ,
-						  0 /* nkeys */ ,
-						  NULL /* keys */ ,
-						  (Scan *) &plan /* pg_scan_plan */ ,
-						  yb_pushdown /* rel_pushdown */ ,
-						  NULL /* idx_pushdown */ ,
-						  scanstate->aggrefs /* aggrefs */ ,
-						  0 /* distinct_prefixlen */ ,
-						  &scanstate->ss.ps.state->yb_exec_params,
-						  false /* is_internal_scan */ ,
-						  false /* fetch_ybctids_only */ );
+	tsdesc = palloc(sizeof(TableScanDescData));
+	tsdesc->rs_rd = scanstate->ss.ss_currentRelation;
+	tsdesc->rs_snapshot = scanstate->ss.ps.state->es_snapshot;
+	tsdesc->rs_nkeys = 0;
+	tsdesc->rs_key = NULL;
+	tsdesc->rs_flags = SO_TYPE_BITMAPSCAN;
+	tsdesc->rs_parallel = NULL;
+	tsdesc->ybscan = YbBeginScan(tsdesc->rs_rd,
+								 NULL,	/* index */
+								 false,	/* xs_want_itup */
+								 tsdesc->rs_nkeys,
+								 tsdesc->rs_key,
+								 (Scan *) &plan,	/* pg_scan_plan */
+								 yb_pushdown,	/* rel_pushdown */
+								 NULL,	/* idx_pushdown */
+								 scanstate->aggrefs,	/* aggrefs */
+								 0,	/* distinct_prefixlen */
+								 &scanstate->ss.ps.state->yb_exec_params,
+								 false,	/* is_internal_scan */
+								 false);	/* fetch_ybctids_only */
 
 	if (yb_pushdown)
 		pfree(yb_pushdown);
-
-	/* Set up Postgres sys table scan description */
-	tsdesc = (TableScanDesc) ybScan;
-	tsdesc->rs_rd = scanstate->ss.ss_currentRelation;
-	tsdesc->rs_snapshot = scanstate->ss.ps.state->es_snapshot;
-	tsdesc->rs_flags = SO_TYPE_BITMAPSCAN;
 
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
@@ -299,7 +298,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 
 		if (recheck_pushdown)
 		{
-			YbApplyPrimaryPushdown(ybScan->handle, recheck_pushdown);
+			YbApplyPrimaryPushdown(tsdesc->ybscan->handle, recheck_pushdown);
 			pfree(recheck_pushdown);
 		}
 	}

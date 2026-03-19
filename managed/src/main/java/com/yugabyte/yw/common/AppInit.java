@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SlowQueriesAggregator;
@@ -42,6 +43,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -107,6 +109,7 @@ public class AppInit {
       AutoMasterFailoverScheduler autoMasterFailoverScheduler,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RedactSecretsFromAudit redactSecretsFromAudit,
       RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
@@ -140,11 +143,17 @@ public class AppInit {
       JobScheduler jobScheduler,
       NodeAgentEnabler nodeAgentEnabler,
       RoleBindingUtil roleBindingUtil,
-      SlowQueriesAggregator slowQueriesAggregator)
+      SlowQueriesAggregator slowQueriesAggregator,
+      EmbeddedCollectorInitializer embeddedCollectorInitializer)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
       setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+      String displayVersion = Util.getYbaVersion();
+      if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+        displayVersion = displayVersion + " (FIPS)";
+      }
+      log.info("YBA version: {}", displayVersion);
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
@@ -302,6 +311,9 @@ public class AppInit {
         perfRecGC.start();
 
         setUniverseKey.start();
+
+        // Start the background task to redact secrets from audit table.
+        redactSecretsFromAudit.start();
         // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
         refreshKmsService.start();
 
@@ -354,6 +366,8 @@ public class AppInit {
 
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
+
+        embeddedCollectorInitializer.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

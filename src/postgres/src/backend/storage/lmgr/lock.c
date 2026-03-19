@@ -381,7 +381,7 @@ static void GetSingleProcBlockerStatusData(PGPROC *blocked_proc,
 										   BlockedProcsData *data);
 
 static YbcObjectLockId
-GetYBObjectLockId(const LOCKTAG *locktag)
+GetYbObjectLockId(const LOCKTAG *locktag)
 {
 	return (YbcObjectLockId)
 	{
@@ -390,6 +390,34 @@ GetYBObjectLockId(const LOCKTAG *locktag)
 			.object_oid = locktag->locktag_field3,
 			.object_sub_oid = locktag->locktag_field4,
 	};
+}
+
+int
+YbNumSessionObjectLocks()
+{
+	HASH_SEQ_STATUS status;
+	LOCALLOCK  *locallock;
+	LOCKMETHODID lockmethodid = DEFAULT_LOCKMETHOD;
+	ResourceOwner owner = NULL;
+	hash_seq_init(&status, LockMethodLocalHash);
+	int			num_session_locks = 0;
+	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+	{
+		if (LOCALLOCK_LOCKMETHOD(*locallock) != lockmethodid)
+			continue;
+
+		LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+		for (int i = locallock->numLockOwners - 1; i >= 0; i--)
+		{
+			if (lockOwners[i].owner == owner)
+			{
+				num_session_locks++;
+				/* We allow at most one session lock on any object immaterial of lockmode. */
+				break;
+			}
+		}
+	}
+	return num_session_locks;
 }
 
 /*
@@ -840,11 +868,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	{
 		return LOCKACQUIRE_OK;
 	}
-	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED && sessionLock)
-	{
-		/* YB Note: Until #27120 is addressed, ignore session lock request */
-		return LOCKACQUIRE_ALREADY_HELD;
-	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -928,7 +951,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 * If lockCleared is already set, caller need not worry about absorbing
 	 * sinval messages related to the lock's object.
 	 */
-	if (locallock->nLocks > 0)
+	if (locallock->nLocks > 0 && !sessionLock) /* YB: session locks go to the tserver */
 	{
 		GrantLockLocal(locallock, owner);
 		if (locallock->lockCleared)
@@ -960,7 +983,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		if (LockTimeout > 0)
 			enable_timeout_after(LOCK_TIMEOUT, LockTimeout);
 
-		YbcStatus status = YBCAcquireObjectLock(GetYBObjectLockId(locktag), (YbcObjectLockMode) lockmode);
+		YbcStatus status = YBCAcquireObjectLock(GetYbObjectLockId(locktag), (YbcObjectLockMode) lockmode, sessionLock);
 
 		if (LockTimeout > 0)
 			disable_timeout(LOCK_TIMEOUT, false);
@@ -2078,11 +2101,6 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	{
 		return true;
 	}
-	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED && sessionLock)
-	{
-		/* YB Note: Until #27120 is addressed, ignore session lock request */
-		return true;
-	}
 
 	if (lockmethodid <= 0 || lockmethodid >= lengthof(LockMethods))
 		elog(ERROR, "unrecognized lock method: %d", lockmethodid);
@@ -2163,6 +2181,12 @@ LockRelease(const LOCKTAG *locktag, LOCKMODE lockmode, bool sessionLock)
 	 * done.
 	 */
 	locallock->nLocks--;
+
+	if (sessionLock)
+	{
+		HandleYBStatus(YBCReleaseSessionObjectLock(GetYbObjectLockId(locktag),
+												   YbNumSessionObjectLocks() == 0));
+	}
 
 	if (locallock->nLocks > 0)
 		return true;
@@ -2340,6 +2364,7 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 	 */
 	hash_seq_init(&status, LockMethodLocalHash);
 
+	bool yb_has_active_session_locks = false;
 	while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
 	{
 		/*
@@ -2361,6 +2386,8 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 		 * If we are asked to release all locks, we can just zap the entry.
 		 * Otherwise, must scan to see if there are session locks. We assume
 		 * there is at most one lockOwners entry for session locks.
+		 *
+		 * YB Note: Explicitly release session locks for allLocks == true.
 		 */
 		if (!allLocks)
 		{
@@ -2387,6 +2414,15 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 			}
 			else
 				locallock->numLockOwners = 0;
+		}
+		else if (lockmethodid == DEFAULT_LOCKMETHOD && !yb_has_active_session_locks)
+		{
+			LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+			for (i = 0; i < locallock->numLockOwners; i++)
+			{
+				if (lockOwners[i].owner == NULL)
+					yb_has_active_session_locks = true;
+			}
 		}
 
 #ifdef USE_ASSERT_CHECKING
@@ -2473,6 +2509,15 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allLocks)
 
 	if (yb_object_lock_mode == YB_OBJECT_LOCK_ENABLED)
 	{
+		if (yb_has_active_session_locks)
+		{
+			/*
+			 * YB Note: Any failure on tserver side would lead to FATAL of
+			 * the backend, forcing tserver to release locks of the session.
+			 */
+			HandleYBStatus(YBCReleaseSessionObjectLock((YbcObjectLockId){},
+													   true));
+		}
 		return;
 	}
 	/*
@@ -4969,3 +5014,41 @@ LockWaiterCount(const LOCKTAG *locktag)
 
 	return waiters;
 }
+
+bool
+YbLockHeldOnObjectBySession(const LOCKTAG *locktag)
+{
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+	LOCALLOCKTAG localtag;
+	LOCALLOCK  *locallock;
+
+	MemSet(&localtag, 0, sizeof(localtag));
+	localtag.lock = *locktag;
+	for (LOCKMODE lockmode = AccessShareLock;
+		 lockmode <= MaxLockMode;
+		 lockmode++)
+	{
+		localtag.mode = lockmode;
+		locallock = (LOCALLOCK *) hash_search(LockMethodLocalHash,
+											  (void *) &localtag,
+											  HASH_FIND, NULL);
+		if (!locallock || locallock->nLocks < 1)
+			continue;
+		LOCALLOCKOWNER *lockOwners = locallock->lockOwners;
+		for (int i = 0; i < locallock->numLockOwners; i++)
+		{
+			if (lockOwners[i].owner == NULL)
+				return true;
+		}
+	}
+	return false;
+}
+
+#ifdef USE_ASSERT_CHECKING
+int
+YbGetNumTxnLocks()
+{
+	Assert(YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED);
+	return hash_get_num_entries(GetLockMethodLocalHash()) - YbNumSessionObjectLocks();
+}
+#endif

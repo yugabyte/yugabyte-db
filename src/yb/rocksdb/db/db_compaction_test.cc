@@ -32,6 +32,8 @@
 
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
+#include "yb/storage/storage_test_util.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/priority_thread_pool.h"
@@ -237,7 +239,7 @@ void TestFlushedOpId(bool compact, DBCompactionTest* test) {
   const size_t kNumBatches = 4;
   for (size_t i = 0; i != kNumBatches; ++i) {
     WriteBatch batch;
-    test::TestUserFrontiers frontiers(1 + i, 1 + i);
+    yb::storage::TestUserFrontiers frontiers(1 + i, 1 + i);
     batch.SetFrontiers(&frontiers);
     batch.Put(std::to_string(i), std::to_string(-i));
 
@@ -246,7 +248,8 @@ void TestFlushedOpId(bool compact, DBCompactionTest* test) {
     ASSERT_OK(test->dbfull()->Write(write_options, &batch));
     ASSERT_OK(test->dbfull()->TEST_FlushMemTable(true));
     ASSERT_EQ(1 + i,
-              down_cast<test::TestUserFrontier&>(*test->dbfull()->GetFlushedFrontier()).Value());
+              down_cast<yb::storage::TestUserFrontier&>(
+                  *test->dbfull()->GetFlushedFrontier()).Value());
   }
 
   std::vector<LiveFileMetaData> files;
@@ -267,7 +270,8 @@ void TestFlushedOpId(bool compact, DBCompactionTest* test) {
   ASSERT_OK(test->TryReopen(options));
 
   ASSERT_EQ(kNumBatches,
-            down_cast<test::TestUserFrontier&>(*test->dbfull()->GetFlushedFrontier()).Value());
+            down_cast<yb::storage::TestUserFrontier&>(
+                *test->dbfull()->GetFlushedFrontier()).Value());
 }
 
 } // namespace

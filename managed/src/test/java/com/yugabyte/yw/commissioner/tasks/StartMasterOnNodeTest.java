@@ -109,7 +109,9 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       lenient().when(listMastersResponse.getPeersList()).thenReturn(Collections.emptyList());
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
-      when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
+      lenient()
+          .when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
       fail();
     }

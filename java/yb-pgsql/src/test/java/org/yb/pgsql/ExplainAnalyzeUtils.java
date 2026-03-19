@@ -63,6 +63,8 @@ public class ExplainAnalyzeUtils {
 
   public static final String QUERY_ID = "Query Identifier";
 
+  public static final String PLAN_ID = "Plan Identifier";
+
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
     TopLevelCheckerBuilder storageReadRequests(ValueChecker<Long> checker);
@@ -76,6 +78,8 @@ public class ExplainAnalyzeUtils {
     TopLevelCheckerBuilder storageFlushRequests(ValueChecker<Long> checker);
     TopLevelCheckerBuilder storageFlushExecutionTime(ValueChecker<Double> checker);
     TopLevelCheckerBuilder storageExecutionTime(ValueChecker<Double> checker);
+    TopLevelCheckerBuilder readMetrics(ObjectChecker checker);
+    TopLevelCheckerBuilder writeMetrics(ObjectChecker checker);
   }
 
   public interface PlanCheckerBuilder extends ObjectCheckerBuilder {
@@ -139,6 +143,7 @@ public class ExplainAnalyzeUtils {
 
     // DocDB Metric
     PlanCheckerBuilder readMetrics(ObjectChecker checker);
+    PlanCheckerBuilder writeMetrics(ObjectChecker checker);
   }
 
   public interface MetricsCheckerBuilder extends ObjectCheckerBuilder {
@@ -359,5 +364,39 @@ public class ExplainAnalyzeUtils {
       return queryId;
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  public static long getExplainPlanId(Statement stmt, String query)
+  throws Exception {
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json, PLANID on) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      long planId = rootArray.get(0).getAsJsonObject().get(PLAN_ID).getAsLong();
+
+      return planId;
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
+  }
+
+  public static String getExplainOutput(Statement stmt, String query,
+                                        String format,
+                                        boolean analyze,
+                                        boolean costs,
+                                        boolean debug,
+                                        boolean dist,
+                                        boolean summary,
+                                        boolean timing,
+                                        boolean verbose) throws Exception {
+    String explainQuery = String.format(
+        "EXPLAIN (FORMAT %s, ANALYZE %b, COSTS %b, DEBUG %b, DIST %b, SUMMARY %b, " +
+        "TIMING %b, VERBOSE %b) %s", format, analyze, costs, debug, dist, summary, timing,
+        verbose, query);
+
+    ResultSet rs = stmt.executeQuery(explainQuery);
+    assertTrue(rs.next());
+    return rs.getString(1);
   }
 }

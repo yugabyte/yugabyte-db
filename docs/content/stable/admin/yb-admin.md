@@ -2395,7 +2395,7 @@ yb-admin \
 * *source-master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *replication-group-id*: The replication group identifier.
 * *namespace_names*: Comma-separated list of namespaces.
-* `automatic_ddl_mode`: Use Automatic xCluster mode. {{<tags/feature/ea idea="2176">}}
+* `automatic_ddl_mode`: Use [xCluster automatic mode](../../deploy/multi-dc/async-replication/async-transactional-setup-automatic/).
 
 #### is_xcluster_bootstrap_required
 
@@ -2560,6 +2560,40 @@ yb-admin \
 ---
 
 ### Decommissioning commands
+
+#### are_nodes_safe_to_take_down
+
+Checks whether the specified nodes can be taken down without losing quorum. Use this before planned maintenance (for example, rolling upgrades or reboots) to ensure that taking down the given tablet servers or masters will not cause loss of replication quorum.
+
+Available in YugabyteDB versions {{<release "2024.2.8.0">}} and later, {{<release "2025.1.4.0">}} and later, and {{<release "2025.2">}}.
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    are_nodes_safe_to_take_down <server-uuids> [follower_lag_bound_ms]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *server-uuids*: Comma-separated list of YB-TServer or YB-Master server UUIDs to check. Obtain UUIDs using `list_all_tablet_servers` and `list_all_masters`.
+* `follower_lag_bound_ms`: Optional. Maximum allowed follower lag in milliseconds. Default is `1000`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    are_nodes_safe_to_take_down 000033eb000030008000000000004002
+```
+
+To check multiple nodes with a custom follower lag bound (for example, 2000 ms):
+
+```sh
+./bin/yb-admin \
+    --master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    are_nodes_safe_to_take_down 1b9486461cdd48f59eb46b33992cd73a, c0505f1d31774a3d88fae26ce14cde10 2000
+```
 
 #### get_leader_blacklist_completion
 

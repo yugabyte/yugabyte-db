@@ -78,5 +78,5 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../../the-sql-language/statements/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../../the-sql-language/statements/ddl_drop_sequence/)
+- [CREATE SEQUENCE](../../../the-sql-language/statements/ddl_create_sequence)
+- [DROP SEQUENCE](../../../the-sql-language/statements/ddl_drop_sequence/)

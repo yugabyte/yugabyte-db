@@ -141,9 +141,17 @@ class YsqlRoleProfileDuringMajorUpgradeTest : public pgwrapper::PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_major_version_upgrade_compatibility) = version;
     return RestartCluster();
   }
+
+  Result<pgwrapper::PGConn> ConnectToPGWithTimeout(size_t timeout) {
+    auto conn_settings = pgwrapper::PgMiniTestBase::MakeConnSettings("yugabyte");
+    conn_settings.connect_timeout = 20;
+    return pgwrapper::PGConnBuilder(conn_settings).Connect();
+  }
 };
 
 TEST_F(YsqlRoleProfileDuringMajorUpgradeTest, RoleProfileWritesDisabled) {
+  // Additional time to wait to establish a SQL connection after cluster restart.
+  constexpr size_t kConnectionAfterRestartTimeout = 10;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE PROFILE profile_5_failed LIMIT FAILED_LOGIN_ATTEMPTS 5"));
   ASSERT_OK(conn.Execute("CREATE ROLE non_reset_user WITH LOGIN PASSWORD 'secret'"));
@@ -187,6 +195,8 @@ TEST_F(YsqlRoleProfileDuringMajorUpgradeTest, RoleProfileWritesDisabled) {
 
   // Simulate major version upgrade by setting ysql_yb_major_version_upgrade_compatibility to 11.
   ASSERT_OK(SetMajorUpgradeCompatibility(11));
+  // Use a long timeout to ensure the tserver running pg has time to acquire a ysql lease.
+  ASSERT_OK(ConnectToPGWithTimeout(kConnectionAfterRestartTimeout * kTimeMultiplier));
 
   // non_reset_user should successfully log in with the correct password. It should not lead to the
   // failed login counter getting reset to 0.
@@ -206,6 +216,8 @@ TEST_F(YsqlRoleProfileDuringMajorUpgradeTest, RoleProfileWritesDisabled) {
 
   // Set major version upgrade as completed now.
   ASSERT_OK(SetMajorUpgradeCompatibility(0));
+  // Use a long timeout to ensure the tserver running pg has time to acquire a ysql lease.
+  ASSERT_OK(ConnectToPGWithTimeout(kConnectionAfterRestartTimeout * kTimeMultiplier));
 
   ASSERT_OK(attempt_login("non_reset_user", "secret"));
   ASSERT_NOK(attempt_login("non_increment_user", "wrong_password"));

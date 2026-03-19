@@ -136,3 +136,30 @@ INSERT INTO bkt_tbl (r1, r2, r3, r4, r5) SELECT r1, r2, r3, r4, r5 FROM r5n;
 -- Analyze
 --
 ANALYZE r5n, h3r2n, parent, bkt_tbl;
+
+--
+-- Colocated
+--
+CREATE DATABASE co WITH colocation = true;
+\c co
+
+CREATE TABLE r5n (
+    n int GENERATED ALWAYS AS ((r1 + r2 * 10 + r3 * 100 + r4 * 1000 + r5 * 10000)::int) STORED,
+    r5 float8,
+    r3 int,
+    r1 int2,
+    r2 int8,
+    r4 numeric,
+    PRIMARY KEY (r1 ASC, r2, r3, r4, r5));
+WITH g(i) AS (
+    SELECT generate_series(0, 9)
+), rows AS (
+    INSERT INTO r5n (r1, r2, r3, r4, r5)
+    SELECT a.i, b.i, c.i, d.i, e.i
+    FROM g a, g b, g c, g d, g e
+    WHERE yb_hash_code(a.i, b.i, c.i, d.i, e.i) / 65535::float < 0.05
+    RETURNING 1
+) SELECT count(*) FROM rows;
+
+ANALYZE r5n;
+

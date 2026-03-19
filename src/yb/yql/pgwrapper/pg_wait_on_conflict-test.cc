@@ -1003,7 +1003,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   // looping over the computed wait-for probes and sending information requests. The test ensures
   // that concurrent changes to the wait-for probes are safe. Concurrent changes to the wait-for
   // probes are forced by having multiple transactions contend for locks in a sequential order.
-  SetAtomicFlag(200 * kTimeMultiplier, &FLAGS_TEST_sleep_amidst_iterating_blockers_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_amidst_iterating_blockers_ms) = 200 * kTimeMultiplier;
   auto setup_conn = ASSERT_RESULT(Connect());
 
   constexpr int kClients = 5;

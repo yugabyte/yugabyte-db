@@ -61,16 +61,18 @@ YbSeqNext(YbSeqScanState *node)
 	TupleTableSlot *slot;
 	ExprContext *econtext;
 	MemoryContext oldcontext;
+	TableScanDesc tsdesc;
 	YbScanDesc	ybScan;
 
 	estate = node->ss.ps.state;
 	econtext = node->ss.ps.ps_ExprContext;
 	slot = node->ss.ss_ScanTupleSlot;
+	tsdesc = node->ss.ss_currentScanDesc;
 
 	/*
 	 * Initialize the scandesc upon the first invocation.
 	 */
-	if (node->ss.ss_currentScanDesc == NULL)
+	if (tsdesc == NULL)
 	{
 		if (node->aggrefs)
 		{
@@ -92,26 +94,31 @@ YbSeqNext(YbSeqScanState *node)
 		YbPushdownExprs *yb_pushdown =
 			YbInstantiatePushdownExprs(&plan->yb_pushdown, estate);
 
-		ybScan = ybcBeginScan(node->ss.ss_currentRelation,
-							  NULL, /* index */
-							  false,	/* xs_want_itup */
-							  0,	/* nkeys */
-							  NULL, /* key */
-							  (Scan *) plan,
-							  yb_pushdown,	/* rel_pushdown */
-							  NULL, /* idx_pushdown */
-							  node->aggrefs,
-							  0,	/* distinct_prefixlen */
-							  &estate->yb_exec_params,
-							  false,	/* is_internal_scan */
-							  false);	/* fetch_ybctids_only */
+		node->ss.ss_currentScanDesc = tsdesc =
+			palloc(sizeof(TableScanDescData));
+		tsdesc->rs_rd = node->ss.ss_currentRelation;
+		tsdesc->rs_snapshot = estate->es_snapshot;
+		tsdesc->rs_nkeys = 0;
+		tsdesc->rs_key = NULL;
+		tsdesc->rs_flags = SO_TYPE_SEQSCAN;
+		tsdesc->rs_parallel = NULL;
+		tsdesc->ybscan = ybScan = YbBeginScan(tsdesc->rs_rd,
+											  NULL,	/* index */
+											  false,	/* xs_want_itup */
+											  tsdesc->rs_nkeys,
+											  tsdesc->rs_key,
+											  (Scan *) plan,
+											  yb_pushdown,	/* rel_pushdown */
+											  NULL,	/* idx_pushdown */
+											  node->aggrefs,
+											  0,	/* distinct_prefixlen */
+											  &estate->yb_exec_params,
+											  false,	/* is_internal_scan */
+											  false);	/* fetch_ybctids_only */
 		ybScan->pscan = node->pscan;
-		ybScan->rs_base.rs_snapshot = estate->es_snapshot;
-		ybScan->rs_base.rs_flags = SO_TYPE_SEQSCAN;
-		node->ss.ss_currentScanDesc = (TableScanDesc) ybScan;
 	}
 	else
-		ybScan = (YbScanDesc) node->ss.ss_currentScanDesc;
+		ybScan = tsdesc->ybscan;
 
 	/*
 	 * Set up any locking that happens at the time of the scan.
@@ -179,9 +186,11 @@ YbSeqNext(YbSeqScanState *node)
 										&low_bound, &low_bound_size,
 										&high_bound, &high_bound_size))
 				{
-					HandleYBStatus(YBCPgDmlBindRange(ybScan->handle, low_bound,
-													 low_bound_size, high_bound,
-													 high_bound_size));
+					HandleYBStatus(YBCPgDmlApplyParallelRange(ybScan->handle,
+															  low_bound,
+															  low_bound_size,
+															  high_bound,
+															  high_bound_size));
 					if (low_bound)
 						pfree((void *) low_bound);
 					if (high_bound)
@@ -435,7 +444,7 @@ ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
 	EState	   *estate = node->ss.ps.state;
 	YBParallelPartitionKeys pscan = node->pscan;
 
-	yb_init_partition_key_data(pscan);
+	yb_rescan_partition_key_data(pscan);
 	ybParallelPrepare(pscan, node->ss.ss_currentRelation,
 					  &estate->yb_exec_params, true /* is_forward */ );
 }

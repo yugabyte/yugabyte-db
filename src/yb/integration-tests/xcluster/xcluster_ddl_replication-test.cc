@@ -33,6 +33,8 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller_stats.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -68,6 +70,7 @@ DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_start);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_before_incremental_safe_time_bump);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_ddl);
+DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
@@ -89,8 +92,11 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
   Status SetUpClustersAndCheckpointReplicationGroup(
       const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
     RETURN_NOT_OK(SetUpClusters(params));
+    LOG(INFO) << "SetupClusters done";
+
     RETURN_NOT_OK(
         CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+    LOG(INFO) << "CheckpointReplicationGroup done";
     // Bootstrap here would have no effect because the database is empty so we skip it for the test.
     return Status::OK();
   }
@@ -98,7 +104,10 @@ class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {
   Status SetUpClustersAndReplication(
       const SetupParams& params = XClusterDDLReplicationTestBase::kDefaultParams) {
     RETURN_NOT_OK(SetUpClustersAndCheckpointReplicationGroup(params));
+    LOG(INFO) << "SetUpClustersAndCheckpointReplicationGroup done";
+
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
+    LOG(INFO) << "CreateReplicationFromCheckpoint done";
     return Status::OK();
   }
 
@@ -160,7 +169,24 @@ TEST_F(XClusterDDLReplicationTest, CheckSequenceDataTable) {
   }));
 }
 
-TEST_F(XClusterDDLReplicationTest, BasicSetupAlterTeardown) {
+class XClusterDDLReplicationConcurrentDDLTest : public XClusterDDLReplicationTest,
+                                                public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    auto original_value = FLAGS_ysql_pg_conf_csv;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
+        "$0$1yb_enable_concurrent_ddl=$2", original_value,
+        original_value.empty() ? "" : ",", GetParam());
+    XClusterDDLReplicationTest::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    ConcurrentDDLDisabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(false));
+INSTANTIATE_TEST_CASE_P(
+    ConcurrentDDLEnabled, XClusterDDLReplicationConcurrentDDLTest, ::testing::Values(true));
+
+TEST_P(XClusterDDLReplicationConcurrentDDLTest, BasicSetupAlterTeardown) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   auto source_xcluster_client = client::XClusterClient(*producer_client());
@@ -557,6 +583,44 @@ TEST_F(XClusterDDLReplicationTest, CreateTable) {
   InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name_new_user);
 }
 
+TEST_F(XClusterDDLReplicationTest, TableInNonDefaultSchema) {
+  ASSERT_OK(SetUpClustersAndReplication());
+  // Create a table in a different schema and run DDLs on it while connected to the default schema.
+  const std::string kSchemaName = "other_schema";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0", kSchemaName));
+
+  const std::string kTableName = "test_tbl";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0.$1 (key int PRIMARY KEY)", kSchemaName, kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0.$1 VALUES (1)", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+
+  // Perform a table rewrite on the table to test recreating the table with the same name.
+  ASSERT_OK(producer_conn_->ExecuteFormat("TRUNCATE TABLE $0.$1", kSchemaName, kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0.$1 VALUES (2)", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+
+  // Also validate that connecting to this schema is also handled.
+  ASSERT_OK(producer_conn_->ExecuteFormat("SET search_path TO $0", kSchemaName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("TRUNCATE TABLE $0", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (3)", kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
+}
+
+TEST_F(XClusterDDLReplicationTest, CreateTableWithNonZeroLogicalCommitTime) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Ensure that the ddl_queue poller handles commit times with non-zero logical components.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_increment_logical_commit_time) = true;
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table_1 (key int PRIMARY KEY);"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table_1 VALUES (1);"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords(std::vector<TableName>{"test_table_1"}));
+}
+
 TEST_F(XClusterDDLReplicationTest, CreateTableInExistingConnection) {
   ASSERT_OK(SetUpClusters());
   {
@@ -910,6 +974,161 @@ TEST_F(XClusterDDLReplicationTest, NonconcurrentBackfillsWithPartitions) {
   ASSERT_OK(p_conn.ExecuteFormat(
       "CREATE UNIQUE INDEX ON $0($1, $2);", kPartitionedTableName, kKeyColumnName, kColumn2Name));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+}
+
+TEST_F(XClusterDDLReplicationTest, DropInvalidIndexDoesNotHaltReplication) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kBaseTableName = "test_invalid_idx";
+  const std::string kIndexName = "idx_invalid";
+  const std::string kColumn2Name = "value";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int);", kBaseTableName, kKeyColumnName,
+      kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Insert rows with duplicate values to cause unique index creation to fail.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1, 10), (2, 10), (3, 20);", kBaseTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kBaseTableName}));
+
+  // Create unique index fails due to duplicate key violation.
+  auto create_result = producer_conn_->ExecuteFormat(
+      "CREATE UNIQUE INDEX $0 ON $1($2)", kIndexName, kBaseTableName, kColumn2Name);
+  ASSERT_NOK(create_result);
+  ASSERT_STR_CONTAINS(create_result.ToString(), "duplicate key");
+
+  // Verify index is invalid on producer.
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)))
+      << "Index should be INVALID";
+
+  // Verify invalid index was not replicated to consumer using consumer_conn_ directly.
+  auto consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_FALSE(consumer_index_exists) << "INVALID index should not exist on consumer";
+
+  // Drop the invalid index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+
+  // Verify replication continues by writing more rows to the original table.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (4, 30), (5, 40);", kBaseTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kBaseTableName}));
+}
+
+
+TEST_F(XClusterDDLReplicationTest, DropPartitionedIndexOnOnlyReplicates) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kParentTableName = "test_partitioned";
+  const std::string kPartitionName = "test_partitioned_p1";
+  const std::string kIndexName = "idx_partitioned_only";
+  const std::string kColumn2Name = "value";
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY, $2 int) PARTITION BY RANGE ($1);",
+      kParentTableName, kKeyColumnName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0 PARTITION OF $1 FOR VALUES FROM (1) TO (100);",
+      kPartitionName, kParentTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // ON ONLY creates an index marked invalid until attached to a partition index.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON ONLY $1($2)", kIndexName, kParentTableName, kColumn2Name));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify index is invalid on producer.
+  ASSERT_FALSE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)))
+      << "Index should be INVALID on producer";
+
+  // Verify the invalid index was replicated to consumer.
+  auto consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_TRUE(consumer_index_exists) << "Partitioned index should exist on consumer";
+
+  // Create a child index and attach it to verify the ATTACH PARTITION path.
+  const std::string kPartIdxName = "idx_partition_child";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE INDEX $0 ON $1($2)", kPartIdxName, kPartitionName, kColumn2Name));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ATTACH PARTITION $1", kIndexName, kPartIdxName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify parent index is now valid on both clusters.
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*producer_conn_, kIndexName)));
+  ASSERT_TRUE(ASSERT_RESULT(IsIndexValid(*consumer_conn_, kIndexName)))
+      << "Attached index did not become valid on consumer";
+
+  // Cleanup: drop the parent index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify the drop was replicated.
+  consumer_index_exists = ASSERT_RESULT(consumer_conn_->FetchRow<bool>(Format(
+      "SELECT EXISTS(SELECT 1 FROM pg_class WHERE relname = '$0')", kIndexName)));
+  ASSERT_FALSE(consumer_index_exists) << "Dropped index should not exist on consumer";
+
+  // Verify replication continues.
+  const std::string kSecondTableName = "verify_replication_works2";
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0($1 int PRIMARY KEY);", kSecondTableName, kKeyColumnName));
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (1), (2), (3);", kSecondTableName));
+
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kSecondTableName}));
+}
+
+TEST_F(XClusterDDLReplicationTest, AlterPhantomIndexLifecycleDoesNotHaltReplication) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  const std::string kTableName = "schema_test_table";
+  const std::string kIdxName = "idx_phantom_schema";
+  const std::string kIdxNewName = "idx_phantom_renamed";
+  const std::string kSchemaName = "new_index_schema";
+
+  // Setup table with duplicate data and a new schema.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, val int);", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 10), (2, 10);", kTableName));
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE SCHEMA $0;", kSchemaName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Create unique index fails on producer and is not created on consumer.
+  ASSERT_NOK_STR_CONTAINS(
+      producer_conn_->ExecuteFormat(
+          "CREATE UNIQUE INDEX $0 ON $1((val + 0));", kIdxName, kTableName),
+      "duplicate key");
+
+  // ALTER INDEX attribute change on the phantom index.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER INDEX $0 ALTER COLUMN 1 SET STATISTICS 100;", kIdxName));
+
+  // ALTER INDEX tablespace change on the phantom index.
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLESPACE dummy_ts LOCATION '/tmp/dummy_path';"));
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER INDEX $0 SET TABLESPACE dummy_ts;", kIdxName));
+
+  // Rename the phantom index.
+  ASSERT_OK(producer_conn_->ExecuteFormat("ALTER INDEX $0 RENAME TO $1;", kIdxName, kIdxNewName));
+
+  // Move the parent table to a new schema (indexes follow implicitly).
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "ALTER TABLE $0 SET SCHEMA $1;", kTableName, kSchemaName));
+
+  // Drop the phantom index (renamed, now in the new schema).
+  ASSERT_OK(producer_conn_->ExecuteFormat("DROP INDEX $0.$1;", kSchemaName, kIdxNewName));
+
+  // Verify replication continues by writing more rows to the original table.
+  ASSERT_OK(producer_conn_->ExecuteFormat(
+      "INSERT INTO $0.$1 VALUES (3, 30), (4, 40);", kSchemaName, kTableName));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(VerifyWrittenRecords({kTableName}, /*database_name=*/"", kSchemaName));
 }
 
 TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
@@ -4393,6 +4612,44 @@ TEST_F(XClusterDDLReplicationTest, ReplicationSlotCommandsNotReplicated) {
       consumer_repl_conn.Fetch("CREATE_REPLICATION_SLOT consumer_slot LOGICAL pgoutput"));
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_cdc_active_replication_slot_window_ms * 2));
   ASSERT_OK(consumer_repl_conn.Execute("DROP_REPLICATION_SLOT consumer_slot"));
+}
+
+TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  // Cause the target to fail CREATE TABLE DDLs.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  const auto kTableName = "test_table_fail_create";
+  ASSERT_OK(producer_conn_->ExecuteFormat("CREATE TABLE $0 (key int PRIMARY KEY);", kTableName));
+
+  // Wait for DDL replication to pause after hitting the retry limit.
+  ASSERT_OK(
+      StringWaiterLogSink("DDL replication is paused due to repeated failures").WaitFor(kTimeout));
+
+  auto consumer_ddl_queue_table = ASSERT_RESULT(GetYsqlTable(
+      &consumer_cluster_, namespace_name, xcluster::kDDLQueuePgSchemaName,
+      xcluster::kDDLQueueTableName));
+
+  auto* tserver = consumer_cluster()->mini_tablet_server(0)->server();
+  auto* xcluster_consumer = tserver->GetXClusterConsumer();
+  auto pollers_stats = xcluster_consumer->GetPollerStats();
+  bool found_ddl_queue_poller = false;
+  for (const auto& stat : pollers_stats) {
+    if (stat.consumer_table_id == consumer_ddl_queue_table.table_id()) {
+      found_ddl_queue_poller = true;
+      LOG(INFO) << "DDL queue poller stats: " << stat.status;
+
+      // Verify that the ddl_queue poller's error contains both the pause message and the original
+      // error message.
+      ASSERT_FALSE(stat.status.ok()) << "Expected ddl_queue poller to have an error status";
+      ASSERT_STR_CONTAINS(
+          stat.status.ToString(), "DDL replication is paused due to repeated failures");
+      ASSERT_STR_CONTAINS(stat.status.ToString(), "Failed DDL operation as requested");
+      break;
+    }
+  }
+  ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
 }
 
 }  // namespace yb

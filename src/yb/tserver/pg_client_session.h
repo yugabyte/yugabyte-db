@@ -74,6 +74,7 @@ namespace tserver {
     (WaitForBackendsCatalogVersion) \
     (AcquireAdvisoryLock) \
     (ReleaseAdvisoryLock) \
+    (ReleaseSessionObjectLock) \
     /**/
 
 // These methods may respond with Status::OK() and continue async processing (including network

@@ -432,7 +432,18 @@ set_authn_id(Port *port, const char *id)
 							   port->authn_id, id)));
 	}
 
-	port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
+	/*
+	 * YB: When handling an incoming auth request in Auth Passthrough mode,
+	 * the authn_id of the incoming client is not required after auth finishes.
+	 * Thus there is no need to store it in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * an explicit pfree elsewhere). So, we continue allocating in the txn
+	 * MemoryContext spawned specifically for Auth Passthrough auth attempts.
+	 */
+	if (YbIsAuthPassthroughInProgress(port))
+		port->authn_id = pstrdup(id);
+	else
+		port->authn_id = MemoryContextStrdup(TopMemoryContext, id);
 
 	if (Log_connections)
 	{

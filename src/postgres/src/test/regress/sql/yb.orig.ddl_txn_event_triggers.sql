@@ -1,0 +1,199 @@
+-- Test trigger behavior on tables created within the same transaction block.
+-- This ensures that the trigger execution engine, catalog lookups, and
+-- recursive I/O are consistent for uncommitted objects.
+
+-- Setup: An existing table for global auditing
+CREATE TABLE global_audit_log (
+    msg TEXT,
+    created_at TIMESTAMPTZ DEFAULT '2026-01-01 00:00:00+00'
+);
+
+-- 1. AFTER ROW TRIGGER: Writing to an EXISTING table
+BEGIN;
+CREATE TABLE trg_test_existing (id INT PRIMARY KEY, val TEXT);
+
+CREATE OR REPLACE FUNCTION audit_to_existing() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO global_audit_log (msg) VALUES ('Row added: ' || NEW.val);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_audit_existing
+AFTER INSERT ON trg_test_existing
+FOR EACH ROW EXECUTE FUNCTION audit_to_existing();
+
+INSERT INTO trg_test_existing VALUES (1, 'Data A');
+
+SELECT * FROM trg_test_existing;
+SELECT msg FROM global_audit_log;
+ROLLBACK;
+
+-- 2. AFTER ROW TRIGGER: Writing to ANOTHER NEW table
+BEGIN;
+CREATE TABLE source_new (id INT PRIMARY KEY, val TEXT);
+CREATE TABLE target_new (id INT PRIMARY KEY, source_val TEXT);
+
+CREATE OR REPLACE FUNCTION write_to_new_table() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO target_new VALUES (NEW.id, NEW.val);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_double_new
+AFTER INSERT ON source_new
+FOR EACH ROW EXECUTE FUNCTION write_to_new_table();
+
+INSERT INTO source_new VALUES (10, 'Data B');
+
+SELECT * FROM source_new;
+SELECT * FROM target_new;
+ROLLBACK;
+
+-- 3. BEFORE ROW TRIGGER: Modifying payload on NEW table
+BEGIN;
+CREATE TABLE before_test (id INT PRIMARY KEY, val TEXT);
+
+CREATE OR REPLACE FUNCTION modify_payload() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.val := UPPER(NEW.val);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_before
+BEFORE INSERT ON before_test
+FOR EACH ROW EXECUTE FUNCTION modify_payload();
+
+INSERT INTO before_test VALUES (5, 'lowercase');
+
+SELECT * FROM before_test;
+ROLLBACK;
+
+-- 4. UNIQUE CONSTRAINT WITH BEFORE TRIGGER MODIFICATION
+-- Ensures the index update correctly captures values modified by triggers.
+BEGIN;
+CREATE TABLE trigger_unique_test (id INT PRIMARY KEY, code TEXT);
+CREATE UNIQUE INDEX idx_code_unique ON trigger_unique_test (code);
+
+CREATE OR REPLACE FUNCTION normalize_code() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.code := UPPER(NEW.code);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_normalize
+BEFORE INSERT ON trigger_unique_test
+FOR EACH ROW EXECUTE FUNCTION normalize_code();
+
+-- Insert 'abc', trigger turns it into 'ABC'
+INSERT INTO trigger_unique_test VALUES (1, 'abc');
+SELECT * FROM trigger_unique_test WHERE code = 'ABC';
+
+-- This should fail because 'abc' was normalized to 'ABC'
+INSERT INTO trigger_unique_test VALUES (2, 'ABC');
+ROLLBACK;
+
+-- 5. RECURSIVE TRIGGER: Writing to SELF
+BEGIN;
+CREATE TABLE self_recursive (id INT PRIMARY KEY, val TEXT, is_auto BOOLEAN DEFAULT false);
+
+CREATE OR REPLACE FUNCTION write_to_self() RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.is_auto = false THEN
+        INSERT INTO self_recursive VALUES (NEW.id + 100, 'Auto: ' || NEW.val, true);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_self
+AFTER INSERT ON self_recursive
+FOR EACH ROW EXECUTE FUNCTION write_to_self();
+
+INSERT INTO self_recursive VALUES (1, 'Original');
+
+SELECT * FROM self_recursive ORDER BY id;
+ROLLBACK;
+
+-- 6. CROSS-ROW DEPENDENCY (THE "SWAP" TEST)
+BEGIN;
+CREATE TABLE trigger_swap_test (id INT PRIMARY KEY, val INT);
+CREATE UNIQUE INDEX idx_val_unique ON trigger_swap_test (val);
+
+CREATE OR REPLACE FUNCTION plus_one() RETURNS TRIGGER AS $$
+BEGIN
+    NEW.val := NEW.val + 1;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_plus_one
+BEFORE INSERT ON trigger_swap_test
+FOR EACH ROW EXECUTE FUNCTION plus_one();
+
+-- Session inserts 10, trigger makes it 11
+INSERT INTO trigger_swap_test VALUES (1, 10);
+-- Session inserts 11, trigger makes it 12
+INSERT INTO trigger_swap_test VALUES (2, 11);
+
+SELECT * FROM trigger_swap_test ORDER BY id;
+ROLLBACK;
+
+-- Test: Statement-level trigger on a new table during a bulk insert.
+BEGIN;
+CREATE TABLE stmt_test (id INT PRIMARY KEY);
+CREATE TABLE stmt_log (log_msg TEXT);
+
+-- Function for statement-level trigger (returns NULL as per PG standards)
+CREATE OR REPLACE FUNCTION log_stmt_action() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO stmt_log VALUES ('Bulk Insert Performed on stmt_test');
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger defined for STATEMENT, not ROW
+CREATE TRIGGER trg_stmt_bulk
+AFTER INSERT ON stmt_test
+FOR EACH STATEMENT EXECUTE FUNCTION log_stmt_action();
+
+-- Perform a bulk insert (5 rows)
+-- In DocDB, this might be a single RPC or a batched set of writes.
+INSERT INTO stmt_test SELECT generate_series(1, 5);
+
+-- Verify: 5 rows in data table, but only 1 row in log table
+SELECT COUNT(*) FROM stmt_test;
+SELECT * FROM stmt_log;
+ROLLBACK;
+
+-- Test: INSTEAD OF trigger on a View that redirects to a newly created table.
+BEGIN;
+-- 1. Create the physical storage (New Table)
+CREATE TABLE trigger_view_target (id INT PRIMARY KEY, val TEXT);
+
+-- 2. Create the View on that table
+CREATE VIEW v_trigger_test AS SELECT * FROM trigger_view_target;
+
+-- 3. Create the INSTEAD OF logic
+CREATE OR REPLACE FUNCTION redirect_to_table() RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO trigger_view_target VALUES (NEW.id, 'Redirected: ' || NEW.val);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_instead_of
+INSTEAD OF INSERT ON v_trigger_test
+FOR EACH ROW EXECUTE FUNCTION redirect_to_table();
+
+-- 4. Perform the INSERT on the VIEW
+INSERT INTO v_trigger_test VALUES (100, 'Original Input');
+
+-- 5. Verify: The view (and underlying table) should show the modified data
+SELECT * FROM v_trigger_test;
+SELECT * FROM trigger_view_target;
+
+ROLLBACK;

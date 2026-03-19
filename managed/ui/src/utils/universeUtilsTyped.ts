@@ -32,6 +32,18 @@ export const getReadOnlyClusters = (clusters: Cluster[]) => {
 };
 
 /**
+ * Given a cluster object, return the placement regions.
+ *
+ * Returns an empty array if no placement regions are found.
+ */
+export const getClusterPlacementRegions = (cluster: Cluster | null) => {
+  if (!cluster) {
+    return [];
+  }
+  return cluster.placementInfo?.cloudList?.flatMap((cloud) => cloud.regionList) ?? [];
+};
+
+/**
  * Regex for YB Software Version
  * ```
  * `

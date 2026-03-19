@@ -256,6 +256,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetLockStatus)
   (kGetReplicationSlot)
   (kListLiveTabletServers)
+  (kListSlotEntries)
   (kListReplicationSlots)
   (kGetIndexBackfillProgress)
   (kOpenTable)
@@ -298,6 +299,10 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kPollVectorIndexReady)
   (kGetXClusterRole)
   (kGetYbSystemTableInfo)
+  (kReleaseSessionObjectLock)
+  (kQueryAutoAnalyze)
+  (kGetTabletForKey)
+  (kRemotePgExec)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)

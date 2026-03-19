@@ -126,6 +126,12 @@ typedef struct ReplicationSlotPersistentData
 	 * replication slot.
 	 */
 	bool		yb_allow_tables_without_primary_key;
+
+	/*
+	 * YB: Whether the slot will use pub refresh mechanism or mechanism to poll sys
+	 * catalog tablet for detecting changes to publications.
+	 */
+	bool		yb_detect_publication_changes_implicitly;
 } ReplicationSlotPersistentData;
 
 /*

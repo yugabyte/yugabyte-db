@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.BundleDetails;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PromExportType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -55,7 +57,7 @@ public class SupportBundleHandler {
    * @param bundleData
    * @param universe
    */
-  public void bundleDataVaidation(SupportBundleFormData bundleData, Universe universe) {
+  public void bundleDataValidation(SupportBundleFormData bundleData, Universe universe) {
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
@@ -122,6 +124,34 @@ public class SupportBundleHandler {
             bundleData.promDumpStartDate, bundleData.promDumpEndDate)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "'promDumpStartDate' should be before the 'promDumpEndDate'");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && bundleData.promExportType == PromExportType.REMOTE_READ
+        && bundleData.promQueries != null
+        && !bundleData.promQueries.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Custom Prometheus queries (promQueries) are not supported when promExportType is"
+              + " REMOTE_READ. Clear promQueries or set promExportType to PROMQL.");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && (bundleData.promExportType == null || bundleData.promExportType == PromExportType.PROMQL)
+        && bundleData.promMetricsFormat == PrometheusMetricsFormat.PROM_CHUNK) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Binary format is not supported when promExportType is PROMQL. "
+              + "Clear promMetricsFormat or set promMetricsFormat to PROMQL_JSON.");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && (bundleData.promExportType == null || bundleData.promExportType == PromExportType.PROMQL)
+        && !bundleData.promDumpDownSample) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Export without downsampling is not allowed when promExportType is PROMQL. "
+              + "Set promDumpDownSample to true or use REMOTE_READ export method.");
     }
 
     // Vaidate that the given query names can be used as dir.
@@ -204,8 +234,7 @@ public class SupportBundleHandler {
           nodeComponentSizeMap.put(component.toString(), componentSize);
           resp.put(nodeName, nodeComponentSizeMap);
         } catch (InterruptedException | ExecutionException e) {
-          log.error("Error while getting file sizes for component: ", component.toString());
-          e.printStackTrace();
+          log.error("Error while getting file sizes for component: {}", component.toString(), e);
         }
       }
     } finally {
@@ -235,8 +264,7 @@ public class SupportBundleHandler {
           reachableNodes.add(p.getFirst());
         }
       } catch (InterruptedException | ExecutionException e) {
-        log.error("Error while collecting reachable nodes for universe: {}", universe.getName());
-        e.printStackTrace();
+        log.error("Error while collecting reachable nodes for universe: {}", universe.getName(), e);
       }
     }
     log.info(

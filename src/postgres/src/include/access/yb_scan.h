@@ -39,6 +39,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 extern PGDLLIMPORT int yb_parallel_range_rows;
+extern bool yb_test_skip_binding_scan_keys;
 
 /*
  * In fact, only initial fetch uses the default size, we estimate the number
@@ -152,26 +153,16 @@ typedef struct YbScanDescData
 #define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2)	/* A pair of lower/upper
 												 * bounds per column max */
 
-	/*
-	 * Base of a scan descriptor - Currently it is used either by
-	 * postgres::heap or Yugabyte. It contains basic information that defines
-	 * a scan.
-	 * - Relation: Which table to scan.
-	 * - Keys: Scan conditions. In YB ScanKey could be one of two types:
-	 *   - key for regular column
-	 *   - key which represents the yb_hash_code function.
-	 * The keys array holds keys of both types. All regular keys go before keys
-	 * for yb_hash_code. Keys in range [0, nkeys) are regular keys. Keys in
-	 * range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code. Such
-	 * separation allows to process regular and non-regular keys independently.
-	 */
-	TableScanDescData rs_base;
-
 	/* The handle for the internal YB Select statement. */
 	YbcPgStatement handle;
 	bool		is_exec_done;
 
-	/* Secondary index used in this scan. */
+	/*
+	 * These fields are constant and initialized during YbBeginScan.
+	 * "table" is the table (not index).  It is set even for Index Only Scan.
+	 * "index" is the index, if applicable.  NULL otherwise.
+	 */
+	Relation	table;
 	Relation	index;
 
 	/*
@@ -194,11 +185,11 @@ typedef struct YbScanDescData
 	List	   *hash_code_keys;
 
 	/*
-	 * True if all ordinary (non-yb_hash_code) keys are bound to pggate.  There
-	 * could be false negatives: it could say false when they are in fact all
-	 * bound.
+	 * True if any type of recheck (YB or PG) is needed because not all scan
+	 * keys are bound.  There could be false positives: it could say true when
+	 * recheck is actually not needed.
 	 */
-	bool		all_ordinary_keys_bound;
+	bool		needs_recheck;
 
 	/* Destination for queried data from Yugabyte database */
 	TupleDesc	target_desc;
@@ -273,8 +264,6 @@ extern void ybc_heap_endscan(TableScanDesc scanDesc);
  */
 extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
 														Snapshot snapshot,
-														int nkeys,
-														ScanKey key,
 														struct IndexInfo *indexInfo);
 
 
@@ -308,24 +297,19 @@ extern void YbApplyPrimaryPushdown(YbcPgStatement dml,
 extern void YbApplySecondaryIndexPushdown(YbcPgStatement dml,
 										  const YbPushdownExprs *pushdown);
 
-/*
- * The ybc_idx API is used to process the following SELECT.
- *   SELECT data FROM heapRelation WHERE rowid IN
- *     ( SELECT rowid FROM indexRelation WHERE key = given_value )
- */
-extern YbScanDesc ybcBeginScan(Relation relation,
-							   Relation index,
-							   bool xs_want_itup,
-							   int nkeys,
-							   ScanKey key,
-							   Scan *pg_scan_plan,
-							   YbPushdownExprs *rel_pushdown,
-							   YbPushdownExprs *idx_pushdown,
-							   List *aggrefs,
-							   int distinct_prefixlen,
-							   YbcPgExecParameters *exec_params,
-							   bool is_internal_scan,
-							   bool fetch_ybctids_only);
+extern YbScanDesc YbBeginScan(Relation table,
+							  Relation index,
+							  bool xs_want_itup,
+							  int nkeys,
+							  ScanKey keys,
+							  Scan *pg_scan_plan,
+							  YbPushdownExprs *rel_pushdown,
+							  YbPushdownExprs *idx_pushdown,
+							  List *aggrefs,
+							  int distinct_prefixlen,
+							  YbcPgExecParameters *exec_params,
+							  bool is_internal_scan,
+							  bool fetch_ybctids_only);
 
 /* Returns whether the given populated ybScan needs PG recheck. */
 extern bool YbNeedsPgRecheck(YbScanDesc ybScan);
@@ -427,6 +411,7 @@ extern int	ybParallelWorkers(double numrows);
 
 extern Size yb_estimate_parallel_size(void);
 extern void yb_init_partition_key_data(void *data);
+extern void yb_rescan_partition_key_data(void *data);
 extern void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 							  YbcPgExecParameters *exec_params,
 							  bool is_forward);

@@ -79,6 +79,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus,
           TaskType.RunHooks, // PostNodeProvision
+          TaskType.CheckDbNodePortConnectivity,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers,

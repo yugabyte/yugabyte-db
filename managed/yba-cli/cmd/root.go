@@ -19,6 +19,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/group"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ha"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/rbac"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/release"
@@ -140,6 +141,7 @@ func init() {
 	rootCmd.AddCommand(customer.CustomerCmd)
 	rootCmd.AddCommand(group.GroupsCmd)
 	rootCmd.AddCommand(ldap.LdapCmd)
+	rootCmd.AddCommand(ha.HACmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	addGroupsCmd(rootCmd)

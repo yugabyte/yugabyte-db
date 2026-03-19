@@ -8,12 +8,11 @@
  */
 
 import React, { useContext, useEffect } from 'react';
-import Select from 'react-select';
+import Select, { components } from 'react-select';
 import { find, has } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
 import { Typography, makeStyles, Box } from '@material-ui/core';
-import { components } from 'react-select';
 import { useQuery } from 'react-query';
 import { IGeneralSettings } from './GeneralSettings';
 import { fetchUniversesList } from '../../../../../../actions/xClusterReplication';

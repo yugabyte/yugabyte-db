@@ -51,6 +51,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
@@ -60,6 +61,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.YNPProvisioning;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckDbNodePortConnectivity;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeManager;
@@ -125,6 +127,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -804,16 +807,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void ensureRemoteProcessState(
       Universe universe, NodeDetails node, String processName, boolean ensureRunning) {
-    List<String> command =
-        ImmutableList.<String>builder()
-            .add("pgrep")
-            .add("-flu")
-            .add("yugabyte")
-            .add(processName)
-            .add("2>/dev/null")
-            .add("||")
-            .add("true")
-            .build();
+    List<String> command = Util.getCheckProcessStatusCommand("yugabyte", processName);
     log.debug(
         "Ensuring {} process running state={} for {} using command {}",
         processName,
@@ -823,12 +817,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     ShellResponse response = nodeUniverseManager.runCommand(node, universe, command);
     String message = response.processErrors().getMessage();
     log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
-    boolean isProcessRunning = StringUtils.isNotBlank(message) && message.contains(processName);
-    if (isProcessRunning ^ ensureRunning) {
+    boolean isProcessRunningOrEnabled =
+        StringUtils.isNotBlank(message)
+            && (message.contains(processName) || message.contains("enabled"));
+    if (isProcessRunningOrEnabled != ensureRunning) {
       String errMsg =
           String.format(
               "Process %s must be %s on node %s but it is not",
-              processName, ensureRunning ? "running" : "stopped", node.nodeName);
+              processName, ensureRunning ? "running/enabled" : "stopped/disabled", node.nodeName);
       log.error(errMsg);
       throw new IllegalStateException(errMsg);
     }
@@ -2584,6 +2580,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
               createHookProvisionTask(filteredNodes, TriggerType.PostNodeProvision);
+              createDbNodePortConnectivityCheckTasksForCreatedNodes(universe, filteredNodes);
               createLocaleCheckTask(filteredNodes)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createCheckGlibcTask(
@@ -2748,6 +2745,159 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         doValidateGFlags,
         installSoftwareParamsCustomizer,
         gflagsParamsCustomizer);
+  }
+
+  /**
+   * Create DB node port connectivity checks after node server setup so that connectivity is
+   * validated even when initial prechecks are not applicable (for example, non-onprem providers or
+   * first-time universe creation where there are no live nodes yet). For each source node, runs
+   * checks to one node in each AZ of its cluster (priority: Live, then ServerSetup,
+   * SoftwareInstalled, ToJoinCluster) to verify connectivity across the whole universe.
+   */
+  private void createDbNodePortConnectivityCheckTasksForCreatedNodes(
+      Universe universe, Collection<NodeDetails> sourceNodes) {
+    if (CollectionUtils.isEmpty(sourceNodes)) {
+      log.debug("Skipping DB node port connectivity check: no source nodes");
+      return;
+    }
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableComprehensivePrechecks)) {
+      log.debug("Skipping DB node port connectivity check: comprehensive prechecks are disabled");
+      return;
+    }
+
+    Map<UUID, List<NodeDetails>> candidateNodesByAz =
+        taskParams().nodeDetailsSet.stream()
+            .filter(node -> node.azUuid != null)
+            .filter(node -> node.placementUuid != null)
+            .filter(
+                node ->
+                    node.state == NodeState.Live
+                        || node.state == NodeState.ServerSetup
+                        || node.state == NodeState.SoftwareInstalled
+                        || node.state == NodeState.ToJoinCluster
+                        || node.state == NodeState.ToBeAdded)
+            .collect(Collectors.groupingBy(node -> node.azUuid));
+
+    Map<UUID, NodeDetails> liveNodeByAz =
+        PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet).stream()
+            .filter(node -> node.azUuid != null)
+            .collect(
+                Collectors.toMap(
+                    node -> node.azUuid, Function.identity(), (first, second) -> first));
+
+    doInPrecheckSubTaskGroup(
+        "CheckDbNodePortConnectivity",
+        subTaskGroup -> {
+          for (NodeDetails sourceNode : sourceNodes) {
+            if (sourceNode.azUuid == null || sourceNode.placementUuid == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: missing azUuid or"
+                      + " placementUuid",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            // On-prem expands are already covered by precheck tasks against live nodes.
+            CloudType providerType = universe.getNodeDeploymentMode(sourceNode);
+            if (providerType == CloudType.onprem
+                && liveNodeByAz.containsKey(sourceNode.azUuid)
+                && !Objects.equals(
+                    liveNodeByAz.get(sourceNode.azUuid).nodeName, sourceNode.nodeName)) {
+              log.info(
+                  "Skipping DB node port connectivity check for node {}: on-prem expand already"
+                      + " covered by precheck against live node in AZ",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            Cluster cluster = taskParams().getClusterByUuid(sourceNode.placementUuid);
+            if (cluster == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: cluster not found for"
+                      + " placementUuid",
+                  sourceNode.nodeName);
+              continue;
+            }
+            PlacementInfo placement = cluster.getOverallPlacement();
+            if (placement == null) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: no placement for cluster",
+                  sourceNode.nodeName);
+              continue;
+            }
+            Set<UUID> azUuids = placement.getAllAZUUIDs();
+            if (CollectionUtils.isEmpty(azUuids)) {
+              log.debug(
+                  "Skipping DB node port connectivity check for node {}: no AZs in placement",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            List<NodeDetails> targetNodes = new ArrayList<>();
+            for (UUID azUuid : azUuids) {
+              List<NodeDetails> candidatesInAz =
+                  candidateNodesByAz.getOrDefault(azUuid, Collections.emptyList()).stream()
+                      .filter(node -> sourceNode.placementUuid.equals(node.placementUuid))
+                      .filter(node -> !Objects.equals(node.nodeName, sourceNode.nodeName))
+                      .collect(Collectors.toList());
+              if (candidatesInAz.isEmpty()) {
+                continue;
+              }
+              NodeDetails bestInAz =
+                  candidatesInAz.stream()
+                      .min(Comparator.comparingInt(n -> getConnectivityCheckPriority(n.state)))
+                      .orElse(null);
+              if (bestInAz != null) {
+                targetNodes.add(bestInAz);
+              }
+            }
+
+            if (targetNodes.isEmpty()) {
+              log.info(
+                  "Skipping DB node port connectivity check for node {}: no suitable target node in"
+                      + " any AZ",
+                  sourceNode.nodeName);
+              continue;
+            }
+
+            CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            params.nodeName = sourceNode.nodeName;
+            params.nodeUuid = sourceNode.nodeUuid;
+            params.azUuid = sourceNode.azUuid;
+            params.nodeDetailsSet = taskParams().nodeDetailsSet;
+            params.sourceNode = sourceNode;
+            params.targetNodes = targetNodes;
+
+            CheckDbNodePortConnectivity task = createTask(CheckDbNodePortConnectivity.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
+  }
+
+  /**
+   * Priority for choosing a target node for connectivity check (lower is better). Prefer Live, then
+   * ServerSetup, SoftwareInstalled, ToJoinCluster.
+   */
+  private static int getConnectivityCheckPriority(NodeDetails.NodeState state) {
+    if (state == null) {
+      return Integer.MAX_VALUE;
+    }
+    switch (state) {
+      case Live:
+        return 0;
+      case ServerSetup:
+        return 1;
+      case SoftwareInstalled:
+        return 2;
+      case ToJoinCluster:
+        return 3;
+      case ToBeAdded:
+        return 4;
+      default:
+        return Integer.MAX_VALUE;
+    }
   }
 
   /**
@@ -3649,31 +3799,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalArgumentException("Unknown server type " + serverType);
     }
     // Command is run in shell. Make it return 0 even if pgrep returns non-zero on pattern mismatch.
-    List<String> command =
-        ImmutableList.<String>builder()
-            .add("pgrep")
-            .add("-xlu")
-            .add("yugabyte")
-            .add(processName)
-            .add("2>/dev/null")
-            .add("||")
-            .add("true")
-            .build();
+    List<String> command = Util.getCheckProcessStatusCommand("yugabyte", processName);
     log.debug("Creating task to run command {}", command);
     BiConsumer<NodeDetails, ShellResponse> consumer =
         (node, response) -> {
           String message = response.processErrors().getMessage();
           log.debug("Output of command {} for node {}: {}", command, node.nodeName, message);
-          boolean isProcessRunning =
-              StringUtils.isNotBlank(message) && message.contains(processName);
-          if (isProcessRunning ^ ensureRunning) {
+          boolean isProcessRunningOrEnabled =
+              StringUtils.isNotBlank(message)
+                  && (message.contains(processName) || message.contains("enabled"));
+          if (isProcessRunningOrEnabled != ensureRunning) {
             if (failedNodeCallback != null) {
               failedNodeCallback.accept(node);
             } else {
               String errMsg =
                   String.format(
                       "Process %s must be %s on node %s but it is not",
-                      processName, ensureRunning ? "running" : "stopped", node.nodeName);
+                      processName,
+                      ensureRunning ? "running/enabled" : "stopped/disabled",
+                      node.nodeName);
               throw new RuntimeException(errMsg);
             }
           }
@@ -4033,6 +4177,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     TaskExecutor.SubTaskGroup subTaskGroup =
         createSubTaskGroup("UpdateAndPersistAuditLoggingConfig");
     UpdateAndPersistAuditLoggingConfig task = createTask(UpdateAndPersistAuditLoggingConfig.class);
+    task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  public void updateAndPersistQueryLoggingConfigTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateAndPersistQueryLoggingConfig");
+    UpdateAndPersistQueryLoggingConfig task = createTask(UpdateAndPersistQueryLoggingConfig.class);
     task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

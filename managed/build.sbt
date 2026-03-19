@@ -217,7 +217,6 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
   "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
   "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
-  "org.playframework" %% "play-json" % "3.0.4",
   "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -238,6 +237,7 @@ libraryDependencies ++= Seq(
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
+  "org.xerial.snappy" % "snappy-java" % "1.1.10.7",
   "io.kamon" %% "kamon-bundle" % "2.7.5",
   "io.kamon" %% "kamon-prometheus" % "2.7.5",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -396,7 +396,7 @@ lazy val moveYbcPackage = getBoolEnvVar(moveYbcPackageEnvName)
 
 versionGenerate := {
   val buildType = sys.env.getOrElse("BUILD_TYPE", "release")
-  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " " +
+  val status = Process("../python/yugabyte/gen_version_info.py --build-type=" + buildType + " --yba-mode=true" + " " +
     (Compile / resourceDirectory).value / "version_metadata.json").!
   ybLog("version_metadata.json Generated")
   Process("rm -f " + (Compile / resourceDirectory).value / "gen_version_info.log").!
@@ -1001,7 +1001,7 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.109-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.110-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b1"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
@@ -1040,13 +1040,7 @@ dependencyOverrides += "jakarta.annotation" % "jakarta.annotation-api" % "1.3.5"
 dependencyOverrides += "jakarta.ws.rs" % "jakarta.ws.rs-api" % "2.1.6" % Test
 dependencyOverrides += "com.fasterxml.jackson.module" % "jackson-module-jaxb-annotations" % "2.10.1" % Test
 
-// This is a custom version, built based on 1.0.3 with the following commit added on top:
-// https://github.com/apache/pekko/commit/1e41829bf7abeec268b9a409f35051ed7f4e0090.
-// This is required to fix TLS infinite loop issue, which causes high CPU usage.
-// We can't use 1.1.0-M1 version yet, as it has the following issue:
-// https://github.com/playframework/playframework/pull/12662
-// Once the issue is fixed we should migrate back on stable version.
-val pekkoVersion         = "1.0.3-tls-loop-fix"
+val pekkoVersion         = "1.1.5"
 
 val pekkoLibs = Seq(
   "org.apache.pekko" %% "pekko-actor-typed",
@@ -1088,6 +1082,7 @@ excludeDependencies += "org.bouncycastle" % "bcpkix-jdk15on"
 excludeDependencies += "org.bouncycastle" % "bcprov-jdk15on"
 excludeDependencies += "org.bouncycastle" % "bcpkix-jdk18on"
 excludeDependencies += "org.bouncycastle" % "bcprov-jdk18on"
+excludeDependencies += "org.lz4" % "lz4-java"
 
 Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 

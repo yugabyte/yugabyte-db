@@ -70,7 +70,7 @@ CallStateListener::CallStateListener(int64_t instance_id)
 
 void CallStateListener::UpdateInfo(bool is_local_call, const std::string& method_name) {
   if (!wait_state_) {
-    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_ysql_yb_enable_ash))
+    LOG_IF(DFATAL, FLAGS_ysql_yb_enable_ash)
         << "Wait state is nullptr while updating metadata";
     return;
   }

@@ -11,14 +11,16 @@
 // under the License.
 
 #pragma once
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <boost/assign.hpp>
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -93,7 +95,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
-DECLARE_int32(cdc_snapshot_batch_size);
+DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -146,7 +148,11 @@ DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
+DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
+DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
+DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 
 namespace yb {
 
@@ -539,7 +545,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
       const uint64_t session_id = kVWALSessionId1,
       const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
-      bool include_oid_to_relfilenode = false);
+      bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
@@ -624,6 +631,12 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
           std::nullopt,
       bool include_catalog_tables = false);
+
+  void VerifyTabletIdsInCdcStateForStream(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TabletId>& expected_tablet_ids,
+      const std::string& timeout_msg =
+          "Tablets in cdc_state for the stream doesn't match the expected set");
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -901,6 +914,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestStreamsDroppedOnDBDropAndMasterRestart(
+      const string& sync_point_name, bool use_logical_replication);
 };
 
 }  // namespace cdc

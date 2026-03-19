@@ -1,0 +1,70 @@
+title: FileCollectionOptions
+description: Configuration options for collecting files from database nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  file_paths:
+    description: |
+      List of file paths to collect from each node. Paths can be absolute or relative
+      to the yugabyte home directory. Glob patterns are not supported.
+    type: array
+    items:
+      type: string
+    example:
+      - /home/yugabyte/tserver/logs/yb-tserver.INFO
+      - /home/yugabyte/master/logs/yb-master.INFO
+  directory_paths:
+    description: |
+      List of directory paths to collect files from. All files in these directories
+      will be collected (non-recursive). Use max_depth for recursive collection.
+    type: array
+    items:
+      type: string
+    example:
+      - /home/yugabyte/tserver/logs
+  max_depth:
+    description: |
+      Maximum depth for directory traversal when collecting from directories.
+      1 means only immediate files, 2 includes one level of subdirectories, etc.
+    type: integer
+    example: 1
+    default: 1
+    maximum: 10
+    minimum: 1
+  max_file_size_bytes:
+    description: |
+      Maximum size of individual files to collect in bytes.
+      Files larger than this will be skipped and reported in the response.
+    type: integer
+    format: int64
+    example: 10485760
+    default: 10485760
+    minimum: 1
+  max_total_size_bytes:
+    description: |
+      Maximum total size of all files to collect per node in bytes.
+      Collection stops when this limit is reached.
+    type: integer
+    format: int64
+    example: 104857600
+    default: 104857600
+    minimum: 1
+  timeout_secs:
+    description: |
+      Timeout in seconds for file collection on each node.
+    type: integer
+    format: int64
+    example: 300
+    default: 300
+    maximum: 3600
+    minimum: 1
+  linux_user:
+    description: |
+      Run file collection as a particular Linux user.
+      Defaults to yugabyte. When using Node Agent, the command is executed as this user.
+      When using SSH fallback, this sets the SSH user.
+    type: string
+    example: yugabyte
+    default: yugabyte
+required:
+  - file_paths

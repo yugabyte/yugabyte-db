@@ -49,6 +49,8 @@
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/write_batch_base.h"
 
+#include "yb/storage/storage_fwd.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/slice_parts.h"
@@ -57,7 +59,6 @@ namespace rocksdb {
 
 class ColumnFamilyHandle;
 struct SavePoints;
-class UserFrontiers;
 
 class DirectWriteHandler {
  public:
@@ -223,7 +224,7 @@ class WriteBatch : public WriteBatchBase {
     }
     virtual void Merge(const Slice& /*key*/, const Slice& /*value*/) {}
 
-    virtual Status Frontiers(const UserFrontiers&) {
+    virtual Status Frontiers(const yb::storage::UserFrontiers&) {
       return STATUS(NotSupported, "UserFrontiers not implemented");
     }
 
@@ -269,8 +270,8 @@ class WriteBatch : public WriteBatchBase {
   WriteBatch& operator=(const WriteBatch& src);
   WriteBatch& operator=(WriteBatch&& src);
 
-  void SetFrontiers(const UserFrontiers* value) { frontiers_ = value; }
-  const UserFrontiers* Frontiers() const { return frontiers_; }
+  void SetFrontiers(const yb::storage::UserFrontiers* value) { frontiers_ = value; }
+  const yb::storage::UserFrontiers* Frontiers() const { return frontiers_; }
 
   void SetDirectWriter(DirectWriter* direct_writer) {
     direct_writer_ = direct_writer;
@@ -308,7 +309,7 @@ class WriteBatch : public WriteBatchBase {
 
  protected:
   std::string rep_;  // See comment in write_batch.cc for the format of rep_
-  const UserFrontiers* frontiers_ = nullptr;
+  const yb::storage::UserFrontiers* frontiers_ = nullptr;
   DirectWriter* direct_writer_ = nullptr;
   mutable size_t direct_entries_ = 0;
 

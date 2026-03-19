@@ -38,10 +38,12 @@ class PgVectorIndexITest : public LibPqTestBase {
     LibPqTestBase::SetUp();
   }
 
-  Result<PGConn> ConnectAndInit(std::optional<int> num_tablets = std::nullopt) {
+  Result<PGConn> ConnectAndInit(std::optional<int> num_tablets = std::nullopt, bool desc = false) {
     auto conn = VERIFY_RESULT(Connect());
     RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
-    std::string stmt = "CREATE TABLE test (id INT PRIMARY KEY, embedding vector(1))";
+    std::string stmt = Format(
+        "CREATE TABLE test (id INT, embedding vector(1), PRIMARY KEY (id $0))",
+        desc ? "DESC" : "HASH");
     if (num_tablets) {
       stmt += Format(" SPLIT INTO $0 TABLETS", *num_tablets);
     }
@@ -175,7 +177,7 @@ class PgVectorIndexBackfillITest : public PgVectorIndexITest {
     options->extra_tserver_flags.push_back(
         Format("--TEST_sleep_before_vector_index_backfill_seconds=$0", kBackfillSleepSec));
     // yb_hnsw wrapper currently does not support retrieving vectors by id.
-    options->extra_master_flags.push_back("--vector_index_use_yb_hnsw=false");
+    options->extra_master_flags.push_back("--vector_index_backend=usearch");
   }
 };
 
@@ -276,6 +278,15 @@ TEST_F(PgVectorIndexITest, Truncate) {
     LOG(INFO) << "Iteration: " << i;
     ASSERT_OK(conn.Execute("TRUNCATE test"));
   }
+}
+
+TEST_F(PgVectorIndexITest, BackwardScan) {
+  auto conn = ASSERT_RESULT(ConnectAndInit(std::nullopt, true));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[2.3]')"));
+  ASSERT_OK(CreateIndex(conn));
+
+  auto rows = ASSERT_RESULT(conn.FetchAllAsString("SELECT id FROM test ORDER BY id"));
+  ASSERT_EQ(rows, "1");
 }
 
 } // namespace yb::pgwrapper

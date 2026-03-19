@@ -29,7 +29,7 @@ export class ListKeyManagementConfigurations extends Component {
 
   actionList = (item, row) => {
     const { in_use: inUse, universeDetails, provider: kmsProvider } = row.metadata;
-    const { isAdmin, onEdit, isCipherTrustKmsEnabled } = this.props;
+    const { isAdmin, onEdit, isCipherTrustKmsEnabled, refreshKMSToken } = this.props;
 
     const isRestrictedKmsProvider =
       kmsProvider === KmsProvider.CIPHERTRUST && !isCipherTrustKmsEnabled;
@@ -42,6 +42,14 @@ export class ListKeyManagementConfigurations extends Component {
           data-testid="EAR-Details"
         >
           <i className="fa fa-info-circle"></i> Details
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            refreshKMSToken(row.metadata.configUUID);
+          }}
+          data-testid="EAR-token-refresh"
+        >
+          <i className="fa fa-refresh"></i> Refresh KMS
         </MenuItem>
         {(isAdmin || isRbacEnabled()) && (
           <RbacValidator

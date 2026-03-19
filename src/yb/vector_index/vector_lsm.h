@@ -17,11 +17,9 @@
 #include <future>
 #include <map>
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/rocksdb_fwd.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/storage/storage_types.h"
 
 #include "yb/util/env.h"
 #include "yb/util/kv_util.h"
@@ -31,6 +29,13 @@
 
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vector_lsm_metrics.h"
+
+namespace yb {
+
+class PriorityThreadPoolToken;
+using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
+
+}
 
 namespace yb::vector_index {
 
@@ -44,7 +49,7 @@ struct VectorLSMInsertEntry {
 };
 
 struct VectorLSMInsertContext {
-  const rocksdb::UserFrontiers* frontiers = nullptr;
+  const storage::UserFrontiers* frontiers = nullptr;
 };
 
 template<IndexableVectorType Vector,
@@ -62,7 +67,7 @@ class VectorLSMMergeRegistry;
 class VectorLSMMergeFilter {
  public:
   virtual ~VectorLSMMergeFilter() = default;
-  virtual rocksdb::FilterDecision Filter(VectorId vector_id) = 0;
+  virtual storage::FilterDecision Filter(VectorId vector_id) = 0;
 };
 using VectorLSMMergeFilterPtr = std::unique_ptr<VectorLSMMergeFilter>;
 
@@ -71,7 +76,7 @@ template<IndexableVectorType Vector,
 struct VectorLSMOptions {
   using VectorIndexFactory = vector_index::VectorIndexFactory<Vector, DistanceResult>;
   using MergeFilterFactory = std::function<Result<VectorLSMMergeFilterPtr>()>;
-  using FrontiersFactory   = std::function<rocksdb::UserFrontiersPtr()>;
+  using FrontiersFactory   = std::function<storage::UserFrontiersPtr()>;
 
   std::string log_prefix;
   std::string storage_dir;
@@ -107,8 +112,8 @@ class VectorLSM {
   Status Destroy();
   Status CreateCheckpoint(const std::string& out);
 
-  rocksdb::UserFrontierPtr GetFlushedFrontier();
-  rocksdb::FlushAbility GetFlushAbility();
+  storage::UserFrontierPtr GetFlushedFrontier();
+  storage::FlushAbility GetFlushAbility();
 
   Status Insert(std::vector<InsertEntry> entries, const VectorLSMInsertContext& context);
 

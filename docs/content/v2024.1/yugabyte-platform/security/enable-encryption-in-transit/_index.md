@@ -26,7 +26,7 @@ YugabyteDB Anywhere supports the following certificates for encryption in transi
 - [Custom self-signed certificates](add-certificate-self/). Create and upload your own self-signed certificates for use with universes.
 - [CA certificates](add-certificate-ca/). For on-premises universes, you can upload your own CA certificates. You must manually copy the certificates to universe nodes.
 - [Hashicorp vault](add-certificate-hashicorp/).
-- [Kubernetes cert-manager](add-certificate-kubernetes/). Use cert-manager for securing Kubernetes universes.
+- [Kubernetes cert-manager](add-certificate-kubernetes/). You can use cert-manager to manage certificates for Kubernetes universes.
 
 ## Rotate certificates
 

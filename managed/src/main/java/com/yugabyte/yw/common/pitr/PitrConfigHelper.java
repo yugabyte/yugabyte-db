@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.pitr;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -11,7 +12,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.ApiType;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
+import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.models.Customer;
@@ -19,11 +22,15 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
+import org.yb.client.ListSnapshotSchedulesResponse;
+import org.yb.client.SnapshotScheduleInfo;
+import org.yb.client.YBClient;
 
 @Slf4j
 @Singleton
@@ -31,10 +38,12 @@ public class PitrConfigHelper {
 
   public static final String PITR_COMPATIBLE_DB_VERSION = "2.14.0.0-b1";
   private final Commissioner commissioner;
+  private final YBClientService ybClientService;
 
   @Inject
-  public PitrConfigHelper(Commissioner commissioner) {
+  public PitrConfigHelper(Commissioner commissioner, YBClientService ybClientService) {
     this.commissioner = commissioner;
+    this.ybClientService = ybClientService;
   }
 
   public UUID createPitrConfig(
@@ -93,6 +102,60 @@ public class PitrConfigHelper {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreatePitrConfig,
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID restorePitrConfig(
+      UUID customerUUID, UUID universeUUID, RestoreSnapshotScheduleParams taskParams) {
+    log.info("Received restore PITR config request");
+
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    checkCompatibleYbVersion(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in paused state");
+    } else if (universe.getUniverseDetails().updateInProgress) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is in locked state");
+    }
+
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot perform PITR when the universe is not in ready state");
+    }
+
+    if (taskParams.restoreTimeInMillis <= 0L
+        || taskParams.restoreTimeInMillis > System.currentTimeMillis()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Time to restore specified is either negative or in the future");
+    }
+    PitrConfig pitrConfig = PitrConfig.getOrBadRequest(taskParams.pitrConfigUUID);
+    ListSnapshotSchedulesResponse scheduleResp;
+    List<SnapshotScheduleInfo> scheduleInfoList = null;
+    try (YBClient client = ybClientService.getUniverseClient(universe)) {
+      scheduleResp = client.listSnapshotSchedules(taskParams.pitrConfigUUID);
+      scheduleInfoList = scheduleResp.getSnapshotScheduleInfoList();
+    } catch (Exception ex) {
+      log.error(ex.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, ex.getMessage());
+    }
+
+    if (scheduleInfoList == null || scheduleInfoList.size() != 1) {
+      throw new PlatformServiceException(BAD_REQUEST, "Snapshot schedule is invalid");
+    }
+
+    taskParams.setUniverseUUID(universeUUID);
+    UUID taskUUID = commissioner.submit(TaskType.RestoreSnapshotSchedule, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.RestoreSnapshotSchedule,
         universe.getName());
     return taskUUID;
   }

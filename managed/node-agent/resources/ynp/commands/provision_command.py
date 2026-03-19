@@ -76,6 +76,8 @@ class ProvisionCommand(Command):
                 # Initialize parent exit code and errors array.
                 temp_file.write("parent_exit_code=0\n")
                 temp_file.write("errors=()\n")
+                # Add fatal error helpers for run phase (modules may call add_fatal_result)
+                self.add_fatal_helpers_for_run(temp_file)
             else:
                 # add_result_helper works only in the same shell.
                 self.add_results_helper(temp_file)
@@ -112,6 +114,19 @@ class ProvisionCommand(Command):
         logger.info("Return Code: %s", result.returncode)
         return result
 
+    def add_fatal_helpers_for_run(self, file):
+        """Add add_fatal_result for run phase (no JSON)."""
+        file.write(
+            """
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                exit 2
+            }
+            """
+        )
+
     def add_exit_code_check(self, file, key):
         file.write(
             f"""
@@ -121,6 +136,10 @@ class ProvisionCommand(Command):
                 err="Module {key} failed with code $exit_code"
                 errors+=("$err")
                 echo "$err"
+                if [ $exit_code -eq 2 ]; then
+                    echo "FATAL error in module {key}. Aborting immediately."
+                    exit 2
+                fi
             fi
             """
         )
@@ -156,6 +175,16 @@ class ProvisionCommand(Command):
                 json_results+='      "message": "'$message'"\n'
                 json_results+='    }'
             }
+
+            add_fatal_result() {
+                local check="$1"
+                local message="$2"
+                echo "FATAL ERROR: $check - $message"
+                add_result "$check" "FATAL" "$message"
+                json_results+='\n]}'
+                echo "$json_results"
+                exit 2
+            }
             """
         )
 
@@ -171,13 +200,11 @@ class ProvisionCommand(Command):
                 # Output the JSON
                 echo "$json_results"
 
-                # Exit with status code 1 if any check has failed
                 if [ $any_fail -eq 1 ]; then
                     echo "Pre-flight checks failed, Please fix them before continuing."
                     exit 1
-                else
-                    echo "Pre-flight checks successful"
                 fi
+                echo "Pre-flight checks successful"
             }
 
             print_results
@@ -187,8 +214,6 @@ class ProvisionCommand(Command):
         file.write("\n######## Check the SUDO Access #########\n")
         file.write("SUDO_ACCESS=\"false\"\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
-        file.write("  SUDO_ACCESS=\"true\"\n")
-        file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
         file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
 
@@ -344,7 +369,10 @@ class ProvisionCommand(Command):
         precheck_result = self._run_script(precheck_combined_script)
         self._save_ynp_version()
         if precheck_result.returncode != 0 or provision_result.returncode != 0:
-            sys.exit(1)
+            exit_code = (provision_result.returncode
+                         if provision_result.returncode != 0
+                         else precheck_result.returncode)
+            sys.exit(exit_code)
 
     def _save_ynp_version(self):
         key = next(iter(self.config), None)
@@ -358,7 +386,9 @@ class ProvisionCommand(Command):
                 os.makedirs(yb_home_dir, exist_ok=True)
 
                 # Define the full path to the ynp_version file
-                ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+                yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+                os.makedirs(yugabyte_dir, exist_ok=True)
+                ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
                 safely_write_file(ynp_version_file, current_ynp_version)
                 current_user_id = os.getuid()
                 yb_user = context.get('yb_user')
@@ -367,6 +397,7 @@ class ProvisionCommand(Command):
                 if current_user_id == 0 and current_user_id != uid:
                     # Change ownership only if running as root and yb_user is different
                     # from current user.
+                    os.chown(yugabyte_dir, uid, gid)
                     os.chown(ynp_version_file, uid, gid)
             else:
                 logger.info("yb_home_dir or current_ynp_version is missing in the context")
@@ -379,7 +410,8 @@ class ProvisionCommand(Command):
             current_ynp_version = self._parse_version(context.get('version'))
 
             # Define the full path to the ynp_version file
-            ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+            yugabyte_dir = os.path.join(yb_home_dir, '.yugabyte')
+            ynp_version_file = os.path.join(yugabyte_dir, 'ynp_version')
             try:
                 # Read the ynp_version from the file
                 with open(ynp_version_file, 'r') as file:

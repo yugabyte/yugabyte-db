@@ -13,10 +13,13 @@
 
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
+#include <sys/stat.h>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/pg_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::chrono_literals;
@@ -2322,6 +2325,73 @@ TEST_F(YsqlMajorUpgradeTest, TestQuotationIndex) {
   ASSERT_OK(conn.Execute("CREATE UNIQUE INDEX i1 on t1(col asc);"));
   ASSERT_OK(conn.Execute("ALTER TABLE t1 ADD CONSTRAINT \"c1 new check\" UNIQUE USING INDEX i1;"));
   ASSERT_OK(UpgradeClusterToMixedMode());
+}
+
+// Test class that sets a custom pg_upgrade working directory flag.
+class YsqlMajorUpgradeWorkingDirTest : public YsqlMajorUpgradeTest {
+ public:
+  YsqlMajorUpgradeWorkingDirTest() = default;
+
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    YsqlMajorUpgradeTest::SetUpOptions(opts);
+    // Create working directory inside the test data directory, which is automatically cleaned up.
+    custom_working_dir_ = JoinPathSegments(GetTestDataDirectory(), "pg_upgrade_workdir");
+    CHECK_OK(Env::Default()->CreateDir(custom_working_dir_));
+    AddUnDefOkAndSetFlag(opts.extra_master_flags, "pg_upgrade_working_dir", custom_working_dir_);
+  }
+
+  std::string custom_working_dir_;
+};
+
+// Verify pg_upgrade's working directory is set to our custom directory.
+TEST_F(YsqlMajorUpgradeWorkingDirTest, PgUpgradeSetWorkingDirectory) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  auto log_waiter = cluster_->GetMasterLogWaiter(
+      "You must have read and write access in the current directory");
+
+  // Make the directory non-writable.
+  // Expect upgrade to fail with "You must have read and write access in the current directory".
+  ASSERT_EQ(chmod(custom_working_dir_.c_str(), 0555), 0) << "chmod failed: " << strerror(errno);
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+  ASSERT_TRUE(log_waiter.IsEventOccurred());
+
+  // Rollback the failed upgrade before retrying.
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  // Restore permissions and expect upgrade to now succeed.
+  ASSERT_EQ(chmod(custom_working_dir_.c_str(), 0755), 0) << "chmod failed: " << strerror(errno);
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
+}
+
+// Verify that when pg_upgrade fails, the temporary socket directory is cleaned up
+// and not left behind as a stale artifact.
+TEST_F(YsqlMajorUpgradeTest, SocketDirCleanedUpAfterFailedUpgrade) {
+  ASSERT_OK(RestartAllMastersInCurrentVersion(kNoDelayBetweenNodes));
+
+  constexpr int kNonDefaultUpgradePort = 15000;
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "ysql_upgrade_postgres_port", std::to_string(kNonDefaultUpgradePort)));
+
+  // Inject a failure right before the pg_upgrade binary runs.
+  // This skips the slow pg_upgrade dump/restore cycle while still exercising the
+  // socket directory creation and cleanup paths.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_fail_ysql_pg_upgrade", "true"));
+
+  ASSERT_NOK(PerformYsqlMajorCatalogUpgrade());
+
+  auto* leader = cluster_->GetLeaderMaster();
+  auto socket_dir = PgDeriveSocketDir(
+      HostPort(leader->bound_rpc_addr().host(), kNonDefaultUpgradePort));
+
+  ASSERT_FALSE(Env::Default()->DirExists(socket_dir))
+      << "Stale socket directory was not cleaned up: " << socket_dir;
+
+  ASSERT_OK(RollbackYsqlMajorCatalogVersion());
+
+  // Verify upgrade succeeds after rollback with no stale state left behind.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_fail_ysql_pg_upgrade", "false"));
+  ASSERT_OK(PerformYsqlMajorCatalogUpgrade());
 }
 
 }  // namespace yb

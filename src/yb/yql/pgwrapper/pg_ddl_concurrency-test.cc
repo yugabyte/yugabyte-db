@@ -152,7 +152,7 @@ class PgDDLConcurrencyWithObjectLockingTest : public PgDDLConcurrencyTest {
     options->extra_tserver_flags.push_back(
         "--ysql_yb_ddl_transaction_block_enabled=true");
     options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=false");
+        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
     PgDDLConcurrencyTest::UpdateMiniClusterOptions(options);
   }
 };
@@ -249,7 +249,7 @@ class PgDDLConcurrencyWithObjectLockingTestRF1 : public PgDDLConcurrencyWithObje
     PgDDLConcurrencyWithObjectLockingTest::UpdateMiniClusterOptions(options);
     options->replication_factor = 1;
     options->extra_tserver_flags.push_back(
-        "--ysql_pg_conf_csv=yb_fallback_to_legacy_catalog_read_time=true");
+        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=false");
   }
 };
 

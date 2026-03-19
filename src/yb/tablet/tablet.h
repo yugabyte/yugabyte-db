@@ -177,7 +177,7 @@ class Tablet : public AbstractTablet,
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<qlexpr::IndexInfo>& indexes,
+      const qlexpr::IndexInfo& index,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -186,7 +186,7 @@ class Tablet : public AbstractTablet,
       const uint64_t postgres_auth_key,
       bool is_xcluster_target,
       uint64_t* number_of_rows_processed,
-      std::unordered_map<TableId, double>& num_rows_backfilled_in_index,
+      double* num_rows_backfilled_in_index,
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
@@ -353,7 +353,7 @@ class Tablet : public AbstractTablet,
       HybridTime write_hybrid_time, HybridTime local_hybrid_time);
 
   void WriteToRocksDB(
-      const rocksdb::UserFrontiers& frontiers,
+      const storage::UserFrontiers& frontiers,
       rocksdb::WriteBatch* write_batch,
       docdb::StorageDbType storage_db_type);
 
@@ -418,7 +418,7 @@ class Tablet : public AbstractTablet,
   // being removed while the object is alive. It is necessary to hold
   // a RequestScope when scanning with IntentAwareIterator to prevent missing entries
   // due to intent removal.
-  Result<RequestScope> CreateRequestScope();
+  Result<RequestScope> CreateRequestScope(bool allow_when_closing = false);
 
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
@@ -511,6 +511,10 @@ class Tablet : public AbstractTablet,
 
   const RaftGroupMetadata *metadata() const { return metadata_.get(); }
   RaftGroupMetadata *metadata() { return metadata_.get(); }
+
+  Env& env() const {
+    return *tablet_options_.env;
+  }
 
   rocksdb::Env& rocksdb_env() const;
 
@@ -1041,7 +1045,7 @@ class Tablet : public AbstractTablet,
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
       const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
-      const rocksdb::UserFrontiers& frontiers);
+      const storage::UserFrontiers& frontiers);
 
   Result<TransactionOperationContext> CreateTransactionOperationContext(
       const std::optional<TransactionId>& transaction_id, bool is_ysql_catalog_table,

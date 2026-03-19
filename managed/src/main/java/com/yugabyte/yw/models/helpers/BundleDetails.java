@@ -63,6 +63,9 @@ public class BundleDetails {
     @EnumValue("PrometheusMetrics")
     PrometheusMetrics(ComponentLevel.GlobalLevel),
 
+    @EnumValue("PerfAdvisor")
+    PerfAdvisor(ComponentLevel.GlobalLevel),
+
     @EnumValue("ApplicationLogs")
     ApplicationLogs(ComponentLevel.GlobalLevel);
 
@@ -97,6 +100,17 @@ public class BundleDetails {
     YSQL_EXPORT;
   }
 
+  public enum PrometheusMetricsFormat {
+    PROMQL_JSON,
+    PROM_CHUNK
+  }
+
+  /** How to export Prometheus metrics in support bundle: PromQL query_range vs Remote Read API. */
+  public enum PromExportType {
+    PROMQL,
+    REMOTE_READ
+  }
+
   public EnumSet<ComponentType> components;
 
   @ApiModelProperty(value = "Max number of most recent cores to collect (if any)", required = false)
@@ -119,10 +133,33 @@ public class BundleDetails {
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   public Date promDumpEndDate;
 
+  @ApiModelProperty(value = "Specifies Prom Dump metrics format.")
+  public PrometheusMetricsFormat promMetricsFormat;
+
+  @ApiModelProperty(value = "Specifies Prom Dump metrics step in seconds.")
+  public Integer promMetricsStepSec;
+
   @ApiModelProperty(
       value = "List of exports to be included in the prometheus dump",
       required = false)
   public EnumSet<PrometheusMetricsType> prometheusMetricsTypes;
+
+  @ApiModelProperty(
+      value = "Start date to filter Perf Advisor data",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date paDumpStartDate;
+
+  @ApiModelProperty(
+      value = "End date to filter Perf Advisor data",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date paDumpEndDate;
+
+  @ApiModelProperty(value = "Specifies PA Dump metrics format.")
+  public PrometheusMetricsFormat paMetricsFormat = PrometheusMetricsFormat.PROM_CHUNK;
 
   public BundleDetails() {}
 
@@ -139,13 +176,23 @@ public class BundleDetails {
       long maxCoreFileSize,
       Date promDumpStartDate,
       Date promDumpEnDate,
-      EnumSet<PrometheusMetricsType> prometheusMetricsTypes) {
+      PrometheusMetricsFormat promMetricsFormat,
+      int promMetricsStepSec,
+      EnumSet<PrometheusMetricsType> prometheusMetricsTypes,
+      Date paDumpStartDate,
+      Date paDumpEndDate,
+      PrometheusMetricsFormat paMetricsFormat) {
     this.components = components;
     this.maxNumRecentCores = maxNumRecentCores;
     this.maxCoreFileSize = maxCoreFileSize;
     this.promDumpStartDate = promDumpStartDate;
     this.promDumpEndDate = promDumpEnDate;
+    this.promMetricsFormat = promMetricsFormat;
+    this.promMetricsStepSec = promMetricsStepSec;
     this.prometheusMetricsTypes = prometheusMetricsTypes;
+    this.paDumpStartDate = paDumpStartDate;
+    this.paDumpEndDate = paDumpEndDate;
+    this.paMetricsFormat = paMetricsFormat;
   }
 
   @JsonIgnore

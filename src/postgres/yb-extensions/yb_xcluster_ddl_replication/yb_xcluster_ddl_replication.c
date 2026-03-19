@@ -480,10 +480,51 @@ HandleSourceDDLStart(EventTriggerData *trig_data)
 	ClearRewrittenTableOidList();
 }
 
+/*
+ * xCluster: Prevent replication from halting on phantom indexes (invalid
+ * indexes that exist on the source but not the target). DDLs referencing them
+ * are silently skipped rather than forcing replication to halt.
+ */
+static void
+yb_xcluster_handle_phantom_indexes(Node *parsetree)
+{
+	if (yb_xcluster_automatic_mode_target_ddl)
+	{
+		switch (nodeTag(parsetree))
+		{
+			case T_DropStmt:
+			{
+				DropStmt *stmt = (DropStmt *) parsetree;
+				if (stmt->removeType == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			case T_RenameStmt:
+			{
+				RenameStmt *stmt = (RenameStmt *) parsetree;
+				if (stmt->renameType == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			case T_AlterTableStmt:
+			{
+				AlterTableStmt *stmt = (AlterTableStmt *) parsetree;
+				if (stmt->objtype == OBJECT_INDEX)
+					stmt->missing_ok = true;
+				break;
+			}
+			default:
+				break;
+		}
+	}
+}
+
 void
 HandleTargetDDLStart(EventTriggerData *trig_data)
 {
 	yb_xcluster_target_ddl_bypass = false;
+
+	yb_xcluster_handle_phantom_indexes(parsetree);
 
 	/* Bypass DDLs executed in manual mode, or from the target poller. */
 	if (enable_manual_ddl_replication || yb_xcluster_automatic_mode_target_ddl)

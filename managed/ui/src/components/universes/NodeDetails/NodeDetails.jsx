@@ -127,7 +127,7 @@ export default class NodeDetails extends Component {
       if (hasUniverseNodeDetails && nodeName === universeNodeDetails.data.nodeName) {
         allowedNodeActions = universeNodeDetails.data.allowedActions;
         masterAlive = universeNodeDetails.data.isMaster;
-        tserverAlive = universePerNodeStatus.data.isTserver;
+        tserverAlive = universeNodeDetails.data.isTserver;
         nodeStatus = insertSpacesFromCamelCase(universeNodeDetails.data.state);
         isLoading = false;
       }

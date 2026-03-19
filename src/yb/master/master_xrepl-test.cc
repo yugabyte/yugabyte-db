@@ -36,6 +36,7 @@ DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 DECLARE_uint32(max_replication_slots);
+DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
 namespace yb {
 namespace master {
@@ -77,6 +78,10 @@ class MasterTestXRepl  : public MasterTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
+    // Disable implicit dynamic table addition in CDC feature in this test because this
+    // master-only test doesn't have pg_class and pg_publication_rel system catalog tables.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+        false;
   }
 
   Result<xrepl::StreamId> CreateCDCStream(const TableId& table_id);

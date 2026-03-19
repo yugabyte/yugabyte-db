@@ -773,18 +773,18 @@
 \set query 'SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 JOIN parent ON h3r2n.h1 = parent.p1 WHERE parent.p1 = 6 AND h3r2n.h1 = h3r2n.r1 AND r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5'
 \set hint3 '/*+Leading(((h3r2n r5n) parent)) Set(yb_max_saop_merge_streams 64)*/'
 :explain3run3
-                                                         QUERY PLAN                                                         
-----------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+   Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
-         Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+         Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
          ->  Sort (actual rows=334 loops=1)
-               Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+               Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                Sort Key: r5n.r3, r5n.r4, r5n.r5
                Sort Method: quicksort
                ->  Nested Loop (actual rows=6216 loops=1)
-                     Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+                     Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      ->  Nested Loop (actual rows=6216 loops=1)
                            Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2, h3r2n.r1, h3r2n.h1
                            ->  Index Scan using r5n_pkey on public.r5n (actual rows=168 loops=1)
@@ -803,26 +803,26 @@
                                        Storage Table Read Ops: 9
                                        Storage Table Rows Scanned: 4020
                      ->  Materialize (actual rows=1 loops=6216)
-                           Output: parent.p1
+                           Output: parent_1.p1
                            ->  Unique (actual rows=1 loops=1)
-                                 Output: parent.p1
-                                 ->  Distinct Index Scan using child2_pkey on public.child2 parent (actual rows=10 loops=1)
-                                       Output: parent.p1
-                                       Index Cond: (parent.p1 = 6)
-                                       Distinct Keys: parent.r1
+                                 Output: parent_1.p1
+                                 ->  Distinct Index Scan using child2_pkey on public.child2 parent_1 (actual rows=10 loops=1)
+                                       Output: parent_1.p1
+                                       Index Cond: (parent_1.p1 = 6)
+                                       Distinct Keys: parent_1.r1
                                        Storage Table Read Requests: 1
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 10
 (38 rows)
 
-                                                      QUERY PLAN                                                      
-----------------------------------------------------------------------------------------------------------------------
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+   Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
-         Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+         Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
          ->  Nested Loop (actual rows=334 loops=1)
-               Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+               Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                ->  Nested Loop (actual rows=334 loops=1)
                      Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2, h3r2n.r1, h3r2n.h1
                      ->  Index Scan using r5n_pkey on public.r5n (actual rows=10 loops=1)
@@ -845,30 +845,30 @@
                                  Storage Table Read Ops: 12
                                  Storage Table Rows Scanned: 4020
                ->  Materialize (actual rows=1 loops=334)
-                     Output: parent.p1
+                     Output: parent_1.p1
                      ->  Unique (actual rows=1 loops=1)
-                           Output: parent.p1
-                           ->  Distinct Index Scan using child2_pkey on public.child2 parent (actual rows=10 loops=1)
-                                 Output: parent.p1
-                                 Index Cond: (parent.p1 = 6)
-                                 Distinct Keys: parent.r1
+                           Output: parent_1.p1
+                           ->  Distinct Index Scan using child2_pkey on public.child2 parent_1 (actual rows=10 loops=1)
+                                 Output: parent_1.p1
+                                 Index Cond: (parent_1.p1 = 6)
+                                 Distinct Keys: parent_1.r1
                                  Storage Table Read Requests: 2
                                  Storage Table Read Ops: 2
                                  Storage Table Rows Scanned: 10
 (38 rows)
 
-                                                         QUERY PLAN                                                         
-----------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
-   Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+   Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
    ->  Unique (actual rows=5 loops=1)
-         Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+         Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
          ->  Sort (actual rows=334 loops=1)
-               Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+               Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                Sort Key: r5n.r3, r5n.r4, r5n.r5
                Sort Method: quicksort
                ->  Nested Loop (actual rows=6216 loops=1)
-                     Output: r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
+                     Output: r5n.r1, h3r2n.r1, parent_1.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2
                      ->  Nested Loop (actual rows=6216 loops=1)
                            Output: r5n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2, h3r2n.r1, h3r2n.h1
                            ->  Distinct Index Scan using h3r2n_pkey on public.h3r2n (actual rows=37 loops=1)
@@ -887,13 +887,13 @@
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 168
                      ->  Materialize (actual rows=1 loops=6216)
-                           Output: parent.p1
+                           Output: parent_1.p1
                            ->  Unique (actual rows=1 loops=1)
-                                 Output: parent.p1
-                                 ->  Distinct Index Scan using child2_pkey on public.child2 parent (actual rows=10 loops=1)
-                                       Output: parent.p1
-                                       Index Cond: (parent.p1 = 6)
-                                       Distinct Keys: parent.r1
+                                 Output: parent_1.p1
+                                 ->  Distinct Index Scan using child2_pkey on public.child2 parent_1 (actual rows=10 loops=1)
+                                       Output: parent_1.p1
+                                       Index Cond: (parent_1.p1 = 6)
+                                       Distinct Keys: parent_1.r1
                                        Storage Table Read Requests: 1
                                        Storage Table Read Ops: 1
                                        Storage Table Rows Scanned: 10

@@ -48,6 +48,7 @@
 
 #include "yb/dockv/partition.h"
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -159,7 +160,7 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
 bool TabletReplica::IsStale() const {
   MonoTime now(MonoTime::Now());
   if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
-      GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+      FLAGS_tserver_unresponsive_timeout_ms) {
     return true;
   }
   return false;
@@ -1034,6 +1035,10 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 TableIds TableInfo::GetIndexIds() const {
   TableIds result;
   auto lock = LockForRead();
+
+  DCHECK(!IsIndex(lock->pb) || lock->pb.indexes().empty())
+      << "Indexes should be empty for index table";
+
   result.reserve(lock->pb.indexes().size());
   for (const auto& index_info_pb : lock->pb.indexes()) {
     result.emplace_back(index_info_pb.table_id());
@@ -1178,6 +1183,17 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   }
   ddl_txns_waiting_for_schema_version_.erase(
       ddl_txns_waiting_for_schema_version_.begin(), upper_bound_iter);
+  return txns;
+}
+
+std::vector<std::pair<int, TransactionId>> TableInfo::GetDdlTxnsWaitingForSchemaVersion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  std::vector<std::pair<int, TransactionId>> txns;
+
+  txns.reserve(ddl_txns_waiting_for_schema_version_.size());
+  for (const auto& [schema_version, txn] : ddl_txns_waiting_for_schema_version_) {
+    txns.emplace_back(schema_version, txn);
+  }
   return txns;
 }
 
@@ -1437,18 +1453,19 @@ std::string DdlLogEntry::id() const {
 // ================================================================================================
 
 Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
+ObjectLockInfo::RefreshYsqlOperationLease(
+    const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl) {
   auto l = LockForWrite();
   auto& current_lease_info = l->pb.lease_info();
-  if (instance.instance_seqno() < current_lease_info.instance_seqno()) {
+  if (req.instance().instance_seqno() < current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, instance seqno of requestor $0 is lower than instance seqno of a "
         "previously granted lease $1",
-        instance.instance_seqno(), current_lease_info.instance_seqno());
+        req.instance().instance_seqno(), current_lease_info.instance_seqno());
   }
   if (current_lease_info.lease_relinquished() &&
-      instance.instance_seqno() <= current_lease_info.instance_seqno()) {
+      req.instance().instance_seqno() <= current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, lease has been relinquished by instance_seqno $0 already",
@@ -1461,13 +1478,15 @@ ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDe
     ysql_lease_deadline_ = std::max(ysql_lease_deadline_, MonoTime::Now() + lease_ttl);
   }
   if (l->pb.lease_info().live_lease() &&
-      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+      l->pb.lease_info().instance_seqno() == req.instance().instance_seqno() &&
+      // Only extend the current lease if the tserver thinks it still has a live lease.
+      req.current_lease_epoch() == current_lease_info.lease_epoch()) {
     return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);
   lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
-  lease_info.set_instance_seqno(instance.instance_seqno());
+  lease_info.set_instance_seqno(req.instance().instance_seqno());
   lease_info.set_lease_relinquished(false);
   return std::move(l);
 }
@@ -1478,7 +1497,7 @@ void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
     std::lock_guard l(mutex_);
     ysql_lease_deadline_ =
         MonoTime::Now() +
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
+        MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
   }
 }
 
