@@ -1807,3 +1807,44 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/validate-kubernetes-overrides':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: validateKubernetesOverrides
+    summary: Validate Kubernetes Helm Overrides
+    description: |
+      Validate the kubernetes helm override values for universe.
+      See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
+      override options.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseValidateKubernetesOverridesReq.yaml"
+    responses:
+      '200':
+        $ref: "../components/responses/YBAValidationResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2026.1.2.0
+    x-yba-api-visibility: internal
