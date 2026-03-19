@@ -21,6 +21,7 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
@@ -145,6 +146,15 @@ class Worker : public boost::intrusive::list_base_hook<> {
   // Meaning that we do not have work (task queue empty) or
   // does not have free hands (worker queue empty)
   void Execute(ThreadPoolTask* task) {
+#ifdef __linux__
+    if (auto cgroup = share_.options.cgroup ? share_.options.cgroup : DefaultThreadCgroup()) {
+      auto status = cgroup->MoveCurrentThreadToGroup();
+      if (!status.ok()) {
+        LOG(DFATAL) << "Failed to move thread to cgroup: " << status;
+      }
+    }
+#endif
+
     Thread::current_thread()->SetUserData(&share_);
     bool has_run_metrics = share_.options.metrics.run_time_us_stats != nullptr;
     if (!task) {
@@ -646,6 +656,103 @@ bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
 
 MonoDelta DefaultIdleTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// YBTaggedThreadPools
+// ------------------------------------------------------------------------------------------------
+
+YBTaggedThreadPools::YBTaggedThreadPools(YBTaggedThreadPools::OptionsGenerator options_generator)
+    : options_generator_{std::move(options_generator)} {}
+
+YBTaggedThreadPools::~YBTaggedThreadPools() {
+  Shutdown();
+}
+
+void YBTaggedThreadPools::Shutdown() {
+  PoolMap pools;
+  {
+    std::lock_guard lock(mutex_);
+    shutting_down_ = true;
+    pools_by_tag_.Emplace();
+    std::swap(pools, pools_holder_);
+  }
+  for (auto& pool : pools | std::views::values) {
+    pool->Shutdown();
+  }
+}
+
+YBThreadPoolScopedPtr YBTaggedThreadPools::LookupPool(Tag tag) {
+  auto pools_by_tag = pools_by_tag_.get();
+  auto itr = pools_by_tag->find(tag);
+  if (itr != pools_by_tag->end()) {
+    return itr->second;
+  }
+  return nullptr;
+}
+
+Result<YBThreadPoolScopedPtr> YBTaggedThreadPools::Pool(Tag tag) {
+  if (auto pool = LookupPool(tag)) {
+    return pool;
+  }
+
+  UniqueLock<std::mutex> lock(mutex_);
+  if (auto pool = LookupPool(tag)) {
+    return pool;
+  }
+  if (shutting_down_) {
+    return STATUS(ShutdownInProgress, "thread pools shutting down");
+  }
+
+  CleanupIdlePools(lock);
+
+  auto pool = pools_holder_.try_emplace(
+      tag, make_scoped_refptr<RefCountedData<YBThreadPool>>(options_generator_(tag))).first->second;
+  pools_by_tag_.Emplace(pools_holder_);
+  return pool;
+}
+
+void YBTaggedThreadPools::CleanupIdlePools(UniqueLock<std::mutex>& lock) {
+  // To avoid the case where someone calls Pool(tag) on an idle pool, then CleanupIdlePools()
+  // shuts down the pool before they are able to queue on the pool, we do the following:
+  // 1. prevent new callers of Pool(tag) from accessing the pool without mutex, by updating
+  //    pools_by_tag_ with idle pools removed.
+  // 2. shutdown and delete any pool with ref_count == 2 and no workers, since this means no one
+  //    else has access to it to queue new tasks, and nothing is running.
+  // 3. add any other removed pools back to pools_by_tag_, since someone else holds a reference and
+  //    may queue new tasks.
+  // This depends on the ref_count increment having acquire memory order, which is true for
+  // RefCountedThreadSafe + scoped_refptr but not for std::shared_ptr.
+  std::vector<YBThreadPoolScopedPtr> shutdown;
+
+  PoolMap temp_pools_by_tag;
+  PoolMap shutdown_candidates;
+  for (auto& [tag, pool] : pools_holder_) {
+    // Two references: pools_holder_ and pools_by_tag_.
+    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
+      shutdown_candidates.try_emplace(tag, pool);
+    } else {
+      temp_pools_by_tag.try_emplace(tag, pool);
+    }
+  }
+  pools_by_tag_.Emplace(std::move(temp_pools_by_tag));
+  for (auto& [tag, pool] : shutdown_candidates) {
+    // Two references: pools_holder_ and to_remove.
+    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
+      shutdown.emplace_back(std::move(pool));
+      pools_holder_.erase(tag);
+    }
+  }
+  pools_by_tag_.Emplace(pools_holder_);
+
+  [&] NO_THREAD_SAFETY_ANALYSIS {
+    lock.unlock();
+    for (auto& pool : shutdown) {
+      pool->Shutdown();
+    }
+    lock.lock();
+  }();
 }
 
 } // namespace yb

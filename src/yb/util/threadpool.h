@@ -107,10 +107,13 @@ class ThreadPoolToken {
 
 class ThreadPool {
  public:
-  explicit ThreadPool(const ThreadPoolOptions& options) : impl_(options) {}
+  explicit ThreadPool(const ThreadPoolOptions& options)
+      : underlying_(make_scoped_refptr<RefCountedData<YBThreadPool>>(options)) {}
+
+  explicit ThreadPool(YBThreadPoolScopedPtr underlying) : underlying_(std::move(underlying)) {}
 
   void Shutdown() {
-    impl_.Shutdown();
+    underlying_->Shutdown();
   }
 
   Status SubmitFunc(const std::function<void()>& func);
@@ -122,19 +125,19 @@ class ThreadPool {
   }
 
   bool WaitUntil(MonoTime until) {
-    return impl_.BusyWait(until);
+    return underlying_->BusyWait(until);
   }
 
   void Wait() {
-    impl_.BusyWait(MonoTime::kUninitialized);
+    underlying_->BusyWait(MonoTime::kUninitialized);
   }
 
   size_t NumWorkers() const {
-    return impl_.NumWorkers();
+    return underlying_->NumWorkers();
   }
 
   bool Idle() const {
-    return impl_.Idle();
+    return underlying_->Idle();
   }
 
   // Allocates a new token for use in token-based task submission. All tokens
@@ -155,7 +158,7 @@ class ThreadPool {
   template <class F>
   Status DoSubmit(const F& f);
 
-  YBThreadPool impl_;
+  YBThreadPoolScopedPtr underlying_;
 };
 
 class ThreadPoolBuilder {
@@ -247,6 +250,15 @@ class TaskRunner {
   Status first_failure_ GUARDED_BY(mutex_);
   std::mutex mutex_;
   std::condition_variable cond_ GUARDED_BY(mutex_);
+};
+
+class TaggedThreadPools : public YBTaggedThreadPools {
+ public:
+  using YBTaggedThreadPools::YBTaggedThreadPools;
+
+  Result<ThreadPool> Pool(Tag tag) {
+    return ThreadPool(VERIFY_RESULT(YBTaggedThreadPools::Pool(tag)));
+  }
 };
 
 } // namespace yb
