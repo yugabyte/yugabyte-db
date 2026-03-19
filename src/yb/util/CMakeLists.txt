@@ -245,7 +245,6 @@ set(UTIL_SRCS
   varint.cc
   write_buffer.cc
   yb_partition.cc
-  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   thread_holder.cc

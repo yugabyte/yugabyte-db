@@ -40,9 +40,9 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
-#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 using yb::client::GetTableIdByTableName;
 using yb::client::Snapshots;
