@@ -170,7 +170,6 @@ uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len);
 
 bool YBCIsObjectLockingEnabled();
-bool YBCIsLegacyModeForCatalogOps();
 void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();

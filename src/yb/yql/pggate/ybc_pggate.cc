@@ -2028,6 +2028,32 @@ bool YBCCurrentTransactionUsesFastPath() {
   return result.get();
 }
 
+bool YBCIsLegacyModeForCatalogOps() {
+  //
+  // If object locking is enabled:
+  //
+  // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
+  //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
+  //     behavior). This is required to allow concurrent DDLs by not causing write-write conflicts
+  //     based on overlapping [transaction read time, commit time] windows. The serialization of
+  //     catalog modifications via DDLs is now handled by object locks. Catalog writes were using
+  //     the kTransactional session type pre-object locking and that stays the same.
+  //
+  // (2) Catalog reads will always use the kTransactional session type. This is done so that they
+  //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
+  //     see the catalog data modified by the current active transaction (this is required because
+  //     transactional DDL is enabled if object locking is enabled).
+  //
+  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
+  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
+  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
+  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
+  //     the TransactionSnapshot's read time serial number.
+  //
+  return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
+    || YBCIsSysTablePrefetchingStarted();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
