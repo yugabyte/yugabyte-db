@@ -45,6 +45,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -186,6 +187,10 @@ uint64_t GetInVoluntaryContextSwitches() {
   return ru.ru_nivcsw;
 }
 
+uint64_t ReadAtomicInt(const std::atomic<uint64_t>* metric) {
+  return metric->load(std::memory_order_relaxed);
+}
+
 class ThreadCategoryTracker {
  public:
   explicit ThreadCategoryTracker(const string& name) : name_(std::move(name)) {}
@@ -195,12 +200,11 @@ class ThreadCategoryTracker {
   void RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity);
 
  private:
-  uint64 GetCategory(const string& category);
-  uint64_t& RegisterGaugeForAllMetricEntities(const string& category);
+  std::atomic<uint64_t>& RegisterGaugeForAllMetricEntities(const string& category);
 
   struct Entry {
     std::unique_ptr<GaugePrototype<uint64>> gauge_proto;
-    uint64_t metric = 0;
+    std::atomic<uint64_t> metric{0};
     // We must retain references to each metric object from each metric_entity,
     // otherwise they will be cleaned up after 2 minutes.
     std::vector<scoped_refptr<FunctionGauge<uint64>>> metric_holders;
@@ -211,30 +215,28 @@ class ThreadCategoryTracker {
   std::vector<scoped_refptr<MetricEntity>> metric_entities_;
 };
 
-uint64 ThreadCategoryTracker::GetCategory(const string& category) {
-  return entries_[category].metric;
-}
-
 void ThreadCategoryTracker::RegisterMetricEntity(const scoped_refptr<MetricEntity> &metric_entity) {
   for (auto& [category, entry] : entries_) {
     auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
-      Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+        Bind(&ReadAtomicInt, Unretained(&entry.metric)));
     entry.metric_holders.push_back(std::move(metric_ptr));
   }
   metric_entities_.push_back(metric_entity);
 }
 
 void ThreadCategoryTracker::IncrementCategory(const string& category) {
-  ++RegisterGaugeForAllMetricEntities(category);
+  RegisterGaugeForAllMetricEntities(category).fetch_add(1, std::memory_order_relaxed);
 }
 
 void ThreadCategoryTracker::DecrementCategory(const string& category) {
-  --RegisterGaugeForAllMetricEntities(category);
+  RegisterGaugeForAllMetricEntities(category).fetch_sub(1, std::memory_order_relaxed);
 }
 
-uint64_t& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string& category) {
+std::atomic<uint64_t>& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(
+    const string& category) {
   auto it = entries_.find(category);
   if (it != entries_.end()) {
+    DCHECK(it->second.gauge_proto) << category;
     return it->second.metric;
   }
   auto id = name_ + "_" + category;
@@ -244,17 +246,16 @@ uint64_t& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(const string&
     std::make_unique<OwningGaugePrototype<uint64>>( "server", id, description,
     yb::MetricUnit::kThreads, description, yb::MetricLevel::kInfo, yb::EXPOSE_AS_COUNTER);
 
-  Entry entry;
+  auto [inserted_it, inserted] = entries_.try_emplace(category);
+  DCHECK(inserted) << category;
+  Entry& entry = inserted_it->second;
   entry.gauge_proto = std::move(gauge_proto);
   for (auto& metric_entity : metric_entities_) {
     auto metric_ptr = entry.gauge_proto->InstantiateFunctionGauge(metric_entity,
-        Bind(&ThreadCategoryTracker::GetCategory, Unretained(this), category));
+        Bind(&ReadAtomicInt, Unretained(&entry.metric)));
     entry.metric_holders.push_back(metric_ptr);
   }
-
-  auto [inserted_it, inserted] = entries_.emplace(category, std::move(entry));
-  DCHECK(inserted);
-  return inserted_it->second.metric;
+  return entry.metric;
 }
 
 // A singleton class that tracks all live threads, and groups them together for easy
