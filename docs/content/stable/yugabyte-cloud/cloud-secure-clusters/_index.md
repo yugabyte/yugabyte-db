@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-secure-clusters
-weight: 30
+    weight: 30
 type: indexpage
 ---
 
