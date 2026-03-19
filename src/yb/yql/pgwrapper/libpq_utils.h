@@ -155,6 +155,7 @@ Result<std::string> ToString(const PGresult* result, int row, int column);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
+std::string PqEscapeStringConn(const std::string& input);
 
 namespace libpq_utils::internal {
 
