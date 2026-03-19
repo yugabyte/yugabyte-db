@@ -1459,6 +1459,8 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 alter table at_partitioned alter column name type varchar(127);
 
 -- Note: these tests currently show the wrong behavior for comments :-(
+-- YB: In YB, the child indexes' comments are actually preserved, since the
+-- indexes were reused. We diverge from PG here.
 
 select relname,
   c.oid = oldoid as orig_oid,

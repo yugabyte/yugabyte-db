@@ -1196,3 +1196,269 @@ SELECT * FROM parent;
  1
 (1 row)
 
+--
+-- Test index rewrites during ALTER TYPE when the base table is not rewritten.
+--
+-- test that indexes are correctly rebuilt when collation changes.
+-- without rebuilding, queries can return incorrect results.
+CREATE TABLE collation_test (name varchar COLLATE "en_US");
+CREATE INDEX idx_collation ON collation_test(name ASC);
+-- insert test data with special characters
+INSERT INTO collation_test VALUES ('abc'), (U&'\00E4bc'), ('xyz');
+-- query before collation change
+SET enable_seqscan = off;
+SET enable_sort = off;
+-- should return: xyz
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+    FROM collation_test WHERE name > 'x';
+ utf8_bytes 
+------------
+ xyz
+(1 row)
+
+-- store the table's relfilenode before ALTER TYPE
+CREATE TEMP TABLE table_info AS
+    SELECT relfilenode FROM pg_class WHERE relname = 'collation_test';
+-- store the index's relfilenode and OID before ALTER TYPE
+CREATE TEMP TABLE index_info AS
+    SELECT relfilenode, oid FROM pg_class WHERE relname = 'idx_collation';
+-- change collation (no table rewrite needed)
+ALTER TABLE collation_test ALTER COLUMN name TYPE varchar COLLATE "C";
+-- check if table was rewritten (relfilenode changed) -- we expect it to not be rewritten
+SELECT
+    CASE
+        WHEN old.relfilenode = new.relfilenode
+        THEN 'Table not rewritten'
+        ELSE 'Table rewritten'
+    END as result
+FROM table_info old, pg_class new
+WHERE new.relname = 'collation_test';
+       result        
+---------------------
+ Table not rewritten
+(1 row)
+
+-- check if index was rebuilt -- we expect it to be rebuilt (new oid and relfilenode)
+SELECT
+    CASE WHEN old.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN old.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM index_info old, pg_class new
+WHERE new.relname = 'idx_collation';
+        case         |    case     
+---------------------+-------------
+ relfilenode changed | OID changed
+(1 row)
+
+-- query after collation change should return correct results
+-- should return: xyz and U&'\00E4bc'
+EXPLAIN (COSTS OFF) /*+ IndexScan(collation_test idx_collation) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Scan using idx_collation on collation_test
+   Index Cond: ((name)::text > 'x'::text)
+(2 rows)
+
+EXPLAIN (COSTS OFF) /*+ SeqScan(collation_test) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Sort
+   Sort Key: name COLLATE "C"
+   ->  Seq Scan on collation_test
+         Storage Filter: ((name)::text > 'x'::text)
+(4 rows)
+
+/*+ IndexScan(collation_test idx_collation) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
+ utf8_bytes 
+------------
+ xyz
+ \303\244bc
+(2 rows)
+
+/*+ SeqScan(collation_test) */
+SELECT encode(name::bytea, 'escape') as utf8_bytes
+FROM collation_test WHERE name > 'x' ORDER BY name;
+ utf8_bytes 
+------------
+ xyz
+ \303\244bc
+(2 rows)
+
+DROP TABLE table_info;
+DROP TABLE index_info;
+RESET enable_seqscan;
+RESET enable_sort;
+-- test that indexes are NOT unnecessarily rebuilt when compatible.
+CREATE TABLE compatible_test (val varchar(10));
+CREATE INDEX idx_compatible ON compatible_test(val);
+INSERT INTO compatible_test VALUES ('abc'), ('def');
+-- store index relfilenode, OID, and atttypmod before ALTER TYPE.
+CREATE TEMP TABLE index_info AS
+    SELECT c.relfilenode, c.oid, a.atttypmod
+    FROM pg_class c, pg_attribute a
+    WHERE c.relname = 'idx_compatible' AND a.attrelid = c.oid AND a.attnum = 1;
+ALTER TABLE compatible_test ALTER COLUMN val TYPE varchar(100);
+-- index should be reused: same relfilenode, same OID, but atttypmod updated.
+SELECT
+    CASE WHEN old.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN old.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END,
+    CASE WHEN old.atttypmod <> a.atttypmod THEN 'atttypmod updated' ELSE 'atttypmod unchanged' END
+FROM index_info old, pg_class new, pg_attribute a
+WHERE new.relname = 'idx_compatible' AND a.attrelid = new.oid AND a.attnum = 1;
+        case        |    case    |       case        
+--------------------+------------+-------------------
+ relfilenode reused | OID reused | atttypmod updated
+(1 row)
+
+-- index scan should return correct results after in-place update.
+SET enable_seqscan = off;
+SELECT * FROM compatible_test WHERE val = 'abc';
+ val 
+-----
+ abc
+(1 row)
+
+RESET enable_seqscan;
+-- test duplicate insert into unique index after ALTER TYPE without rewrite.
+CREATE TABLE test (t varchar(10));
+CREATE UNIQUE INDEX ON test(t);
+INSERT INTO test VALUES ('hi');
+ALTER TABLE test ALTER COLUMN t TYPE varchar(20);
+INSERT INTO test VALUES ('hi');
+ERROR:  duplicate key value violates unique constraint "test_t_idx"
+-- test unique constraint, multi-column index, expression index, and mixed
+-- compatible/incompatible in a single table.
+CREATE TABLE inplace_test (a varchar(10) UNIQUE, b varchar(10) COLLATE "en_US");
+CREATE INDEX idx_inplace_ab ON inplace_test(a, b);
+CREATE INDEX idx_inplace_expr ON inplace_test(lower(b));
+INSERT INTO inplace_test VALUES ('x', 'y');
+CREATE TEMP TABLE inplace_info AS
+    SELECT c.relname, c.oid, c.relfilenode FROM pg_class c
+    WHERE c.relname IN ('inplace_test_a_key', 'idx_inplace_ab', 'idx_inplace_expr');
+CREATE TEMP TABLE con_info AS
+    SELECT oid, conindid FROM pg_constraint WHERE conname = 'inplace_test_a_key';
+CREATE TEMP TABLE ab_attr AS
+    SELECT attnum, atttypmod FROM pg_attribute
+    WHERE attrelid = 'idx_inplace_ab'::regclass AND attnum > 0;
+-- compatible alter on a, incompatible (collation change) on b.
+ALTER TABLE inplace_test ALTER COLUMN a TYPE varchar(50),
+    ALTER COLUMN b TYPE varchar(50) COLLATE "C";
+-- unique constraint on a: OID and backing index should be reused.
+SELECT
+    CASE
+        WHEN old.oid = new.oid AND old.conindid = new.conindid
+        THEN 'constraint reused'
+        ELSE 'constraint changed'
+    END as result
+FROM con_info old, pg_constraint new
+WHERE new.conname = 'inplace_test_a_key';
+      result       
+-------------------
+ constraint reused
+(1 row)
+
+-- unique constraint is still enforced.
+INSERT INTO inplace_test VALUES ('x', 'z');
+ERROR:  duplicate key value violates unique constraint "inplace_test_a_key"
+-- unique constraint index reused, expression index rebuilt.
+SELECT m.relname,
+    CASE WHEN m.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN m.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM inplace_info m
+JOIN pg_class new ON new.relname = m.relname
+ORDER BY m.relname;
+      relname       |        case         |    case     
+--------------------+---------------------+-------------
+ idx_inplace_ab     | relfilenode changed | OID changed
+ idx_inplace_expr   | relfilenode changed | OID changed
+ inplace_test_a_key | relfilenode reused  | OID reused
+(3 rows)
+
+-- multi-column index: column a's atttypmod changed, column b's changed too
+-- (b was incompatible so the whole index was rebuilt).
+SELECT m.attnum,
+    CASE WHEN m.atttypmod = new.atttypmod THEN 'unchanged' ELSE 'changed' END as result
+FROM ab_attr m
+JOIN pg_attribute new ON new.attrelid = 'idx_inplace_ab'::regclass AND new.attnum = m.attnum
+ORDER BY m.attnum;
+ attnum | result  
+--------+---------
+      1 | changed
+      2 | changed
+(2 rows)
+
+-- temp table: follows PG behavior. Compatible index is reused, incompatible
+-- index is rebuilt.
+CREATE TEMP TABLE temp_test (a varchar(10), b varchar(10) COLLATE "en_US");
+CREATE INDEX idx_temp_a ON temp_test(a);
+CREATE INDEX idx_temp_b ON temp_test(b);
+CREATE TEMP TABLE temp_info AS
+    SELECT relname, oid, relfilenode FROM pg_class WHERE relname IN ('idx_temp_a', 'idx_temp_b');
+ALTER TABLE temp_test ALTER COLUMN a TYPE varchar(50),
+    ALTER COLUMN b TYPE varchar(50) COLLATE "C";
+SELECT o.relname,
+    CASE WHEN o.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN o.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM temp_info o
+JOIN pg_class new ON new.relname = o.relname
+ORDER BY o.relname;
+  relname   |        case         |    case     
+------------+---------------------+-------------
+ idx_temp_a | relfilenode reused  | OID changed
+ idx_temp_b | relfilenode changed | OID changed
+(2 rows)
+
+-- partitioned table: compatible index reused in place for parent and children.
+-- child partition has columns in different order to test attnum mapping.
+CREATE TABLE part_parent (a varchar(10), b int) PARTITION BY RANGE (b);
+CREATE TABLE part_child_raw (b int, a varchar(10));
+ALTER TABLE part_parent ATTACH PARTITION part_child_raw FOR VALUES FROM (1) TO (100);
+CREATE INDEX idx_part_a ON part_parent(a);
+INSERT INTO part_parent VALUES ('x', 1);
+CREATE TEMP TABLE part_idx_info AS
+    SELECT c.relname, c.oid, c.relfilenode
+    FROM pg_class c, pg_index i
+    WHERE i.indexrelid = c.oid
+      AND i.indrelid IN ('part_parent'::regclass, 'part_child_raw'::regclass);
+ALTER TABLE part_parent ALTER COLUMN a TYPE varchar(50);
+-- both parent and child index should be reused.
+SELECT m.relname,
+    CASE WHEN m.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN m.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM part_idx_info m
+JOIN pg_class new ON new.relname = m.relname
+ORDER BY m.relname;
+       relname        |        case        |    case    
+----------------------+--------------------+------------
+ idx_part_a           | relfilenode reused | OID reused
+ part_child_raw_a_idx | relfilenode reused | OID reused
+(2 rows)
+
+-- inherited table (non-partition): compatible index reused in place.
+CREATE TABLE inh_parent (a varchar(10));
+CREATE TABLE inh_child () INHERITS (inh_parent);
+CREATE INDEX idx_inh_parent ON inh_parent(a);
+CREATE INDEX idx_inh_child ON inh_child(a);
+CREATE TEMP TABLE inh_idx_info AS
+    SELECT c.relname, c.oid, c.relfilenode
+    FROM pg_class c
+    WHERE c.relname IN ('idx_inh_parent', 'idx_inh_child');
+ALTER TABLE inh_parent ALTER COLUMN a TYPE varchar(50);
+-- both parent and child index should be reused.
+SELECT m.relname,
+    CASE WHEN m.relfilenode = new.relfilenode THEN 'relfilenode reused' ELSE 'relfilenode changed' END,
+    CASE WHEN m.oid = new.oid THEN 'OID reused' ELSE 'OID changed' END
+FROM inh_idx_info m
+JOIN pg_class new ON new.relname = m.relname
+ORDER BY m.relname;
+    relname     |        case        |    case    
+----------------+--------------------+------------
+ idx_inh_child  | relfilenode reused | OID reused
+ idx_inh_parent | relfilenode reused | OID reused
+(2 rows)
+

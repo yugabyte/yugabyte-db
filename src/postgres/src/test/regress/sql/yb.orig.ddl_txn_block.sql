@@ -267,3 +267,15 @@ INSERT INTO test_trigger_table(name, age, email) VALUES ('Charlie', 28, 'charlie
 ALTER TABLE test_trigger_table ENABLE TRIGGER trg_log_changes;
 SELECT id, name, age, email FROM test_trigger_table;
 SELECT action, row_id FROM trigger_log;
+-- Test rollback of in-place index pg_attribute update during ALTER TYPE.
+CREATE TABLE test_idx_rollback (val varchar(10));
+CREATE INDEX idx_rollback ON test_idx_rollback(val);
+ALTER TABLE test_idx_rollback ALTER COLUMN val TYPE varchar(100);
+SELECT atttypmod FROM pg_attribute
+    WHERE attrelid = 'idx_rollback'::regclass AND attnum = 1;
+BEGIN;
+ALTER TABLE test_idx_rollback ALTER COLUMN val TYPE varchar(200);
+ROLLBACK;
+-- atttypmod should revert to 104 (varchar(100)) after rollback.
+SELECT atttypmod FROM pg_attribute
+    WHERE attrelid = 'idx_rollback'::regclass AND attnum = 1;
