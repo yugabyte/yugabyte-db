@@ -805,19 +805,6 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 		indexInfo = indexInfoArray[i];
 
 		/*
-		 * If the index is not yet ready for insert we shouldn't attempt to
-		 * add new entries, but should delete the old entry from a live index,
-		 * because newer transaction may have seen it ready, and inserted the
-		 * record into the index.
-		 */
-		if (!indexInfo->ii_ReadyForInserts)
-		{
-			if (indexRelation->rd_index->indislive)
-				deleteIndexes = lappend_int(deleteIndexes, i);
-			continue;
-		}
-
-		/*
 		 * Check for partial index -
 		 * There are four different update scenarios for an index with a predicate:
 		 * 1. Both the old and new tuples satisfy the predicate - In this case, the index tuple
@@ -839,12 +826,14 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 			/*
 			 * If predicate state not set up yet, create it (in the estate's
 			 * per-query context)
+			 * If the partial index is being built or backfilled, validate that it is at the stage
+			 * where it accepts deletes and inserts.
 			 */
 			econtext->ecxt_scantuple = deleteSlot;
-			deleteApplicable = ExecQual(predicate, econtext);
+			deleteApplicable = ExecQual(predicate, econtext) && indexRelation->rd_index->indislive;
 
 			econtext->ecxt_scantuple = slot;
-			insertApplicable = ExecQual(predicate, econtext);
+			insertApplicable = ExecQual(predicate, econtext) && indexRelation->rd_index->indisready;
 
 			if (deleteApplicable != insertApplicable)
 			{
@@ -878,6 +867,22 @@ YbExecUpdateIndexTuples(TupleTableSlot *slot,
 			MemoryContextSwitchTo(oldContext);
 			if (hasExpressionOrPredicateIndex)
 				continue;
+		}
+
+		/*
+		 * YB: Disable in-place updates for invalid indexes. Fallback to using
+		 * DELETE + (re-)INSERT of the index row.
+		 */
+		if (!indexRelation->rd_index->indisvalid)
+		{
+			if (indexRelation->rd_index->indislive) /* YB */
+				deleteIndexes = lappend_int(deleteIndexes, i);
+			if (indexRelation->rd_index->indisready)
+			{
+				Assert(indexInfo->ii_ReadyForInserts);
+				insertIndexes = lappend_int(insertIndexes, i);
+			}
+			continue;
 		}
 
 		/*
