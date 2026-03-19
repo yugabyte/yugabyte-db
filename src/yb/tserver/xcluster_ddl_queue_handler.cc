@@ -13,7 +13,7 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
-#include <regex>
+#include <boost/algorithm/string.hpp>
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
@@ -219,6 +219,15 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "IMPORT FOREIGN SCHEMA",
     "SECURITY LABEL",
 };
+
+bool IsAllowedGucVariable(const std::string& name) {
+  static const std::unordered_set<std::string> kAllowedGucVariableNames = {
+#define X(name) name,
+#include "postgres/yb-extensions/yb_xcluster_ddl_replication/xcluster_ddl_replication_gucs.def"
+#undef X
+  };
+  return kAllowedGucVariableNames.contains(boost::to_lower_copy(name));
+}
 
 Result<rapidjson::Document> ParseSerializedJson(const std::string& raw_json_data) {
   SCHECK(!raw_json_data.empty(), InvalidArgument, "Received empty json to parse.");
@@ -471,8 +480,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
 
   // Pass information needed to assign OIDs that need to be preserved across the universes.
   setup_query << Format(
-      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
-      std::regex_replace(query_info.json_for_oid_assignment, std::regex("'"), "''"));
+      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments($0);",
+      pgwrapper::PqEscapeLiteral(query_info.json_for_oid_assignment));
 
   // Set session variables in order to pass the key to the replicated_ddls table.
   setup_query << Format("SET $0 TO $1;", kLocalVariableDDLEndTime, query_info.ddl_end_time);
@@ -480,16 +489,20 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
 
   // Set schema and role after setting the superuser extension variables.
   if (!query_info.search_path_schema.empty()) {
-    setup_query << Format("SET SCHEMA '$0';", query_info.search_path_schema);
+    setup_query << Format(
+        "SET SCHEMA $0;", pgwrapper::PqEscapeLiteral(query_info.search_path_schema));
   }
   if (!query_info.user.empty()) {
-    setup_query << Format("SET ROLE $0;", query_info.user);
+    setup_query << Format("SET ROLE $0;", pgwrapper::PqEscapeIdentifier(query_info.user));
   }
 
   // Set needed session variables as on source.
   for (const auto& [name, value] : query_info.variables) {
-    auto escaped_value = std::regex_replace(value, std::regex("'"), "''");
-    setup_query << Format("SET $0 = '$1';", name, escaped_value);
+    if (!IsAllowedGucVariable(name)) {
+      LOG_WITH_PREFIX(WARNING) << "Ignoring unexpected variable in DDL queue entry: " << name;
+      continue;
+    }
+    setup_query << Format("SET $0 = $1;", name, pgwrapper::PqEscapeLiteral(value));
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
@@ -558,8 +571,8 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, $4$3$4)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
-      query_info.query_id, common::WriteRapidJsonToString(doc), "$manual_query$")));
+      "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
+      query_info.query_id, pgwrapper::PqEscapeLiteral(common::WriteRapidJsonToString(doc)))));
   return Status::OK();
 }
 
@@ -795,8 +808,9 @@ Status XClusterDDLQueueHandler::DoPersistAndUpdateSafeTimeBatch(
   const auto json_str = buffer.GetString();
   VLOG_WITH_PREFIX(2) << "Persisting safe time batch: " << json_str;
 
-  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(
-      pg_conn_->ExecuteFormat("EXECUTE $0('$1')", kDDLPrepStmtCommitTimesUpsert, json_str)));
+  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(pg_conn_->ExecuteFormat(
+      "EXECUTE $0($1)", kDDLPrepStmtCommitTimesUpsert,
+      pgwrapper::PqEscapeLiteral(json_str))));
 
   safe_time_batch_ = std::move(new_safe_time_batch);
 
