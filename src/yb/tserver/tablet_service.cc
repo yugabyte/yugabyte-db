@@ -1558,61 +1558,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
       });
 }
 
-void TabletServiceImpl::UpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    rpc::RpcContext context) {
-  TRACE("UpdateTransactionStatusLocation");
-
-  VLOG(1) << "UpdateTransactionStatusLocation: " << req->ShortDebugString()
-          << ", context: " << context.ToString();
-
-  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
-  auto status = HandleUpdateTransactionStatusLocation(req, resp, context_ptr);
-  if (!status.ok()) {
-    LOG(WARNING) << status;
-    SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
-  }
-}
-
-Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    std::shared_ptr<rpc::RpcContext> context) {
-  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
-      << __func__ << " missing propagated hybrid time for transaction status location update";
-  UpdateClock(*req, server_->Clock());
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms > 0)) {
-    std::this_thread::sleep_for(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms * 1ms);
-  }
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
-      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
-    } else {
-      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
-    }
-  }
-
-  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
-
-  auto tablet = LookupLeaderTabletOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, context.get());
-  if (!tablet) {
-    return Status::OK();
-  }
-
-  auto* participant = tablet.tablet->transaction_participant();
-  if (!participant) {
-    return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
-  }
-
-  RETURN_NOT_OK(participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id()));
-  context->RespondSuccess();
-  return Status::OK();
-}
-
 void TabletServiceImpl::UpdateTransactionWaitingForStatus(
     const UpdateTransactionWaitingForStatusRequestPB* req,
     UpdateTransactionWaitingForStatusResponsePB* resp,
