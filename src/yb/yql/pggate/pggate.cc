@@ -1175,6 +1175,10 @@ Result<tserver::PgListClonesResponsePB> PgApiImpl::GetDatabaseClones() {
   return pg_session_->pg_client().ListDatabaseClones();
 }
 
+Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid db_oid) {
+    return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
+}
+
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
   return table_desc->GetColumnInfo(attr_number);
 }

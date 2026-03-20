@@ -301,6 +301,7 @@ YB_DEFINE_TYPED_ENUM(PggateRPC, uint16_t,
   (kGetXClusterRole)
   (kGetYbSystemTableInfo)
   (kReleaseSessionObjectLock)
+  (kQueryAutoAnalyze)
 
   // CDCService RPCs
   (kInitVirtualWALForCDC)

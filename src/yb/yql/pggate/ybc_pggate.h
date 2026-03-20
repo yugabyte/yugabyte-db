@@ -1068,6 +1068,8 @@ YbcStatus YBCCommitTransactionIntermediate(const YbcPgInitTransactionData *data)
 
 YbcStatus YBCTriggerRelcacheInitConnection(const char* dbname);
 
+YbcStatus YBCQueryAutoAnalyze(
+    YbcPgOid db_oid, YbcAutoAnalyzeInfo** analyze_info, size_t* count);
 #ifdef __cplusplus
 }  // extern "C"
 #endif

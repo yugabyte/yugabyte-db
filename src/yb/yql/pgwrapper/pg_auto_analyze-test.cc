@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <rapidjson/document.h>
 
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
@@ -24,6 +25,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/entity_ids.h"
+#include "yb/common/jsonb.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_manager.h"
@@ -1259,6 +1261,64 @@ TEST_F(PgAutoAnalyzeTest, AutoAnalyzeRetryAnalyze) {
   thread_holder.Stop();
   // Verify auto analyze works as expected.
   ASSERT_OK(WaitForTableReltuples(conn, table_name, num_rows));
+}
+
+TEST_F(PgAutoAnalyzeTest, AutoAnalyzeObservability) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_scale_factor) = 0;
+  const int cooldown_value = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_min_cooldown_per_table) = cooldown_value;
+
+  const std::string schema_name = "test_schema";
+  const std::string table_name = "test";
+  const std::string table_creation_stmt = "CREATE TABLE $0.$1 (k int)";
+  const int num_rows = 150;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE SCHEMA $0", schema_name));
+  ASSERT_OK(conn.ExecuteFormat(table_creation_stmt, schema_name, table_name));
+  const auto table_id = ASSERT_RESULT(GetTableId(table_name));
+  const auto table_oid = ASSERT_RESULT(GetPgsqlTableOid(table_id));
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
+      [&conn, schema_name, table_name, num_rows] {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
+                                     schema_name, table_name, num_rows));
+      },
+      {{table_id, num_rows}}));
+  // Check SQL function output
+  auto [schemaname, relname, mutations, last_analyze_info] =
+    ASSERT_RESULT((conn.FetchRow<std::string, std::string, pgwrapper::PGUint64,
+                                 std::optional<std::string>>(
+      Format("SELECT schemaname, relname, mutations, last_analyze_info::TEXT FROM "
+             "yb_stat_auto_analyze() WHERE relid = '$0'", table_oid))));
+  ASSERT_EQ(schema_name, schemaname);
+  ASSERT_EQ(table_name, relname);
+  ASSERT_EQ(num_rows, mutations);
+  ASSERT_TRUE(!last_analyze_info.has_value());
+
+  auto start_time = GetCurrentTimeMicros();
+  // Trigger ANALYZE
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0.$1 SELECT generate_series(1, $2)",
+                               schema_name, table_name, num_rows));
+  ASSERT_OK(WaitForTableReltuples(conn, table_name, 2 * num_rows));
+  // Parse Json and Verify
+  last_analyze_info =
+    ASSERT_RESULT((conn.FetchRow<std::optional<std::string>>(
+      Format("SELECT last_analyze_info::TEXT FROM yb_stat_auto_analyze() "
+             "WHERE relid = '$0'", table_oid))));
+  common::Jsonb jsonb;
+  ASSERT_OK(jsonb.FromString(*last_analyze_info));
+  rapidjson::Document doc;
+  ASSERT_OK(jsonb.ToRapidJson(&doc));
+  ASSERT_TRUE(doc.HasMember(stateful_service::PgAutoAnalyzeService::kAnalyzeHistoryKey)
+              && doc[stateful_service::PgAutoAnalyzeService::kAnalyzeHistoryKey].IsArray());
+  const auto& history_array = doc[stateful_service::PgAutoAnalyzeService::kAnalyzeHistoryKey];
+  ASSERT_EQ(1, history_array.Size());
+  const auto& history_event = history_array.GetArray()[0];
+  ASSERT_TRUE(history_event.IsObject() && history_event.HasMember("timestamp")
+              && history_event.HasMember("cooldown"));
+  ASSERT_LT(start_time, history_event["timestamp"].GetInt64());
+  // cooldown value is stored in microseconds and its flag value is in unit of miliseconds.
+  ASSERT_EQ(1000 * cooldown_value, history_event["cooldown"].GetInt64());
 }
 
 class PgConcurrentDDLAnalyzeTest : public LibPqTestBase {

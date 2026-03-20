@@ -79,6 +79,7 @@ class TserverXClusterContextIf;
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListClones) \
+    (QueryAutoAnalyze) \
     (ListLiveTabletServers) \
     (ListSlotEntries) \
     (ListReplicationSlots) \

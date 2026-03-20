@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V90.4__28810__yb_ash_with_input_params.sql
-{ major => '90', minor => '4', name => '<baseline>', time_applied => '_null_' }
+# here: V90.5__15667__yb_stat_auto_analyze.sql
+{ major => '90', minor => '5', name => '<baseline>', time_applied => '_null_' }
 
 ]

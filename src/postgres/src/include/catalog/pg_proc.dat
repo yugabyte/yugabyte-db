@@ -12263,4 +12263,14 @@
   prorettype => 'int4', proargtypes => 'text text int4 int4 int4 int4',
   prosrc => 'yb_levenshtein_less_equal_with_costs' },
 
+{ oid => '8113',
+  descr => 'query YB auto analyze service table',
+  proname => 'yb_stat_auto_analyze', proretset => 't',
+  provolatile => 'v',
+  proparallel => 'u', prorettype => 'record',
+  proargtypes => '',
+  proallargtypes => '{oid,text,text,int8,jsonb}',
+  proargmodes => '{o,o,o,o,o}',
+  proargnames => '{relid,schemaname,relname,mutations,last_analyze_info}',
+  prosrc => 'yb_stat_auto_analyze' },
 ]
