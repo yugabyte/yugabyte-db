@@ -36,6 +36,7 @@
 
 namespace yb {
 
+class Env;
 class PriorityThreadPool;
 
 } // namespace yb

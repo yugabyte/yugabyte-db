@@ -15,6 +15,7 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
@@ -73,6 +74,27 @@ struct Header {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
         max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers);
+  }
+};
+
+struct DataBlock {
+  std::unique_ptr<std::byte[]> data;
+  size_t size = 0;
+
+  DataBlock() = default;
+
+  explicit DataBlock(size_t size) {
+    Allocate(size);
+  }
+
+  void Allocate(size_t sz) {
+    DCHECK(!data);
+    data.reset(new std::byte[sz]);
+    size = sz;
+  }
+
+  Slice AsSlice() const {
+    return Slice(data.get(), size);
   }
 };
 
