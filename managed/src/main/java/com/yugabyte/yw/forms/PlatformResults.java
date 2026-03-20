@@ -44,7 +44,13 @@ public class PlatformResults {
   }
 
   private static Result redactedResult(JsonNode dataObj) {
-    return Results.ok(RedactingService.filterSecretFields(dataObj, RedactionTarget.APIS));
+    return Results.ok(
+        RedactingService.filterSecretFields(
+            dataObj,
+            RedactionTarget.APIS,
+            /* ybSoftwareVersion */ null,
+            /* gFlagsValidation */ null,
+            RedactingService.isGFlagsSensitiveDataApiRedactionEnabled()));
   }
 
   /**
@@ -55,6 +61,22 @@ public class PlatformResults {
   public static Result withData(Object data) {
     JsonNode dataObj = Json.toJson(data);
     return redactedResult(dataObj);
+  }
+
+  /**
+   * Like {@link #withData(Object)}, but lets the caller explicitly control whether
+   * gflags-sensitive-data API redaction (HBA ldapbindpasswd, ycql_ldap_bind_passwd) is applied. Use
+   * when the response context makes redaction counterproductive — e.g. a CREATE configure response
+   * where there is no stored universe to merge the redacted values back from.
+   */
+  public static Result withData(Object data, boolean enableGFlagsSensitiveDataApiRedaction) {
+    return Results.ok(
+        RedactingService.filterSecretFields(
+            Json.toJson(data),
+            RedactionTarget.APIS,
+            /* ybSoftwareVersion */ null,
+            /* gFlagsValidation */ null,
+            enableGFlagsSensitiveDataApiRedaction));
   }
 
   public static Result withData(Object data, Class<?> view) {
