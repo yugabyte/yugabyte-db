@@ -254,10 +254,11 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const DDLQueryInfo& query_info) 
 
   // Set schema and role after setting the superuser extension variables.
   if (!query_info.schema.empty()) {
-    setup_query << Format("SET SCHEMA '$0';", query_info.schema);
+    setup_query << Format(
+        "SET SCHEMA $0;", pgwrapper::PqEscapeLiteral(query_info.schema));
   }
   if (!query_info.user.empty()) {
-    setup_query << Format("SET ROLE $0;", query_info.user);
+    setup_query << Format("SET ROLE $0;", pgwrapper::PqEscapeIdentifier(query_info.user));
   }
 
   RETURN_NOT_OK(RunAndLogQuery(setup_query.str()));
@@ -274,8 +275,8 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(const DDLQueryInfo& 
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, '$3')", kDDLPrepStmtManualInsert, query_info.start_time,
-      query_info.query_id, common::WriteRapidJsonToString(doc))));
+      "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.start_time,
+      query_info.query_id, pgwrapper::PqEscapeLiteral(common::WriteRapidJsonToString(doc)))));
   return Status::OK();
 }
 
