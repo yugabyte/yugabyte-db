@@ -913,6 +913,9 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
     schema_packing_table_prefix_.Assign(table_key_prefix);
   }
   Decoder decoder(*schema_packing_, value.data());
+  auto prev_index_column_id = kInvalidColumnId;
+  decltype(decoder.FetchValue(vector_indexes_->front()->column_id())) column_value({});
+
 
   boost::dynamic_bitset<> columns_added_to_vector_index;
   for (size_t i = 0; i != vector_indexes_->size(); ++i) {
@@ -922,7 +925,10 @@ Status ApplyIntentsContext::ProcessVectorIndexesForPackedRow(
         commit_ht_ <= vector_index.hybrid_time()) {
       continue;
     }
-    auto column_value = decoder.FetchValue(vector_index.column_id());
+    if (vector_index.column_id() != prev_index_column_id) {
+      prev_index_column_id = vector_index.column_id();
+      column_value = decoder.FetchValue(prev_index_column_id);
+    }
     if (column_value.IsNull()) {
       VLOG_WITH_FUNC(3) << "Ignoring null vector value for key '" << key.ToDebugHexString() << "'";
       continue;

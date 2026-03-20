@@ -209,6 +209,14 @@ Status TabletVectorIndexes::CreateIndex(
   return DoCreateIndex(index_table, indexed_table, bootstrap);
 }
 
+void InsertVectorIndex(docdb::DocVectorIndexes& indexes, const docdb::DocVectorIndexPtr& index) {
+  auto it = std::upper_bound(
+      indexes.begin(), indexes.end(), index, [](const auto& lhs, const auto& rhs) {
+    return lhs->column_id() < rhs->column_id();
+  });
+  indexes.insert(it, index);
+}
+
 Status TabletVectorIndexes::DoCreateIndex(
     const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
   SCHECK(shutdown_controller_.IsRunning(), ShutdownInProgress, "Tablet vector indexes shutdown");
@@ -269,14 +277,14 @@ Status TabletVectorIndexes::DoCreateIndex(
       return Status::OK();
     }
     if (indexes.use_count() == 1) {
-      indexes->push_back(it->second);
+      InsertVectorIndex(*indexes, it->second);
       return Status::OK();
     }
 
     auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
     new_indexes->reserve(indexes->size() + 1);
     *new_indexes = *indexes;
-    new_indexes->push_back(it->second);
+    InsertVectorIndex(*new_indexes, it->second);
     indexes = std::move(new_indexes);
   }
 
