@@ -311,6 +311,7 @@ set(TSERVER_DEPS
   yb_ash
   yb_client
   yb_pggate_flags
+  yb_ysql_binary_runner
   ysql_upgrade
   cdc
   cdc_consumer_proto

@@ -144,10 +144,10 @@
 #include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
-#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -2296,7 +2296,8 @@ Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
+      pgwrapper::PqEscapeLiteral(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =
