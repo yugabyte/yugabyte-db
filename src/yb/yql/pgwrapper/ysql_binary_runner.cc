@@ -11,13 +11,13 @@
 // under the License.
 //
 
-#include <fstream>
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/ysql_binary_runner.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_RUNTIME_bool(ysql_clone_disable_connections, true,
                     "Disable connections to the cloned database during the clone process.");
@@ -90,8 +90,8 @@ const boost::regex TABLESPACE_RE("^\\s*SET\\s+default_tablespace\\s*=.*$");
 std::string MakeAllowConnectionsString(const std::string& new_db, bool allow_connections) {
   return Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = $0 WHERE datname = '$1';",
-      allow_connections ? "true" : "false", new_db);
+      "UPDATE pg_database SET datallowconn = $0 WHERE datname = $1;",
+      allow_connections ? "true" : "false", pgwrapper::PqEscapeLiteral(new_db));
 }
 }  // namespace
 

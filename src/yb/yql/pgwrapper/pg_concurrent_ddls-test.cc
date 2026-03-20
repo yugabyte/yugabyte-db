@@ -14,10 +14,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
