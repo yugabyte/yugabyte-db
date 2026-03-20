@@ -293,7 +293,7 @@ public class PlatformReplicationManager {
         .forEach(
             i -> {
               boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
-              if (i.isLeader() ^ isNewLeader) {
+              if (i.isLeader() != isNewLeader) {
                 // Update only when there is a difference.
                 log.debug(
                     "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
@@ -301,7 +301,7 @@ public class PlatformReplicationManager {
                     i.getUuid(),
                     i.isLeader(),
                     isNewLeader);
-                i.setState(State.LEADER);
+                i.setState(isNewLeader ? State.LEADER : State.STAND_BY);
                 i.update();
               }
             });
