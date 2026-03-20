@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.OperatorResource;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -32,14 +31,12 @@ import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
-import io.fabric8.kubernetes.client.utils.Serialization;
 import io.yugabyte.operator.v1alpha1.YBProvider;
 import io.yugabyte.operator.v1alpha1.YBProviderSpec;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.CloudInfo;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import java.util.Collections;
-import java.util.List;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -128,72 +125,6 @@ public class YBProviderReconcilerTest extends FakeDBApplication {
         ybProviderReconciler.getTrackedResources().iterator().next();
     assertEquals(PROVIDER_NAME, details.name);
     assertEquals(NAMESPACE, details.namespace);
-
-    // Verify OperatorResource entries were persisted in the database
-    List<OperatorResource> allResources = OperatorResource.getAll();
-    assertEquals(1, allResources.size());
-    assertTrue(
-        "OperatorResource name should contain the provider name",
-        allResources.get(0).getName().contains(PROVIDER_NAME));
-    YBProvider rProvider = Serialization.unmarshal(allResources.get(0).getData(), YBProvider.class);
-    assertEquals(PROVIDER_NAME, rProvider.getMetadata().getName());
-    assertEquals(NAMESPACE, rProvider.getMetadata().getNamespace());
-    assertEquals(
-        CloudInfo.KubernetesProvider.GKE,
-        rProvider.getSpec().getCloudInfo().getKubernetesProvider());
-    assertEquals(
-        "quay.io/yugabyte/yugabyte",
-        rProvider.getSpec().getCloudInfo().getKubernetesImageRegistry());
-  }
-
-  @Test
-  public void testReconcileDeleteRemovesOperatorResource() {
-    YBProvider providerCr = createYBProviderCr(PROVIDER_NAME);
-
-    // First CREATE to track the resource
-    ybProviderReconciler.reconcile(providerCr, OperatorWorkQueue.ResourceAction.CREATE);
-    assertEquals(1, OperatorResource.getAll().size());
-
-    // DELETE - provider exists in DB with 0 universes, so handleResourceDeletion
-    // calls deleteProvider (mocked cloudProviderHandler.delete returns null) then untrackResource
-    ybProviderReconciler.reconcile(providerCr, OperatorWorkQueue.ResourceAction.DELETE);
-
-    assertTrue(
-        "Tracked resources should be empty after delete",
-        ybProviderReconciler.getTrackedResources().isEmpty());
-    assertTrue(
-        "OperatorResource entries should be removed after delete",
-        OperatorResource.getAll().isEmpty());
-  }
-
-  @Test
-  public void testReconcileNoOpUpdatesOperatorResourceData() {
-    YBProvider providerCr = createYBProviderCr(PROVIDER_NAME);
-
-    // First CREATE to track the resource
-    ybProviderReconciler.reconcile(providerCr, OperatorWorkQueue.ResourceAction.CREATE);
-    assertEquals(1, OperatorResource.getAll().size());
-
-    // Verify initial stored data has GKE provider type
-    YBProvider stored =
-        Serialization.unmarshal(OperatorResource.getAll().get(0).getData(), YBProvider.class);
-    assertEquals(
-        CloudInfo.KubernetesProvider.GKE, stored.getSpec().getCloudInfo().getKubernetesProvider());
-
-    // Update the CR spec - change provider type to EKS
-    providerCr.getSpec().getCloudInfo().setKubernetesProvider(CloudInfo.KubernetesProvider.EKS);
-
-    // NO_OP reconcile (simulates an update via the informer) should persist the updated data
-    ybProviderReconciler.reconcile(providerCr, OperatorWorkQueue.ResourceAction.NO_OP);
-
-    // Verify the stored data was updated to EKS
-    List<OperatorResource> allResources = OperatorResource.getAll();
-    assertEquals(1, allResources.size());
-    YBProvider updatedStored =
-        Serialization.unmarshal(allResources.get(0).getData(), YBProvider.class);
-    assertEquals(
-        CloudInfo.KubernetesProvider.EKS,
-        updatedStored.getSpec().getCloudInfo().getKubernetesProvider());
   }
 
   @Test

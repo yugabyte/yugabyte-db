@@ -12,6 +12,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -208,7 +209,10 @@ public class ReleaseContainer {
               .getCloudUtil(Util.GCS)
               .getCloudFileInputStream(configData, releaseArtifact.getGcsFile().path);
         } else if (releaseArtifact.getPackageURL() != null) {
-          return new URL(releaseArtifact.getPackageURL()).openStream();
+          URLConnection conn = new URL(releaseArtifact.getPackageURL()).openConnection();
+          conn.setConnectTimeout(10000); // 10 seconds to connect
+          conn.setReadTimeout(30000); // 30 seconds per read
+          return conn.getInputStream();
         } else if (releaseArtifact.getPackageFileID() != null) {
           ReleaseLocalFile rlf = ReleaseLocalFile.get(releaseArtifact.getPackageFileID());
           if (!Files.exists(Paths.get(rlf.getLocalFilePath()))) {
