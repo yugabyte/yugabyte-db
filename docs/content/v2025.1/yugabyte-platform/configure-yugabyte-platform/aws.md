@@ -3,7 +3,7 @@ title: Configure the AWS provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Amazon Web Services (AWS) provider configuration.
-headContent: For deploying universes on AWS
+headContent: For deploying universes to cloud providers
 menu:
   v2025.1_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
@@ -36,9 +36,17 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere (YBA), you must create a provider configuration. Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-When deploying a universe, YBA uses the provider configuration settings to do the following:
+Create an Amazon Web Services (AWS) provider configuration if your target cloud is AWS, and you can provide full SSH permissions to YugabyteDB Anywhere to orchestrate universe management.
+
+{{< tip title="Use on-premises provider" >}}
+
+If you can't provide YugabyteDB Anywhere with cloud permissions or SSH access to cloud VMs (due to security policies or other restrictions), you can still deploy to AWS using an on-premises provider configuration. Refer to [On-premises provider configurations](../on-premises/).
+
+{{< /tip >}}
+
+When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create VMs on AWS using the following:
   - the service account
@@ -51,7 +59,7 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 - An AWS Service Account with sufficient privileges. This account must have permissions to create VMs, and access to the VPC and security groups described below. Required input: Access Key ID and Secret Access Key for the AWS Service Account.
 - An AWS VPC for each region. Required input: for each region, a VPC ID.
-- AWS Security Groups must exist to allow network connectivity so that YBA can create AWS VMs when deploying a universe. Required input: for each region, a Security Group ID.
+- AWS Security Groups must exist to allow network connectivity so that YugabyteDB Anywhere can create AWS VMs when deploying a universe. Required input: for each region, a Security Group ID.
 
 For more information on setting up an AWS service account and security groups, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/).
 
@@ -73,13 +81,13 @@ To create an AWS provider:
 
     If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
 
-The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
 ### View and edit providers
 
 To view a provider, select it in the list of AWS Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YugabyteDB Anywhere v2.20.1 and later, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
 
 - Provider Name
 - AWS credentials (Access Key ID and Secret Access Key)
@@ -98,12 +106,12 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-**Credential Type**. YBA requires the ability to create VMs in AWS. To do this, you can do one of the following:
+**Credential Type**. YugabyteDB Anywhere requires the ability to create VMs in AWS. To do this, you can do one of the following:
 
 - **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/)), and provide your AWS Access Key ID and Secret Access Key.
-- **Use IAM Role from this YBA host's instance** - Provision the YBA VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YBA VM in the **EC2** tab. This option is only available if YBA is installed on AWS.
+- **Use IAM Role from this YBA host's instance** - Provision the YugabyteDB Anywhere VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. This option is only available if YugabyteDB Anywhere is installed on AWS.
 
-**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
+**Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YugabyteDB Anywhere integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
 ### Regions
 
@@ -111,7 +119,7 @@ You can customize your network, including the virtual network, as follows:
 
 - **VPC Setup**. Choose the VPC setup to use:
   - **Specify an existing VPC**. Select this option to use a VPC that you have created in AWS.
-  - **Create a new VPC** {{<tags/feature/tp>}}. Select this option to create a new VPC using YBA. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
+  - **Create a new VPC** {{<tags/feature/tp>}}. Select this option to create a new VPC using YugabyteDB Anywhere. This option is not recommended for production use cases. If you use this feature and there are any classless inter-domain routing (CIDR) conflicts, the operation can fail silently. This would include, for example, doing the following:
     - Configuring more than one AWS cloud provider with different CIDR block prefixes.
     - Creating a new VPC with a CIDR block that overlaps with any of the existing subnets.
 
@@ -125,7 +133,7 @@ You can customize your network, including the virtual network, as follows:
 
 Specify the machine images to be used to install on nodes of universes created using this provider.
 
-To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+To add machine images recommended and provisioned by YugabyteDB Anywhere, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
 
 To add your own machine images to the catalog:
 
@@ -147,18 +155,18 @@ To edit custom Linux versions, remove Linux versions, and set a version as the d
 
 ### SSH Key Pairs
 
-To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YBA requires SSH access.
+To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access.
 
 Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
 
 You can manage SSH key pairs in the following ways:
 
-- Enable YBA to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YBA creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
+- Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content, and the corresponding SSH user. This information must be the same across all the regions you provision.
 
-If you use YBA to manage SSH Key Pairs for you and you deploy multiple YBA instances across your environment, then the AWS provider name should be unique for each instance of YBA integrating with a given AWS account.
+If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
 
-If you are using a YBA-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
+If you are using a YugabyteDB Anywhere-managed AMI and plan to use the `us-gov-east-1` and `us-gov-west-1` regions, you must set the SSH user to `centos` as these regions use CentOS 7 (as opposed to the default Alma 8 used for other regions). If you don't set the SSH user accordingly, universe deployment to these regions will fail.
 
 ### Advanced
 
@@ -166,7 +174,7 @@ You can customize the Network Time Protocol server, as follows:
 
 - Select **Use AWS's NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
 
     {{< warning title="Important" >}}
 
@@ -176,7 +184,7 @@ Use this option with caution. Time synchronization is critical to database data 
 
 ### Add regions
 
-For deployment, YBA aims to provide you with access to the many regions that AWS makes available globally. To that end, YBA allows you to select which regions to which you wish to deploy.
+For deployment, you can select the regions where you wish to deploy.
 
 #### Specify an existing VPC
 
@@ -185,8 +193,8 @@ If you choose to use VPCs that you have configured, you are responsible for havi
 - VPC peering connections must be established in an N x N matrix, such that every VPC in every region you configure must be peered to every other VPC in every other region.
 - Routing table entries in every regional VPC should route traffic to every other VPC CIDR block across the PeeringConnection to that respective VPC. This must match the Subnets that you provided during the configuration step.
 - Security groups in each VPC can be hardened by only opening up the relevant ports to the CIDR blocks of the VPCs from which you are expecting traffic.
-- If you deploy YBA in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YBA) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YBA or its VPC).
-- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YBA UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Creating a VPC with public and private subnets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
+- If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
+- When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Creating a VPC with public and private subnets](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
 To configure a region using your own custom VPCs, click **Add Region** and do the following:
 
@@ -198,24 +206,24 @@ For each availability zone in which you wish to be able to deploy in the region,
 
 1. Click **Add Zone**.
 1. Select the zone.
-1. Enter the Subnet ID to use for the zone. This is required to ensure that YBA can deploy nodes in the correct network isolation that you desire in your environment.
+1. Enter the Subnet ID to use for the zone. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
 
 <!--
 ### Create a new VPC
 
-If you use YBA to configure, own, and manage a full cross-region deployment of Virtual Private Clouds (VPCs), YBA generates a YugabyteDB-specific VPC in each selected region, then interconnects them (including the VPC in which YBA is deployed) using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
+If you use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Clouds (VPCs), YugabyteDB Anywhere generates a YugabyteDB-specific VPC in each selected region, then interconnects them (including the VPC in which YugabyteDB Anywhere is deployed) using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant sub-components in all regions, such as subnets, security groups, and routing table entries.
 
 You have an option to provide the following:
 
-- A custom CIDR block for each regional VPC. If not provided, YBA chooses defaults, aiming to not overlap across regions.
+- A custom CIDR block for each regional VPC. If not provided, YugabyteDB Anywhere chooses defaults, aiming to not overlap across regions.
 
 - A custom AMI ID to use in each region.
 
-  YBA supports x86 and ARM (aarch64) CPU architectures. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
+  YugabyteDB Anywhere supports x86 and ARM (aarch64) CPU architectures. If you plan to deploy YugabyteDB on AWS Graviton-based EC2 instances, use a custom AMI certified for 64-bit ARM (arm64) architecture.
 
   If you don't provide an AMI ID, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS). See [Supported operating systems and architectures](../supported-os-and-arch/) for a complete list of supported operating systems.
 
-To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/stable/releases/release-notes/preview-release/)). YBA enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/stable/releases/release-notes/preview-release/)). YugabyteDB Anywhere enables you to import releases via S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
 #### Limitations
 
@@ -224,7 +232,7 @@ If you create more than one AWS cloud provider with different CIDR block prefixe
 
 ## Marketplace acceptance
 
-If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YBA.
+If you did not provide your own custom AMI IDs, before you can proceed to creating a universe, verify that you can actually spin up EC2 instances with the default AMIs in YugabyteDB Anywhere.
 
 While logged into your AWS account, do the following:
 
