@@ -300,11 +300,18 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 								 yb_ordering_mode);
 
 		/*
-		 * The creation of a replication slot establishes a boundry between the
-		 * snapshot and change records. This is represented as a hybrid time.
-		 * This hybrid time can be chosen up to max_clock_skew us in the future.
-		 * We do not want to return the control back to the client before this
-		 * time passes otherwise the below scenario can cause confusion.
+		 * While creating replication slot, the master chooses a snapshot hybrid
+		 * time that establishes a boundary between the snapshot and change records.
+		 * The time difference between this snapshot hybrid time and the hybrid time
+		 * (HT) on the backend's node can be up to (2 * max_clock_skew). Consider
+		 * the following scenario:
+		 * - backend initiating the slot creation is on node1 whose HT == 100
+		 * - master leader is on node2 whose HT == 100 + maxclockskew
+		 * - snapshot hybrid time == HT on master leader node + maxclockskew == (100 + 2 * maxclockskew)
+		 *
+		 * We do not want to return the control back to the client before the HT on
+		 * the backend's node surpasses the snapshot HT, otherwise the below scenario can
+		 * cause confusion.
 		 *
 		 * T1: Slot creation (snapshot time chosen as Tsnap)
 		 *  ... command returns to the client before Tsnap is in the past.
@@ -327,7 +334,7 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 		elog(DEBUG1,
 			 "Sleeping for %d us after the slot creation to handle clock skew.",
 			 max_clock_skew);
-		pg_usleep(max_clock_skew);
+		pg_usleep(2 * max_clock_skew + 1);
 		return;
 	}
 
