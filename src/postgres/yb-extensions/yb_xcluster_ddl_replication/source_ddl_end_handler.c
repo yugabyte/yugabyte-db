@@ -54,6 +54,7 @@
 #include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
 #include "tcop/cmdtag.h"
+#include "utils/builtins.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
@@ -425,8 +426,9 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	appendStringInfo(&query_buf,
 					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
-					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
-					 rewritten_table_name, schema_name);
+					 "WHERE i.tablename = %s AND i.schemaname = %s;",
+					 quote_literal_cstr(rewritten_table_name),
+					 quote_literal_cstr(schema_name));
 
 	/*
 	 * Preserve current state of SPI_processed and SPI_tuptable because they

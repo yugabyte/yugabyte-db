@@ -13,8 +13,6 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
-#include <regex>
-
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/stringbuffer.h>
@@ -437,8 +435,8 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
 
   // Pass information needed to assign OIDs that need to be preserved across the universes.
   setup_query << Format(
-      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('$0');",
-      std::regex_replace(query_info.json_for_oid_assignment, std::regex("'"), "''"));
+      "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments($0);",
+      pgwrapper::PqEscapeLiteral(query_info.json_for_oid_assignment));
 
   // Set session variables in order to pass the key to the replicated_ddls table.
   setup_query << Format("SET $0 TO $1;", kLocalVariableDDLEndTime, query_info.ddl_end_time);
@@ -446,10 +444,11 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
 
   // Set schema and role after setting the superuser extension variables.
   if (!query_info.schema.empty()) {
-    setup_query << Format("SET SCHEMA '$0';", query_info.schema);
+    setup_query << Format(
+        "SET SCHEMA $0;", pgwrapper::PqEscapeLiteral(query_info.schema));
   }
   if (!query_info.user.empty()) {
-    setup_query << Format("SET ROLE $0;", query_info.user);
+    setup_query << Format("SET ROLE $0;", pgwrapper::PqEscapeIdentifier(query_info.user));
   }
 
   if (FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) {
@@ -516,8 +515,8 @@ Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
   doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, $4$3$4)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
-      query_info.query_id, common::WriteRapidJsonToString(doc), "$manual_query$")));
+      "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
+      query_info.query_id, pgwrapper::PqEscapeLiteral(common::WriteRapidJsonToString(doc)))));
   return Status::OK();
 }
 
@@ -741,8 +740,9 @@ Status XClusterDDLQueueHandler::DoPersistAndUpdateSafeTimeBatch(
   const auto json_str = buffer.GetString();
   VLOG_WITH_PREFIX(2) << "Persisting safe time batch: " << json_str;
 
-  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(
-      pg_conn_->ExecuteFormat("EXECUTE $0('$1')", kDDLPrepStmtCommitTimesUpsert, json_str)));
+  RETURN_NOT_OK(ResetSafeTimeBatchOnFailure(pg_conn_->ExecuteFormat(
+      "EXECUTE $0($1)", kDDLPrepStmtCommitTimesUpsert,
+      pgwrapper::PqEscapeLiteral(json_str))));
 
   safe_time_batch_ = std::move(new_safe_time_batch);
 
