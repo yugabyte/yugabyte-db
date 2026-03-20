@@ -39,15 +39,6 @@ bool DocResultDataRetention::EqualTo::operator()(
   return lhs.buffer_.data() == rhs.buffer_.data();
 }
 
-void DocResultYbctidRetention::Clear() {
-  container_.clear();
-  hint_ = container_.begin();
-}
-
-void DocResultYbctidRetention::Add(DocResultDataRetention&& retention) {
-  hint_ = container_.emplace_hint(hint_, std::move(retention));
-}
-
 DocResult::DocResult(rpc::SidecarHolder data, std::span<const int64_t> orders)
     : data_(std::move(data)), current_row_idx_(0) {
   PgDocData::LoadCache(data_.second, &row_count_, &row_iterator_);

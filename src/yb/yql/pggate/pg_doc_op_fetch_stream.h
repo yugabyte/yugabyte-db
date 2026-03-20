@@ -66,8 +66,8 @@ class DocResultDataRetention {
 
 class DocResultYbctidRetention {
  public:
-  void Clear();
-  void Add(DocResultDataRetention&& retention);
+  void Clear() { container_.clear(); }
+  void Add(DocResultDataRetention&& retention) { container_.emplace(std::move(retention)); }
 
  private:
   using Container =
@@ -75,7 +75,6 @@ class DocResultYbctidRetention {
           DocResultDataRetention, DocResultDataRetention::Hash, DocResultDataRetention::EqualTo>;
 
   Container container_;
-  Container::const_iterator hint_;
 };
 
 //--------------------------------------------------------------------------------------------------
