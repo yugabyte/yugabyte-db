@@ -32,8 +32,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class TableSpaceUtil {
@@ -50,8 +52,29 @@ public class TableSpaceUtil {
           "SELECT c.relfilenode, t.spcname, c.relname FROM pg_tablespace t JOIN pg_class c ON t.oid"
               + " = c.reltablespace");
 
+  private static final Pattern VALID_POSTGRES_IDENTIFIER =
+      Pattern.compile("^[a-z_][a-z0-9_]*$", Pattern.CASE_INSENSITIVE);
+
+  private static final int MAX_IDENTIFIER_LENGTH = 63;
+
   private static String wrapInJson(String query) {
     return "select jsonb_agg(t) from (" + query + ") as t";
+  }
+
+  public static boolean isValidTablespaceName(String name) {
+    if (name != null) {
+      name = name.trim();
+    }
+    if (StringUtils.isEmpty(name)) {
+      return false;
+    }
+    if (name.length() > MAX_IDENTIFIER_LENGTH) {
+      return false;
+    }
+    if (!VALID_POSTGRES_IDENTIFIER.matcher(name).matches()) {
+      return false;
+    }
+    return true;
   }
 
   public static Optional<PlacementBlock> findPlacementBlockByNode(

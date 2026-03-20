@@ -33,9 +33,7 @@ public class CheckTabletsMovementAvailableForNode extends BaseTabletsMovementChe
     return (Params) taskParams;
   }
 
-  public static class Params extends ServerSubTaskParams {
-    public String nodeName;
-  }
+  public static class Params extends ServerSubTaskParams {}
 
   @Override
   public void run() {

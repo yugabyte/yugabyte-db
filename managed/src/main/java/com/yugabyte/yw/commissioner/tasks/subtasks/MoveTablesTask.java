@@ -180,6 +180,10 @@ public class MoveTablesTask extends BaseTablespacesTask {
         }
       }
     }
+    if (!multimapByStep.isEmpty()) {
+      throw new RuntimeException(
+          "Failed to move tables for partitions: " + multimapByStep.keySet());
+    }
   }
 
   private NodeDetails pickRandomTserver(

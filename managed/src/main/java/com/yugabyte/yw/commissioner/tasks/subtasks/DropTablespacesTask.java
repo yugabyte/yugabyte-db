@@ -65,5 +65,9 @@ public class DropTablespacesTask extends BaseTablespacesTask {
         log.error("Failed to move tables", e);
       }
     }
+    tablespaces.removeAll(processed);
+    if (tablespaces.size() > 0) {
+      throw new RuntimeException("Failed to drop tablespaces: " + tablespaces);
+    }
   }
 }

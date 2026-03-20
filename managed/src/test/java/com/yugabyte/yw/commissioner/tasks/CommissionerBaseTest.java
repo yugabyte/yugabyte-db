@@ -946,8 +946,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
    * @param hasTablets whether or not the nodes will have tablets assigned.
    */
   public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
+    DumpEntitiesResponse.Table table = new DumpEntitiesResponse.Table();
+    table.setTableName("Table");
+    table.setTableId("TableId1");
     Tablet tablet = new Tablet();
-    tablet.setTabletId("Tablet id 1");
+    tablet.setTabletId("TabletId1");
+    tablet.setTableId(table.getTableId());
 
     Collection<NodeDetails> nodes = new HashSet<>();
     if (nodeName.isEmpty()) {
@@ -970,6 +974,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     DumpEntitiesResponse response = new DumpEntitiesResponse();
     response.setTablets(Arrays.asList(tablet));
+    response.setTables(Collections.singletonList(table));
     ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
     when(mockNodeUIApiHelper.getRequest(endsWith(UniverseTaskBase.DUMP_ENTITIES_URL_SUFFIX)))
         .thenReturn(dumpEntitiesJson);

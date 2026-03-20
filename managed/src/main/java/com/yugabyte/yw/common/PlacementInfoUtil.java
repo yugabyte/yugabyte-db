@@ -928,10 +928,16 @@ public class PlacementInfoUtil {
         .collect(Collectors.toMap(az -> az.uuid, az -> az.replicationFactor));
   }
 
-  public static void validatePartition(UniverseDefinitionTaskParams.PartitionInfo p) {
-
-    if (StringUtils.isEmpty(p.getName())) {
-      throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
+  public static void validatePartition(
+      UniverseDefinitionTaskParams.PartitionInfo p, boolean geoPartitioned) {
+    if (geoPartitioned) {
+      if (StringUtils.isEmpty(p.getName())) {
+        throw new PlatformServiceException(BAD_REQUEST, "Name for partition should be defined");
+      }
+      if (!TableSpaceUtil.isValidTablespaceName(p.getTablespaceName())) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Invalid tablespace name. Use alphanumeric symbols and underscores");
+      }
     }
     if (p.getPlacement() == null || p.getPlacement().getAllAZUUIDs().isEmpty()) {
       throw new PlatformServiceException(
@@ -982,11 +988,12 @@ public class PlacementInfoUtil {
       Set<UUID> zoneUUIDs = new HashSet<>();
       Set<String> tablespaceNames = new HashSet<>();
       Set<String> names = new HashSet<>();
+      boolean geoPartitioned = cluster.getPartitions().size() > 1;
       List<UniverseDefinitionTaskParams.PartitionInfo> defaultPartitions =
           cluster.getPartitions().stream()
               .peek(
                   p -> {
-                    PlacementInfoUtil.validatePartition(p);
+                    PlacementInfoUtil.validatePartition(p, geoPartitioned);
                     if (!names.add(p.getName())) {
                       throw new PlatformServiceException(
                           BAD_REQUEST, "Found duplicate name for partition: " + p.getName());
