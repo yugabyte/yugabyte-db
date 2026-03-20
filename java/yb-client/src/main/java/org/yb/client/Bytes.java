@@ -42,6 +42,8 @@ package org.yb.client;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.util.CharsetUtil;
+import io.netty.util.Signal;
+
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Slice;
 
@@ -63,6 +65,9 @@ public final class Bytes {
   // from http://stackoverflow.com/questions/10886962/interpret-a-negative-number-as-unsigned-with-
   // biginteger-java
   private static final BigInteger TWO_COMPL_REF = BigInteger.ONE.shiftLeft(64);
+
+  // Max length of bytes beyond which the display is truncated in pretty-printing.
+  private static final int PRETTY_PRINT_MAX_BYTE_LENGTH = 256;
 
   private Bytes() {  // Can't instantiate.
   }
@@ -818,8 +823,18 @@ public final class Bytes {
     if (buf == null) {
       return "null";
     }
-    byte[] array = new byte[buf.readableBytes()];
-    buf.getBytes(buf.readerIndex(), array);
+    // Method readableBytes() can return very large logical values in a ReplayingDecoder,
+    // so we need to be careful here by setting a maximum length for pretty-printing.
+    // Internally, it is Integer.MAX_VALUE - buffer.readerIndex().
+    int readableBytes = buf.readableBytes();
+    int length = Math.min(PRETTY_PRINT_MAX_BYTE_LENGTH, readableBytes);
+    byte[] array = new byte[length];
+    try {
+      buf.getBytes(buf.readerIndex(), array);
+    } catch (Signal signal) {
+      // Suppress replay for this case in case length is too large.
+      // Read index remains intact.
+    }
     return pretty(array);
   }
 
