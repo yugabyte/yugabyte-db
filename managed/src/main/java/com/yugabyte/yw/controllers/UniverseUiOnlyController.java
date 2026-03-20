@@ -146,7 +146,11 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.TargetType.Universe,
             Objects.toString(taskParams.getUniverseUUID(), null),
             Audit.ActionType.Configure);
-    return PlatformResults.withData(taskParams);
+    // Never redact configure's API response. For CREATE operation, we do not have universe model to
+    // get gflags from. To keep clients consistent, we will not redact CREATE. For EDIT, the payload
+    // is formed from GET universe's API response which will already be redacted. So no need to do
+    // it here.
+    return PlatformResults.withData(taskParams, false /* enableGFlagsSensitiveDataApiRedaction */);
   }
 
   @ApiOperation(
@@ -238,7 +242,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, universe);
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
@@ -272,7 +276,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         universeCRUDHandler.createCluster(
             customer,
             universe,
-            bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class));
+            bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class, universe));
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -351,7 +355,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    UpgradeParams taskParams = bindFormDataToTaskParams(request, UpgradeParams.class);
+    // Use universe when binding so gflags come from YBA metadata, not request payload.
+    UpgradeParams taskParams = bindFormDataToTaskParams(request, UpgradeParams.class, universe);
 
     UUID taskUUID = universeCRUDHandler.upgrade(customer, universe, taskParams);
     auditService()
@@ -385,10 +390,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   public Result updateDiskSize(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-
+    // Use universe when binding so gflags come from YBA metadata, not request payload.
     UUID taskUUID =
         universeCRUDHandler.updateDiskSize(
-            customer, universe, bindFormDataToTaskParams(request, DiskIncreaseFormData.class));
+            customer,
+            universe,
+            bindFormDataToTaskParams(request, DiskIncreaseFormData.class, universe));
     auditService()
         .createAuditEntryWithReqBody(
             request,
