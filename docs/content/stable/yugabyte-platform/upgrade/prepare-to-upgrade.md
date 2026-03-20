@@ -100,11 +100,12 @@ Note that only a Super Admin user can modify Global configuration settings.
 
 ## Backup storage
 
-S3 storage _requires_ certificate validation in v2025.2 and later. In addition, certificate validation can no longer be disabled using the `yb.certVerifyBackupRestore.is_enforced` runtime configuration (the setting is ignored).
+S3 storage _requires_ certificate validation in v2025.2 and later. In addition, you can no longer disable certificate validation using the Server certificate verification for S3 backup/restore (`yb.certVerifyBackupRestore.is_enforced`) Global Runtime Configuration option.
 
-If you are using S3 storage with custom self-signed or CA certificates, to connect to your S3 storage, you must add the certificates to the YugabyteDB Anywhere Trust Store _before upgrading_.
+If you are using S3 storage with custom self-signed or CA certificates, do the following _before you upgrade_:
 
-Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
+- Add the certificates to the YugabyteDB Anywhere Trust Store. Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
+- If you previously disabled certificate validation using the `yb.certVerifyBackupRestore.is_enforced` runtime configuration, re-enable it (set it to 'true'). Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
 ## xCluster DR
 
