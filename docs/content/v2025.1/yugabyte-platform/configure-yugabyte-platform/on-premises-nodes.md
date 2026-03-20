@@ -24,7 +24,7 @@ This displays the configured instance types and instances for the selected provi
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
 {{< note title="Legacy assisted manual script" >}}
-For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). Use of this script is deprecated and strictly for legacy manual provisioning.
+For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). Use of this script is deprecated and strictly for legacy assisted manual provisioning.
 
 Instead, provision your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh).
 {{< /note >}}

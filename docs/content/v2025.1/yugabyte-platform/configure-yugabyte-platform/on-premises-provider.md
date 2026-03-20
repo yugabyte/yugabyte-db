@@ -93,7 +93,7 @@ DB Nodes have public internet access
 
 Manually Provision Nodes
 : IMPORTANT: Enable the **Manually Provision Nodes** option if you provisioned nodes using the [YugabyteDB Anywhere node agent package](../../prepare/server-nodes-software/software-on-prem/).
-: You must also enable this option if you used legacy [assisted manual](../../prepare/server-nodes-software/software-on-prem-assist/) or [fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes. For manual provisioning, you are prompted to run a Python pre-provisioning script at a later stage to provision the database instances. Refer to [Add nodes to the on-premises provider](../on-premises-nodes/).
+: You must also enable this option if you used [legacy fully manual](../../prepare/server-nodes-software/software-on-prem-manual/) provisioning to provision your nodes.
 
 YB Nodes Home Directory
 : Optionally, use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
