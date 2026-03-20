@@ -93,6 +93,9 @@ public class PlacementInfoUtil {
    */
   public static boolean didAffinitizedLeadersChange(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
 
     // Map between the old placement's AZs and the affinitized leader info.
     Map<UUID, Boolean> oldAZMap = new HashMap<>();
@@ -118,6 +121,9 @@ public class PlacementInfoUtil {
 
   public static boolean areReplicasChanged(
       PlacementInfo oldPlacementInfo, PlacementInfo newPlacementInfo) {
+    if (oldPlacementInfo == null || newPlacementInfo == null) {
+      return false;
+    }
     Map<UUID, Integer> replicaCountOld = new HashMap<>();
     oldPlacementInfo.azStream().forEach(az -> replicaCountOld.put(az.uuid, az.replicationFactor));
     Map<UUID, Integer> replicaCountNew = new HashMap<>();

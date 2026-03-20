@@ -213,8 +213,7 @@ public class Commissioner {
         String taskParamsString = taskParams.toString();
         redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
         log.debug(
-            "JSON serialization failed for task params, using string redaction: {}",
-            jsonException.getMessage());
+            "JSON serialization failed for task params, using string redaction: ", jsonException);
       }
 
       String msg =
