@@ -1118,6 +1118,47 @@ TEST_F(ExternalObjectLockTest, TServerCanAcquireLocksAfterLeaseExpiry) {
   EXPECT_THAT(status, EqualsStatus(BuildLeaseEpochMismatchErrorStatus(kLeaseEpoch, lease_epoch)));
 }
 
+TEST_F(ExternalObjectLockTest, ConsumeSharedLockRequestsBeforeOLMShutdown) {
+  auto kLeaseTimeoutDeadline = MonoDelta::FromSeconds(20);
+  ASSERT_GT(
+      kLeaseTimeoutDeadline.ToMilliseconds(),
+      std::stoll(ASSERT_RESULT(cluster_->GetFlag(
+          ASSERT_NOTNULL(cluster_->GetLeaderMaster()), "master_ysql_operation_lease_ttl_ms"))));
+  const auto kTsIdx1 = 0;
+  const auto kTsIdx2 = 1;
+  auto ts1 = tablet_server(kTsIdx1);
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "TEST_enable_ysql_operation_lease_expiry_check", "false"));
+  auto conn1 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTsIdx1));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("CREATE TABLE test1 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test VALUES(1, 1)"));
+  ASSERT_OK(conn1.Execute("INSERT INTO test1 VALUES(1, 1)"));
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS SHARE MODE"));
+  ASSERT_OK(conn1.CommitTransaction());
+
+  auto conn2 = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTsIdx2));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test1 in ACCESS EXCLUSIVE MODE"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn1.Execute("LOCK TABLE test in ACCESS SHARE MODE"));
+
+  ASSERT_OK(cluster_->SetFlag(ts1, "vmodule", "ts_local_lock_manager=2"));
+  LogWaiter log_waiter(ts1, "BootstrapDdlObjectLocks: success.");
+  ASSERT_OK(cluster_->SetFlag(ts1, kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts1->uuid(), kLeaseTimeoutDeadline));
+  ASSERT_OK(cluster_->SetFlag(ts1, kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 5)));
+
+  ASSERT_OK(conn2.CommitTransaction());
+  ASSERT_OK(conn2.Execute("SET statement_timeout=10000"));
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test in ACCESS EXCLUSIVE MODE"));
+  ASSERT_OK(conn2.CommitTransaction());
+}
+
 TEST_F(ExternalObjectLockTest, RefreshYsqlLease) {
   auto ts = tablet_server(0);
   auto master_proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();

@@ -73,6 +73,19 @@ class PendingLockRequests {
     return end;
   }
 
+  void Reset() PARENT_PROCESS_ONLY {
+    size_t end = next_.Get();
+    for (size_t i = 0; i < end; ++i) {
+      auto& entry = requests_[i];
+      if (!entry.finalized.Get()) {
+        continue;
+      }
+      SHARED_MEMORY_STORE(entry.finalized, false);
+    }
+    UpdateLastOwner();
+    SHARED_MEMORY_STORE(next_, 0);
+  }
+
   SessionLockOwnerTag TEST_last_owner() PARENT_PROCESS_ONLY {
     UpdateLastOwner();
     return TEST_last_owner_.Get();
@@ -209,6 +222,12 @@ class ObjectLockSharedState::Impl {
       return false;
     }
 
+    if (pause_lock_shared_state_) {
+      VLOG_WITH_FUNC(1)
+          << AsString(request) << ": pause_lock_shared_state_ set, cannot use fastpath";
+      return false;
+    }
+
     if (!request.owner) {
       VLOG_WITH_FUNC(1) << AsString(request) << ": No owner tag, cannot use fastpath";
       return false;
@@ -258,6 +277,19 @@ class ObjectLockSharedState::Impl {
     DCHECK(!waiting_for_manager_);
     LOG_WITH_FUNC(INFO) << "Deactivating object lock shared state";
     waiting_for_manager_ = true;
+  }
+
+  void PauseAndReset() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    pause_lock_shared_state_ = true;
+    shared_requests_.Reset();
+    VLOG(1) << "Pausing object lock shared state and dropping existing requests";
+  }
+
+  void Resume() EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
+    std::lock_guard lock(mutex_);
+    pause_lock_shared_state_ = false;
+    VLOG(1) << "Resuming object lock shared state";
   }
 
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
@@ -319,6 +351,7 @@ class ObjectLockSharedState::Impl {
   ChildProcessRO<std::array<GroupLockState, kNumGroups>> lock_states_;
 
   bool waiting_for_manager_ GUARDED_BY(mutex_) = true;
+  bool pause_lock_shared_state_ GUARDED_BY(mutex_) = false;
 };
 
 ObjectLockSharedState::ActivationGuard::ActivationGuard(Impl* impl) : impl_{impl} {}
@@ -353,6 +386,14 @@ bool ObjectLockSharedState::Lock(const ObjectLockFastpathRequest& request) {
 ObjectLockSharedState::ActivationGuard ObjectLockSharedState::Activate(
     const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents) {
   return impl_->Activate(initial_intents);
+}
+
+void ObjectLockSharedState::PauseAndReset() {
+  return impl_->PauseAndReset();
+}
+
+void ObjectLockSharedState::Resume() {
+  return impl_->Resume();
 }
 
 size_t ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
