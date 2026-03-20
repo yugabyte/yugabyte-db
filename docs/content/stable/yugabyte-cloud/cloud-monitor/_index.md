@@ -10,7 +10,7 @@ menu:
   stable_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-monitor
-    weight: 150
+    weight: 500
     params:
       classes: separator
       hideLink: true
