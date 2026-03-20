@@ -24,7 +24,11 @@ import {
 import { MoreActionsMenu } from '../../../../customCACerts/MoreActionsMenu';
 import { YBButton } from '../../../../../redesign/components';
 import { AddLinuxVersionModal } from './AddLinuxVersionModal';
-import { ImageBundleDefaultTag, ImageBundleYBActiveTag, IsImgBundleInUseEditEnabled } from './LinuxVersionUtils';
+import {
+  ImageBundleDefaultTag,
+  ImageBundleYBActiveTag,
+  IsImgBundleInUseEditEnabled
+} from './LinuxVersionUtils';
 
 import { LinuxVersionDeleteModal } from './DeleteLinuxVersionModal';
 import { YBPopover } from '../../../../../redesign/components/YBPopover/YBPopover';
@@ -36,7 +40,7 @@ import { ValidationErrMsgDelimiter } from '../../forms/utils';
 
 import styles from '../RegionList.module.scss';
 
-import { Delete, Edit, Flag } from '@material-ui/icons';
+import { Delete, Edit, Flag, Visibility } from '@material-ui/icons';
 import MoreIcon from '../../../../../redesign/assets/ellipsis.svg';
 import ErrorIcon from '../../../../../redesign/assets/error.svg';
 
@@ -175,6 +179,10 @@ export const LinuxVersionsList: FC<LinuxVersionListProps> = ({
             setEditImageBundleDetails(undefined);
           }}
           onSubmit={editImageBundle}
+          isDisabled={
+            editImageBundleDetails.metadata?.type === ImageBundleType.YBA_ACTIVE ||
+            (!isImgBundleInUseEditEnabled && inUseImageBundleUuids.has(editImageBundleDetails.uuid))
+          }
           visible={editImageBundleDetails !== undefined}
           editDetails={editImageBundleDetails}
         />
@@ -270,6 +278,10 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
 
   const [showRetiredVersions, toggleShowRetiredVersions] = useToggle(false);
   const formatActions = (image: ImageBundle, index: number) => {
+    const isYbaManagedBundle = image.metadata?.type === ImageBundleType.YBA_ACTIVE;
+    const isViewOnly =
+      isYbaManagedBundle || (!isImgBundleInUseEditEnabled && inUseImageBundleUuids.has(image.uuid));
+
     return (
       <div className={classes.actionButtons}>
         {!isEmpty(errors[index]) ? (
@@ -288,30 +300,42 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = (props) => {
         ) : null}
         <MoreActionsMenu
           menuOptions={[
-            {
-              text: t('edit'),
-              callback: () => {
-                setEditDetails(image);
-              },
-              icon: <Edit />,
-              dataTestId: `LinuxVersionsCard${index}-Edit`,
-              menuItemWrapper(elem) {
-                return (
-                  <RbacValidator
-                    accessRequiredOn={
-                      viewMode === 'CREATE'
-                        ? ApiPermissionMap.CREATE_PROVIDER
-                        : ApiPermissionMap.MODIFY_PROVIDER
+            ...(isViewOnly
+              ? [
+                  {
+                    text: t('view'),
+                    icon: <Visibility />,
+                    callback: () => {
+                      setEditDetails(image);
+                    },
+                    dataTestId: `LinuxVersionsCard${index}-View`
+                  }
+                ]
+              : [
+                  {
+                    text: t('edit'),
+                    callback: () => {
+                      setEditDetails(image);
+                    },
+                    icon: <Edit />,
+                    dataTestId: `LinuxVersionsCard${index}-Edit`,
+                    menuItemWrapper(elem: React.ReactNode) {
+                      return (
+                        <RbacValidator
+                          accessRequiredOn={
+                            viewMode === 'CREATE'
+                              ? ApiPermissionMap.CREATE_PROVIDER
+                              : ApiPermissionMap.MODIFY_PROVIDER
+                          }
+                          isControl
+                          overrideStyle={{ display: 'block' }}
+                        >
+                          {elem}
+                        </RbacValidator>
+                      );
                     }
-                    isControl
-                    overrideStyle={{ display: 'block' }}
-                  >
-                    {elem}
-                  </RbacValidator>
-                );
-              },
-              disabled: !isImgBundleInUseEditEnabled && inUseImageBundleUuids.has(image.uuid)
-            },
+                  }
+                ]),
             {
               text: t('setDefault'),
               callback: () => {
