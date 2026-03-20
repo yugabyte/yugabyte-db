@@ -36,7 +36,7 @@ ADD_YB_LIBRARY(yb_pggate_util
 add_dependencies(yb_pggate_util postgres_genbki)
 
 ADD_YB_LIBRARY(yb_pgresult_util
-  SRCS ybc_pgresult_util.cc ybc_pgresult_util_c.c
+  SRCS ybc_pgresult_util.cc
   DEPS yb_common_proto
   NONLINK_DEPS postgres_genbki)
 

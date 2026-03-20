@@ -3574,7 +3574,7 @@ void TabletServiceImpl::PgRemoteExec(
   auto* pg_result = result->get();
   // 1 KB is kept aside for RPC headers
   const auto max_resp_size = FLAGS_rpc_max_message_size - 1_KB;
-  if (!PgResultToPB(pg_result, result_pb, max_resp_size)) {
+  if (!pggate::PgResultToPB(pg_result, result_pb, max_resp_size)) {
     resp->set_reached_size_limit(true);
     VLOG(1) << "Reached RPC size limit (" << FLAGS_rpc_max_message_size
             << " bytes). Encoded " << result_pb->rows_size()
