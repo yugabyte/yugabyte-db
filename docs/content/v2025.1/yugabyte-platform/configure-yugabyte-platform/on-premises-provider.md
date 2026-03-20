@@ -1,8 +1,8 @@
 ---
-title: Create on-premises provider configuration
-headerTitle: Create the provider configuration
-linkTitle: Create provider
-description: Configure the on-premises provider configuration.
+title: Manage your on-premises provider configurations
+headerTitle: Manage the provider configuration
+linkTitle: Manage provider
+description: Manage your on-premises provider configurations.
 headContent: For deploying universes on your private cloud
 menu:
   v2025.1_yugabyte-platform:
