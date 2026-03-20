@@ -2987,7 +2987,7 @@ YbNotifsPollerMain(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
-	BackgroundWorkerInitializeConnection(YbSystemDbName, "yugabyte", 0);
+	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
 	ybNotifsPollerInit();
 
