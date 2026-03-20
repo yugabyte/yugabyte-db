@@ -1,9 +1,9 @@
 ---
-title: Add nodes to on-premises provider
-headerTitle: Add nodes to the on-premises provider
-linkTitle: Add nodes
-description: Configure the on-premises provider configuration.
-headContent: Add node instances to the free pool of nodes for your provider
+title: Manage on-premises provider nodes
+headerTitle: Manage on-premises provider nodes
+linkTitle: Manage nodes
+description: Manage the nodes in your on-premises provider free pool.
+headContent: Manage node instances in the free pool of nodes for your provider
 menu:
   v2025.1_yugabyte-platform:
     identifier: on-premises-nodes
@@ -12,7 +12,9 @@ menu:
 type: docs
 ---
 
-After creating the on-premises provider, you can add instances to its free pool of nodes.
+Provisioned nodes are added to the on-premises provider's free pool of nodes.
+
+To view a provider's nodes:
 
 1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, and select the on-premises configuration you created.
 1. Select **Instances**.
@@ -22,16 +24,22 @@ This displays the configured instance types and instances for the selected provi
 ![Configure on-prem instances](/images/yb-platform/config/yba-onprem-config-instances.png)
 
 {{< note title="Legacy assisted manual script" >}}
-For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). This script is strictly for legacy manual provisioning.
+For legacy manual provisioning (deprecated), the **Instances** page additionally displays the command for running the assisted manual provisioning script (provision_instance.py). Use of this script is deprecated and strictly for legacy manual provisioning.
 
-If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking **Add Instances**.
+Instead, provision your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh).
 {{< /note >}}
 
-To add nodes, do the following:
+To add nodes to a provider manually, do the following:
 
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
 1. [Add the compute instances](#add-instances).
 1. [Run preflight checks](#run-preflight-checks).
+
+{{< tip title="Automatic provisioning" >}}
+
+If you are using automatic provisioning, nodes that you provision are automatically added to the provider free pool when provisioning nodes. Refer to [Automatically provision on-premises nodes](../../prepare/server-nodes-software/software-on-prem/).
+
+{{< /tip >}}
 
 ## Add instance types
 
@@ -57,7 +65,6 @@ Before you add instances, you need the following:
 
 - The IP addresses of your VMs. See [Software requirements for nodes](../../prepare/server-nodes-software/).
 - Instance type to assign each instance. The instance types define properties of the instances, along with the mount points. See [Add instance types](#add-instance-types).
-- If you are doing legacy [assisted manual provisioning](../on-premises/#stage-3-add-nodes-to-the-provider-free-pool-1) (deprecated), you must provision the nodes using the script. Follow the instructions in [Legacy assisted manual provisioning](../on-premises-script/).
 
 ### Add instances to the on-premises provider
 

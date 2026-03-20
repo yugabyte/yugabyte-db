@@ -29,7 +29,7 @@ For legacy manual provisioning (deprecated), the **Instances** page additionally
 Instead, provision your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh).
 {{< /note >}}
 
-To add nodes manually, do the following:
+To add nodes to a provider manually, do the following:
 
 1. Specify the compute [instance types](#add-instance-types) that will be used in this provider.
 1. [Add the compute instances](#add-instances).

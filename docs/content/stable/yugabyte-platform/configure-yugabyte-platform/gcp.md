@@ -89,7 +89,7 @@ The create provider process includes generating a new VPC, a network, subnetwork
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YugabyteDB Anywhere version 2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YugabyteDB Anywhere v2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
 
 - Provider Name
 - Credential Type. You can upload a new Google Service Account JSON file (`gceApplicationCredentials`). Note that the `project_id` field can't have a new entry. For example:
