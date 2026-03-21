@@ -53,6 +53,7 @@ DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
 DECLARE_uint64(sst_files_soft_limit);
 DECLARE_uint64(sst_files_hard_limit);
+DECLARE_bool(TEST_disable_flush_on_shutdown);
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -1880,6 +1881,45 @@ TEST_F(PgSingleTServerTest, BackwardScanOnIndexDescendingColumn) {
 
   const auto result = ASSERT_RESULT(conn.FetchAllAsString(stmt));
   ASSERT_STR_EQ(ToUpperCase(result), "NULL");
+}
+
+// During bootstrap, StrandEnqueue would fail with "Thread pool not ready" because the strand
+// was only initialized after bootstrap, this can cause some intents of a large txn not applied.
+TEST_F(PgSingleTServerTest, ApplyLargeTransactionAfterRestartWithoutFlush) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
+  constexpr int kNumRows = 30;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO test SELECT i, -i FROM generate_series(1, $0) AS i", kNumRows));
+  ASSERT_OK(conn.CommitTransaction());
+
+  // Restart without flushing RocksDB so the apply state is not persisted to regular DB.
+  // This forces WAL replay to re-encounter the APPLY_TRANSACTION record and re-initiate
+  // the large transaction apply from scratch.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = true;
+  auto* tserver = cluster_->mini_tablet_server(0);
+  tserver->Shutdown();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_flush_on_shutdown) = false;
+  ASSERT_OK(tserver->Start());
+  ASSERT_OK(tserver->WaitStarted());
+
+  // Wait for the large transaction intents to be fully applied after restart. Without the fix,
+  // WaitForAllIntentsApplied will timeout.
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), MonoDelta::FromSeconds(30) * kTimeMultiplier));
+
+  conn = ASSERT_RESULT(Connect());
+
+  // Verify all rows are visible.
+  auto count = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT COUNT(*) FROM test"));
+  ASSERT_EQ(count, kNumRows);
+
+  auto sum = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT SUM(value) FROM test"));
+  ASSERT_EQ(sum, -kNumRows * (kNumRows + 1) / 2);
 }
 
 class PgSmallRpcWorkersTest : public PgSingleTServerTest {
