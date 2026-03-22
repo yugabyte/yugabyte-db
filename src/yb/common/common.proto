@@ -136,8 +136,9 @@ enum PgVectorIndexType {
 
 enum HnswBackend {
   USEARCH = 0;
-  YB_HNSW = 1;
+  YB_HNSW_USEARCH = 1;
   HNSWLIB = 2;
+  YB_HNSW_HNSWLIB = 3;
 };
 
 message HnswIndexOptionsPB {

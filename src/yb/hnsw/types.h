@@ -19,6 +19,13 @@
 
 #include "yb/vector_index/vector_index_fwd.h"
 
+namespace hnswlib {
+
+template <typename dist_t, typename label_t>
+class HierarchicalNSW;
+
+}
+
 namespace unum::usearch {
 
 struct index_dense_config_t;
@@ -30,6 +37,9 @@ namespace yb::hnsw {
 
 using VectorNo = uint32_t;
 using UsearchIndexDense = unum::usearch::index_dense_gt<vector_index::VectorId, uint32_t>;
+
+template <class DistanceResult>
+using HnswlibIndex = hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>;
 
 struct Config {
   Config() = default;
@@ -54,6 +64,8 @@ struct LayerInfo {
   }
 };
 
+class YbHnswIndexAdapter;
+
 struct Header {
   size_t dimensions;
   size_t vector_data_size;
@@ -66,8 +78,6 @@ struct Header {
   size_t vector_data_block;
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
-
-  void Init(const UsearchIndexDense& index);
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(

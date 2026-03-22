@@ -609,13 +609,16 @@ DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 static constexpr char kHnswlib[] = "hnswlib";
 static constexpr char kUsearch[] = "usearch";
 static constexpr char kYbHnsw[] = "yb_hnsw";
+static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
+static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
-DEFINE_RUNTIME_string(
-    vector_index_backend, kYbHnsw,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"hnswlib\", and \"usearch\".");
+DEFINE_RUNTIME_string(vector_index_backend, kYbHnswUsearch,
+    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
+    "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
+    "\"yb_hnsw_usearch\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw));
+    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
 
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
@@ -4534,8 +4537,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       auto backend = FLAGS_vector_index_backend;
       if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (backend == kYbHnsw) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
+      } else if (backend == kYbHnswUsearch || backend == kYbHnsw) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
+      } else if (backend == kYbHnswHnswlib) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())

@@ -40,6 +40,8 @@ DEFINE_RUNTIME_bool(yb_hnsw_keep_new_blocks_in_cache, false,
 #define YB_MISALIGNED_PTR(ptr, type, field) \
   MakeMisalignedPtr<decltype(type::field)>(ptr, offsetof(type, field))
 
+DECLARE_bool(TEST_usearch_exact);
+
 namespace yb::hnsw {
 
 struct YbHnswVectorData {
@@ -50,6 +52,24 @@ struct YbHnswVectorData {
   uint32_t aux_data_begin;
   uint32_t aux_data_end;
   std::byte coordinates[];
+};
+
+using VectorNoPtr = MisalignedPtr<const VectorNo>;
+using NeighborsType = std::ranges::subrange<VectorNoPtr, VectorNoPtr>;
+
+class YbHnswIndexAdapter {
+ public:
+  virtual size_t Size() = 0;
+  virtual size_t Entry() = 0;
+  virtual Header MakeHeader() = 0;
+
+  virtual int16_t NodeLevel(size_t index) = 0;
+  virtual vector_index::VectorId NodeKey(size_t index) = 0;
+  virtual void NodeCoordinates(size_t index, void* out) = 0;
+  virtual NeighborsType Neighbors(size_t index, size_t level) = 0;
+  virtual NeighborsType NeighborsBase(size_t index) = 0;
+
+  virtual ~YbHnswIndexAdapter() = default;
 };
 
 namespace {
@@ -92,14 +112,14 @@ class YbHnswBuilder {
   using CoordinateType = float;
 
   YbHnswBuilder(
-      const unum::usearch::index_dense_gt<vector_index::VectorId>& index,
+      YbHnswIndexAdapter& inspector,
       BlockCache& block_cache, const std::string& path)
-      : index_(index), block_cache_(block_cache), path_(path) {}
+      : inspector_(inspector), block_cache_(block_cache), path_(path) {}
 
   Result<std::pair<FileBlockCachePtr, Header>> Build() {
-    header_.Init(index_);
+    header_ = inspector_.MakeHeader();
     PrepareVectors();
-    VLOG_WITH_FUNC(4) << "Size: " << index_.size() << ", header: " << header_.ToString();
+    VLOG_WITH_FUNC(4) << "Size: " << inspector_.Size() << ", header: " << header_.ToString();
 
     auto tmp_path = path_ + ".tmp";
     RETURN_NOT_OK(block_cache_.env().NewWritableFile(tmp_path, &out_));
@@ -120,10 +140,6 @@ class YbHnswBuilder {
   }
 
  private:
-  auto& impl() {
-    return index_.impl();
-  }
-
   Status WriteFooter() {
     auto buffer = builder_.MakeFooter(header_);
     return out_->Append(buffer.AsSlice());
@@ -131,18 +147,16 @@ class YbHnswBuilder {
 
   void PrepareVectors() {
     header_.layers.resize(header_.max_level + 1);
-    vectors_.reserve(index_.size());
-    max_slot_ = 0;
-    for (const auto& item : boost::make_iterator_range(index_.cbegin(), index_.cend())) {
-      auto slot = get_slot(item);
-      auto node = impl().node_at_(slot);
-      std::int16_t level = node.level();
+    vectors_.reserve(inspector_.Size());
+    size_ = inspector_.Size();
+    for (size_t index : std::views::iota(static_cast<size_t>(0), inspector_.Size())) {
+      const auto level = inspector_.NodeLevel(index);
+      DCHECK_BETWEEN(level, 0, header_.layers.size() - 1);
       vectors_.push_back(BuildingVectorData {
         .height = make_unsigned(level),
-        .slot = slot,
+        .index = index,
         .data = {},
       });
-      max_slot_ = std::max(max_slot_, slot);
       ++header_.layers[level].size;
     }
     for (size_t level = header_.max_level; level > 0; --level) {
@@ -168,14 +182,13 @@ class YbHnswBuilder {
       --left_vectors_in_block;
       auto* data = writer.Prepare(header_.vector_data_size);
       memcpy(data, &v.data, sizeof(VectorData));
-      vector_index::VectorId key = impl().node_at_(v.slot).key();
-      index_.get(key, pointer_cast<CoordinateType*>(data + offsetof(VectorData, coordinates)));
+      inspector_.NodeCoordinates(v.index, data + offsetof(VectorData, coordinates));
     }
     return Status::OK();
   }
 
   Status BuildAuxilaryDataBlocks() {
-    slot_map_.resize(max_slot_ + 1);
+    slot_map_.resize(size_);
 
     std::vector<size_t> aux_data_block_sizes;
     {
@@ -196,12 +209,12 @@ class YbHnswBuilder {
         aux_data_size += vector_aux_data_size;
         v.data.aux_data_end = narrow_cast<uint32_t>(aux_data_size);
 
-        slot_map_[v.slot] = idx++;
+        slot_map_[v.index] = idx++;
       }
       aux_data_block_sizes.push_back(aux_data_size);
     }
 
-    header_.entry = slot_map_[impl().entry_slot()];
+    header_.entry = slot_map_[inspector_.Entry()];
 
     VLOG_WITH_FUNC(4) << "aux_data_block_sizes: " << AsString(aux_data_block_sizes);
 
@@ -212,7 +225,7 @@ class YbHnswBuilder {
       if (!writer.SpaceLeft()) {
         writer = VERIFY_RESULT(StartNewBlock(aux_data_block_sizes[current_aux_data_block++]));
       }
-      vector_index::VectorId key = impl().node_at_(v.slot).key();
+      vector_index::VectorId key = inspector_.NodeKey(v.index);
       writer.AppendBytes(key.data(), sizeof(vector_index::VectorId));
     }
 
@@ -233,7 +246,7 @@ class YbHnswBuilder {
       size_t block_stop = std::min(max_vectors_per_block, layer.size);
       layer.block = NextBlockId();
       for (size_t i = 0;;) {
-        block_neighbors += impl().neighbors_(impl().node_at_(vectors_[i].slot), level).size();
+        block_neighbors += inspector_.Neighbors(vectors_[i].index, level).size();
         ++i;
         if (i != block_stop) {
           continue;
@@ -247,10 +260,10 @@ class YbHnswBuilder {
             refs_size + block_neighbors * kNeighborSize));
         auto neighbors_writer = refs_writer.Split(refs_size);
         for (size_t j = block_start; j != block_stop; ++j) {
-          auto node = impl().node_at_(vectors_[j].slot);
-          auto vector_neighbors = impl().neighbors_(node, level);
+          auto vector_neighbors = inspector_.Neighbors(vectors_[j].index, level);
 
           for (auto neighbor : vector_neighbors) {
+            DCHECK_LT(neighbor, size_);;
             neighbors_writer.Append(slot_map_[neighbor]);
           }
 
@@ -281,7 +294,7 @@ class YbHnswBuilder {
     VectorNo block_start = 0;
     size_t block_neighbors = 0;
     for (VectorNo i = 0; i != layer.size; ++i) {
-      size_t vector_neighbors = impl().neighbors_base_(impl().node_at_(vectors_[i].slot)).size();
+      size_t vector_neighbors = inspector_.NeighborsBase(vectors_[i].index).size();
       block_neighbors += vector_neighbors;
       if (block_neighbors * kNeighborSize > header_.max_block_size) {
         RETURN_NOT_OK(FlushBaseLayer(block_start, i, block_neighbors - vector_neighbors));
@@ -299,13 +312,14 @@ class YbHnswBuilder {
         std::max<size_t>(block_neighbors, 1) * kNeighborSize));
     size_t neighbors_offset = 0;
     for (size_t j = start; j != stop; ++j) {
-      auto neighbors = impl().neighbors_base_(impl().node_at_(vectors_[j].slot));
+      auto neighbors = inspector_.NeighborsBase(vectors_[j].index);
       auto& data = vectors_[j].data;
       data.base_layer_neighbors_block = narrow_cast<uint32_t>(block_id);
       data.base_layer_neighbors_begin = neighbors_offset;
       neighbors_offset += neighbors.size();
       data.base_layer_neighbors_end = neighbors_offset;
       for (auto neighbor : neighbors) {
+        DCHECK_LT(neighbor, size_);;
         writer.Append(slot_map_[neighbor]);
       }
     }
@@ -340,11 +354,11 @@ class YbHnswBuilder {
 
   struct BuildingVectorData {
     size_t height;
-    size_t slot;
+    size_t index;
     YbHnswVectorData data;
   };
 
-  const unum::usearch::index_dense_gt<vector_index::VectorId>& index_;
+  YbHnswIndexAdapter& inspector_;
   BlockCache& block_cache_;
   const std::string path_;
   Header header_;
@@ -352,48 +366,174 @@ class YbHnswBuilder {
   DataBlock current_block_;
   FileBlockCacheBuilder builder_;
   std::unique_ptr<WritableFile> out_;
-  size_t max_slot_ = 0;
+  size_t size_ = 0;
   std::vector<BuildingVectorData> vectors_;
   std::vector<VectorNo> slot_map_;
 };
 
+void InitVectorDataAmountPerBlock(Header& header, size_t size) {
+  // Approximate calculation. Goal is even distribution of vectors across blocks.
+  size_t vector_headers_blocks = ceil_div(header.vector_data_size * size, header.max_block_size);
+  header.vector_data_amount_per_block = std::max<size_t>(1, size / vector_headers_blocks);
+  while (header.vector_data_amount_per_block > 1 &&
+         header.vector_data_amount_per_block * header.vector_data_size > header.max_block_size) {
+    --header.vector_data_amount_per_block;
+  }
+}
+
 } // namespace
 
-Config::Config(const unum::usearch::index_dense_config_t& input)
-    : connectivity_base(input.connectivity_base),
-      connectivity(input.connectivity) {
-}
+class YbHnswUsearchIndexAdapter : public YbHnswIndexAdapter {
+ public:
+  explicit YbHnswUsearchIndexAdapter(
+      std::reference_wrapper<const unum::usearch::index_dense_gt<vector_index::VectorId>> index)
+      : index_(index) {}
 
-void Header::Init(const unum::usearch::index_dense_gt<vector_index::VectorId>& index) {
-  max_block_size = FLAGS_yb_hnsw_max_block_size;
-  dimensions = index.dimensions();
-  vector_data_size = index.bytes_per_vector() + sizeof(VectorData);
-  size_t vector_headers_blocks = ceil_div(vector_data_size * index.size(), max_block_size);
-  // Approximate calculation. Goal is even distribution of vectors across blocks.
-  vector_data_amount_per_block = std::max<size_t>(1, index.size() / vector_headers_blocks);
-  while (vector_data_amount_per_block > 1 &&
-         vector_data_amount_per_block * vector_data_size > max_block_size) {
-    --vector_data_amount_per_block;
+  size_t Size() override {
+    return index_.size();
   }
-  max_level = index.impl().max_level();
-  config = Config(index.config());
 
-  max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(max_block_size, config.connectivity);
-}
+  size_t Entry() override {
+    return index_.impl().entry_slot();
+  }
+
+  Header MakeHeader() override {
+    Header result;
+    result.max_block_size = FLAGS_yb_hnsw_max_block_size;
+    result.dimensions = index_.dimensions();
+    result.vector_data_size = index_.bytes_per_vector() + sizeof(VectorData);
+    result.entry = narrow_cast<VectorNo>(index_.impl().entry_slot());
+    InitVectorDataAmountPerBlock(result, index_.size());
+    result.max_level = index_.impl().max_level();
+    const auto& index_config = index_.config();
+    result.config.connectivity_base = index_config.connectivity_base;
+    result.config.connectivity = index_config.connectivity;
+
+    result.max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(
+        result.max_block_size, result.config.connectivity);
+
+    return result;
+  }
+
+  int16_t NodeLevel(size_t index) override {
+    return index_.impl().node_at_(index).level();
+  }
+
+  vector_index::VectorId NodeKey(size_t index) override {
+    return index_.impl().node_at_(index).key();
+  }
+
+  void NodeCoordinates(size_t index, void* out) override {
+    index_.get(NodeKey(index), pointer_cast<float*>(out));
+  }
+
+  NeighborsType Neighbors(size_t index, size_t level) override {
+    auto neighbors = index_.impl().neighbors_(index_.impl().node_at_(index), level);
+    return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
+  }
+
+  NeighborsType NeighborsBase(size_t index) override {
+    auto neighbors = index_.impl().neighbors_base_(index_.impl().node_at_(index));
+    return NeighborsType(NodePtr(neighbors.cbegin()), NodePtr(neighbors.cend()));
+  }
+
+ private:
+  static VectorNoPtr NodePtr(
+      unum::usearch::misaligned_ptr_gt<const unum::usearch::default_slot_t> ptr) {
+    return VectorNoPtr(pointer_cast<const std::byte*>((*ptr).ptr()));
+  }
+
+  const unum::usearch::index_dense_gt<vector_index::VectorId>& index_;
+};
 
 SearchCacheScope::SearchCacheScope(SearchCache& cache, const YbHnsw& hnsw) : cache_(cache) {
   cache.Bind(hnsw.header_, *hnsw.file_block_cache_);
 }
 
-YbHnsw::YbHnsw(const Metric& metric, BlockCachePtr block_cache)
-    : metric_(metric), block_cache_(std::move(block_cache)) {
+YbHnsw::YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache)
+    : metric_(std::move(metric)), block_cache_(std::move(block_cache)) {
 }
 
 YbHnsw::~YbHnsw() = default;
 
 Status YbHnsw::Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
-  YbHnswBuilder builder(index, *block_cache_, path);
+  YbHnswUsearchIndexAdapter inspector(index);
+  YbHnswBuilder builder(inspector, *block_cache_, path);
+  std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
+  return Status::OK();
+}
+
+class YbHnswHnswlibIndexAdapter : public YbHnswIndexAdapter {
+ public:
+  explicit YbHnswHnswlibIndexAdapter(
+      std::reference_wrapper<const HnswlibIndex<YbHnsw::DistanceType>> index)
+      : index_(index) {}
+
+  size_t Size() override {
+    return index_.getCurrentElementCount();
+  }
+
+  size_t Entry() override {
+    return index_.enterpoint_node_;
+  }
+
+  Header MakeHeader() override {
+    Header result;
+    result.max_block_size = FLAGS_yb_hnsw_max_block_size;
+    result.dimensions = *static_cast<size_t*>(index_.dist_func_param_);
+    result.vector_data_size = index_.data_size_ + sizeof(VectorData);
+    InitVectorDataAmountPerBlock(result, index_.getCurrentElementCount());
+    result.max_level = index_.getMaxLevel();
+    result.config.connectivity_base = index_.maxM_;
+    result.config.connectivity = index_.maxM0_;
+
+    result.max_vectors_per_non_base_block = CalcMaxVectorsPerLayerBlock(
+        result.max_block_size, result.config.connectivity);
+
+    return result;
+  }
+
+  int16_t NodeLevel(size_t index) override {
+    return index_.element_levels_[index];
+  }
+
+  vector_index::VectorId NodeKey(size_t index) override {
+    return index_.getExternalLabel(CastIndex(index));
+  }
+
+  void NodeCoordinates(size_t index, void* out) override {
+    memcpy(out, index_.getDataByInternalId(CastIndex(index)), index_.data_size_);
+  }
+
+  NeighborsType Neighbors(size_t index, size_t level) override {
+    return MakeNeighbors(index_.get_linklist(CastIndex(index), narrow_cast<int>(level)));
+  }
+
+  NeighborsType NeighborsBase(size_t index) override {
+    return MakeNeighbors(index_.get_linklist0(CastIndex(index)));
+  }
+
+ private:
+  static hnswlib::tableint CastIndex(size_t index) {
+    return narrow_cast<hnswlib::tableint>(index);
+  }
+
+  static NeighborsType MakeNeighbors(const hnswlib::linklistsizeint* list) {
+    // Hnswlib stores list as a size in 2 bytes + list content with offset of 4 bytes.
+    auto size = *pointer_cast<const uint16_t*>(list);
+    auto start = pointer_cast<const std::byte*>(list + 1);
+    return NeighborsType(VectorNoPtr(start), VectorNoPtr(start + size * sizeof(VectorNo)));
+  }
+
+  const HnswlibIndex<YbHnsw::DistanceType>& index_;
+};
+
+Status YbHnsw::Import(
+    const HnswlibIndex<DistanceType>& index,
+    const std::string& path) {
+  YbHnswHnswlibIndexAdapter inspector(index);
+  YbHnswBuilder builder(inspector, *block_cache_, path);
   std::tie(file_block_cache_, header_) = VERIFY_RESULT(builder.Build());
   return Status::OK();
 }
@@ -412,9 +552,13 @@ YbHnsw::SearchResult YbHnsw::Search(
   SearchCacheScope scs(context.search_cache, *this);
   context.search_cache.Bind(header_, *file_block_cache_);
   auto se = ScopeExit([&context] { context.search_cache.Release(); });
-  auto [best_vector, best_dist] = SearchInNonBaseLayers(
-      query_vector, context.search_cache);
-  SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
+  if (PREDICT_FALSE(FLAGS_TEST_usearch_exact)) {
+    SearchExact(query_vector, options, context);
+  } else {
+    auto [best_vector, best_dist] = SearchInNonBaseLayers(
+        query_vector, context.search_cache);
+    SearchInBaseLayer(query_vector, best_vector, best_dist, options, context);
+  }
   return MakeResult(options.max_num_results, context);
 }
 
@@ -527,9 +671,27 @@ void YbHnsw::SearchInBaseLayer(
   }
 }
 
+void YbHnsw::SearchExact(
+    const std::byte* query_vector, const vector_index::SearchOptions& options,
+    YbHnswSearchContext& context) const {
+  auto& cache = context.search_cache;
+  auto& top = context.top;
+  top.clear();
+  for (size_t i = 0, size = header_.layers.front().size; i != size; ++i) {
+    if (options.filter && !options.filter(cache.GetVectorData(i))) {
+      continue;
+    }
+    auto dist = Distance(query_vector, i, cache);
+    if (top.size() < options.max_num_results) {
+      top.push({dist, i});
+    } else if (dist < top.top().first) {
+      top.replace_top({dist, i});
+    }
+  }
+}
+
 YbHnsw::DistanceType YbHnsw::Distance(const std::byte* lhs, const std::byte* rhs) const {
-  using unum::usearch::byte_t;
-  return metric_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
+  return metric_->Distance(lhs, rhs);
 }
 
 YbHnsw::DistanceType YbHnsw::Distance(
@@ -641,6 +803,17 @@ vector_index::VectorId SearchCache::GetVectorData(size_t vector) {
 
 const std::byte* SearchCache::CoordinatesPtr(size_t vector) {
   return VectorHeader(vector).raw() + offsetof(VectorData, coordinates);
+}
+
+HnswDistanceType UsearchMetric::Distance(
+    const std::byte* lhs, const std::byte* rhs) {
+  using unum::usearch::byte_t;
+  return impl_(pointer_cast<const byte_t*>(lhs), pointer_cast<const byte_t*>(rhs));
+}
+
+HnswDistanceType HnswlibMetric::Distance(
+    const std::byte* lhs, const std::byte* rhs) {
+  return func_(lhs, rhs, &dimensions_);
 }
 
 }  // namespace yb::hnsw

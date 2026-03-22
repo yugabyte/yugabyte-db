@@ -64,7 +64,7 @@ using MergeFilterPtr = vector_index::VectorLSMMergeFilterPtr;
 using TestUsearchIndexFactory = vector_index::MakeVectorIndexFactory<
     SimplifiedUsearchIndexFactory, FloatVectorLSM>;
 using TestHnswlibIndexFactory = vector_index::MakeVectorIndexFactory<
-    HnswlibIndexFactory, FloatVectorLSM>;
+    SimplifiedHnswlibIndexFactory, FloatVectorLSM>;
 
 class SimpleVectorLSMKeyValueStorage {
  public:
