@@ -12988,7 +12988,6 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
 }
 
 TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = true;
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
@@ -13001,11 +13000,6 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
-
-  // Consume the initial schema record.
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // Helper: check that all DML records (INSERT/UPDATE/DELETE) in the response carry the expected
   // xrepl_origin_id, and that COMMIT records also carry it (backwards compat).
@@ -13030,13 +13024,19 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
         }
       };
 
+  // Insert a row without any replication origin and consume the records.
+  // These records should not carry any origin id.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
+  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
   // --- Single-shard (autocommit) path ---
   // INSERT with origin.
   ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  LOG(INFO) << "Single-shard INSERT: " << change_resp.ShortDebugString();
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13046,7 +13046,6 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
       "UPDATE $0 SET $1 = 200 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  LOG(INFO) << "Single-shard UPDATE: " << change_resp.ShortDebugString();
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13055,7 +13054,6 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  LOG(INFO) << "Single-shard DELETE: " << change_resp.ShortDebugString();
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
@@ -13069,14 +13067,12 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_OK(conn.Execute("COMMIT"));
   ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  LOG(INFO) << "Multi-shard txn: " << change_resp.ShortDebugString();
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
   // --- Local (no origin) path — verify origin_id is 0/absent ---
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 300)", kTableName));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
-  LOG(INFO) << "Local INSERT: " << change_resp.ShortDebugString();
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
 }
 
