@@ -12,6 +12,7 @@ aliases:
 layout: single
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 unversioned: true
 ---
@@ -251,6 +252,7 @@ In addition to [offline migration](/stable/yugabyte-voyager/migrate/migrate-step
 
 Furthermore, Voyager previews a powerful migration assessment that scans existing applications and databases. This detailed assessment provides organizations with valuable insights into the readiness of their applications, data, and schema for migration, thereby accelerating modernization efforts.
 
-## Next step
+## Next steps
 
-[Explore YugabyteDB](/stable/explore/)
+- [Explore YugabyteDB](/stable/explore/)
+- [Develop for YugabyteDB](/stable/develop/)
