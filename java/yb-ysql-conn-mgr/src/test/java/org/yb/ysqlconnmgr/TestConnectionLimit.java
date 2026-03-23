@@ -86,6 +86,9 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
     // Start the threads.
     for (Thread thread : threads) {
       thread.start();
+      // Add small delay to avoid race condition while creating/close auth backends
+      // and transactional backends.
+      Thread.sleep(500);
     }
 
     // Wait for the threads to finish.
