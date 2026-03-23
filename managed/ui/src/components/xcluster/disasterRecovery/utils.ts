@@ -49,23 +49,44 @@ export const getEnabledDrConfigActions = (
 export const getNamespaceIdSafetimeEpochUsMap = (
   drConfigSafetimeResponse: DrConfigSafetimeResponse
 ) =>
-  drConfigSafetimeResponse.safetimes.reduce((namespaceIdSafetimeEpochUsMap, namespace) => {
+  drConfigSafetimeResponse.safetimes.reduce<Record<string, number>>((namespaceIdSafetimeEpochUsMap, namespace) => {
     namespaceIdSafetimeEpochUsMap[namespace.namespaceId] = namespace.safetimeEpochUs;
     return namespaceIdSafetimeEpochUsMap;
   }, {});
 
 /**
- * YBA prescribes a 5 minute minimum for PITR retention period to prevent extremely short intervals.
- *
- * More frequent snapshots cause more disk usage because the compactions won't be as optimal due to
- * more smaller sst tables being flushed every time a snapshot is created.
+ * The minimum PITR retention period value is 1 (hour or day).
  */
-export const getPitrRetentionPeriodMinValue = (pitrRetentionPeriodUnit: DurationUnit | undefined) =>
-  pitrRetentionPeriodUnit === DurationUnit.SECOND
-    ? 5 * 60
-    : pitrRetentionPeriodUnit === DurationUnit.MINUTE
-    ? 5
-    : 1;
+export const getPitrRetentionPeriodMinValue = (_pitrRetentionPeriodUnit: DurationUnit | undefined) =>
+  1;
+
+/**
+ * Formats seconds into a human-readable string showing the most appropriate unit.
+ * Shows exact value without rounding, using the largest unit that divides evenly.
+ */
+export const formatRetentionPeriod = (seconds: number): string => {
+  if (seconds <= 0) {
+    return '0 seconds';
+  }
+
+  const SECONDS_PER_DAY = 86400;
+  const SECONDS_PER_HOUR = 3600;
+  const SECONDS_PER_MINUTE = 60;
+
+  if (seconds % SECONDS_PER_DAY === 0) {
+    const days = seconds / SECONDS_PER_DAY;
+    return `${days} day${days !== 1 ? 's' : ''}`;
+  }
+  if (seconds % SECONDS_PER_HOUR === 0) {
+    const hours = seconds / SECONDS_PER_HOUR;
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+  if (seconds % SECONDS_PER_MINUTE === 0) {
+    const minutes = seconds / SECONDS_PER_MINUTE;
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+  return `${seconds} second${seconds !== 1 ? 's' : ''}`;
+};
 
 export const convertSecondsToLargestDurationUnit = (
   seconds: number,
@@ -75,13 +96,13 @@ export const convertSecondsToLargestDurationUnit = (
 
   if (seconds < 0 || isNaN(seconds)) {
     if (noThrow) {
-      return { value: 0, unit: DurationUnit.SECOND };
+      return { value: 1, unit: DurationUnit.HOUR };
     }
     throw new Error('Input must be a non-negative number');
   }
 
   if (seconds === 0) {
-    return { value: 0, unit: DurationUnit.SECOND };
+    return { value: 1, unit: DurationUnit.HOUR };
   }
 
   // Create an ordered array of units from largest to smallest based on DURATION_UNIT_TO_SECONDS
@@ -96,8 +117,9 @@ export const convertSecondsToLargestDurationUnit = (
     }
   }
 
-  // This line should never be reached due to SECOND being in the orderedUnits,
-  return { value: seconds, unit: DurationUnit.SECOND };
+  // Fall back to hours if the value doesn't evenly divide into any unit
+  const hoursInSeconds = DURATION_UNIT_TO_SECONDS[DurationUnit.HOUR];
+  return { value: Math.max(1, Math.round(seconds / hoursInSeconds)), unit: DurationUnit.HOUR };
 };
 
 /**
