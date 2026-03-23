@@ -657,7 +657,7 @@ Default: `50`
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `-1` (no global limit; per-table and per-tserver limits still apply)
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
