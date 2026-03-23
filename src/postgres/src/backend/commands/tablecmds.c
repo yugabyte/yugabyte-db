@@ -121,6 +121,7 @@
 #include "utils/typcache.h"
 
 /* YB includes. */
+#include "catalog/pg_attribute.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_policy.h"
@@ -134,6 +135,7 @@
 #include "commands/view.h"
 #include "commands/ybccmds.h"
 #include "executor/ybcModifyTable.h"
+#include "nodes/bitmapset.h"
 #include "parser/analyze.h"
 #include "pg_yb_utils.h"
 #include "statistics/statistics.h"
@@ -219,6 +221,10 @@ typedef struct AlteredTableInfo
 												  * already logged an inconsistency
 												  * warning for index rewrites, so
 												  * that we don't log it again */
+	Bitmapset  *yb_altered_column_attnums;	/* YB: table attnums of columns whose
+											 * type was altered. used for ALTER
+											 * TYPE in-place index attribute type
+											 * update */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
@@ -480,11 +486,12 @@ static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab,
 					   LOCKMODE lockmode);
 static void ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId,
 					 char *cmd, List **wqueue, LOCKMODE lockmode,
-					 bool rewrite);
+					 bool rewrite, bool *yb_reuse_index,
+					 bool yb_conislocal);
 static void RebuildConstraintComment(AlteredTableInfo *tab, int pass,
 						 Oid objid, Relation rel, List *domname,
 						 const char *conname);
-static void TryReuseIndex(Oid oldId, IndexStmt *stmt);
+static void TryReuseIndex(Oid oldId, IndexStmt *stmt, bool *yb_reuse_index);
 static void TryReuseForeignKey(Oid oldId, Constraint *con);
 static void change_owner_fix_column_acls(Oid relationOid,
 							 Oid oldOwnerId, Oid newOwnerId);
@@ -565,6 +572,10 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 									  AlteredTableInfo *tab);
 static void YbATInvalidateTableCacheAfterAlter(List *ybAlteredTableIds);
 static bool YbIsTablePartOfPublication(Oid relOid);
+static ObjectAddress YbATExecAlterIndexAttributeType(AlteredTableInfo *tab,
+													 Relation rel,
+													 AlterTableCmd *cmd,
+													 LOCKMODE lockmode);
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -4862,6 +4873,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			/* ATPrepCmd ensures it must be a table */
 			Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
 			ATExecDetachPartition(rel, ((PartitionCmd *) cmd->def)->name);
+			break;
+		case AT_YbAlterIndexAttributeType:
+			address = YbATExecAlterIndexAttributeType(tab, rel, cmd, lockmode);
 			break;
 		default:				/* oops */
 			elog(ERROR, "unrecognized alter table type: %d",
@@ -10802,6 +10816,15 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation *yb_mutable_rel,
 	attnum = attTup->attnum;
 	attOldTup = TupleDescAttr(tab->oldDesc, attnum - 1);
 
+	/* YB: Record altered column for in-place index attribute type update path */
+	if (IsYBRelation(rel) && !tab->rewrite)
+	{
+		if (tab->yb_altered_column_attnums == NULL)
+			tab->yb_altered_column_attnums = bms_make_singleton(attnum);
+		else
+			tab->yb_altered_column_attnums = bms_add_member(tab->yb_altered_column_attnums, attnum);
+	}
+
 	/* Check for multiple ALTER TYPE on same column --- can't cope */
 	if (attTup->atttypid != attOldTup->atttypid ||
 		attTup->atttypmod != attOldTup->atttypmod)
@@ -11420,6 +11443,7 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		Oid			confrelid;
 		char		contype;
 		bool		conislocal;
+		bool		yb_reuse_index = false;
 
 		tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
 		if (!HeapTupleIsValid(tup)) /* should not happen */
@@ -11440,7 +11464,14 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		ReleaseSysCache(tup);
 
 		ObjectAddressSet(obj, ConstraintRelationId, oldId);
-		add_exact_object_address(&obj, objects);
+		/*
+		 * YB: don't mark the constraint to be dropped just yet, if it has
+		 * an associated index, since we might reuse the index.
+		 * Wait for the decision to be made in ATPostAlterTypeParse below,
+		 * and then mark it to be dropped if needed.
+		 */
+		if (!(IsYBRelationById(tab->relid) && OidIsValid(get_constraint_index(oldId))))
+			add_exact_object_address(&obj, objects);
 
 		/*
 		 * If the constraint is inherited (only), we don't want to inject a
@@ -11449,7 +11480,28 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		 * carry the info this far so that we can drop the constraint below.
 		 */
 		if (!conislocal)
+		{
+			/*
+			 * YB: For inherited index-backed constraints, diverge from PG to
+			 * try in-place index attribute update.  Call ATPostAlterTypeParse
+			 * as it evaluates the reusability of the index.
+			 * If the index is not compatible, we follow the same path as PG
+			 * -- add to drop list as we skipped it above.
+			 */
+			if (IsYBRelationById(tab->relid) &&
+				OidIsValid(get_constraint_index(oldId)))
+			{
+				ATPostAlterTypeParse(oldId, relid, confrelid,
+									 (char *) lfirst(def_item),
+									 wqueue, lockmode, tab->rewrite,
+									 &yb_reuse_index,
+									 conislocal /* yb_conislocal */ );
+				if (yb_reuse_index)
+					continue;
+				add_exact_object_address(&obj, objects); /* YB */
+			}
 			continue;
+		}
 
 		/*
 		 * When rebuilding an FK constraint that references the table we're
@@ -11462,21 +11514,37 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 
 		ATPostAlterTypeParse(oldId, relid, confrelid,
 							 (char *) lfirst(def_item),
-							 wqueue, lockmode, tab->rewrite);
+							 wqueue, lockmode, tab->rewrite,
+							 &yb_reuse_index,
+							 conislocal /* yb_conislocal */ );
+
+		/*
+		 * YB: if we're not reusing the constraint's index in place, mark
+		 * it to be dropped now, as we skipped the code above.
+		 */
+		if (!(IsYBRelationById(tab->relid) && yb_reuse_index))
+			add_exact_object_address(&obj, objects);
 	}
 	forboth(oid_item, tab->changedIndexOids,
 			def_item, tab->changedIndexDefs)
 	{
 		Oid			oldId = lfirst_oid(oid_item);
 		Oid			relid;
+		bool		yb_reuse_index = false;
 
 		relid = IndexGetRelation(oldId, false);
 		ATPostAlterTypeParse(oldId, relid, InvalidOid,
 							 (char *) lfirst(def_item),
-							 wqueue, lockmode, tab->rewrite);
+							 wqueue, lockmode, tab->rewrite,
+							 &yb_reuse_index,
+							 true /* yb_conislocal */ );
 
-		ObjectAddressSet(obj, RelationRelationId, oldId);
-		add_exact_object_address(&obj, objects);
+		/* YB: in-place indexes are not added to the drop list */
+		if (!(IsYBRelationById(tab->relid) && yb_reuse_index))
+		{
+			ObjectAddressSet(obj, RelationRelationId, oldId);
+			add_exact_object_address(&obj, objects);
+		}
 	}
 
 	/*
@@ -11495,7 +11563,8 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 
 static void
 ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
-					 List **wqueue, LOCKMODE lockmode, bool rewrite)
+					 List **wqueue, LOCKMODE lockmode, bool rewrite,
+					 bool *yb_reuse_index, bool yb_conislocal)
 {
 	List	   *raw_parsetree_list;
 	List	   *querytree_list;
@@ -11553,19 +11622,34 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 			AlterTableCmd *newcmd;
 
 			if (!rewrite)
-				TryReuseIndex(oldId, stmt);
+				TryReuseIndex(oldId, stmt, yb_reuse_index);
 
-			if (IsYugaByteEnabled())
-				YbATCopyIndexSplitOptions(oldId, stmt, tab);
+			if (IsYBRelationById(tab->relid) && yb_reuse_index != NULL && *yb_reuse_index)
+			{
+				/*
+				 * YB: For YB relations, if the index is reusable, update
+				 * the index's attribute type metadata in-place.
+				 */
+				newcmd = makeNode(AlterTableCmd);
+				newcmd->subtype = AT_YbAlterIndexAttributeType;
+				newcmd->yb_old_index_oid = oldId;
+				tab->subcmds[AT_PASS_OLD_INDEX] =
+					lappend(tab->subcmds[AT_PASS_OLD_INDEX], newcmd);
+			}
+			else
+			{
+				if (IsYugaByteEnabled())
+					YbATCopyIndexSplitOptions(oldId, stmt, tab);
 
-			/* keep the index's comment */
-			stmt->idxcomment = GetComment(oldId, RelationRelationId, 0);
+				/* keep the index's comment */
+				stmt->idxcomment = GetComment(oldId, RelationRelationId, 0);
 
-			newcmd = makeNode(AlterTableCmd);
-			newcmd->subtype = AT_ReAddIndex;
-			newcmd->def = (Node *) stmt;
-			tab->subcmds[AT_PASS_OLD_INDEX] =
-				lappend(tab->subcmds[AT_PASS_OLD_INDEX], newcmd);
+				newcmd = makeNode(AlterTableCmd);
+				newcmd->subtype = AT_ReAddIndex;
+				newcmd->def = (Node *) stmt;
+				tab->subcmds[AT_PASS_OLD_INDEX] =
+					lappend(tab->subcmds[AT_PASS_OLD_INDEX], newcmd);
+			}
 		}
 		else if (IsA(stm, AlterTableStmt))
 		{
@@ -11585,22 +11669,41 @@ ATPostAlterTypeParse(Oid oldId, Oid oldRelId, Oid refRelId, char *cmd,
 					indoid = get_constraint_index(oldId);
 
 					if (!rewrite)
-						TryReuseIndex(indoid, indstmt);
+						TryReuseIndex(indoid, indstmt, yb_reuse_index);
 					/* keep any comment on the index */
 					indstmt->idxcomment = GetComment(indoid,
 													 RelationRelationId, 0);
 
-					cmd->subtype = AT_ReAddIndex;
-					tab->subcmds[AT_PASS_OLD_INDEX] =
-						lappend(tab->subcmds[AT_PASS_OLD_INDEX], cmd);
+					if (IsYBRelationById(tab->relid) && yb_reuse_index != NULL && *yb_reuse_index)
+					{
+						cmd->subtype = AT_YbAlterIndexAttributeType;
+						cmd->yb_old_index_oid = indoid;
+						tab->subcmds[AT_PASS_OLD_INDEX] =
+							lappend(tab->subcmds[AT_PASS_OLD_INDEX], cmd);
+					}
+					/*
+					 * YB: If the constraint is inherited, and the backing
+					 * index is NOT reusable, we follow PG. PG doesn't
+					 * queue AT_ReAddIndex entries for the children. Instead,
+					 * it relies on the parent's redefinition to recurse to
+					 * to the children. So, return here.
+					 */
+					else if (IsYBRelationById(tab->relid) && !yb_conislocal)
+						continue;
+					else
+					{
+						cmd->subtype = AT_ReAddIndex;
+						tab->subcmds[AT_PASS_OLD_INDEX] =
+							lappend(tab->subcmds[AT_PASS_OLD_INDEX], cmd);
 
-					/* recreate any comment on the constraint */
-					RebuildConstraintComment(tab,
-											 AT_PASS_OLD_INDEX,
-											 oldId,
-											 rel,
-											 NIL,
-											 indstmt->idxname);
+						/* recreate any comment on the constraint */
+						RebuildConstraintComment(tab,
+												 AT_PASS_OLD_INDEX,
+												 oldId,
+												 rel,
+												 NIL,
+												 indstmt->idxname);
+					}
 				}
 				else if (cmd->subtype == AT_AddConstraint)
 				{
@@ -11715,15 +11818,20 @@ RebuildConstraintComment(AlteredTableInfo *tab, int pass, Oid objid,
 /*
  * Subroutine for ATPostAlterTypeParse().  Calls out to CheckIndexCompatible()
  * for the real analysis, then mutates the IndexStmt based on that verdict.
+ * YB: If CheckIndexCompatible returns true, set *yb_reuse_index to true
+ * (for YB in-place pg_attribute update path).
  */
 static void
-TryReuseIndex(Oid oldId, IndexStmt *stmt)
+TryReuseIndex(Oid oldId, IndexStmt *stmt, bool *yb_reuse_index)
 {
 	if (CheckIndexCompatible(oldId,
 							 stmt->accessMethod,
 							 stmt->indexParams,
 							 stmt->excludeOpNames))
 	{
+		if (yb_reuse_index != NULL)
+			*yb_reuse_index = true;
+
 		Relation	irel = index_open(oldId, NoLock);
 
 		stmt->oldNode = irel->rd_node.relNode;
@@ -19442,8 +19550,8 @@ static void YbATCopyIndexSplitOptions(Oid oldId, IndexStmt *stmt,
 		}
 		if (yb_copy_split_options)
 			stmt->split_options = YbGetSplitOptions(idx_rel);
-		RelationClose(idx_rel);
 	}
+	RelationClose(idx_rel);
 }
 
 /*
@@ -19508,4 +19616,107 @@ YbIsTablePartOfPublication(Oid relOid)
 	heap_close(pubrel, AccessShareLock);
 
 	return is_part_of_pub;
+}
+
+/*
+ * YB: Update index's pg_attribute in place for ALTER COLUMN TYPE (no new OID).
+ * Only the type-related fields for key columns that map to altered table
+ * columns are updated.
+ */
+static ObjectAddress
+YbATExecAlterIndexAttributeType(AlteredTableInfo *tab, Relation rel,
+								AlterTableCmd *cmd, LOCKMODE lockmode)
+{
+	Oid			index_oid = cmd->yb_old_index_oid;
+	Bitmapset  *yb_altered_attnums = tab->yb_altered_column_attnums;
+	Relation	indexRel;
+	Relation	pg_attribute;
+	HeapTuple	idxTup;
+	HeapTuple	attrTup;
+	Form_pg_index idxForm;
+	SysScanDesc scan;
+	ScanKeyData key[1];
+	TupleDesc	heapTupDesc;
+	ObjectAddress address = InvalidObjectAddress;
+
+	indexRel = index_open(index_oid, AccessShareLock);
+	heapTupDesc = RelationGetDescr(rel);
+
+	idxTup = SearchSysCache1(INDEXRELID, ObjectIdGetDatum(index_oid));
+	if (!HeapTupleIsValid(idxTup))
+		elog(ERROR, "cache lookup failed for index %u", index_oid);
+	idxForm = (Form_pg_index) GETSTRUCT(idxTup);
+
+	pg_attribute = relation_open(AttributeRelationId, RowExclusiveLock);
+	ScanKeyInit(&key[0],
+				Anum_pg_attribute_attrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(index_oid));
+	scan = systable_beginscan(pg_attribute, AttributeRelidNumIndexId,
+							  true, NULL, 1, key);
+
+	while (HeapTupleIsValid((attrTup = systable_getnext(scan))))
+	{
+		Form_pg_attribute att;
+		int			index_attnum;
+		int			keypos;
+		AttrNumber	table_attnum;
+		Datum		new_values[Natts_pg_attribute];
+		bool		new_nulls[Natts_pg_attribute];
+		bool		do_replace[Natts_pg_attribute];
+		Form_pg_attribute heap_att;
+		HeapTuple	newTuple;
+
+		att = (Form_pg_attribute) GETSTRUCT(attrTup);
+		index_attnum = att->attnum;
+		keypos = index_attnum - 1;
+
+		if (att->attisdropped)
+			continue;
+
+		table_attnum = idxForm->indkey.values[keypos];
+
+		/* Skip expression columns. Such indexes are always rebuilt. */
+		if (table_attnum == 0)
+			continue;
+
+		/* Check if the column is one of the altered columns. */
+		if (!bms_is_member(table_attnum, yb_altered_attnums))
+			continue;
+
+		heap_att = TupleDescAttr(heapTupDesc, AttrNumberGetAttrOffset(table_attnum));
+
+		memset(new_values, 0, sizeof(new_values));
+		memset(new_nulls, false, sizeof(new_nulls));
+		memset(do_replace, false, sizeof(do_replace));
+
+		/* Update attribute type-related fields. */
+		do_replace[Anum_pg_attribute_atttypid - 1] = true;
+		new_values[Anum_pg_attribute_atttypid - 1] = ObjectIdGetDatum(heap_att->atttypid);
+		do_replace[Anum_pg_attribute_atttypmod - 1] = true;
+		new_values[Anum_pg_attribute_atttypmod - 1] = Int32GetDatum(heap_att->atttypmod);
+		do_replace[Anum_pg_attribute_attlen - 1] = true;
+		new_values[Anum_pg_attribute_attlen - 1] = Int16GetDatum(heap_att->attlen);
+		do_replace[Anum_pg_attribute_attbyval - 1] = true;
+		new_values[Anum_pg_attribute_attbyval - 1] = BoolGetDatum(heap_att->attbyval);
+		do_replace[Anum_pg_attribute_attalign - 1] = true;
+		new_values[Anum_pg_attribute_attalign - 1] = CharGetDatum(heap_att->attalign);
+		do_replace[Anum_pg_attribute_attstorage - 1] = true;
+		new_values[Anum_pg_attribute_attstorage - 1] = CharGetDatum(heap_att->attstorage);
+		do_replace[Anum_pg_attribute_attcollation - 1] = true;
+		new_values[Anum_pg_attribute_attcollation - 1] = ObjectIdGetDatum(heap_att->attcollation);
+
+		newTuple = heap_modify_tuple(attrTup, RelationGetDescr(pg_attribute),
+									 new_values, new_nulls, do_replace);
+		CatalogTupleUpdate(pg_attribute, &newTuple->t_self, newTuple);
+		heap_freetuple(newTuple);
+	}
+
+	systable_endscan(scan);
+	relation_close(pg_attribute, RowExclusiveLock);
+	ReleaseSysCache(idxTup);
+	index_close(indexRel, AccessShareLock);
+
+	ObjectAddressSet(address, RelationRelationId, index_oid);
+	return address;
 }
