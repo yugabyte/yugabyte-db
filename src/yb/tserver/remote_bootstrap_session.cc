@@ -62,11 +62,6 @@ DECLARE_uint64(rpc_max_message_size);
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_bool(enable_flush_retryable_requests);
 
-DEFINE_test_flag(double, fault_crash_leader_after_changing_role, 0.0,
-                 "The leader will crash after successfully sending a ChangeConfig (CHANGE_ROLE "
-                 "from PRE_VOTER or PRE_OBSERVER to VOTER or OBSERVER respectively) for the tablet "
-                 "server it is remote bootstrapping, but before it sends a success response.");
-
 DEFINE_test_flag(int32, rbs_sleep_after_taking_metadata_ms, 0,
                  "Sleep after tablet metadata was taken during remote boostrap session init.");
 
@@ -115,20 +110,6 @@ RemoteBootstrapSession::~RemoteBootstrapSession() {
   RemoveCheckpointDir();
 }
 
-Status RemoteBootstrapSession::ChangeRole() {
-  CHECK(Succeeded());
-  CHECK(ShouldChangeRole());
-
-  LOG(INFO) << "Attempting to ChangeRole for peer " << requestor_uuid_ << " in bootstrap session "
-            << session_id_;
-  auto status = rbs_anchor_client_ ? rbs_anchor_client_->ChangePeerRole()
-                                   : tablet_peer_->ChangeRole(requestor_uuid_);
-  if (status.ok()) {
-    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_after_changing_role);
-  }
-  return status;
-}
-
 Status RemoteBootstrapSession::SetInitialCommittedState() {
   auto consensus = VERIFY_RESULT_PREPEND(
       tablet_peer_->GetConsensus(), "Unable to initialize remote bootstrap session");
@@ -147,7 +128,6 @@ Status RemoteBootstrapSession::InitSnapshotTransferSession() {
   RETURN_NOT_OK(InitSources());
 
   start_time_ = MonoTime::Now();
-  should_try_change_role_ = false;
 
   return Status::OK();
 }
@@ -633,16 +613,15 @@ Status RemoteBootstrapSession::UnregisterAnchorIfNeededUnlocked() {
 void RemoteBootstrapSession::SetSuccess() {
   std::lock_guard lock(mutex_);
   succeeded_ = true;
+  // Can early clear the checkpoints dir since the session already succeeded (data sent to client),
+  // and we don't need the snapshot anymore. In case of failure, the session is removed right away
+  // which would anyways clear the checkpoints dir.
+  RemoveCheckpointDir();
 }
 
 bool RemoteBootstrapSession::Succeeded() {
   std::lock_guard lock(mutex_);
   return succeeded_;
-}
-
-bool RemoteBootstrapSession::ShouldChangeRole() {
-  std::lock_guard lock(mutex_);
-  return should_try_change_role_;
 }
 
 void RemoteBootstrapSession::EnsureRateLimiterIsInitialized() {
