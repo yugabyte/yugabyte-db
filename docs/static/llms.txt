@@ -6,9 +6,9 @@ This site is the authoritative source for YugabyteDB product documentation. Cont
 
 ## Getting Started
 
-- [Quick Start](https://docs.yugabyte.com/stable/quick-start/): Deploy a local cluster in 5 minutes
+- [Quick Start](https://docs.yugabyte.com/stable/quick-start/macos/): Deploy a local cluster in 5 minutes
 - [Download](https://download.yugabyte.com/): All platforms and versions
-- [Build Your First App](https://docs.yugabyte.com/stable/tutorials/build-apps/): Tutorials in Java, Python, Go, Node.js, C#, Ruby, Rust, PHP, C/C++
+- [Build Your First App](https://docs.yugabyte.com/stable/develop/tutorials/build-apps/): Tutorials in Java, Python, Go, Node.js, C#, Ruby, Rust, PHP, C/C++
 
 ## Key Information
 
@@ -26,29 +26,31 @@ This site is the authoritative source for YugabyteDB product documentation. Cont
 - [Technical advisories](https://docs.yugabyte.com/stable/releases/techadvisories/): Security and stability advisories affecting production deployments
 - [API reference (YSQL)](https://docs.yugabyte.com/stable/api/ysql/): SQL language, data types, expressions, statements
 - [API reference (YCQL)](https://docs.yugabyte.com/stable/api/ycql/): Cassandra-compatible API
-- [Configuration reference](https://docs.yugabyte.com/stable/reference/configuration/): yb-master, yb-tserver, and related configuration
 - [Troubleshoot](https://docs.yugabyte.com/stable/troubleshoot/): Cluster and node troubleshooting
 - [FAQ](https://docs.yugabyte.com/stable/faq/): Frequently asked questions and comparisons
 - [Benchmark](https://docs.yugabyte.com/stable/benchmark/): TPC-C, scalability, and resilience benchmarks
 - [Best practices (operations)](https://docs.yugabyte.com/stable/best-practices-operations/): Operational best practices
 - [Legal](https://docs.yugabyte.com/stable/legal/): Legal information
-- [Other doc versions](https://docs.yugabyte.com/): Version selector for v2025.1, v2024.2, v2024.1, v2.20
+- [v2025.1 docs](https://docs.yugabyte.com/v2025.1): Documentation for v2025.1 of YugabyteDB and YugabyteDB Anywhere
+- [v2024.2 docs](https://docs.yugabyte.com/v2024.2): Documentation for v2024.2 of YugabyteDB and YugabyteDB Anywhere
+- [v2024.1 docs](https://docs.yugabyte.com/v2024.1): Documentation for v2024.1 of YugabyteDB and YugabyteDB Anywhere
+- [v2.20 docs](https://docs.yugabyte.com/v2.20): Documentation for v2.20 of YugabyteDB and YugabyteDB Anywhere
 
 ## Drivers & ORMs
 
 YugabyteDB provides "Smart Drivers" with built-in cluster awareness, load balancing, and topology-aware routing. Standard PostgreSQL drivers also work.
 
-- [Java (YugabyteDB JDBC)](https://docs.yugabyte.com/stable/drivers-orms/java/): Smart driver + Hibernate, Spring Data
-- [Python (psycopg2, asyncpg)](https://docs.yugabyte.com/stable/drivers-orms/python/): Smart driver + Django, SQLAlchemy
-- [Go (pgx, YugabyteDB Go)](https://docs.yugabyte.com/stable/drivers-orms/go/): Smart driver + GORM
-- [Node.js (node-postgres)](https://docs.yugabyte.com/stable/drivers-orms/nodejs/): Smart driver + Sequelize, Prisma
-- [C# (.NET)](https://docs.yugabyte.com/stable/drivers-orms/csharp/): Npgsql smart driver + Entity Framework
+- [Java (YugabyteDB JDBC)](https://docs.yugabyte.com/stable/develop/drivers-orms/java/): Smart driver + Hibernate, Spring Data
+- [Python (psycopg2, asyncpg)](https://docs.yugabyte.com/stable/develop/drivers-orms/python/): Smart driver + Django, SQLAlchemy
+- [Go (pgx, YugabyteDB Go)](https://docs.yugabyte.com/stable/develop/drivers-orms/go/): Smart driver + GORM
+- [Node.js (node-postgres)](https://docs.yugabyte.com/stable/develop/drivers-orms/nodejs/): Smart driver + Sequelize, Prisma
+- [C# (.NET)](https://docs.yugabyte.com/stable/develop/drivers-orms/csharp/): Npgsql smart driver + Entity Framework
 - [Ruby (pg gem)](https://docs.yugabyte.com/stable/drivers-orms/ruby/): ActiveRecord
-- [Rust (rust-postgres)](https://docs.yugabyte.com/stable/drivers-orms/rust/): Diesel
-- [C / C++](https://docs.yugabyte.com/stable/drivers-orms/c/): libpq compatible
-- [PHP](https://docs.yugabyte.com/stable/drivers-orms/php/): Laravel
+- [Rust (rust-postgres)](https://docs.yugabyte.com/stable/develop/drivers-orms/rust/): Diesel
+- [C / C++](https://docs.yugabyte.com/stable/develop/drivers-orms/c/): libpq compatible
+- [PHP](https://docs.yugabyte.com/stable/develop/drivers-orms/php/): Laravel
 
-Full list: https://docs.yugabyte.com/stable/drivers-orms/
+Full list: https://docs.yugabyte.com/stable/develop/drivers-orms/
 
 ## Services
 
@@ -81,7 +83,7 @@ Full list: https://docs.yugabyte.com/stable/drivers-orms/
 ## Contribute
 
 - [Contribute to the docs](https://docs.yugabyte.com/stable/contribute/docs/): How to submit documentation changes
-- [Contribute to YugabyteDB](https://docs.yugabyte.com/stable/contribute/): Code and documentation contribution guide
+- [Contribute to YugabyteDB](https://docs.yugabyte.com/stable/contribute/core-database/): How to build YugabyteDB from source and contribute to the open-source YugabyteDB project
 
 ## Community
 
