@@ -12,6 +12,9 @@ menu:
     weight: 2
     params:
       hideLink: true
+rightNav:
+  hideH3: true
+  hideH4: true
 ---
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Aeon:

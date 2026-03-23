@@ -9,6 +9,7 @@ aliases:
 layout: single
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 unversioned: true
 ---
