@@ -3308,50 +3308,41 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
       checkpoint_pb.set_snapshot_time(*entry.cdc_sdk_safe_time);
     }
 
-    auto is_cur_tablet_polled = entry.last_replication_time.has_value();
+    bool is_cur_tablet_polled = entry.last_replication_time.has_value();
+
+    // Determines whether a parent tablet should be included in the poll list.
+    // A parent is included only if it has been polled and atleast one of its children has not been
+    // polled yet (i.e., it is still actively being streamed). If the parent has not been polled,
+    // its children can be polled directly. If both children have been polled, the parent is
+    // inactive.
+    auto should_include_parent = [&](const TabletId& parent_tablet_id,
+                                     bool is_polled,
+                                     const std::string& caller) -> bool {
+      bool children_polled = are_both_children_polled(parent_tablet_id);
+      if (!children_polled && is_polled) {
+        return true;
+      }
+      VLOG_IF(1, !is_polled)
+          << "[" << caller << "] Tablet: " << parent_tablet_id
+          << " has children and hasn't been polled yet. The CDC stream: " << stream_id
+          << " can directly start polling from children tablets.";
+      return false;
+    };
 
     bool add_to_result = false;
     auto parent_iter = child_to_parent_mapping.find(tablet_id);
 
-    if (is_parent) {
-      // This means the current tablet itself was a parent tablet. If we find
-      // that we have already started polling both the children, we will not add the parent tablet
-      // to the result set. This situation is only possible within a small window where we have
-      // reported the tablet split to the client and but the background thread has not yet deleted
-      // the hidden parent tablet.
-      bool both_children_polled = are_both_children_polled(tablet_id);
-
-      if (!both_children_polled) {
-        // This can occur in two scenarios:
-        // 1. The client has just called "GetTabletListToPollForCDC" for the first time, meanwhile
-        //    a tablet split has succeded. In this case we will only add the children tablets to
-        //    the result.
-        // 2. The client has not yet completed streaming all the required data from the current
-        //    parent tablet. In this case we will only add the current tablet to the result.
-        // The difference between the two scenarios is that the current parent tablet has been
-        // polled.
-        if (is_cur_tablet_polled) {
-          add_to_result = true;
-        }
-        VLOG_IF(1, !is_cur_tablet_polled)
-            << "The current tablet: " << tablet_id
-            << ", has children tablets and hasn't been polled yet. The CDC stream: " << stream_id
-            << ", can directly start polling from children tablets.";
-      }
-    } else if (parent_iter == child_to_parent_mapping.end()) {
-      // This means the current tablet is not a child tablet, nor a parent, we add the tablet to the
-      // result set.
-      add_to_result = true;
-    } else {
-      // This means the current tablet is a child tablet.If we see that the any ancestor tablet is
-      // also not polled we will add the current child tablet to the result set.
+    // The current tablet is a child tablet. Walk up the ancestor chain to check if any ancestor
+    // is still active (polled but not both children polled). If an active ancestor is found,
+    // this child is not yet ready to be polled.
+    if (parent_iter != child_to_parent_mapping.end()) {
       bool found_active_ancestor = false;
       while (parent_iter != child_to_parent_mapping.end()) {
         const auto& ancestor_tablet_id = parent_iter->second;
 
-        bool both_children_polled = are_both_children_polled(ancestor_tablet_id);
-        bool is_current_polled = (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
-        if (is_current_polled && !both_children_polled) {
+        bool ancestor_children_polled = are_both_children_polled(ancestor_tablet_id);
+        bool is_ancestor_polled = (polled_tablets.find(ancestor_tablet_id) != polled_tablets.end());
+        if (is_ancestor_polled && !ancestor_children_polled) {
           VLOG(1) << "Found polled ancestor tablet: " << ancestor_tablet_id
                   << ", for un-polled child tablet: " << tablet_id
                   << ". Hence this tablet is not yet ready to be polled by CDC stream: "
@@ -3365,8 +3356,30 @@ Status CDCServiceImpl::GetTabletIdsToPoll(
       }
 
       if (!found_active_ancestor) {
-        add_to_result = true;
+        // This tablet is a child whose ancestors are all retired. If it is also a parent
+        // (dual-role tablet), apply parent retirement logic: only include it if it has been
+        // polled and not all of its own children have been polled yet. Once both children
+        // are polled, this tablet is retired in favour of its children.
+        if (is_parent) {
+          add_to_result = should_include_parent(tablet_id, is_cur_tablet_polled, "child_branch");
+        } else {
+          add_to_result = true;
+        }
       }
+    } else if (is_parent) {
+      // This means the current tablet itself was a parent tablet. If we find
+      // that we have already started polling both the children, we will not add the parent tablet
+      // to the result set. This situation is only possible within a small window where we have
+      // reported the tablet split to the client and but the background thread has not yet deleted
+      // the hidden parent tablet.
+      add_to_result = should_include_parent(tablet_id, is_cur_tablet_polled, "root_parent_branch");
+    } else {
+      // This means the current tablet is not a child tablet, nor a parent, we add the tablet to the
+      // result set.
+      RSTATUS_DCHECK(
+          parent_iter == child_to_parent_mapping.end(), InternalError,
+          Format("Tablet $0 is neither a parent nor a child but has a parent mapping", tablet_id));
+      add_to_result = true;
     }
 
     if (add_to_result) {

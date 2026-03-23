@@ -2794,6 +2794,45 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
   }
 
+  void CDCSDKYsqlTest::PollUntilTabletSplit(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      GetChangesResponsePB* change_resp,
+      int tablet_idx) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto result = (tablet_idx >= 0)
+              ? GetChangesFromCDCWithExplictCheckpoint(
+                    stream_id, tablets, &change_resp->cdc_sdk_checkpoint(),
+                    &change_resp->cdc_sdk_checkpoint(), "", tablet_idx)
+              : GetChangesFromCDC(
+                    stream_id, tablets, &change_resp->cdc_sdk_checkpoint());
+          if (!result.ok()) return true;
+          if (result->has_error()) {
+            SCHECK_EQ(
+                result->error().code(), CDCErrorPB::TABLET_SPLIT,
+                IllegalState, "Expected TABLET_SPLIT error");
+            return true;
+          }
+          *change_resp = *result;
+          return false;
+        },
+        MonoDelta::FromSeconds(90), "Waiting for TABLET_SPLIT error"));
+  }
+
+  void CDCSDKYsqlTest::VerifyTabletList(
+      const xrepl::StreamId& stream_id,
+      const TableId& table_id,
+      const std::set<TabletId>& expected,
+      const std::string& context_msg) {
+    auto resp = ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id));
+    std::set<TabletId> returned;
+    for (const auto& pair : resp.tablet_checkpoint_pairs()) {
+      returned.insert(pair.tablet_locations().tablet_id());
+    }
+    ASSERT_EQ(returned, expected) << context_msg;
+  }
+
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id, const std::string timeout_msg) {
