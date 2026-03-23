@@ -5757,21 +5757,20 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterStrea
       stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
       /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
       /* timeout_msg */ "Timed out waiting for expired table cleanup"));
-  get_changes_result = GetChangesFromCDC(stream_id, tablets);
-  ASSERT_NOK(get_changes_result);
-  ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is expired for Tablet ID");
 
-  // Wait for entry deletion.
+  // Wait for UpdateMetrics to run so that it removes the metrics object for the expired table as
+  // well as stale cached entries.
   ASSERT_OK(WaitFor(
       [&]() {
-        auto result = GetCDCSDKTabletMetrics(
+        get_changes_result = GetChangesFromCDC(stream_id, tablets);
+        bool result = !get_changes_result.ok() && (get_changes_result.status().ToString().find(
+                                                       "is not part of stream ID") != string::npos);
+        auto metrics_result = GetCDCSDKTabletMetrics(
             *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse);
-        if (!result.ok()) {
-          return true;
-        }
-        return false;
+        result &= !metrics_result.ok() && metrics_result.status().IsNotFound();
+        return result;
       },
-      MonoDelta::FromSeconds(60), "Metric object is not removed."));
+      MonoDelta::FromSeconds(10), "Metrics object or cached entry is not removed."));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMetricObjectRemovalAfterNamespaceDeletion)) {
@@ -13425,6 +13424,56 @@ TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
   ASSERT_FALSE(table_3_stream_1_entry.has_value());
   ASSERT_TRUE(table_3_stream_2_entry.has_value());
   ASSERT_TRUE(table_3_tablet_peer->is_under_cdc_sdk_replication());
+}
+
+TEST_F(CDCSDKYsqlTest, TestMetricsDontRecreateAfterStreamDeletion) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters */, false /* colocated */));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  const auto& tserver = test_cluster()->mini_tablet_server(0)->server();
+  auto cdc_service = CDCService(tserver);
+
+  // Do an initial GetChanges to create the metrics and populate the cache.
+  GetChangesResponsePB change_resp;
+  const CDCSDKCheckpointPB* explicit_checkpoint = &CDCSDKCheckpointPB::default_instance();
+  for (int i = 0; i < 2; i++) {
+    ASSERT_OK(WriteRows(i /* start */, i + 1 /* end */, &test_cluster_, 2 /* num_cols */));
+    SleepFor(MonoDelta::FromSeconds(5));
+    change_resp = ASSERT_RESULT(GetChangesFromCDCWithExplictCheckpoint(
+        stream_id, tablets, explicit_checkpoint, explicit_checkpoint));
+    ASSERT_FALSE(change_resp.has_error());
+    explicit_checkpoint = &change_resp.cdc_sdk_checkpoint();
+  }
+
+  // Verify metrics exist.
+  ASSERT_RESULT(GetCDCSDKTabletMetrics(
+      *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse));
+
+  DeleteCDCStream(stream_id);
+
+  ASSERT_OK(WaitFor(
+      [&]() {
+        auto metrics = GetCDCSDKTabletMetrics(
+            *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse);
+        return !metrics.ok() && metrics.status().IsNotFound();
+      },
+      MonoDelta::FromSeconds(10), "Metric object is not removed."));
+
+  // This GetChanges will fail as the stream is already deleted. If it had succeeded, it would have
+  // re-created the metric objects.
+  ASSERT_NOK(GetChangesFromCDCWithoutRetry(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+
+  auto metrics = GetCDCSDKTabletMetrics(
+      *cdc_service, tablets[0].tablet_id(), stream_id, CreateMetricsEntityIfNotFound::kFalse);
+  ASSERT_TRUE(!metrics.ok() && metrics.status().IsNotFound());
 }
 
 }  // namespace cdc
