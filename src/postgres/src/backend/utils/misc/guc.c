@@ -173,6 +173,10 @@ static double yb_transaction_priority_upper_bound = 1.0;
 static double yb_transaction_priority = 0.0;
 static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
 
+/* YB: ConnMgr variables used to track SIGHUP */
+uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
+bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
+
 static int	GUC_check_errcode_value;
 
 static List *reserved_class_prefix = NIL;
@@ -11024,6 +11028,16 @@ set_config_option_ext(const char *name, const char *value,
 				 */
 				if (IsUnderPostmaster && changeVal && !is_reload)
 					return -1;
+
+				/*
+				 * YB: We need to increment local LCV for ConnMgr here since
+				 * this change will only take effect in new backends
+				 * This will fire even if the variable value in config is not
+				 * changed, which is acceptable since config reloads are rare
+				 */
+				if (YbIsYsqlConnMgrEnabled() && !IsUnderPostmaster && changeVal &&
+					!is_reload)
+					yb_conn_mgr_sighup_had_backend_guc_change = true;
 			}
 			else if (context != PGC_POSTMASTER &&
 					 context != PGC_BACKEND &&
