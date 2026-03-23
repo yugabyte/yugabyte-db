@@ -65,3 +65,15 @@ SET SESSION AUTHORIZATION 'regress_yb_db_admin_user';
 ALTER PUBLICATION pub_all_tables2 OWNER TO regress_yb_db_admin_user2;
 ALTER PUBLICATION pub_all_tables2 OWNER TO regress_yb_db_user1;
 RESET SESSION AUTHORIZATION;
+-- #22490: row filter with REPLICA IDENTITY DEFAULT should allow UPDATE/DELETE
+-- when the filter only references replica identity (PK) columns.
+CREATE TABLE yb_pub_rf_t(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_pub_rf_t REPLICA IDENTITY DEFAULT;
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION yb_pub_rf FOR TABLE yb_pub_rf_t WHERE (a > 5 AND c = 'NSW');
+RESET client_min_messages;
+INSERT INTO yb_pub_rf_t VALUES (6, 106, 'NSW');
+UPDATE yb_pub_rf_t SET b = 999 WHERE a = 6 AND c = 'NSW';
+DELETE FROM yb_pub_rf_t WHERE a = 6 AND c = 'NSW';
+DROP PUBLICATION yb_pub_rf;
+DROP TABLE yb_pub_rf_t;
