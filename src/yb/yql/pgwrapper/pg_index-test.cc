@@ -155,15 +155,14 @@ TEST_F(PgIndexTest, RandomIndexScan) {
       });
   std::shuffle(rows.begin(), rows.end(), rng);
   for (size_t i = 0; i != kNumChunks; ++i) {
-    ASSERT_OK(conn_->CopyBegin("COPY test FROM STDIN WITH BINARY"));
-    for (size_t j = 0; j != kRowsPerChunk; ++j) {
-      conn_->CopyStartRow(3);
-      auto [key, value] = rows[i * kRowsPerChunk + j];
-      conn_->CopyPutInt64(key);
-      conn_->CopyPutInt64(value);
-      conn_->CopyPutInt64(-key);
-    }
-    ASSERT_OK(conn_->CopyEnd());
+    ASSERT_OK(conn_->CopyFromStdin(
+        "test",
+        [&rows, i](PGConn::RowMaker<int64_t, int64_t, int64_t>& row) {
+          for (size_t j = 0; j != kRowsPerChunk; ++j) {
+            const auto& [key, value] = rows[i * kRowsPerChunk + j];
+            row(key, value, -key);
+          }
+        }));
     ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
     ASSERT_OK(cluster_->FlushTablets());
   }

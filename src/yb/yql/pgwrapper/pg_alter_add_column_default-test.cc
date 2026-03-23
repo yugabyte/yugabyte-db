@@ -101,19 +101,20 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
   // COPY new rows into table.
   // Insert the following rows:
   // (4), (5), (6, null), (7, null), (8, "not default"), (9, "not default")
-  ASSERT_OK(conn_->CopyBegin(Format("COPY $0(t) FROM STDIN WITH BINARY", kTableName)));
-  for (int i = 4; i <= 5; ++i) {
-    conn_->CopyStartRow(1 /* number of columns */);
-    conn_->CopyPutInt32(i);
-  }
-  ASSERT_OK(conn_->CopyEnd());
-  ASSERT_OK(conn_->CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-  for (int i = 6; i <= 9; ++i) {
-    conn_->CopyStartRow(2 /* number of columns */);
-    conn_->CopyPutInt32(i);
-    conn_->CopyPutString(i < 8 ? "" : "not default");
-  }
-  ASSERT_OK(conn_->CopyEnd());
+  ASSERT_OK(conn_->CopyFromStdin(
+      Format("$0(t)", kTableName),
+      [](PGConn::RowMaker<int32_t>& row) {
+        for (int i = 4; i <= 5; ++i) {
+          row(i);
+        }
+      }));
+  ASSERT_OK(conn_->CopyFromStdin(
+      kTableName,
+      [](PGConn::RowMaker<int32_t, std::string_view>& row) {
+        for (int i = 6; i <= 9; ++i) {
+          row(i, i < 8 ? "" : "not default");
+        }
+      }));
 
   auto table_content_checker = [&conn = this->conn_]() -> Status {
     auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, std::string>(
