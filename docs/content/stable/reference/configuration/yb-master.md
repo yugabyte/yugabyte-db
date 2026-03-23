@@ -127,12 +127,11 @@ Changing the value of this flag after the cluster has already been created is no
 ##### --fs_wal_dirs
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: Same value as `--fs_data_dirs`
 {{% /tags/wrap %}}
 
-Specifies a comma-separated list of directories, where YB-Master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
+Specifies a comma-separated list of directories, where yb-master will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
 
 ##### --rpc_bind_addresses
 
@@ -278,16 +277,11 @@ Specifies the time source used by the database. Set this to `clockbound` for con
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
+{{<tags/feature/restart-needed>}}
 Default: `true`
 {{% /tags/wrap %}}
 
 Enables the YSQL API when value is `true`.
-
-{{< note title="Note" >}}
-
-Ensure that `enable_ysql` values in yb-master configurations match the values in yb-tserver configurations.
-
-{{< /note >}}
 
 ##### --enable_pg_cron
 
@@ -534,7 +528,6 @@ Ensure that values used for the write ahead log (WAL) in yb-master configuration
 ##### --fs_wal_dirs
 
 {{% tags/wrap %}}
-{{<tags/feature/t-server>}}
 {{<tags/feature/restart-needed>}}
 Default: The same as `--fs_data_dirs`
 {{% /tags/wrap %}}
