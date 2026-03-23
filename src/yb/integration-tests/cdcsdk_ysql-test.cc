@@ -13001,13 +13001,13 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_EQ(tablets.size(), 1);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  // Helper: check that all DML records (INSERT/UPDATE/DELETE) in the response carry the expected
-  // xrepl_origin_id, and that COMMIT records also carry it (backwards compat).
+  // Helper: check that all BEGIN, DML (INSERT/UPDATE/DELETE), and COMMIT records in the response
+  // carry the expected xrepl_origin_id.
   auto verify_origin_id_on_all_records =
       [](const GetChangesResponsePB& resp, uint32_t expected_origin_id) {
         for (const auto& record : resp.cdc_sdk_proto_records()) {
           auto op = record.row_message().op();
-          if (op == RowMessage::INSERT || op == RowMessage::UPDATE ||
+          if (op == RowMessage::BEGIN || op == RowMessage::INSERT || op == RowMessage::UPDATE ||
               op == RowMessage::DELETE || op == RowMessage::COMMIT) {
             if (expected_origin_id != 0) {
               ASSERT_TRUE(record.row_message().has_xrepl_origin_id())

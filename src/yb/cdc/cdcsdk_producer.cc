@@ -1323,13 +1323,16 @@ Status PopulateCDCSDKIntentRecord(
 }
 
 void FillBeginRecordForSingleShardTransaction(
-    const uint64_t& commit_timestamp, GetChangesResponsePB* resp,
+    const uint64_t& commit_timestamp, uint32_t xrepl_origin_id, GetChangesResponsePB* resp,
     CDCThroughputMetrics* throughput_metrics) {
   CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
   RowMessage* row_message = proto_record->mutable_row_message();
 
   row_message->set_op(RowMessage_Op_BEGIN);
   row_message->set_commit_time(commit_timestamp);
+  if (xrepl_origin_id) {
+    row_message->set_xrepl_origin_id(xrepl_origin_id);
+  }
   // No need to add record_time to the Begin record since it does not have any intent associated
   // with it.
 
@@ -1371,8 +1374,14 @@ Status PopulateCDCSDKWriteRecord(
     GetChangesResponsePB* resp,
     client::YBClient* client,
     CDCThroughputMetrics* throughput_metrics) {
+  uint32_t xrepl_origin_id = 0;
+  if (msg->write().has_xrepl_origin_id()) {
+    xrepl_origin_id = msg->write().xrepl_origin_id();
+  }
+
   if (FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecordForSingleShardTransaction(msg->hybrid_time(), resp, throughput_metrics);
+    FillBeginRecordForSingleShardTransaction(
+        msg->hybrid_time(), xrepl_origin_id, resp, throughput_metrics);
   }
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet());
@@ -1400,7 +1409,6 @@ Status PopulateCDCSDKWriteRecord(
   auto table_name = tablet_ptr->metadata()->table_name();
   auto table_id = tablet_ptr->metadata()->table_id();
   SchemaPackingStorage* schema_packing_storage = &schema_packing_storages->at(table_id);
-  uint32_t xrepl_origin_id = 0;
 
   // TODO: This function and PopulateCDCSDKIntentRecord have a lot of code in common. They should
   // be refactored to use some common row-column iterator.
@@ -1505,11 +1513,6 @@ Status PopulateCDCSDKWriteRecord(
       CDCSDKOpIdPB* cdc_sdk_op_id_pb = proto_record->mutable_cdc_sdk_op_id();
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), record_batch_idx, "", cdc_sdk_op_id_pb);
       is_packed_row_record = false;
-
-      // Populate PostgreSQL replication origin id if available.
-      if (msg->write().has_xrepl_origin_id()) {
-        xrepl_origin_id = msg->write().xrepl_origin_id();
-      }
 
       if (xrepl_origin_id) {
         row_message->set_xrepl_origin_id(xrepl_origin_id);
@@ -1783,13 +1786,17 @@ void SetKeyWriteId(string key, int32_t write_id, CDCSDKCheckpointPB* checkpoint)
 
 void FillBeginRecord(
     const TransactionId& transaction_id, const uint64_t& commit_timestamp,
-    GetChangesResponsePB* resp, CDCThroughputMetrics* throughput_metrics) {
+    uint32_t xrepl_origin_id, GetChangesResponsePB* resp,
+    CDCThroughputMetrics* throughput_metrics) {
   CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
   RowMessage* row_message = proto_record->mutable_row_message();
 
   row_message->set_op(RowMessage_Op_BEGIN);
   row_message->set_transaction_id(transaction_id.ToString());
   row_message->set_commit_time(commit_timestamp);
+  if (xrepl_origin_id) {
+    row_message->set_xrepl_origin_id(xrepl_origin_id);
+  }
   // No need to add record_time to the Begin record since it does not have any intent associated
   // with it.
 
@@ -1835,7 +1842,8 @@ Status ProcessIntents(
   auto tablet = VERIFY_RESULT(tablet_peer->shared_tablet());
   if (stream_state->key.empty() && stream_state->write_id == 0 &&
       FLAGS_cdc_populate_end_markers_transactions) {
-    FillBeginRecord(transaction_id, commit_time.ToUint64(), resp, throughput_metrics);
+    FillBeginRecord(
+        transaction_id, commit_time.ToUint64(), xrepl_origin_id, resp, throughput_metrics);
     TEST_SYNC_POINT("AddBeginRecord::End");
   }
 
