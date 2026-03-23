@@ -50,6 +50,8 @@ using yb::tserver::TabletServerErrorPB;
 
 using namespace std::chrono_literals;
 
+DECLARE_int32(consensus_rpc_timeout_ms);
+
 namespace yb {
 namespace master {
 
@@ -313,6 +315,7 @@ TEST_F(MasterChangeConfigTest, TestRestartAfterConfigChange) {
 }
 
 TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
+  const auto timeout_secs = ANNOTATE_UNPROTECTED_READ(FLAGS_consensus_rpc_timeout_ms) / 1000 + 1;
   auto new_master = ASSERT_RESULT(cluster_->StartShellMaster());
 
   LOG(INFO) << "New master " << new_master->bound_rpc_hostport().ToString();
@@ -320,23 +323,23 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   SetCurLogIndex();
 
   // This will disable new elections on the old masters.
-  vector<ExternalMaster*> masters = cluster_->master_daemons();
-  for (auto master : masters) {
-    ASSERT_OK(cluster_->SetFlag(master, "TEST_do_not_start_election_test_only", "true"));
-    // Do not let the followers commit change role - to keep their opid same as the new master,
-    // and hence will vote for it.
-    ASSERT_OK(cluster_->SetFlag(master, "inject_delay_commit_pre_voter_to_voter_secs", "5"));
-  }
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_do_not_start_election_test_only", "true"));
+  // Do not let the followers commit change role - to keep their opid same as the new master,
+  // and hence will vote for it.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "inject_delay_commit_pre_voter_to_voter_secs", Format("$0", 2 * timeout_secs)));
 
   // Wait for 5 seconds on new master to commit voter mode transition. Note that this should be
   // less than the timeout sent to WaitForMasterLeaderToBeReady() below. We want the pending
   // config to be preset when the new master is deemed as leader to start the sys catalog load, but
   // would need to get that pending config committed for load to progress.
-  ASSERT_OK(
-      cluster_->SetFlag(new_master.get(), "inject_delay_commit_pre_voter_to_voter_secs", "5"));
+  ASSERT_OK(cluster_->SetFlag(
+      new_master.get(), "inject_delay_commit_pre_voter_to_voter_secs",
+      Format("$0", 3 * timeout_secs)));
   // And don't let it start an election too soon.
   ASSERT_OK(cluster_->SetFlag(new_master.get(), "TEST_do_not_start_election_test_only", "true"));
 
+  LogWaiter log_waiter(new_master.get(), "Updating active role from LEARNER to FOLLOWER");
   Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
   ASSERT_OK_PREPEND(s, "Change Config returned error");
 
@@ -359,6 +362,11 @@ TEST_F(MasterChangeConfigTest, TestNewLeaderWithPendingConfigLoadsSysCatalog) {
   if (!s.IsIllegalState()) {
     ASSERT_OK_PREPEND(s,  "Leader step down failed.");
   } else {
+    // The StartRemoteBootstrap rpc would timeout after 3s since the new peer would not see itself
+    // being promoted to VOTER because if above logic to delay it. So the next update consensus
+    // request would come only after the previous StartRemoteBootstrap times out, which changes
+    // the role to FOLLOWER, and thus the new peer can start an election.
+    ASSERT_OK(log_waiter.WaitFor(timeout_secs * 1s * kTimeMultiplier));
     LOG(INFO) << "Triggering election as step down failed.";
     ASSERT_OK_PREPEND(cluster_->StartElection(new_master.get()), "Start Election failed");
     SleepFor(MonoDelta::FromSeconds(2));

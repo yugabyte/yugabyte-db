@@ -41,13 +41,30 @@ namespace yb {
 namespace master {
 
 namespace {
-Result<bool> IsReplicaRunning(
+Result<bool> IsReplicaConsensusReady(
     const std::string& ts_uuid, const TabletId& tablet_id, const TabletReplica& replica) {
-  if (replica.state != tablet::UNKNOWN) {
-    return replica.state == tablet::RUNNING;
+  switch (replica.state) {
+    case tablet::NOT_STARTED: FALLTHROUGH_INTENDED;
+    case tablet::BOOTSTRAPPING: FALLTHROUGH_INTENDED;
+    case tablet::FAILED: FALLTHROUGH_INTENDED;
+    case tablet::QUIESCING: FALLTHROUGH_INTENDED;
+    case tablet::SHUTDOWN:
+      return false;
+    case tablet::UNKNOWN: FALLTHROUGH_INTENDED;
+    case tablet::RUNNING: FALLTHROUGH_INTENDED;
+    default:
+      break;
   }
-  VLOG(3) << "Replica " << replica.ToString() << " has UNKNOWN state. Using consensus state ("
-          << PeerMemberType_Name(replica.member_type) << ") as a fallback";
+  VLOG(3) << "Replica " << replica.ToString() << " has " << RaftGroupStatePB_Name(replica.state)
+          << " state. Using consensus state (" << PeerMemberType_Name(replica.member_type)
+          << ") to determine if it is consensus ready";
+  // When a new peer is undergoing remote bootstrap, it fetches data from the rbs source and then
+  // opens the table locally (undergoes local bootstrap, starts consensus, switches state from
+  // BOOTSTRAPPING to RUNNING). After this point, the leader notices a peer in PRE_VOTER and
+  // promotes it to VOTER only if the leader has the required WAL records to catch the peer up.
+  //
+  // Hence, a peer with state RUNNING but with PRE_VOTER type is still treated and not consensus
+  // ready and contributes to ongoing remote boostraps.
   switch (replica.member_type) {
     case consensus::OBSERVER: FALLTHROUGH_INTENDED;
     case consensus::VOTER:
@@ -285,15 +302,16 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
       RETURN_NOT_OK(AddLeaderTablet(tablet_id, ts_uuid, replica.fs_data_dir));
     }
 
-    bool replica_is_running = VERIFY_RESULT(IsReplicaRunning(ts_uuid, tablet_id, replica));
+    bool is_replica_running_and_consensus_ready =
+        VERIFY_RESULT(IsReplicaConsensusReady(ts_uuid, tablet_id, replica));
     const bool replica_is_stale = replica.IsStale();
     VLOG(3) << "Tablet " << tablet_id << " for table " << table_id_ << " is in state "
             << RaftGroupStatePB_Name(replica.state) << " on peer " << ts_uuid;
 
-    if (replica_is_running) {
+    if (is_replica_running_and_consensus_ready) {
       RETURN_NOT_OK(AddRunningTablet(tablet_id, ts_uuid, replica.fs_data_dir));
-    } else if (!replica_is_stale && !replica_is_running) {
-      // Keep track of transitioning state (not running, but not in a stopped or failed state).
+    } else if (!replica_is_stale && !is_replica_running_and_consensus_ready) {
+      // Keep track of transitioning state (not in a stopped or failed state).
       RETURN_NOT_OK(AddStartingTablet(tablet_id, ts_uuid));
       ++meta_ts.path_to_starting_tablets_count[replica.fs_data_dir];
       // If there are any starting, non-stale tablets, there are ongoing remote bootstraps, so the
