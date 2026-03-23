@@ -61,15 +61,68 @@ func (h *DestroyServerHandler) String() string {
 	return "runDestroyServer"
 }
 
-func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
-	cleanupScript := filepath.Join(h.param.GetYbHomeDir(), "bin/yb-server-ctl.sh")
-	if _, err := os.Stat(cleanupScript); err != nil && os.IsNotExist(err) {
-		h.logOut.WriteLine("Skipping node cleanup as file %s is not found", cleanupScript)
-		util.FileLogger().Warnf(ctx, "Skipping node cleanup as file %s is not found", cleanupScript)
-		return nil
+// cleanInstance cleans up the instance by deleting files and directories in ybHomeDir.
+func (h *DestroyServerHandler) cleanInstance(ctx context.Context) error {
+	failedPaths := []string{}
+	deleteFn := func(path string) {
+		util.FileLogger().Infof(ctx, "Cleaning path %s", path)
+		h.logOut.WriteLine("Cleaning path %s", path)
+		err := os.RemoveAll(path)
+		if err != nil {
+			h.logOut.WriteLine("Failed to clean path %s - %s", path, err.Error())
+			util.FileLogger().Errorf(ctx, "Failed to clean path %s - %s", path, err.Error())
+			failedPaths = append(failedPaths, path)
+		}
 	}
-	for _, info := range registeredServices {
-		if info.home != "" {
+	ybHomeDir := h.param.GetYbHomeDir()
+	entries, err := os.ReadDir(ybHomeDir)
+	if err != nil {
+		return fmt.Errorf("Error reading ybHomeDir %s - %s", ybHomeDir, err.Error())
+	}
+	for _, entry := range entries {
+		// Skip these paths as they are expected to survive the cleanup.
+		if entry.Name() == "node-agent" ||
+			(strings.HasPrefix(entry.Name(), ".") && entry.Name() != ".yugabytedb") {
+			util.FileLogger().Infof(ctx, "Skipping path %s", entry.Name())
+			continue
+		}
+		path := filepath.Join(ybHomeDir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			util.FileLogger().
+				Warnf(ctx, "Error accessing path %s - %s. It may have been removed", path, err.Error())
+			continue
+		}
+		// Check if it's a symlink
+		if info.Mode()&os.ModeSymlink != 0 {
+			realPath, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				util.FileLogger().Warnf(ctx, "Broken symlink %s - %s", path, err.Error())
+				continue
+			}
+			util.FileLogger().Infof(ctx, "Symlink %s is resolved to %s", path, realPath)
+			// Handle the real path first.
+			deleteFn(realPath)
+		}
+		deleteFn(path)
+	}
+	if len(failedPaths) > 0 {
+		return fmt.Errorf(
+			"Failed to clean the following paths: %s",
+			strings.Join(failedPaths, ", "),
+		)
+	}
+	return nil
+}
+
+func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
+	// This script is already customized with the correct mount points.
+	cleanupScript := filepath.Join(h.param.GetYbHomeDir(), "bin/yb-server-ctl.sh")
+	if _, err := os.Stat(cleanupScript); err == nil {
+		for _, info := range registeredServices {
+			if info.home == "" {
+				continue
+			}
 			util.FileLogger().
 				Infof(ctx, "Running control script to clean and clean-logs for %s", info.unitName)
 			for _, action := range []string{"clean", "clean-logs"} {
@@ -83,20 +136,13 @@ func (h *DestroyServerHandler) cleanupNode(ctx context.Context) error {
 				}
 			}
 		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("Error accessing cleanup script %s: %s", cleanupScript, err.Error())
+	} else {
+		h.logOut.WriteLine("Skipping node cleanup as file %s is not found", cleanupScript)
+		util.FileLogger().Warnf(ctx, "Skipping node cleanup as file %s is not found", cleanupScript)
 	}
-	h.logOut.WriteLine("Running control script to clean instance")
-	util.FileLogger().Info(ctx, "Running control script to clean instance")
-	if _, err := module.RunShellCmd(
-		ctx,
-		h.username,
-		"clean-instance",
-		fmt.Sprintf("%s clean-instance", cleanupScript),
-		h.logOut,
-	); err != nil {
-		util.FileLogger().Errorf(ctx, "Failed to run clean-instance - %s", err.Error())
-		return err
-	}
-	return nil
+	return h.cleanInstance(ctx)
 }
 
 // Handle implements the AsyncTask method.
