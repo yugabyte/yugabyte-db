@@ -12,7 +12,11 @@ type: docs
 body_class: configuration
 ---
 
-Use the yb-master binary and its flags to configure the [YB-Master](../../../architecture/yb-master/) server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
+The YugabyteDB Master Server ([YB-Master](../../../architecture/yb-master/)) coordinates cluster-wide control plane work: it stores and replicates system metadata, tracks tablet servers and tablets, drives cluster balancing and automatic tablet splitting, and participates in Raft consensus with other masters for highly available metadata. Together with YB-TServers, it helps keep the cluster consistent and operational as you scale or recover from failures.
+
+This reference describes flags for configuring YB-Master processes in a YugabyteDB cluster. Use these flags to align behavior with your topology, security model, and operational goals.
+
+Use the yb-master binary and its flags to configure the YB-Master server. The yb-master executable file is located in the `bin` directory of YugabyteDB home.
 
 {{< note title="Setting flags in YugabyteDB Anywhere" >}}
 
