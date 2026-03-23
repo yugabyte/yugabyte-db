@@ -50,6 +50,10 @@ public class TestPgRegressPgMisc extends BasePgRegressTestPorted {
     flagMap.put("ysql_enable_auto_analyze", "false");
     appendToYsqlPgConf(
         flagMap, "yb_enable_concurrent_ddl=" + concurrentDDLEnabled);
+
+    // TODO(28543): Remove once transactional ddl is enabled by default.
+    flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_ddl_transaction_block_enabled");
     return flagMap;
   }
 
