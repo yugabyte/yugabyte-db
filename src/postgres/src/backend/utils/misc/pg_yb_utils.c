@@ -2346,6 +2346,10 @@ char	   *yb_test_fail_index_state_change = "";
 
 char	   *yb_default_replica_identity = "CHANGE";
 
+char	   *yb_dist_tracecontext = NULL;
+
+YbcOtelSpanContext yb_guc_remote_span_ctx = NULL;
+
 bool		yb_test_fail_table_rewrite_after_creation = false;
 bool		yb_test_preload_catalog_tables = false;
 
@@ -8888,4 +8892,74 @@ yb_maybe_test_fail_ddl(void)
 		default:
 			break;
 	}
+}
+
+const char *
+YbGetTraceparentResultErrmsg(YbTraceparentResult result)
+{
+	switch (result)
+	{
+		case YB_TRACEPARENT_OK:
+			return NULL;
+		case YB_TRACEPARENT_NO_COMMENT:
+			return "no traceparent comment found";
+		case YB_TRACEPARENT_NO_FIELD:
+			return "no traceparent field found";
+		case YB_TRACEPARENT_WRONG_SIZE:
+			return "traceparent field doesn't have the correct size";
+		case YB_TRACEPARENT_MISSING_OPEN_QUOTE:
+			return "traceparent value missing opening quote";
+		case YB_TRACEPARENT_MISSING_CLOSE_QUOTE:
+			return "traceparent value missing closing quote";
+	}
+
+	Assert(false);
+	return "unknown traceparent error";
+}
+
+/*
+ * Extract the traceparent value from a W3C trace context string of the form
+ * "traceparent='<55char>'".  On success, copies the 55-char traceparent into
+ * traceparent_out and returns YB_TRACEPARENT_OK.
+ */
+YbTraceparentResult
+YbGetTraceparentFromTraceContext(const char *trace_context, size_t trace_context_len,
+								 char *traceparent_out)
+{
+	StaticAssertStmt(sizeof(YB_TRACEPARENT_KEY_PREFIX) - 1 == YB_TRACEPARENT_KEY_PREFIX_LEN,
+					 "YB_TRACEPARENT_KEY_PREFIX_LEN must match YB_TRACEPARENT_KEY_PREFIX");
+
+	const char *trace_context_end;
+	const char *tp_start;
+	const char *tp_end;
+
+	trace_context_end = trace_context + trace_context_len;
+
+	tp_start = memmem(trace_context, trace_context_len,
+					  YB_TRACEPARENT_KEY_PREFIX, YB_TRACEPARENT_KEY_PREFIX_LEN);
+	if (!tp_start)
+		return YB_TRACEPARENT_NO_FIELD;
+
+	tp_start += YB_TRACEPARENT_KEY_PREFIX_LEN;
+
+	if (tp_start >= trace_context_end ||
+		trace_context_end - tp_start < (2 * YB_TRACEPARENT_QUOTE_LEN) +
+										YB_TRACEPARENT_VALUE_LEN)
+		return YB_TRACEPARENT_WRONG_SIZE;
+
+	if (*tp_start != '\'')
+		return YB_TRACEPARENT_MISSING_OPEN_QUOTE;
+	tp_start += YB_TRACEPARENT_QUOTE_LEN;
+
+	tp_end = memchr(tp_start, '\'', trace_context_end - tp_start);
+	if (!tp_end)
+		return YB_TRACEPARENT_MISSING_CLOSE_QUOTE;
+
+	if (tp_end - tp_start != YB_TRACEPARENT_VALUE_LEN)
+		return YB_TRACEPARENT_WRONG_SIZE;
+
+	memcpy(traceparent_out, tp_start, YB_TRACEPARENT_VALUE_LEN);
+	traceparent_out[YB_TRACEPARENT_VALUE_LEN] = '\0';
+
+	return YB_TRACEPARENT_OK;
 }

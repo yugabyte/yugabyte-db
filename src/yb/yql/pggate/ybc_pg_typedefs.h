@@ -62,6 +62,9 @@ YB_DEFINE_HANDLE_TYPE(PgMemctx);
 // Handle to a global view read scan.
 YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 
+// Handle to a distributed trace span context.
+YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
+
 // Handle to a distributed trace scope.
 YB_DEFINE_HANDLE_TYPE(OtelScope);
 

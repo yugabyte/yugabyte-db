@@ -366,6 +366,7 @@ class PGConn {
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
 
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections
   template <class... Args>
   auto FetchRow(const std::string& query) {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRow(Fetch(query));
@@ -390,6 +391,10 @@ class PGConn {
   Status RollbackTransaction();
 
   Status TestFailDdl(const std::string& ddl_to_fail);
+
+  void SetNoticeProcessor(PQnoticeProcessor proc, void* arg) {
+    PQsetNoticeProcessor(impl_.get(), proc, arg);
+  }
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);

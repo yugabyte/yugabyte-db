@@ -25,8 +25,10 @@
 #include "opentelemetry/sdk/trace/tracer_provider.h"
 #include "opentelemetry/sdk/trace/tracer_provider_factory.h"
 #include "opentelemetry/sdk/trace/provider.h"
+#include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
+#include "opentelemetry/trace/tracer.h"
 
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
@@ -171,18 +173,26 @@ nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer() {
   return DCHECK_NOTNULL(trace::Provider::GetTracerProvider()->GetTracer(ysql_resource_name));
 }
 
-// Parse a W3C traceparent string and return a context containing the extracted
-// SpanContext.  Returns an empty context if traceparent is null or malformed.
-context::Context ExtractTraceParent(const char* traceparent) {
-  auto current_ctx = context::RuntimeContext::GetCurrent();
-  if (!traceparent) {
-    return current_ctx;
-  }
+// A SpanContext is not valid when either its trace ID or span ID is all zeros.
+// And it is remote if the span context was propagated from an external process/service.
+bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context) {
+  return span_context.IsValid() && span_context.IsRemote();
+}
 
-  TraceparentCarrier carrier(traceparent);
+// Parse a W3C traceparent string and return a SpanContext.
+trace::SpanContext GetTraceparentSpanContext(const char* traceparent) {
+  TraceparentCarrier carrier(DCHECK_NOTNULL(traceparent));
+  context::Context current_context = context::RuntimeContext::GetCurrent();
 
-  auto propagator = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
-  return propagator->Extract(carrier, current_ctx);
+  static const auto propagator =
+    context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+
+  // Store the traceparent information into a new span context,
+  // create a span with that span context. Returns the context with the span added to it.
+  context::Context parent_context = propagator->Extract(carrier, current_context);
+
+  // Return the SpanContext from the parent context.
+  return trace::GetSpan(parent_context)->GetContext();
 }
 
 }  // namespace yb::dist_trace

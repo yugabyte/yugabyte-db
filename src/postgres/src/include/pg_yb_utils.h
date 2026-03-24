@@ -42,6 +42,7 @@
 #include "utils/typcache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb_ysql_conn_mgr_helper.h"
 
@@ -146,6 +147,12 @@ extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
+
+/*
+ * Parsed span context from the yb_dist_tracecontext GUC.
+ * Allocated in TopMemoryContext to ensure it persists across query executions.
+ */
+extern YbcOtelSpanContext yb_guc_remote_span_ctx;
 
 /*
  * Iterate over databases and execute a given code snippet.
@@ -715,6 +722,11 @@ extern char *yb_test_fail_index_state_change;
  * GUC variable that specifies default replica identity for tables at the time of creation.
  */
 extern char *yb_default_replica_identity;
+
+/*
+ * GUC variable to pass a W3C traceparent for distributed tracing.
+ */
+extern char *yb_dist_tracecontext;
 
 /*
  * If set to true, any DDLs that rewrite tables/indexes will fail after
@@ -1606,5 +1618,21 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
+
+typedef enum
+{
+	YB_TRACEPARENT_OK,
+	YB_TRACEPARENT_NO_COMMENT,
+	YB_TRACEPARENT_NO_FIELD,
+	YB_TRACEPARENT_WRONG_SIZE,
+	YB_TRACEPARENT_MISSING_OPEN_QUOTE,
+	YB_TRACEPARENT_MISSING_CLOSE_QUOTE
+} YbTraceparentResult;
+
+extern const char *YbGetTraceparentResultErrmsg(YbTraceparentResult result);
+
+extern YbTraceparentResult YbGetTraceparentFromTraceContext(const char *trace_context,
+															size_t trace_context_len,
+															char *traceparent_out);
 
 #endif							/* PG_YB_UTILS_H */

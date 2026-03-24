@@ -257,6 +257,8 @@ static void disable_statement_timeout(void);
 static void yb_start_xact_command_internal(bool yb_skip_read_committed_internal_savepoint);
 static void yb_abort_xact_command(void);
 
+static YbTraceparentResult YbExtractTraceParentFromComment(const char *query, char *traceparent_out);
+
 /* ----------------------------------------------------------------
  *		routines to obtain user input
  * ----------------------------------------------------------------
@@ -1250,16 +1252,52 @@ exec_simple_query(const char *query_string)
 
 	if (YBCIsDistTraceEnabled())
 	{
+		char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+		YbcOtelSpanContext span_ctx = NULL;
+
+		/* YB: SQL comment traceparent is higher priority over GUC traceparent. */
+		YbTraceparentResult tp_result = YbExtractTraceParentFromComment(query_string, traceparent);
+
+		if (tp_result == YB_TRACEPARENT_OK)
+		{
+			span_ctx = YBCGetValidSpanContext(traceparent);
+
+			if (!span_ctx)
+				ereport(WARNING,
+						(errmsg("traceparent format is invalid")));
+		}
+		else if (tp_result != YB_TRACEPARENT_NO_COMMENT &&
+				 tp_result != YB_TRACEPARENT_NO_FIELD)
+			ereport(WARNING,
+					(errmsg("traceparent comment parsing failed: %s%s",
+							YbGetTraceparentResultErrmsg(tp_result),
+							yb_guc_remote_span_ctx
+							? "; skipping yb_dist_tracecontext GUC"
+							: "")));
+		else
+		{
+			/* YB: Fall back to GUC-based span context. */
+			span_ctx = yb_guc_remote_span_ctx;
+		}
+
 		/*
 		 * YB: Start a root span. The scope is registered with the current YB
 		 * memory context (tied to CurrentMemoryContext) via PgMemctx::Register.
 		 * On error, the Postgres MemoryContext reset will destroy the associated
 		 * PgMemctx, automatically cleaning up this scope.
-		 *
-		 * TODO(#30597): Pass the traceparent received from comment / GUC.
 		 */
-		yb_dist_trace_scope = YBCDistTraceStartRootSpan(yb_redacted_query_string, NULL,
-														MyDatabaseId, GetUserId());
+		if (span_ctx)
+		{
+			yb_dist_trace_scope =
+				YBCDistTraceStartRootSpan(yb_redacted_query_string, span_ctx, MyDatabaseId, GetUserId());
+
+			/*
+			 * YB: Destroy the span context if it came from the sql comment
+			 * as it is not used after this point.
+			 */
+			if (span_ctx != yb_guc_remote_span_ctx)
+				YBCDestroySpanContext(span_ctx);
+		}
 	}
 
 	/*
@@ -7809,6 +7847,42 @@ disable_statement_timeout(void)
 {
 	if (get_timeout_active(STATEMENT_TIMEOUT))
 		disable_timeout(STATEMENT_TIMEOUT, false);
+}
+
+/*
+ * Extract trace parent from a leading SQL comment in a query.
+ *
+ * traceparent_out must point to a buffer of at least
+ * YB_TRACEPARENT_VALUE_LEN + 1 bytes.
+ *
+ * The traceparent must appear in a comment at the start of the query:
+ * "/\*traceparent='00-00000000000000000000000000000009-0000000000000005-01'*\/ SELECT 1;"
+ */
+static YbTraceparentResult
+YbExtractTraceParentFromComment(const char *query, char *traceparent_out)
+{
+	const char *pos = query;
+	const char *comment_end;
+
+	/* Skip leading whitespace. */
+	while (isspace((unsigned char) *pos))
+		pos++;
+
+	if (pos[0] != '/' || pos[1] != '*')
+		return YB_TRACEPARENT_NO_COMMENT;
+
+	/* Skip the comment start delimiters "/ *". */
+	pos += YB_TRACEPARENT_COMMENT_DELIMITERS_LEN;
+
+	/*
+	 * Find the comment end delimiters "* /".
+	 * This is required as without this we can match a YB_TRACEPARENT_KEY_PREFIX
+	 * after the comment end delimiters.
+	 */
+	comment_end = strstr(pos, "*/");
+	Assert(comment_end);
+
+	return YbGetTraceparentFromTraceContext(pos, comment_end - pos, traceparent_out);
 }
 
 /*
