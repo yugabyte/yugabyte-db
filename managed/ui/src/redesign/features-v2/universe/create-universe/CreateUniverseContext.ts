@@ -24,7 +24,7 @@ import {
   FAULT_TOLERANCE_TYPE,
   NODE_COUNT,
   REGIONS_FIELD,
-  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from './fields/FieldNames';
@@ -61,7 +61,7 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
     [REGIONS_FIELD]: [],
-    [REPLICATION_FACTOR]: 3,
+    [RESILIENCE_FACTOR]: 1,
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
     [NODE_COUNT]: 1
   },
@@ -179,4 +179,5 @@ export type CreateUniverseContextMethods = [
 export type StepsRef = {
   onNext: () => Promise<void>;
   onPrev: () => void;
+  setValue?: (name: string, value: unknown) => void;
 };

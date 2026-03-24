@@ -1,11 +1,12 @@
 import { FC, useContext } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
-import { AlertVariant, YBAlert, YBButton, YBTag, mui } from '@yugabyte-ui-library/core';
+import { AlertVariant, YBAlert, YBButton, YBTag, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { Zone } from './Zone';
+import { shouldMarkNodesFieldError } from './lessNodesFieldError';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
-import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
+import { canSelectMultipleRegions, getFaultToleranceNeeded } from '../../CreateUniverseUtils';
 import { FaultToleranceType } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
@@ -16,6 +17,7 @@ import AddIcon from '../../../../../assets/add2.svg';
 interface RegionCardProps {
   region: Region;
   index: number;
+  showErrorsAfterSubmit?: boolean;
 }
 
 const { styled, Typography, Box } = mui;
@@ -46,12 +48,19 @@ const StyledRegionTagContainer = styled(Box)(({ theme }) => ({
   alignItems: 'center'
 }));
 
-export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
+const StyledTooltipText = styled('div')(({ theme }) => ({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: theme.palette.grey[700]
+}));
+
+export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfterSubmit = true }) => {
   const {
     control,
     watch,
     setValue,
-    formState: { errors, isSubmitted }
+    formState: { errors }
   } = useFormContext<NodeAvailabilityProps>();
   const [{ resilienceAndRegionsSettings }] = (useContext(
     CreateUniverseContext
@@ -62,7 +71,28 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
   });
 
   const az = watch(`availabilityZones.${region.code}`);
+  const allAz = watch('availabilityZones');
   const nodesPerAz = watch('nodeCountPerAz');
+  const totalAzCount = Object.values(allAz ?? {}).reduce((acc, zones) => acc + zones.length, 0);
+
+  const showNodesCountError = shouldMarkNodesFieldError(
+    showErrorsAfterSubmit,
+    (errors as any)?.lesserNodes?.message
+  );
+  const isRegionAzLimitReached = az.length >= region.zones.length;
+  const maxTotalAzCount = getFaultToleranceNeeded(resilienceAndRegionsSettings?.resilienceFactor ?? 1);
+  const isTotalAzLimitReached =
+    resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL &&
+    totalAzCount >= maxTotalAzCount;
+  const isAddAzDisabled = isRegionAzLimitReached || isTotalAzLimitReached;
+  const addAzTooltip = isAddAzDisabled
+    ? isTotalAzLimitReached
+      ? t('tooltips.addAvailabilityZoneDisabled', {
+          outage_count: resilienceAndRegionsSettings?.resilienceFactor ?? 1,
+          az_count: maxTotalAzCount
+        })
+      : t('tooltips.regionNoMoreAz', { count: region.zones.length })
+    : '';
   const addAvailabilityZone = () => {
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
@@ -70,7 +100,7 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
     setValue(`availabilityZones.${region.code}`, [
       ...az,
       { ...azToAdd, nodeCount: nodesPerAz ?? 1, preffered: az.length }
-    ]);
+    ], { shouldValidate: true });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
@@ -90,9 +120,13 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
           {t('region', { region_count: index + 1 })}
         </Typography>
         <StyledRegionTagContainer>
-          <YBTag size="medium">
-            {getFlagFromRegion(region.code)} {region.name} ({region.code})
-          </YBTag>
+          <YBTooltip title={<StyledTooltipText>{t('tooltips.regionTag')}</StyledTooltipText>}>
+            <span>
+              <YBTag size="medium">
+                {getFlagFromRegion(region.code)} {region.name} ({region.code})
+              </YBTag>
+            </span>
+          </YBTooltip>
         </StyledRegionTagContainer>
       </StyledRegionHeader>
       <div
@@ -107,8 +141,11 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
           <Zone
             key={i}
             control={control}
+            setValue={setValue}
             index={i}
             region={region}
+            regionIndex={index}
+            showNodesCountError={showNodesCountError}
             remove={() => {
               const updatedAz = az.filter((_, index) => index !== i);
               const updatedPreferredRank = updatePreferredRanks(updatedAz, az[i].preffered);
@@ -121,32 +158,41 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index }) => {
         ))}
         {resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL &&
           canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType) && (
-            <YBButton
-              variant="secondary"
-              onClick={addAvailabilityZone}
-              disabled={az.length >= region.zones.length}
-              startIcon={<AddIcon />}
-              sx={{ marginLeft: '34px', width: 'fit-content' }}
-              dataTestId="add-availability-zone-button"
-            >
-              {t('add_button')}
-            </YBButton>
+            <YBTooltip title={isAddAzDisabled ? <StyledTooltipText>{addAzTooltip}</StyledTooltipText> : ''}>
+              <span style={{ width: 'fit-content', marginLeft: '34px' }}>
+                <YBButton
+                  variant="secondary"
+                  onClick={addAvailabilityZone}
+                  disabled={isAddAzDisabled}
+                  startIcon={<AddIcon />}
+                  sx={{ width: 'fit-content' }}
+                  dataTestId="add-availability-zone-button"
+                >
+                  {t('add_button')}
+                </YBButton>
+              </span>
+            </YBTooltip>
           )}
-        {errors.nodeCountPerAz?.message && isSubmitted && (
-          <YBAlert
-            open
-            variant={AlertVariant.Error}
-            text={
-              <Trans
-                t={t}
-                i18nKey={(errors as any)?.nodeCountPerAz?.message}
-                components={{ b: <b /> }}
-              >
-                {(errors as any).nodeCountPerAz.message}
-              </Trans>
-            }
-          />
-        )}
+        {showErrorsAfterSubmit &&
+          index === 0 &&
+          (errors as any)?.lesserNodes?.message &&
+          ['errMsg.preferredRankRequired'].includes(
+            (errors as any).lesserNodes.message
+          ) && (
+            <YBAlert
+              open
+              variant={AlertVariant.Error}
+              text={
+                <Trans
+                  t={t}
+                  i18nKey={(errors as any)?.lesserNodes?.message}
+                  components={{ b: <b /> }}
+                >
+                  {(errors as any).lesserNodes.message}
+                </Trans>
+              }
+            />
+          )}
       </div>
     </StyledRegionCard>
   );
