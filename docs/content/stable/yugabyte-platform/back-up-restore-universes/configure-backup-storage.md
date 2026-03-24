@@ -34,6 +34,10 @@ You can configure AWS S3 and S3-compatible storage as your backup target.
 
     If you are using custom self-signed or CA certificates, to connect to your S3 storage, you must add the certificates to the YugabyteDB Anywhere Trust Store. Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
 
+    {{< note title="Certificate validation can't be disabled" >}}
+If you set the **Server certificate verification for S3 backup/restore** (`yb.certVerifyBackupRestore.is_enforced`) Global Runtime Configuration option to False, the setting will be ignored.
+    {{< /note >}}
+
 ### Create an AWS backup configuration
 
 To configure S3 storage, do the following:
