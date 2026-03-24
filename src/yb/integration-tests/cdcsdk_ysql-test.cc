@@ -13015,7 +13015,7 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
               ASSERT_EQ(record.row_message().xrepl_origin_id(), expected_origin_id)
                   << "Wrong xrepl_origin_id on op=" << RowMessage::Op_Name(op);
             } else {
-              // origin_id 0 means local — field should be absent or zero.
+              // origin_id 0 means local - field should be absent or zero.
               ASSERT_TRUE(!record.row_message().has_xrepl_origin_id() ||
                           record.row_message().xrepl_origin_id() == 0)
                   << "Expected no xrepl_origin_id on op=" << RowMessage::Op_Name(op);
@@ -13070,7 +13070,7 @@ TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 
-  // --- Local (no origin) path — verify origin_id is 0/absent ---
+  // --- Local (no origin) path - verify origin_id is 0/absent ---
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 300)", kTableName));
   change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
   ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
