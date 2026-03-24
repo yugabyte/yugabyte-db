@@ -2128,7 +2128,9 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
-	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
+	/* YB: In replica identity CHANGE, we always get the primary key of the row. */
+	if ((replident == REPLICA_IDENTITY_DEFAULT ||
+		 replident == YB_REPLICA_IDENTITY_CHANGE) && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
 	else if (replident == REPLICA_IDENTITY_INDEX && OidIsValid(candidateIndex))
 		relation->rd_replidindex = candidateIndex;
@@ -7393,7 +7395,9 @@ RelationGetIndexList(Relation relation)
 	oldlist = relation->rd_indexlist;
 	relation->rd_indexlist = list_copy(result);
 	relation->rd_pkindex = pkeyIndex;
-	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
+	/* YB: In replica identity CHANGE, we always get the primary key of the row. */
+	if ((replident == REPLICA_IDENTITY_DEFAULT ||
+		 replident == YB_REPLICA_IDENTITY_CHANGE) && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
 	else if (replident == REPLICA_IDENTITY_INDEX && OidIsValid(candidateIndex))
 		relation->rd_replidindex = candidateIndex;
