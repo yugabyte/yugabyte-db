@@ -110,7 +110,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           (userIntent.providerType != CloudType.onprem
                   || confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer))
               ? Optional.empty()
-              : nodeUniverseManager.maybeGetNodeAgent(
+              : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                   getUniverse(), nodeDetails, true /*check feature flag*/);
       if (optional.isPresent()) {
         Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));

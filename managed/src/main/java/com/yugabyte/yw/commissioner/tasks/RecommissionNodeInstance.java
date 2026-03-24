@@ -52,7 +52,7 @@ public class RecommissionNodeInstance extends AbstractTaskBase {
         Optional<NodeAgent> optional =
             confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
                 ? Optional.empty()
-                : nodeUniverseManager.maybeGetNodeAgent(
+                : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                     nodeInstance.getDetails().ip, provider, null /* optional universe */);
         if (optional.isPresent()) {
           DestroyServerInput.Builder builder = DestroyServerInput.newBuilder();

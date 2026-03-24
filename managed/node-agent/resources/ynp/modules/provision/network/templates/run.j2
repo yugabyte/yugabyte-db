@@ -6,9 +6,9 @@ if ! grep -qxF "$no_proxy_env" ~/.bashrc >/dev/null 2>&1; then
     echo "$no_proxy_env" >> ~/.bashrc
 fi
 # Run as yugabyte user to add to the bashrc.
-if ! grep -qxF "$no_proxy_env" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
+if ! grep -qxF "$no_proxy_env" {{yb_user_home}}/.bashrc >/dev/null 2>&1; then
     # no_proxy_env already expanded in the subshell.
-    su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{yb_home_dir}}/.bashrc"
+    su - {{ yb_user }} -c "echo '$no_proxy_env' >> {{yb_user_home}}/.bashrc"
 fi
 # Export it for the current session.
 export NO_PROXY="{{ no_proxy }},${NO_PROXY:+,$NO_PROXY}"

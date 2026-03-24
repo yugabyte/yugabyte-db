@@ -106,8 +106,8 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     providerConfig.setValue(nodeAgentConfig + "min_tmp_dir_space_mb", "100");
     providerConfig.setValue(nodeAgentConfig + "user", "fakeUser");
     providerConfig.setValue(nodeAgentConfig + "user_group", "fakeGroup");
-    providerConfig.setValue(nodeAgentConfig + "min_prometheus_space_mb", "100");
-    providerConfig.setValue(nodeAgentConfig + "min_home_dir_space_mb", "100");
+    providerConfig.setValue(nodeAgentConfig + "min_prometheus_space_gb", "10");
+    providerConfig.setValue(nodeAgentConfig + "min_home_dir_space_gb", "20");
     region = Region.create(provider, "region-1", "Region 1", "yb-image-1");
     zone = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     user = ModelFactory.testUser(customer);

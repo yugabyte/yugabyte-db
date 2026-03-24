@@ -33,6 +33,7 @@ is_airgap=false
 # By default, we use the virtual environment.
 use_system_python=false
 use_python_driver=false
+curr_user_id=$(id -u)
 
 # Retry function with 30 seconds delay between retries.
 retry_cmd() {
@@ -341,7 +342,7 @@ main() {
             fi
         elif [[ "${!i}" == "--extra_vars" ]]; then
             echo "Extra vars detected. CSP use case..."
-            is_csp=true
+            [[ "$curr_user_id" -eq 0 ]] && is_csp=true
             filtered_args+=("${!i}")  # Keep --extra_vars
             next_index=$((i + 1))
             if [[ $next_index -le $# && ! "${!next_index}" =~ ^-- ]]; then

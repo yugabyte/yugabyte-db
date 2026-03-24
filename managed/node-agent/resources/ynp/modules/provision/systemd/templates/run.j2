@@ -4,12 +4,12 @@ systemd_dir="/etc/systemd/system"
     yb_user_id=$(id -u {{ yb_user }})
     runtime_dir="/run/user/${yb_user_id}"
     xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
-    if ! grep -qxF "${xdg_runtime_env}" {{yb_home_dir}}/.bashrc >/dev/null 2>&1; then
-        su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_home_dir}}/.bashrc"
+    if ! grep -qxF "${xdg_runtime_env}" {{yb_user_home}}/.bashrc >/dev/null 2>&1; then
+        su - {{ yb_user }} -c "echo ${xdg_runtime_env} >> {{yb_user_home}}/.bashrc"
     fi
     su - {{ yb_user }} -c "${xdg_runtime_env}"
     # Configure the systemd_dir as path for user level systemd
-    systemd_dir="{{ yb_home_dir }}/.config/systemd/user"
+    systemd_dir="{{ yb_user_home }}/.config/systemd/user"
     # Ensure the systemd directory exists
     su - {{ yb_user }} -c "mkdir -p ${systemd_dir}"
     # Determine the PLATFORM_ID

@@ -229,7 +229,8 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       Optional<NodeAgent> optional =
           confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
               ? Optional.empty()
-              : nodeUniverseManager.maybeGetNodeAgent(universe, node, true /*check feature flag*/);
+              : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
+                  universe, node, true /*check feature flag*/);
       AnsibleConfigureServers.Params params =
           getAnsibleConfigureServerParamsToDownloadSoftware(
               universe, node, taskParams().ybSoftwareVersion);

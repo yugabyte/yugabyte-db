@@ -24,16 +24,17 @@ const (
 )
 
 type Args struct {
-	Command         string
-	YnpBasePath     string
-	SpecificModules []string
-	SkipModules     []string
-	ConfigFile      string
-	ConfigIniFile   string
-	PreflightCheck  bool
-	YnpConfig       map[string]map[string]any
-	DryRun          bool
-	ListModules     bool
+	Command               string
+	YnpBasePath           string
+	SpecificModules       []string
+	SkipModules           []string
+	ConfigFile            string
+	ConfigIniFile         string
+	PreflightCheck        bool
+	PreflightCheckOutFile string
+	YnpConfig             map[string]map[string]any
+	DryRun                bool
+	ListModules           bool
 }
 
 // YnpConfigPathValue retrieves a value from the YNP config based on the provided dotted path.
@@ -304,11 +305,12 @@ func processNestedConfigs(
 }
 
 // GenerateConfigINI generates the INI configuration file based on the provided arguments.
+// Override function can be used to override the INI config after it is loaded.
 // Note: Booleans are printed as True or False string.
 func GenerateConfigINI(
 	ctx context.Context,
 	args *Args,
-) (*INIConfig, error) {
+	overrideFunc func(context.Context, *INIConfig) error) (*INIConfig, error) {
 	var configTemplate string
 	if filepath.IsAbs(args.ConfigIniFile) {
 		configTemplate = args.ConfigIniFile
@@ -353,6 +355,12 @@ func GenerateConfigINI(
 	}
 	// Note: Parser returns map[interface{}]interface{} for values.
 	configOutput.values = FixParsedConfigMap(configOutput.values)
+	// Override the config after it is parsed, but before nested configs are processed.
+	if overrideFunc != nil {
+		if err = overrideFunc(ctx, configOutput); err != nil {
+			return nil, err
+		}
+	}
 	return processNestedConfigs(configOutput)
 }
 

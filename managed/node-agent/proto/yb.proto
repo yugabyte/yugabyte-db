@@ -195,3 +195,13 @@ message DestroyServerInput {
 
 message DestroyServerOutput {
 }
+
+message YnpPreflightCheckInput {
+    string configJson = 1;
+    string remoteTmp = 2;
+}
+
+message YnpPreflightCheckOutput {
+    uint32 exitCode = 1;
+    string output = 2;
+}

@@ -6,14 +6,18 @@
     "ynp": {
       "type": "object",
       "properties": {
-        "yb_home_dir": {
-          "type": "string",
-          "description": "Home directory for the 'yugabyte' user. This is where the YugabyteDB software and data will reside."
-        },
         "chrony_servers": {
           "type": "array",
           "items": { "type": "string" },
           "description": "NTP servers for time synchronization."
+        },
+        "yb_home_dir": {
+          "type": "string",
+          "description": "Custom home directory for the software installation. This is where the YugabyteDB software and data will reside."
+        },
+        "yb_user_home": {
+          "type": "string",
+          "description": "Home directory for the 'yugabyte' user."
         },
         "yb_user_id": {
           "type": "integer",

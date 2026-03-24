@@ -197,6 +197,7 @@
 | "Node Agent Server Log Level Per Request" | "yb.node_agent.server.request_log_level" | "GLOBAL" | "Log level for Node Agent server per request (0 for debug, -1 for default)" | "Integer" |
 | "Disable Platform HA Restore Transaction" | "yb.ha.disable_platform_ha_restore_transaction" | "GLOBAL" | "Disable running platform HA restore operations in a transaction" | "Boolean" |
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
+| "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

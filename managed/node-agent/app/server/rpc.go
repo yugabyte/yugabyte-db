@@ -440,6 +440,17 @@ func (server *RPCServer) SubmitTask(
 		res.TaskId = taskID
 		return res, nil
 	}
+	ynpPreflightCheckInput := req.GetYnpPreflightCheckInput()
+	if ynpPreflightCheckInput != nil {
+		ynpPreflightCheckHandler := task.NewYnpPreflightCheckHandler(ynpPreflightCheckInput)
+		err := task.GetTaskManager().Submit(ctx, taskID, ynpPreflightCheckHandler)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running YNP preflight check - %s", err.Error())
+			return res, toGrpcErrorIfNeeded(codes.Internal, err)
+		}
+		res.TaskId = taskID
+		return res, nil
+	}
 	return res, toGrpcErrorIfNeeded(codes.Unimplemented, errors.New("Unknown task"))
 }
 

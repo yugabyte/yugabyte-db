@@ -21,34 +21,39 @@ import (
 
 const (
 	// Node agent common constants.
-	DefaultConfig           = "config"
-	preflightCheckScript    = "/pkg/scripts/preflight_check.sh"
-	earlyoomInstallScript   = "/pkg/scripts/earlyoom-installer.sh"
-	nodeAgentDir            = "/node-agent"
-	configDir               = "/config"
-	certsDir                = "/cert"
-	pexEnvDir               = "/pkg/devops/pex/pexEnv"
-	releaseDir              = "/release"
-	logsDir                 = "/logs"
-	DefaultShell            = "/bin/bash"
-	PlatformApiTokenHeader  = "X-AUTH-YW-API-TOKEN"
-	PlatformJwtTokenHeader  = "X-AUTH-YW-API-JWT"
-	JwtUserIdClaim          = "userId"
-	JwtClientIdClaim        = "clientId"
-	JwtClientTypeClaim      = "clientType"
-	JwtIssuer               = "https://www.yugabyte.com"
-	JwtSubject              = "NODE_AGENT"
-	JwtExpirationSecs       = 600 //in seconds
-	NodeAgentDefaultLog     = "node_agent.log"
-	NodeAgentGrpcDefaultLog = "grpc.log"
-	NodeHomeDirectory       = "/home/yugabyte"
-	NodeAgentRegistryPath   = ".yugabyte/node-agent-registry"
-	GetCustomersApiEndpoint = "/api/customers"
-	GetVersionEndpoint      = "/api/app_version"
-	UpgradeScript           = "node-agent-installer.sh"
-	RequestIdHeader         = "x-request-id"
-	CorrelationIdHeader     = "x-correlation-id"
-	RequestLogLevelHeader   = "x-request-log-level"
+	DefaultConfig            = "config"
+	preflightCheckScript     = "/pkg/scripts/preflight_check.sh"
+	earlyoomInstallScript    = "/pkg/scripts/earlyoom-installer.sh"
+	nodeAgentDir             = "/node-agent"
+	configDir                = "/config"
+	certsDir                 = "/cert"
+	pexEnvDir                = "/pkg/devops/pex/pexEnv"
+	releaseDir               = "/release"
+	logsDir                  = "/logs"
+	nodeAgentProvisionScript = "/pkg/scripts/node-agent-provision.sh"
+	nodeAgentProvisionYaml   = "/pkg/scripts/node-agent-provision.yaml"
+	scriptsDir               = "/pkg/scripts"
+	templatesDir             = "/pkg/templates"
+	upgradeScript            = "/pkg/bin/node-agent-installer.sh"
+	versionMetadataFile      = "/pkg/version_metadata.json"
+	DefaultShell             = "/bin/bash"
+	PlatformApiTokenHeader   = "X-AUTH-YW-API-TOKEN"
+	PlatformJwtTokenHeader   = "X-AUTH-YW-API-JWT"
+	JwtUserIdClaim           = "userId"
+	JwtClientIdClaim         = "clientId"
+	JwtClientTypeClaim       = "clientType"
+	JwtIssuer                = "https://www.yugabyte.com"
+	JwtSubject               = "NODE_AGENT"
+	JwtExpirationSecs        = 600 //in seconds
+	NodeAgentDefaultLog      = "node_agent.log"
+	NodeAgentGrpcDefaultLog  = "grpc.log"
+	NodeHomeDirectory        = "/home/yugabyte"
+	NodeAgentRegistryPath    = ".yugabyte/node-agent-registry"
+	GetCustomersApiEndpoint  = "/api/customers"
+	GetVersionEndpoint       = "/api/app_version"
+	RequestIdHeader          = "x-request-id"
+	CorrelationIdHeader      = "x-correlation-id"
+	RequestLogLevelHeader    = "x-request-log-level"
 
 	// Cert names.
 	NodeAgentCertFile = "node_agent.crt"
@@ -329,15 +334,27 @@ func LogsDir() string {
 
 // Returns path to the installer/upgrade script.
 func UpgradeScriptPath() string {
-	return MustGetHomeDirectory() + "/pkg/bin/" + UpgradeScript
+	return MustGetHomeDirectory() + upgradeScript
 }
 
 func VersionFile() string {
-	return MustGetHomeDirectory() + "/pkg/version_metadata.json"
+	return MustGetHomeDirectory() + versionMetadataFile
 }
 
 func TemplateDir() string {
-	return MustGetHomeDirectory() + "/pkg/templates"
+	return MustGetHomeDirectory() + templatesDir
+}
+
+func ScriptsDir() string {
+	return MustGetHomeDirectory() + scriptsDir
+}
+
+func NodeAgentProvisioner() string {
+	return MustGetHomeDirectory() + nodeAgentProvisionScript
+}
+
+func NodeAgentProvisionYaml() string {
+	return MustGetHomeDirectory() + nodeAgentProvisionYaml
 }
 
 func IsDigits(str string) bool {

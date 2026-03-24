@@ -189,6 +189,7 @@ func (pc *ProvisionCommand) DryRun() error {
 	if err != nil {
 		return err
 	}
+	// Do not clean up the scripts for dry run.
 	util.ConsoleLogger().Infof(pc.ctx, "Install Script: %s", installScript)
 	util.ConsoleLogger().Infof(pc.ctx, "Precheck Script: %s", precheckScript)
 	return nil
@@ -199,6 +200,7 @@ func (pc *ProvisionCommand) RunPreflightChecks() error {
 	if err != nil {
 		return err
 	}
+	defer os.Remove(precheckScript)
 	if err := pc.compareYnpVersion(); err != nil {
 		return err
 	}
@@ -219,6 +221,8 @@ func (pc *ProvisionCommand) Execute() error {
 	if err != nil {
 		return err
 	}
+	defer os.Remove(runScript)
+	defer os.Remove(precheckScript)
 	errMsg := []string{}
 	err = pc.runScript("provision", runScript)
 	if err != nil {
@@ -323,6 +327,29 @@ func (pc *ProvisionCommand) checkPackage(pkg string) error {
 	return nil
 }
 
+// tempDir returns the effective temp directory to be used.
+func (pc *ProvisionCommand) tempDir() string {
+	dir := "/tmp"
+	defaultValue := pc.iniConfig.DefaultSectionValue()
+	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
+		dir = tmp
+	}
+	return dir
+}
+
+// createTempFile creates a temporary file in the effective temp directory with the given pattern.
+// If close is true, the file is closed before returning.
+func (pc *ProvisionCommand) createTempFile(pattern string) (*os.File, error) {
+	tmpDir := pc.tempDir()
+	file, err := os.CreateTemp(tmpDir, pattern)
+	if err != nil {
+		util.FileLogger().
+			Errorf(pc.ctx, "Failed to create temp file in %s with pattern %s: %v", tmpDir, pattern, err)
+		return nil, err
+	}
+	return file, nil
+}
+
 func (pc *ProvisionCommand) runScript(name, scriptPath string) error {
 	cmd := exec.Command("/bin/bash", "-lc", scriptPath)
 	out, err := cmd.CombinedOutput()
@@ -421,16 +448,16 @@ func (pc *ProvisionCommand) generateTemplate() (string, string, error) {
 	return runScript, precheckScript, nil
 }
 
-func (pc *ProvisionCommand) addExitCodeCheck(f *os.File) {
+func (pc *ProvisionCommand) addExitCodeCheck(f *os.File, moduleName string) {
 	fmt.Fprintf(f, `
 		exit_code=$?
         if [ $exit_code -ne 0 ]; then
             parent_exit_code=$exit_code
-            err="Module {{ key }} failed with code $exit_code"
+            err="Module %s failed with code $exit_code"
             errors+=("$err")
             echo "$err"
         fi
-       `)
+       `, moduleName)
 }
 
 func (pc *ProvisionCommand) printExitErrors(f *os.File) {
@@ -481,17 +508,17 @@ func (pc *ProvisionCommand) printResultHelper(f *os.File) {
                 json_results+='
 ]}'
 
-                # Output the JSON
-                echo "$json_results"
-
-                # Exit with status code 1 if any check has failed
-                if [ $any_fail -eq 1 ]; then
-                    echo "Pre-flight checks failed, Please fix them before continuing."
-                    exit 1
-                else
-                    echo "Pre-flight checks successful"
-                fi
-            }
+    # Output the JSON
+    echo "$json_results"
+	if [ -n "$PRECHECK_RESULT_FILE" ]; then
+		echo "$json_results" > "$PRECHECK_RESULT_FILE"
+	fi
+    if [ $any_fail -eq 1 ]; then
+        echo "Pre-flight checks failed, Please fix them before continuing."
+        exit 1
+    fi
+    echo "Pre-flight checks successful"
+}
 
             print_results
 			`)
@@ -512,20 +539,30 @@ func (pc *ProvisionCommand) buildScript(
 	phase string,
 	createSubshell bool,
 ) (string, error) {
-	defaultValue := pc.iniConfig.DefaultSectionValue()
-	dir := "/tmp"
-	if tmp, ok := defaultValue["tmp_directory"].(string); ok {
-		dir = tmp
-	}
-	f, err := os.CreateTemp(dir, "tmp*")
+	f, err := pc.createTempFile(fmt.Sprintf("tmp*_%s", phase))
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	defaultValue := pc.iniConfig.DefaultSectionValue()
 	f.WriteString("#!/bin/bash\n\n")
 	if defaultValue["loglevel"] == "DEBUG" {
 		f.WriteString("set -x\n")
 	}
+	// Add /usr/sbin to PATH for cases where warning is issued when sudo is not used and
+	// sbin is not in PATH.
+	f.WriteString("export PATH=\"$PATH:/usr/sbin\"\n")
+	if pc.args.PreflightCheckOutFile != "" {
+		dir := filepath.Dir(pc.args.PreflightCheckOutFile)
+		err = os.MkdirAll(dir, 0755)
+		if err != nil {
+			util.FileLogger().
+				Errorf(pc.ctx, "Failed to create directory for precheck result file: %v", err)
+			return "", err
+		}
+	}
+	// Set the precheck result file variable in the script.
+	fmt.Fprintf(f, "\nPRECHECK_RESULT_FILE=%s\n", pc.args.PreflightCheckOutFile)
 	if createSubshell {
 		// Initialize parent exit code and errors array.
 		fmt.Fprintf(f, "parent_exit_code=0\n")
@@ -545,7 +582,7 @@ func (pc *ProvisionCommand) buildScript(
 			fmt.Fprint(f, rendered)
 			if createSubshell {
 				fmt.Fprint(f, "\n)\n")
-				pc.addExitCodeCheck(f)
+				pc.addExitCodeCheck(f, tmpl.Name())
 			}
 		}
 		fmt.Fprintf(f, "\n######## END %s #########\n", tmpl.Name())
@@ -636,22 +673,28 @@ func (pc *ProvisionCommand) copyTemplatesFilesForYBM(ctx map[string]any) error {
 	return nil
 }
 
+func (pc *ProvisionCommand) getYNPVersionDirPath() string {
+	ybUserHome, _ := pc.iniConfig.DefaultSectionValue()["yb_user_home"].(string)
+	if ybUserHome == "" {
+		return ""
+	}
+	return filepath.Join(ybUserHome, ".yugabyte")
+}
+
 func (pc *ProvisionCommand) saveYnpVersion() error {
 	currentYnpVersion, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
-	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
+	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	ybUser, _ := pc.iniConfig.DefaultSectionValue()["yb_user"].(string)
-	if currentYnpVersion == "" || ybHomeDir == "" {
+	if currentYnpVersion == "" || ynpVersionDirPath == "" {
 		util.FileLogger().
 			Info(pc.ctx, "yb_home_dir or current version file is missing in the context")
 		return nil
 	}
-	// Ensure yb_home_dir exists.
-	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
-	if err := os.MkdirAll(yugabyteDir, 0755); err != nil {
+	// Ensure ynp version dir exists.
+	if err := os.MkdirAll(ynpVersionDirPath, 0755); err != nil {
 		return err
 	}
-
-	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(ynpVersionDirPath, YNPVersionFile)
 	if err := os.WriteFile(ynpVersionFile, []byte(currentYnpVersion), 0644); err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Failed to write YNP version to file: %v", err)
 		return err
@@ -659,7 +702,7 @@ func (pc *ProvisionCommand) saveYnpVersion() error {
 	if details, err := util.UserInfo(ybUser); err == nil {
 		if details.CurrentUserID == 0 && !details.IsCurrent {
 			// Change ownership only if running as root and yb_user is different from current user.
-			if err := os.Chown(yugabyteDir, int(details.UserID), int(details.GroupID)); err != nil {
+			if err := os.Chown(ynpVersionDirPath, int(details.UserID), int(details.GroupID)); err != nil {
 				util.FileLogger().
 					Errorf(pc.ctx, "Cannot change ownership of .yugabyte dir: %v", err)
 				return err
@@ -695,6 +738,7 @@ func parseVersion(version string) ([3]int, error) {
 }
 
 func (pc *ProvisionCommand) compareYnpVersion() error {
+	ynpVersionDirPath := pc.getYNPVersionDirPath()
 	ybHomeDir, _ := pc.iniConfig.DefaultSectionValue()["yb_home_dir"].(string)
 	versionStr, _ := pc.iniConfig.DefaultSectionValue()["version"].(string)
 	if ybHomeDir == "" || versionStr == "" {
@@ -702,15 +746,12 @@ func (pc *ProvisionCommand) compareYnpVersion() error {
 		util.FileLogger().Errorf(pc.ctx, "Error: %v", err)
 		return err
 	}
-
 	currentYnpVersion, err := parseVersion(versionStr)
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "Unable to parse current YNP version: %v", err)
 		return err
 	}
-
-	yugabyteDir := filepath.Join(ybHomeDir, ".yugabyte")
-	ynpVersionFile := filepath.Join(yugabyteDir, YNPVersionFile)
+	ynpVersionFile := filepath.Join(ynpVersionDirPath, YNPVersionFile)
 	data, err := os.ReadFile(ynpVersionFile)
 	if err != nil {
 		util.FileLogger().Errorf(pc.ctx, "The ynp_version file was not found at %s", ynpVersionFile)

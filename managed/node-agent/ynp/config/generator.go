@@ -127,7 +127,7 @@ func (gen *YNPConfigGenerator) GenerateYnpConfig() (string, error) {
 // Define all the resolvers. Any missing ones will cause the validation test to fail.
 // Do not add any remote calls here as the properties will be resolved lazily.
 func (gen *YNPConfigGenerator) registerResolvers() error {
-	// Veriable names are paths in the config separated by underscores.
+	// Variable names are paths in the config separated by underscores.
 	// For example, "yba.url" in the config becomes "yba_url" as the variable name in the template and resolver.
 	gen.resolvers["logging_directory"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
 		return "./logs", nil
@@ -139,6 +139,21 @@ func (gen *YNPConfigGenerator) registerResolvers() error {
 		return "INFO", nil
 	}
 	gen.resolvers["ynp_yb_home_dir"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
+		provider, err := dataProvider.GetProvider(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return provider.Details.CloudInfo.Onprem.YbHomeDir, nil
+	}
+	gen.resolvers["ynp_yb_user_home"] = func(ctx context.Context, dataProvider ResolverDataProvider) (any, error) {
+		userInfo, err := util.UserInfo(ybUser)
+		if err == nil {
+			return userInfo.User.HomeDir, nil
+		}
+		if _, ok := err.(user.UnknownUserError); !ok {
+			return nil, err
+		}
+		// User does not exist, use the yb_home_dir from the provider.
 		provider, err := dataProvider.GetProvider(ctx)
 		if err != nil {
 			return nil, err

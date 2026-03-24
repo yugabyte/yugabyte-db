@@ -65,6 +65,7 @@ message SubmitTaskRequest {
         SetupCGroupInput setupCGroupInput = 12;
         DownloadSoftwareInput downloadSoftwareInput = 13;
         DestroyServerInput destroyServerInput = 14;
+        YnpPreflightCheckInput ynpPreflightCheckInput = 15;
     }
 }
 
@@ -92,6 +93,7 @@ message DescribeTaskResponse {
         SetupCGroupOutput setupCGroupOutput = 12;
         DownloadSoftwareOutput DownloadSoftwareOutput = 13;
         DestroyServerOutput destroyServerOutput = 14;
+        YnpPreflightCheckOutput ynpPreflightCheckOutput = 15;
     }
 }
 
