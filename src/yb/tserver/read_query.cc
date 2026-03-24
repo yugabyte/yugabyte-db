@@ -627,6 +627,7 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
     read_operation_data.read_time = read_time_;
   } else {
     if (!read_time_) {
+      LOG(DFATAL) << "Read time must be picked by now!";
       tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     }
     read_tx = VERIFY_RESULT(
