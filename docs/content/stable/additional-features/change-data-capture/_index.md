@@ -28,7 +28,7 @@ YugabyteDB supports the following methods for reading change events.
 
 ## PostgreSQL Replication Protocol
 
-This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
+{{<tags/feature/ea idea="805">}}This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
 
 It works as follows:
 
@@ -42,7 +42,7 @@ Learn about CDC in YugabyteDB using the [PostgreSQL Replication Protocol](./usin
 
 ## YugabyteDB gRPC Replication Protocol
 
-This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
+{{<tags/feature/ea>}}This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
 
 It works as follows:
 
