@@ -251,7 +251,7 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	// Fix the types in the parsed config after merging the extra_vars.
 	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
-	// Setup logger first to use the custom logger.
+	// Setup logger now to use the custom logger with the final logging config.
 	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
 }
