@@ -172,6 +172,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kSnapshot_CleanupSnapshotDir)
     (kSnapshot_RestoreCheckpoint)
     (kXCluster_WaitingForGetChanges)
+    (kBackfillIndex_WaitToBackfillTablet)
 
     // Wait states related to consensus
     ((kRaft_WaitingForReplication, YB_ASH_MAKE_EVENT(Consensus)))

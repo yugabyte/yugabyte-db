@@ -500,6 +500,7 @@ bool AsyncDeleteReplica::RetryTaskAfterRPCFailure(const Status& status) {
 //  Class AsyncAlterTable.
 // ============================================================================
 void AsyncAlterTable::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
     VLOG_WITH_PREFIX(1) << "Sleeping for " << tablet_->tablet_id()
                         << FLAGS_TEST_slowdown_alter_table_rpcs_ms
@@ -576,6 +577,7 @@ TableType AsyncAlterTable::table_type() const {
 }
 
 bool AsyncAlterTable::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
 

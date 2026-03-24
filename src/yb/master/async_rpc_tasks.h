@@ -12,6 +12,8 @@
 //
 #pragma once
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/master/async_rpc_tasks_base.h"
 
 #include "yb/common/constants.h"
@@ -254,13 +256,21 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       LeaderEpoch epoch)
-      : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)) {}
+      : AsyncTabletLeaderTask(master, callback_pool, tablet, std::move(epoch)),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>()) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
       const scoped_refptr<TableInfo>& table, TransactionId transaction_id, LeaderEpoch epoch)
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
-        transaction_id_(transaction_id) {}
+        transaction_id_(transaction_id),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>()) {}
 
   AsyncAlterTable(
       Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
@@ -269,7 +279,11 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
       : AsyncTabletLeaderTask(master, callback_pool, tablet, table, std::move(epoch)),
         transaction_id_(transaction_id),
         cdc_sdk_stream_id_(cdc_sdk_stream_id),
-        cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff) {}
+        cdc_sdk_require_history_cutoff_(cdc_sdk_require_history_cutoff),
+        wait_state_(
+            ash::WaitStateInfo::CurrentWaitState()
+                ? ash::WaitStateInfo::CurrentWaitState()
+                : std::make_shared<ash::WaitStateInfo>())  {}
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAlterTable;
@@ -292,6 +306,7 @@ class AsyncAlterTable : public AsyncTabletLeaderTask {
   TransactionId transaction_id_ = TransactionId::Nil();
   const xrepl::StreamId cdc_sdk_stream_id_ = xrepl::StreamId::Nil();
   const bool cdc_sdk_require_history_cutoff_ = false;
+  const ash::WaitStateInfoPtr wait_state_;
 };
 
 class AsyncBackfillDone : public AsyncAlterTable {

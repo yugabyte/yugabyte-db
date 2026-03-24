@@ -77,6 +77,7 @@ DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(TEST_slowdown_backfill_by_ms);
+DECLARE_int32(backfill_index_rate_rows_per_sec);
 DECLARE_int32(memstore_size_mb);
 DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_bool(TEST_export_wait_state_names);
@@ -106,6 +107,7 @@ TestMode GetTestMode(ash::WaitStateCode code) {
     case ash::WaitStateCode::kConsensusMeta_Flush:
     case ash::WaitStateCode::kSaveRaftGroupMetadataToDisk:
     case ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case ash::WaitStateCode::kYCQL_Parse:
     case ash::WaitStateCode::kYCQL_Read:
     case ash::WaitStateCode::kYCQL_Write:
@@ -696,9 +698,11 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         UsePriorityQueueForCompaction();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_priority_thread_pool_for_flushes) =
         UsePriorityQueueForFlush();
-    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot ||
+        code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_concurrent_backfills_allowed) = 1;
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_backfill_by_ms) = 20;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_backfill_index_rate_rows_per_sec) = 200;
     }
     if (code_to_look_for_ == ash::WaitStateCode::kRetryableRequests_SaveToDisk) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
@@ -794,7 +798,8 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
         code_to_look_for_ == ash::WaitStateCode::kLockedBatchEntry_Lock) {
       return 10;
     }
-    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot) {
+    if (code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot ||
+        code_to_look_for_ == ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet) {
       return 0;
     }
     return 1;
@@ -825,6 +830,17 @@ void AshTestVerifyOccurrenceBase::CreateIndexesUntilStopped(std::atomic<bool>& s
   auto session = ASSERT_RESULT(CqlSessionWithRetries(stop, __PRETTY_FUNCTION__));
   constexpr auto kNamespace = "test";
   const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
+
+  // Insert data into the table so that backfill has work to do.
+  // This is necessary for kBackfillIndex_WaitToBackfillTablet to be triggered.
+  LOG(INFO) << "Inserting data into table for backfill";
+  for (int i = 0; i < 1000 && !stop; i++) {
+    EXPECT_OK(session.ExecuteQuery(
+        yb::Format("INSERT INTO t (key, value) VALUES ($0, '$1')",
+          i, std::string(100, 'a' + i % 26))));
+  }
+  LOG(INFO) << "Done inserting data for backfill";
+
   for (int i = 1; !stop; i++) {
     const client::YBTableName idx_name(YQL_DATABASE_CQL, kNamespace, yb::Format("cql_idx_$0", i));
     LOG(INFO) << "Creating a CQL index " << idx_name.ToString();
@@ -915,6 +931,7 @@ std::string WaitStateCodeToString(const testing::TestParamInfo<ash::WaitStateCod
 void AshTestVerifyOccurrenceBase::LaunchWorkers(TestThreadHolder* thread_holder) {
   switch (code_to_look_for_) {
     case ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+    case ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet:
     case ash::WaitStateCode::kCreatingNewTablet:
     case ash::WaitStateCode::kConsensusMeta_Flush:
     case ash::WaitStateCode::kSaveRaftGroupMetadataToDisk:
@@ -966,6 +983,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kWaitForReadTime,
       ash::WaitStateCode::kLockedBatchEntry_Lock,
       ash::WaitStateCode::kBackfillIndex_WaitForAFreeSlot,
+      ash::WaitStateCode::kBackfillIndex_WaitToBackfillTablet,
       ash::WaitStateCode::kCreatingNewTablet,
       ash::WaitStateCode::kSaveRaftGroupMetadataToDisk,
       ash::WaitStateCode::kDumpRunningRpc_WaitOnReactor,

@@ -919,7 +919,9 @@ service MasterDdl {
   rpc TruncateTable(TruncateTableRequestPB) returns (TruncateTableResponsePB);
   rpc IsTruncateTableDone(IsTruncateTableDoneRequestPB) returns (IsTruncateTableDoneResponsePB);
 
-  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc LaunchBackfillIndexForTable(LaunchBackfillIndexForTableRequestPB)
           returns (LaunchBackfillIndexForTableResponsePB);
   rpc GetBackfillJobs(GetBackfillJobsRequestPB) returns (GetBackfillJobsResponsePB);
