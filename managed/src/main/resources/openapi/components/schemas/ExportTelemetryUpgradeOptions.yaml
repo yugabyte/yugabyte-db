@@ -1,0 +1,25 @@
+x-yba-api-visibility: internal
+title: ExportTelemetryUpgradeOptions
+type: object
+description: 'Upgrade options for applying telemetry config changes (rolling vs non-rolling, delays).'
+properties:
+  rolling_upgrade:
+    description: 'If true, perform rolling restart; otherwise non-rolling.'
+    type: boolean
+    default: true
+  delay_between_master_servers:
+    description: Delay in seconds between restarting master servers during rolling upgrade.
+    type: integer
+    default: 0
+  delay_between_tserver_servers:
+    description: Delay in seconds between restarting tserver servers during rolling upgrade.
+    type: integer
+    default: 0
+  sleep_after_tserver_restart_millis:
+    description: Sleep duration in milliseconds after each tserver restart.
+    type: integer
+    default: 180000
+  sleep_after_master_restart_millis:
+    description: Sleep duration in milliseconds after each master restart.
+    type: integer
+    default: 180000

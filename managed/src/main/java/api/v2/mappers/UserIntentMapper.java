@@ -181,6 +181,14 @@ public interface UserIntentMapper {
   CloudVolumeEncryption toV2CloudVolumeEncryption(
       com.yugabyte.yw.models.helpers.CloudVolumeEncryption v1CloudVolumeEncryption);
 
+  // v1 to v2 mappings for log configs (used by ClusterMapper.toV2ClusterSpec for GET universe API)
+  api.v2.models.AuditLogConfig toV2AuditLogConfig(AuditLogConfig v1AuditLogConfig);
+
+  api.v2.models.QueryLogConfig toV2QueryLogConfig(QueryLogConfig v1QueryLogConfig);
+
+  api.v2.models.MetricsExportConfig toV2MetricsExportConfig(
+      MetricsExportConfig v1MetricsExportConfig);
+
   default ClusterGFlags specificGFlagsToClusterGFlags(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
     if (userIntent == null) {

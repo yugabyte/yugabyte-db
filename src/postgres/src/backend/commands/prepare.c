@@ -551,6 +551,54 @@ DropPreparedStatement(const char *stmt_name, bool showError)
 }
 
 /*
+ * YB: YbDropPreparedStatement is similar to DropPreparedStatement,
+ * used for YSQL Connection Manager to deallocate a prepared statement.
+ *
+ * A Prepare statement is deallocated only when atleast one of the following conditions is
+ * satisfied:
+ * 1. Connection is sticky.
+ * 2. Cached plan is invalid.
+ * This is done to allow sharing of prepared statements on a backend by different logical
+ * connections with conn mgr.
+ *
+ * If showError is false, dropping a nonexistent statement is a no-op.
+ */
+bool
+YbDropPreparedStatement(const char *stmt_name, bool showError)
+{
+	PreparedStatement *entry;
+
+	/* Find the query's hash table entry; raise error if wanted */
+	entry = FetchPreparedStatement(stmt_name, showError);
+
+	if (entry)
+	{
+		int change = 0;
+		bool is_conn_sticky = YbIsStickyConnection(&change);
+		bool is_cached_plan_valid = YbIsCachedQueryValid(entry->plansource);
+		if (is_conn_sticky || !is_cached_plan_valid)
+		{
+			/* Release the plancache entry */
+			DropCachedPlan(entry->plansource);
+			elog(LOG, "Deallocated Conn Mgr given Prep Stmt %s, because conn sticky: %s or "
+						"prep stmt plan invalid: %s",
+				stmt_name, is_conn_sticky ? "true" : "false",
+				!is_cached_plan_valid ? "true" : "false");
+
+			/* Now we can remove the hash table entry */
+			hash_search(prepared_queries, entry->stmt_name, HASH_REMOVE, NULL);
+			return true;
+		}
+	}
+	else
+	{
+		elog(WARNING, "Conn mgr provided prepared statement %s does not exist; possible hashmap "
+					  "sync issue", stmt_name);
+	}
+	return false;
+}
+
+/*
  * Drop all cached statements.
  */
 void

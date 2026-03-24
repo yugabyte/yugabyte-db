@@ -73,7 +73,7 @@ class PgDocSampleOp : public PgDocReadOp {
     int32 num_rows_collected;
   };
 
-  PgDocSampleOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op)
+  PgDocSampleOp(const PgSessionPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op)
       : PgDocReadOp(pg_session, table, std::move(read_op)),
         log_prefix_(Format("PgDocSampleOp($0): ", static_cast<void*>(this))) {}
 
@@ -379,7 +379,7 @@ class SamplePickerBase : public PgSelect {
   }
 
  protected:
-  explicit SamplePickerBase(const PgSession::ScopedRefPtr& pg_session) : PgSelect(pg_session) {
+  explicit SamplePickerBase(const PgSessionPtr& pg_session) : PgSelect(pg_session) {
   }
 
   PgDocSampleOp& GetSampleOp() const { return down_cast<PgDocSampleOp&>(*doc_op_); }
@@ -502,7 +502,7 @@ class SampleBlocksPicker : public SamplePickerBase {
   }
 
   static Result<std::unique_ptr<SampleBlocksPicker>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info, int targrows,
       const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
@@ -513,7 +513,7 @@ class SampleBlocksPicker : public SamplePickerBase {
   }
 
  private:
-  explicit SampleBlocksPicker(const PgSession::ScopedRefPtr& pg_session)
+  explicit SampleBlocksPicker(const PgSessionPtr& pg_session)
       : SamplePickerBase(pg_session) {
   }
 
@@ -616,7 +616,7 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
   }
 
   static Result<std::unique_ptr<SampleRowsPicker>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       int targrows, const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
@@ -627,7 +627,7 @@ class SampleRowsPicker : public SamplePickerBase, public SampleRowsPickerIf {
   }
 
  protected:
-  explicit SampleRowsPicker(const PgSession::ScopedRefPtr& pg_session)
+  explicit SampleRowsPicker(const PgSessionPtr& pg_session)
       : SamplePickerBase(pg_session) {
   }
 
@@ -695,7 +695,7 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
   }
 
   static Result<std::unique_ptr<SampleRowsPickerIf>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       int targrows, const SampleRandomState& rand_state, HybridTime read_time,
       YsqlSamplingAlgorithm ysql_sampling_algorithm) {
@@ -706,7 +706,7 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
   }
 
  private:
-  explicit TwoStageSampleRowsPicker(const PgSession::ScopedRefPtr& pg_session)
+  explicit TwoStageSampleRowsPicker(const PgSessionPtr& pg_session)
       : pg_session_(pg_session) {
   }
 
@@ -723,14 +723,14 @@ class TwoStageSampleRowsPicker : public SampleRowsPickerIf {
     return Status::OK();
   }
 
-  PgSession::ScopedRefPtr pg_session_;
+  PgSessionPtr pg_session_;
   std::unique_ptr<SampleBlocksPicker> sample_blocks_picker_;
   size_t num_blocks_processed_;
   size_t num_blocks_collected_;
   std::unique_ptr<SampleRowsPicker> sample_rows_picker_;
 };
 
-PgSample::PgSample(const PgSession::ScopedRefPtr& pg_session)
+PgSample::PgSample(const PgSessionPtr& pg_session)
     : BaseType(pg_session) {
 }
 
@@ -799,7 +799,7 @@ EstimatedRowCount PgSample::GetEstimatedRowCount() {
 }
 
 Result<std::unique_ptr<PgSample>> PgSample::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info,
     int targrows, const SampleRandomState& rand_state, HybridTime read_time) {
   std::unique_ptr<PgSample> result{new PgSample{pg_session}};

@@ -31,13 +31,6 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
   </li>
 
   <li>
-    <a href="../software-on-prem-assist/" class="nav-link">
-      <i class="fa-regular fa-scroll"></i>
-      Assisted
-    </a>
-  </li>
-
-  <li>
     <a href="../software-on-prem-manual/" class="nav-link">
       <i class="icon-shell" aria-hidden="true"></i>
       Fully manual

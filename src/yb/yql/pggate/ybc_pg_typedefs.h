@@ -726,15 +726,23 @@ typedef struct {
   uint64_t publication_refresh_time;
 } YbcPgChangeRecordBatch;
 
+typedef struct {
+  // Query id as seen on pg_stat_statements to identify identical normalized
+  // queries. There might be many queries with different root_request_id
+  // but with the same query_id.
+  uint64_t query_id;
+  // Plan hash from yb_pg_stat_plans. YB_ASH_DEFAULT_PLAN_ID for utility
+  // statements or when QPM is disabled.
+  uint64_t plan_id;
+} YbcAshQueryPlanPair;
+
 // A struct to store ASH metadata in PG's procarray
 typedef struct {
   // A unique id corresponding to a YSQL query in bytes.
   unsigned char root_request_id[16];
 
-  // Query id as seen on pg_stat_statements to identify identical
-  // normalized queries. There might be many queries with different
-  // root_request_id but with the same query_id.
-  uint64_t query_id;
+  // Query id and plan id pair for the currently executing query.
+  YbcAshQueryPlanPair qp;
 
   // pid of the YSQL/YCQL backend which is executing the query
   int32_t pid;

@@ -39,6 +39,8 @@ class ProcessWrapper {
   // Non-zero exit codes are considered non-error cases for the purpose of this function.
   Result<int> Wait();
 
+  std::optional<int64_t> ProcessId();
+
  protected:
   static Status CheckExecutableValid(const std::string& executable_path);
   std::optional<Subprocess> proc_;
@@ -83,6 +85,8 @@ class ProcessSupervisor {
   YbSubProcessState GetState();
   Status Restart();
   Status Pause();
+
+  std::optional<int64_t> ProcessId();
 
  protected:
   virtual std::shared_ptr<ProcessWrapper> CreateProcessWrapper() = 0;

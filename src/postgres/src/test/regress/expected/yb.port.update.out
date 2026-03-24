@@ -91,10 +91,10 @@ EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
    Update on part_a_1_a_10 range_parted_1
    Update on part_a_10_a_20 range_parted_2
    Update on part_b_1_b_10 range_parted_3
-   Update on part_c_1_100 range_parted_4
-   Update on part_d_1_15 range_parted_5
-   Update on part_d_15_20 range_parted_6
-   Update on part_b_20_b_30 range_parted_7
+   Update on part_c_1_100 range_parted_5
+   Update on part_d_1_15 range_parted_7
+   Update on part_d_15_20 range_parted_8
+   Update on part_b_20_b_30 range_parted_9
    ->  Append
          ->  Seq Scan on part_a_1_a_10 range_parted_1
                Storage Filter: (c > '97'::numeric)
@@ -102,13 +102,13 @@ EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
                Storage Filter: (c > '97'::numeric)
          ->  Seq Scan on part_b_1_b_10 range_parted_3
                Storage Filter: (c > '97'::numeric)
-         ->  Seq Scan on part_c_1_100 range_parted_4
+         ->  Seq Scan on part_c_1_100 range_parted_5
                Storage Filter: (c > '97'::numeric)
-         ->  Seq Scan on part_d_1_15 range_parted_5
+         ->  Seq Scan on part_d_1_15 range_parted_7
                Storage Filter: (c > '97'::numeric)
-         ->  Seq Scan on part_d_15_20 range_parted_6
+         ->  Seq Scan on part_d_15_20 range_parted_8
                Storage Filter: (c > '97'::numeric)
-         ->  Seq Scan on part_b_20_b_30 range_parted_7
+         ->  Seq Scan on part_b_20_b_30 range_parted_9
                Storage Filter: (c > '97'::numeric)
 (23 rows)
 

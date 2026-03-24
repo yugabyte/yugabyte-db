@@ -4,7 +4,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -30,7 +29,7 @@ import org.jetbrains.annotations.NotNull;
 import play.libs.Json;
 
 @Slf4j
-public class CreateTableSpaces extends AbstractTaskBase {
+public class CreateTableSpaces extends BaseTablespacesTask {
 
   private static final Pattern YSQLSH_CREATE_TABLESPACE_SUCCESS =
       Pattern.compile("Command output:.*CREATE TABLESPACE", Pattern.DOTALL);
@@ -44,6 +43,8 @@ public class CreateTableSpaces extends AbstractTaskBase {
     public boolean ignoreCurrentPlacement = false;
     // List of tablespaces to be created.
     public List<TableSpaceInfo> tablespaceInfos;
+    // Whether to choose only nodes marked as Live
+    public boolean onlyLiveNodes = true;
   }
 
   @Override
@@ -68,9 +69,14 @@ public class CreateTableSpaces extends AbstractTaskBase {
     Instant timeout = Instant.now().plus(retryTimeout);
 
     while (Instant.now().isBefore(timeout) || attempt < minRetries) {
-      NodeDetails randomTServer = null;
+      NodeDetails randomTServer;
       try {
-        randomTServer = CommonUtils.getARandomLiveTServer(universe);
+        if (taskParams().onlyLiveNodes) {
+          randomTServer = CommonUtils.getARandomLiveTServer(universe);
+        } else {
+          randomTServer = getRandomTserver(universe);
+        }
+
       } catch (IllegalStateException ise) {
         lastError = "Cluster may not have been initialized yet.";
         log.warn("{} attempt to create tablespace failed - {}", ++attempt, lastError);
@@ -118,7 +124,7 @@ public class CreateTableSpaces extends AbstractTaskBase {
           String createTablespaceQuery = getTablespaceCreationQuery(tsi);
           ShellResponse response =
               nodeUniverseManager
-                  .runYsqlCommand(randomTServer, universe, "postgres", createTablespaceQuery)
+                  .runYsqlCommand(randomTServer, universe, TableSpaceUtil.DB, createTablespaceQuery)
                   .processErrors();
 
           if (!response.isSuccess()

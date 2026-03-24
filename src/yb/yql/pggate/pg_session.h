@@ -63,14 +63,13 @@ struct PgSessionRunOptions {
 
 // This class is not thread-safe as it is mostly used by a single-threaded PostgreSQL backend
 // process.
-class PgSession final : public RefCountedThreadSafe<PgSession> {
+class PgSession final : public std::enable_shared_from_this<PgSession> {
+  class PrivateTag {};
  public:
-  // Public types.
-  using ScopedRefPtr = PgSessionPtr;
   using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
 
-  // Constructors.
   PgSession(
+      PrivateTag,
       PgClient& pg_client,
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YbcPgCallbacks& pg_callbacks,
@@ -212,29 +211,10 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock);
   Status ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all);
 
-  YbcReadPointHandle GetCurrentReadPoint() const {
-    return pg_txn_manager_->GetCurrentReadPoint();
+  template<class... Args>
+  [[nodiscard]] static PgSessionPtr Make(Args&&... args) {
+    return std::make_shared<PgSession>(PrivateTag{}, std::forward<Args>(args)...);
   }
-
-  TxnReadPoint GetCurrentReadPointState() const {
-    return pg_txn_manager_->GetCurrentReadPointState();
-  }
-
-  Status RestoreReadPoint(YbcReadPointHandle read_point) {
-    return pg_txn_manager_->RestoreReadPoint(read_point);
-  }
-
-  // Restores the read point to saved_read_point.read_time, but only if the current
-  // txn matches saved_read_point.txn. If txn doesn't match, no restore is performed.
-  Status RestoreReadPoint(const TxnReadPoint& saved_read_point) {
-    return pg_txn_manager_->RestoreReadPoint(saved_read_point);
-  }
-
-  Status EnsureReadPoint() {
-    return pg_txn_manager_->EnsureReadPoint();
-  }
-
-  YbcReadPointHandle GetCatalogSnapshotReadPoint(YbcPgOid table_oid, bool create_if_not_exists);
 
  private:
   Result<PgTableDescPtr> DoLoadTable(
@@ -245,6 +225,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   std::string FlushReasonToString(const PgFlushDebugContext& debug_context) const;
 
   std::string LogPrefix() const;
+  Result<TxnReadPoint> UpdateReadPointForCatalogOps(PgOid catalog_table_oid);
 
   class RunHelper;
 

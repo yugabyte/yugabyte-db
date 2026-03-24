@@ -7,10 +7,12 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -811,6 +813,20 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             });
       }
     }
+  }
+
+  protected void checkOtelOperatorInstallation(Universe universe) {
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.skipOpentelemetryOperatorCheck)) {
+      log.info("Skipping Opentelemetry Operator check.");
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckOpentelemetryOperator",
+        subTaskGroup -> {
+          CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
+          task.initialize(universe.getUniverseDetails());
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   protected void createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(

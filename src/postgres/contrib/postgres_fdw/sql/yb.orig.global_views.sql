@@ -60,7 +60,7 @@ CREATE FOREIGN TABLE "gv$node_metrics" (
 OPTIONS (schema_name 'public', table_name 'local_node_metrics');
 
 --
--- Basic SELECT: verify data from all 3 nodes (9 rows total)
+-- Basic SELECT: verify data from all 3 nodes (11 rows total)
 --
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
@@ -249,23 +249,56 @@ ORDER BY event_count ASC LIMIT 5;
 --
 -- Subqueries
 --
--- Use a window function to avoid parameterized remote queries: the global
--- views RPC uses simple_query_protocol which does not support $N parameters.
--- Tracked by GHI: #30501
+-- Single parameter: scalar subquery result bound as $1
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT node_id, metric_name, metric_value
-FROM (
-    SELECT *, AVG(metric_value) OVER () AS avg_val
-    FROM "gv$node_metrics"
-) sub
-WHERE metric_value > avg_val
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
 ORDER BY node_id, metric_name;
 SELECT node_id, metric_name, metric_value
-FROM (
-    SELECT *, AVG(metric_value) OVER () AS avg_val
-    FROM "gv$node_metrics"
-) sub
-WHERE metric_value > avg_val
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+
+-- Two parameters: two scalar subquery results bound as $1 and $2
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+
+-- NULL parameter: subquery over empty result set returns NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+
+-- Mixed NULL and non-NULL parameters: $1 is a real value, $2 is NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
 ORDER BY node_id, metric_name;
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -276,6 +309,28 @@ ORDER BY node_id, metric_name;
 SELECT node_id, metric_name
 FROM "gv$node_metrics"
 WHERE status IN (SELECT DISTINCT status FROM "gv$node_metrics" WHERE status != 'active')
+ORDER BY node_id, metric_name;
+
+-- Empty string subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+
+-- NULL subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
+ORDER BY node_id, metric_name;
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
 ORDER BY node_id, metric_name;
 
 --

@@ -2405,7 +2405,8 @@ class NodeChecker():
         e = self._new_entry("YNP Version")
         metrics = []
 
-        ynp_version_file = os.path.join(self.yb_home_dir, "ynp_version")
+        yugabyte_dir = os.path.join(self.yb_home_dir, ".yugabyte")
+        ynp_version_file = os.path.join(yugabyte_dir, "ynp_version")
         cmd = 'if [ -f "{}" ]; then cat "{}"; else echo ""; fi'.format(
             ynp_version_file, ynp_version_file)
         node_ynp_version = self._check_output(cmd).strip()

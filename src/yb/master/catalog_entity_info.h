@@ -929,6 +929,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
 
+  std::vector<std::pair<int, TransactionId>> GetDdlTxnsWaitingForSchemaVersion() const;
+
   void AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
       int schema_version, const TransactionId& txn) EXCLUDES(lock_);
 
@@ -1332,6 +1334,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
 
   const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_id() const {
     return pb.unqualified_table_id();
+  }
+
+  const google::protobuf::RepeatedPtrField<std::string>& dropped_table_id() const {
+    return pb.dropped_table_id();
   }
 
   const NamespaceId& namespace_id() const {

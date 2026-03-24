@@ -33,24 +33,28 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCapacityReservation;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DisablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.EnablePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser.Action;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
-import com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistQueryLoggingConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
@@ -99,7 +103,6 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
@@ -111,7 +114,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.MetricSourceState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -153,7 +155,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 /**
@@ -1718,16 +1719,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
         if (opType == UniverseOpType.EDIT
-            && cluster.userIntent.deviceInfo != null
-            && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && KubernetesUtil.needsFullMove(univCluster, cluster)
+            && !KubernetesUtil.isFullMoveSupported(univCluster.userIntent.ybSoftwareVersion)) {
+          throw new IllegalStateException("Cannot perform full move in this Kubernetes cluster");
         }
         // Verify kubernetes overrides.
         if (cluster.clusterType == ClusterType.ASYNC) {
@@ -3911,76 +3905,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return rollMaxBatchSize;
   }
 
-  protected boolean isTabletMovementAvailable(String nodeName) {
-    Universe universe = getUniverse();
-    NodeDetails currentNode = universe.getNode(nodeName);
-    String softwareVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    if (CommonUtils.isReleaseBefore(CommonUtils.MIN_LIVE_TABLET_SERVERS_RELEASE, softwareVersion)) {
-      log.debug("ListLiveTabletServers is not supported for {} version", softwareVersion);
-      return true;
-    }
-
-    // taskParams().placementUuid is not used because it will be null for RR.
-    Cluster currCluster = universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid);
-    UserIntent userIntent = currCluster.userIntent;
-    PlacementInfo pi = currCluster.placementInfo;
-
-    Collection<NodeDetails> nodesExcludingCurrentNode =
-        new HashSet<>(universe.getNodesByCluster(currCluster.uuid));
-    nodesExcludingCurrentNode.remove(currentNode);
-    int rfInZone =
-        PlacementInfoUtil.getZoneRF(
-            pi,
-            currentNode.cloudInfo.cloud,
-            currentNode.cloudInfo.region,
-            currentNode.cloudInfo.az);
-
-    if (rfInZone == -1) {
-      log.error(
-          "Unexpected placement info in universe: {} rfInZone: {}", universe.getName(), rfInZone);
-      throw new RuntimeException(
-          "Error getting placement info for cluster with node: " + currentNode.nodeName);
-    }
-
-    // We do not get isActive() tservers due to new masters starting up changing
-    //   nodeStates to not-active node states which will cause retry to fail.
-    // Note: On master leader failover, if a tserver was already down, it will not be reported as a
-    //    "live" tserver even though it has been less than
-    //    "follower_unavailable_considered_failed_sec" secs since the tserver was down. This is
-    //    fine because we do not take into account the current node and if it is not the current
-    //    node that is down we may prematurely fail, which is expected.
-    List<TabletServerInfo> liveTabletServers = getLiveTabletServers(universe);
-
-    List<TabletServerInfo> tserversActiveInAZExcludingCurrentNode =
-        liveTabletServers.stream()
-            .filter(
-                tserverInfo ->
-                    currentNode.cloudInfo.cloud.equals(tserverInfo.getCloudInfo().getCloud())
-                        && currentNode.cloudInfo.region.equals(
-                            tserverInfo.getCloudInfo().getRegion())
-                        && currentNode.cloudInfo.az.equals(tserverInfo.getCloudInfo().getZone())
-                        && currCluster.uuid.equals(tserverInfo.getPlacementUuid())
-                        && !currentNode.cloudInfo.private_ip.equals(
-                            tserverInfo.getPrivateAddress().getHost()))
-            .collect(Collectors.toList());
-
-    long numActiveTservers = tserversActiveInAZExcludingCurrentNode.size();
-
-    // We have replication number of copies a tablet so we need more than the replication
-    //   factor number of nodes for tablets to move off.
-    // We only want to move data if the number of nodes in the zone are more than or equal
-    //   the RF of the zone.
-    log.debug(
-        "Cluster: {}, numNodes in cluster: {}, number of active tservers excluding current node"
-            + " removing: {}, RF in az: {}",
-        currCluster.uuid,
-        userIntent.numNodes,
-        numActiveTservers,
-        rfInZone);
-    return userIntent.numNodes > userIntent.replicationFactor && numActiveTservers >= rfInZone;
-  }
-
   public void createResumeUniverseTasks(
       Universe universe,
       UUID customerUUID,
@@ -4181,6 +4105,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
+  public void updateAndPersistQueryLoggingConfigTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup =
+        createSubTaskGroup("UpdateAndPersistQueryLoggingConfig");
+    UpdateAndPersistQueryLoggingConfig task = createTask(UpdateAndPersistQueryLoggingConfig.class);
+    task.initialize(taskParams());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   // Persist in universe if we want to use clockbound as time source
   protected void createPersistUseClockboundTask() {
     SubTaskGroup persistClockboundSubtaskGroup =
@@ -4343,38 +4276,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   protected void createTablespacesTasks(
       Collection<UniverseDefinitionTaskParams.PartitionInfo> partitionInfos,
       boolean ignoreCurrentPlacement) {
-    List<TableSpaceStructures.TableSpaceInfo> tableSpaceInfoList = new ArrayList<>();
-    for (UniverseDefinitionTaskParams.PartitionInfo partition : partitionInfos) {
-      TableSpaceStructures.TableSpaceInfo tableSpaceInfo =
-          new TableSpaceStructures.TableSpaceInfo();
-      tableSpaceInfo.name = TableSpaceUtil.getTablespaceName(partition);
-      tableSpaceInfoList.add(tableSpaceInfo);
-      tableSpaceInfo.numReplicas = partition.getReplicationFactor();
-      List<TableSpaceStructures.PlacementBlock> blocks = new ArrayList<>();
-      for (PlacementInfo.PlacementCloud placementCloud : partition.getPlacement().cloudList) {
-        for (PlacementInfo.PlacementRegion placementRegion :
-            partition.getPlacement().cloudList.get(0).regionList) {
-          for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
-            AvailabilityZone zone = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
-            TableSpaceStructures.PlacementBlock block = new TableSpaceStructures.PlacementBlock();
-            block.minNumReplicas = placementAZ.replicationFactor;
-            block.zone = zone.getCode();
-            block.region = placementRegion.code;
-            block.cloud = placementCloud.code;
-            if (placementAZ.leaderPreference > 0) {
-              block.leaderPreference = placementAZ.leaderPreference;
-            }
-            blocks.add(block);
-          }
-        }
-      }
-      tableSpaceInfo.placementBlocks = blocks;
-    }
+    List<TableSpaceStructures.TableSpaceInfo> tableSpaceInfoList =
+        partitionInfos.stream()
+            .map(TableSpaceUtil::partitionToTablespace)
+            .collect(Collectors.toList());
     if (!tableSpaceInfoList.isEmpty()) {
       CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
       taskParams.setUniverseUUID(getUniverse().getUniverseUUID());
       taskParams.tablespaceInfos = tableSpaceInfoList;
       taskParams.ignoreCurrentPlacement = ignoreCurrentPlacement;
+      taskParams.onlyLiveNodes = false;
       TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("CreateTablespaces");
       CreateTableSpaces task = createTask(CreateTableSpaces.class);
       task.initialize(taskParams);
@@ -4386,19 +4297,49 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  protected void createTablespaceValidationOnRemoveTask(
-      UUID clusterUUID,
-      PlacementInfo targetPlacement,
-      List<UniverseDefinitionTaskParams.PartitionInfo> targetPartitions) {
+  protected void createMoveTablesTasks(
+      Collection<UniverseDefinitionTaskParams.PartitionInfo> toMove) {
+
+    MoveTablesTask.Params taskParams = new MoveTablesTask.Params();
+    taskParams.setUniverseUUID(getUniverse().getUniverseUUID());
+    taskParams.partitionInfos = toMove;
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ModifyTablespaces");
+    MoveTablesTask task = createTask(MoveTablesTask.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createDropTablespacesTask(Set<String> tablespaces) {
+    DropTablespacesTask.Params taskParams = new DropTablespacesTask.Params();
+    taskParams.setUniverseUUID(getUniverse().getUniverseUUID());
+    taskParams.tablespaceNames = tablespaces;
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ModifyTablespaces");
+    DropTablespacesTask task = createTask(DropTablespacesTask.class);
+    task.initialize(taskParams);
+    task.setUserTaskUUID(getUserTaskUUID());
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected void createTablespaceValidationOnRemoveTask(UUID clusterUUID) {
+    List<NodeDetails> removedNodes =
+        taskParams().getNodesInCluster(clusterUUID).stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .collect(Collectors.toList());
+    if (removedNodes.isEmpty()) {
+      return;
+    }
     doInPrecheckSubTaskGroup(
         "TablespaceValidationOnRemove",
         subTaskGroup -> {
-          TablespaceValidationOnRemove.Params params = new TablespaceValidationOnRemove.Params();
+          CheckTabletsMovementAvailable.Params params = new CheckTabletsMovementAvailable.Params();
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.clusterUUID = clusterUUID;
-          params.targetPlacement = targetPlacement;
-          params.targetPartitions = targetPartitions;
-          TablespaceValidationOnRemove task = createTask(TablespaceValidationOnRemove.class);
+          params.removedNodes = removedNodes;
+          params.targetGeoPartitions = taskParams().getClusterByUuid(clusterUUID).getPartitions();
+          CheckTabletsMovementAvailable task = createTask(CheckTabletsMovementAvailable.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
@@ -4415,5 +4356,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         t.addSuppressed(ignored);
       }
     }
+  }
+
+  protected void createCheckTabletsMovementAvailableTask(String nodeName) {
+    doInPrecheckSubTaskGroup(
+        "CheckTabletsMovementAvailable",
+        subTaskGroup -> {
+          CheckTabletsMovementAvailableForNode.Params params =
+              new CheckTabletsMovementAvailableForNode.Params();
+          params.setUniverseUUID(taskParams().getUniverseUUID());
+          params.nodeName = nodeName;
+          CheckTabletsMovementAvailableForNode task =
+              createTask(CheckTabletsMovementAvailableForNode.class);
+          task.initialize(params);
+          subTaskGroup.addSubTask(task);
+        });
   }
 }

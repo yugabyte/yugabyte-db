@@ -153,26 +153,16 @@ typedef struct YbScanDescData
 #define YB_MAX_SCAN_KEYS (INDEX_MAX_KEYS * 2)	/* A pair of lower/upper
 												 * bounds per column max */
 
-	/*
-	 * Base of a scan descriptor - Currently it is used either by
-	 * postgres::heap or Yugabyte. It contains basic information that defines
-	 * a scan.
-	 * - Relation: Which table to scan.
-	 * - Keys: Scan conditions. In YB ScanKey could be one of two types:
-	 *   - key for regular column
-	 *   - key which represents the yb_hash_code function.
-	 * The keys array holds keys of both types. All regular keys go before keys
-	 * for yb_hash_code. Keys in range [0, nkeys) are regular keys. Keys in
-	 * range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code. Such
-	 * separation allows to process regular and non-regular keys independently.
-	 */
-	TableScanDescData rs_base;
-
 	/* The handle for the internal YB Select statement. */
 	YbcPgStatement handle;
 	bool		is_exec_done;
 
-	/* Secondary index used in this scan. */
+	/*
+	 * These fields are constant and initialized during YbBeginScan.
+	 * "table" is the table (not index).  It is set even for Index Only Scan.
+	 * "index" is the index, if applicable.  NULL otherwise.
+	 */
+	Relation	table;
 	Relation	index;
 
 	/*
@@ -274,8 +264,6 @@ extern void ybc_heap_endscan(TableScanDesc scanDesc);
  */
 extern TableScanDesc ybc_heap_beginscan_for_index_build(Relation relation,
 														Snapshot snapshot,
-														int nkeys,
-														ScanKey key,
 														struct IndexInfo *indexInfo);
 
 

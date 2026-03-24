@@ -1266,8 +1266,6 @@ heapam_index_build_range_scan(Relation heapRelation,
 		{
 			scan = ybc_heap_beginscan_for_index_build(heapRelation,
 													  snapshot,
-													  0, /* number of keys */
-													  NULL, /* scan key */
 													  indexInfo);
 		}
 		else
@@ -1295,7 +1293,7 @@ heapam_index_build_range_scan(Relation heapRelation,
 				exec_params->out_param = bfresult;
 				exec_params->is_index_backfill = true;
 			}
-			((YbScanDesc) scan)->exec_params = exec_params;
+			scan->ybscan->exec_params = exec_params;
 		}
 	}
 	else

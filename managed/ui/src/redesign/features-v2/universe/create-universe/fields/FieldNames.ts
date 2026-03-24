@@ -5,6 +5,7 @@ export const DATABASE_VERSION = 'databaseVersion';
 export const REGIONS_FIELD = 'regions';
 export const RESILIENCE_TYPE = 'resilienceType';
 export const RESILIENCE_FORM_MODE = 'resilienceFormMode';
+export const RESILIENCE_FACTOR = 'resilienceFactor';
 export const REPLICATION_FACTOR = 'replicationFactor';
 export const FAULT_TOLERANCE_TYPE = 'faultToleranceType';
 export const NODE_COUNT = 'nodeCount';

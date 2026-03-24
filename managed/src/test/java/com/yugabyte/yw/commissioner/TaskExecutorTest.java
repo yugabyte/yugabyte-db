@@ -137,6 +137,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ModifyAuditLoggingConfig,
           TaskType.ModifyQueryLoggingConfig,
           TaskType.ModifyMetricsExportConfig,
+          TaskType.ConfigureExportTelemetryConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,
@@ -171,7 +172,9 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.CreatePitrConfig,
           TaskType.UpdatePitrConfig,
           TaskType.DeletePitrConfig,
-          TaskType.RestoreSnapshotSchedule);
+          TaskType.RestoreSnapshotSchedule,
+          TaskType.ProvisionUniverseNodes,
+          TaskType.ProvisionUniverseNodes);
 
   @Override
   protected Application provideApplication() {

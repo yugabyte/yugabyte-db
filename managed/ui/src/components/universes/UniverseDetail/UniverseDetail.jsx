@@ -275,9 +275,7 @@ class UniverseDetail extends Component {
       isOnPerfAdvisorTab &&
       (hasRegistrationError || (paStatus?.data !== undefined && !shouldShowPerformanceTab))
     ) {
-      this.props.router.push(
-        `/universes/${this.props.params.uuid}/overview`
-      );
+      this.props.router.push(`/universes/${this.props.params.uuid}/overview`);
     }
   }
 
@@ -746,6 +744,7 @@ class UniverseDetail extends Component {
                 visibleModal={visibleModal}
                 featureFlags={featureFlags}
                 graph={graph}
+                provider={provider}
               />
             </div>
           </Tab.Pane>
@@ -1657,9 +1656,7 @@ class UniverseDetail extends Component {
                             ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
                           }}
                         >
-                          <YBMenuItem
-                            onClick={showEnablePerfAdvisorModal}
-                          >
+                          <YBMenuItem onClick={showEnablePerfAdvisorModal}>
                             <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
                               {universePaRegistrationStatus?.data?.success &&
                               isNonEmptyArray(ybaToPaServiceDetails?.data)
@@ -1669,44 +1666,40 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                        {!universePaused &&
-                          universePaRegistrationStatus?.data?.success &&
-                          !universePaRegistrationStatus?.data?.advancedObservability && (
-                            <RbacValidator
-                              isControl
-                              accessRequiredOn={{
-                                onResource: uuid,
-                                ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
-                              }}
-                            >
-                              <YBMenuItem
-                                onClick={showEnableAdvancedObservabilityModal}
-                              >
-                                <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
-                                  Enable Advanced Observability
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            </RbacValidator>
-                          )}
-                        {!universePaused &&
-                          universePaRegistrationStatus?.data?.success &&
-                          universePaRegistrationStatus?.data?.advancedObservability && (
-                            <RbacValidator
-                              isControl
-                              accessRequiredOn={{
-                                onResource: uuid,
-                                ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
-                              }}
-                            >
-                              <YBMenuItem
-                                onClick={showDisableAdvancedObservabilityModal}
-                              >
-                                <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
-                                  Disable Advanced Observability
-                                </YBLabelWithIcon>
-                              </YBMenuItem>
-                            </RbacValidator>
-                          )}
+                    {!universePaused &&
+                      universePaRegistrationStatus?.data?.success &&
+                      !universePaRegistrationStatus?.data?.advancedObservability && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                          }}
+                        >
+                          <YBMenuItem onClick={showEnableAdvancedObservabilityModal}>
+                            <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
+                              Enable Advanced Observability
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                    {!universePaused &&
+                      universePaRegistrationStatus?.data?.success &&
+                      universePaRegistrationStatus?.data?.advancedObservability && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                          }}
+                        >
+                          <YBMenuItem onClick={showDisableAdvancedObservabilityModal}>
+                            <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
+                              Disable Advanced Observability
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
                     <RbacValidator
                       isControl
                       accessRequiredOn={{
@@ -1805,7 +1798,7 @@ class UniverseDetail extends Component {
           visibleModal === 'softwareUpgradesNewModal' &&
           (isCanaryUpgradeEnabled ? (
             <DbUpgradeModal
-              universeData={currentUniverse.data}
+              universeUuid={currentUniverse.data.universeUUID}
               modalProps={{
                 open: showModal && visibleModal === 'softwareUpgradesNewModal',
                 onClose: () => {
@@ -1928,22 +1921,22 @@ class UniverseDetail extends Component {
         <EnablePerfAdvisorModal
           open={
             showModal &&
-            ['enablePerfAdvisorModal', 'enableAdvancedObservabilityModal', 'disableAdvancedObservabilityModal'].includes(
-              visibleModal
-            )
+            [
+              'enablePerfAdvisorModal',
+              'enableAdvancedObservabilityModal',
+              'disableAdvancedObservabilityModal'
+            ].includes(visibleModal)
           }
           paModalIntention={
             visibleModal === 'enableAdvancedObservabilityModal'
               ? PerfAdvisorModalIntention.ENABLE_ADVANCED_OBSERVABILITY_ONLY
               : visibleModal === 'disableAdvancedObservabilityModal'
-                ? PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY
-                : PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
+              ? PerfAdvisorModalIntention.DISABLE_ADVANCED_OBSERVABILITY_ONLY
+              : PerfAdvisorModalIntention.ENABLE_OR_DISABLE_PA_COLLECTOR
           }
           onClose={() => {
             closeModal();
-            if (
-                isNonEmptyArray(ybaToPaServiceDetails?.data)
-            ) {
+            if (isNonEmptyArray(ybaToPaServiceDetails?.data)) {
               this.props.getUniversePaRegistrationStatus(currentUniverse.data.universeUUID);
             }
           }}

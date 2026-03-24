@@ -36,12 +36,12 @@ class PgSelectIndex : public PgSelect {
   [[nodiscard]] bool IsPgSelectIndex() const override { return true; }
 
   static Result<std::unique_ptr<PgSelectIndex>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+      const PgSessionPtr& pg_session, const PgObjectId& index_id,
       const YbcPgTableLocalityInfo& locality_info,
       std::shared_ptr<LWPgsqlReadRequestPB>&& read_req = {});
 
  protected:
-  explicit PgSelectIndex(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgSelectIndex(const PgSessionPtr& pg_session);
 
  private:
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
@@ -49,7 +49,17 @@ class PgSelectIndex : public PgSelect {
   Status PrepareSubquery(
       const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
 
-  boost::container::small_vector<Slice, 8> ybctids_;
+  struct Ybctids {
+    boost::container::small_vector<Slice, 8> values;
+    DocResultYbctidRetention retention;
+
+    void Clear() {
+        values.clear();
+        retention.Clear();
+    }
+  };
+
+  Ybctids ybctids_;
 };
 
 }  // namespace yb::pggate

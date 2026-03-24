@@ -19,6 +19,7 @@ import api.v2.mappers.UniverseSystemdUpgradeMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
 import api.v2.mappers.UniverseTlsToggleParamsMapper;
 import api.v2.models.ConfigureMetricsExportSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
 import api.v2.models.UniverseCertRotateSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
@@ -46,8 +47,11 @@ import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.export.ExportTelemetryConfigMapper;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
@@ -63,17 +67,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.UniverseMetricsExporterConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ProviderType;
+import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -457,23 +462,97 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     }
     v1Params.verifyParams(universe, true);
 
-    // Submit the task to the commissioner
-    UUID taskUUID = commissioner.submit(TaskType.ModifyMetricsExportConfig, v1Params);
+    ExportTelemetryConfigParams exportParams =
+        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    // Override the metrics export config in the export params with the requested config.
+    exportParams.setTelemetryConfig(
+        TelemetryConfig.of(
+            exportParams.getAuditLogConfig(),
+            exportParams.getQueryLogConfig(),
+            v1Params.getMetricsExportConfig()));
+    exportParams.upgradeOption = v1Params.upgradeOption;
+    UUID taskUUID = v1Handler.submitExportTelemetryConfigs(exportParams, customer, universe);
     log.info(
-        "Submitted ModifyMetricsExportConfig for {} : {}, task uuid = {}.",
+        "Submitted ConfigureExportTelemetryConfig (metrics) for {} : {}, task uuid = {}.",
         uniUUID,
         universe.getName(),
         taskUUID);
-
-    // Add this task uuid to the user universe.
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.ModifyMetricsExportConfig,
-        universe.getName());
-
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  /**
+   * Unified API: configure all telemetry export configs (audit logs, query logs, metrics) in one
+   * request.
+   */
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    log.debug(
+        "Configure export telemetry configs for universe with v2 spec: {}", prettyPrint(reqBody));
+
+    // Verify if the request body is valid.
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    if (reqBody == null || reqBody.getTelemetryConfig() == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Request body is required and must contain 'telemetry_config' (use {} to disable all).");
+    }
+
+    // Fill the params from universe details first and then override with the requested config.
+    api.v2.models.TelemetryConfig telemetryConfig = reqBody.getTelemetryConfig();
+    ExportTelemetryConfigParams params =
+        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+    ExportTelemetryConfigMapper.fillParams(telemetryConfig, params);
+    ExportTelemetryConfigMapper.applyUpgradeOptions(reqBody.getUpgradeOptions(), params);
+
+    // Verify if the exporter credentials are consistent on the universe.
+    Set<UUID> auditUuids = extractAuditLogExporterUuids(params);
+    Set<UUID> queryUuids = extractQueryLogExporterUuids(params);
+    Set<UUID> metricsUuids = extractMetricsExportExporterUuids(params);
+    if (!telemetryProviderService.areTPsCredentialsConsistentOnUniverse(
+        universe, auditUuids, queryUuids, metricsUuids)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Exporter credentials are not consistent on universe '"
+              + universe.getUniverseUUID()
+              + "'.");
+    }
+
+    // Submit the task to configure the export telemetry configs.
+    UUID taskUUID = v1Handler.submitExportTelemetryConfigs(params, customer, universe);
+    log.info(
+        "Submitted ConfigureExportTelemetryConfig for {} : {}, task uuid = {}.",
+        uniUUID,
+        universe.getName(),
+        taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  private Set<UUID> extractAuditLogExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getAuditLogConfig() != null
+            && params.getAuditLogConfig().getUniverseLogsExporterConfig() != null
+        ? params.getAuditLogConfig().getUniverseLogsExporterConfig().stream()
+            .map(UniverseLogsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
+  }
+
+  private Set<UUID> extractQueryLogExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getQueryLogConfig() != null
+            && params.getQueryLogConfig().getUniverseLogsExporterConfig() != null
+        ? params.getQueryLogConfig().getUniverseLogsExporterConfig().stream()
+            .map(UniverseQueryLogsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
+  }
+
+  private Set<UUID> extractMetricsExportExporterUuids(ExportTelemetryConfigParams params) {
+    return params.getMetricsExportConfig() != null
+            && params.getMetricsExportConfig().getUniverseMetricsExporterConfig() != null
+        ? params.getMetricsExportConfig().getUniverseMetricsExporterConfig().stream()
+            .map(UniverseMetricsExporterConfig::getExporterUuid)
+            .collect(Collectors.toSet())
+        : Collections.emptySet();
   }
 }

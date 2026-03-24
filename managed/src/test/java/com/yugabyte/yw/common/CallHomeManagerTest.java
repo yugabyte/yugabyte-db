@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -32,16 +33,19 @@ import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -77,6 +81,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
 
   @Mock AlertService alertService;
 
+  @Mock XClusterUniverseService xClusterUniverseService;
+
   Customer defaultCustomer;
   Users defaultUser;
   Provider defaultProvider;
@@ -93,6 +99,8 @@ public class CallHomeManagerTest extends FakeDBApplication {
     when(alertChannelService.list(any(UUID.class))).thenReturn(ImmutableList.of());
     when(alertService.listByCustomerSince(any(UUID.class), any(Date.class)))
         .thenReturn(ImmutableList.of());
+    when(xClusterUniverseService.getXClusterConfigsByUuids(anyCollection()))
+        .thenReturn(Collections.emptyMap());
   }
 
   private void verifyCallHome(JsonNode result, Universe u) {
@@ -443,5 +451,77 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertTrue(alertList.isArray());
     assertTrue(alertList.size() >= 1);
     assertEquals("Alert 1", alertList.get(0).get("name").asText());
+  }
+
+  @Test
+  public void testUniverseXClusterEnrichment() {
+    Universe testUniverse = ModelFactory.createUniverse("test-univ", defaultCustomer.getId());
+    Universe otherUniverse = ModelFactory.createUniverse("other-univ", defaultCustomer.getId());
+
+    XClusterConfig plainConfig =
+        XClusterConfig.create(
+            "plain-xcluster", testUniverse.getUniverseUUID(), otherUniverse.getUniverseUUID());
+
+    XClusterConfig drBackedConfig =
+        XClusterConfig.create(
+            "dr-xcluster", otherUniverse.getUniverseUUID(), testUniverse.getUniverseUUID());
+
+    DrConfig drConfig = new DrConfig();
+    drConfig.setUuid(UUID.randomUUID());
+    drConfig.setName("test-dr-config");
+    drConfig.setCreateTime(new Date());
+    drConfig.setModifyTime(new Date());
+    drConfig.setState(DrConfigStates.State.Replicating);
+    drConfig.setPitrRetentionPeriodSec(86400L);
+    drConfig.setPitrSnapshotIntervalSec(3600L);
+    drConfig.save();
+
+    drBackedConfig.setDrConfig(drConfig);
+    drBackedConfig.save();
+
+    when(xClusterUniverseService.getXClusterConfigsByUuids(anyCollection()))
+        .thenReturn(
+            ImmutableMap.of(
+                plainConfig.getUuid(), plainConfig,
+                drBackedConfig.getUuid(), drBackedConfig));
+
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(
+            ImmutableMap.of("yugaware_uuid", UUID.randomUUID().toString(), "version", "0.0.1"));
+    when(mockRuntimeConf.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)).thenReturn(false);
+    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
+    when(runtimeConfService.getRuntimeConfigEntries(anySet()))
+        .thenAnswer(
+            invocation ->
+                RuntimeConfigEntry.getAll(invocation.getArgument(0, java.util.Set.class)));
+
+    JsonNode payload =
+        callHomeManager.collectDiagnostics(defaultCustomer, CallHomeManager.CollectionLevel.LOW);
+
+    JsonNode testUniverseNode = null;
+    for (JsonNode n : payload.get("universes")) {
+      if ("test-univ".equals(n.get("name").asText())) {
+        testUniverseNode = n;
+        break;
+      }
+    }
+
+    assertNotNull(testUniverseNode);
+    assertEquals(true, testUniverseNode.get("is_xcluster_repl_configured").asBoolean());
+
+    JsonNode xclusterSettings = testUniverseNode.get("xclusterSettings");
+    assertNotNull(xclusterSettings);
+
+    assertEquals(1, xclusterSettings.get("asSource").size());
+    JsonNode plainNode = xclusterSettings.get("asSource").get(0);
+    assertTrue(plainNode.get("dr_config") == null || plainNode.get("dr_config").isNull());
+
+    assertEquals(1, xclusterSettings.get("asTarget").size());
+    JsonNode drNode = xclusterSettings.get("asTarget").get(0);
+    JsonNode drConfigNode = drNode.get("dr_config");
+    assertNotNull(drConfigNode);
+    assertEquals(drConfig.getUuid().toString(), drConfigNode.get("uuid").asText());
+    assertEquals("test-dr-config", drConfigNode.get("name").asText());
+    assertEquals("Replicating", drConfigNode.get("state").asText());
   }
 }

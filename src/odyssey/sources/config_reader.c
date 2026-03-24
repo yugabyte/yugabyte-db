@@ -154,6 +154,7 @@ typedef enum {
 	OD_YB_YSQL_MAX_CONNECTIONS,
 	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
 	OD_YB_MAX_POOLS,
+	OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT,
 	OD_YB_JITTER_TIME,
 	OD_TEST_YB_AUTH_DELAY_MS,
 	OD_YB_ALTER_GUC_ADOPTION_STRATEGY,
@@ -338,6 +339,8 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_optimized_session_parameters",
 		   OD_YB_OPTIMIZED_SESSION_PARAMETERS),
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
+	od_keyword("yb_deallocate_if_invalid_prep_stmt",
+		   OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 	od_keyword("TEST_yb_auth_delay_ms", OD_TEST_YB_AUTH_DELAY_MS),
 	od_keyword("yb_alter_guc_adoption_strategy",
@@ -2525,6 +2528,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_YB_MAX_POOLS:
 			if (!od_config_reader_number(reader,
 						     &config->yb_max_pools)) {
+				goto error;
+			}
+			continue;
+		/* yb_deallocate_if_invalid_prep_stmt */
+		case OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT:
+			if (!od_config_reader_yes_no(reader,
+				    &config->yb_deallocate_if_invalid_prep_stmt)) {
 				goto error;
 			}
 			continue;

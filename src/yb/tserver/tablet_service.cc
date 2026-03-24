@@ -146,11 +146,11 @@
 #include "yb/util/uuid.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
-#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -544,7 +544,12 @@ class WriteQueryCompletionCallback {
         status = STATUS_FORMAT(InvalidArgument, "Leader term changed");
       }
 
-      LOG(INFO) << tablet_peer_->LogPrefix() << "Write failed: " << status;
+      if (status.IsTryAgain()) {
+          LOG_DETAIL << "Write failed: " << status;
+      } else {
+          LOG(INFO) << "Write failed: " << status;
+      }
+
       if (include_trace_ && trace_) {
         response_->set_trace_buffer(trace_->DumpToString(true));
       }
@@ -1553,61 +1558,6 @@ void TabletServiceImpl::AbortTransaction(const AbortTransactionRequestPB* req,
       });
 }
 
-void TabletServiceImpl::UpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    rpc::RpcContext context) {
-  TRACE("UpdateTransactionStatusLocation");
-
-  VLOG(1) << "UpdateTransactionStatusLocation: " << req->ShortDebugString()
-          << ", context: " << context.ToString();
-
-  auto context_ptr = std::make_shared<rpc::RpcContext>(std::move(context));
-  auto status = HandleUpdateTransactionStatusLocation(req, resp, context_ptr);
-  if (!status.ok()) {
-    LOG(WARNING) << status;
-    SetupErrorAndRespond(resp->mutable_error(), status, context_ptr.get());
-  }
-}
-
-Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
-    const UpdateTransactionStatusLocationRequestPB* req,
-    UpdateTransactionStatusLocationResponsePB* resp,
-    std::shared_ptr<rpc::RpcContext> context) {
-  LOG_IF(DFATAL, !req->has_propagated_hybrid_time())
-      << __func__ << " missing propagated hybrid time for transaction status location update";
-  UpdateClock(*req, server_->Clock());
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms > 0)) {
-    std::this_thread::sleep_for(FLAGS_TEST_txn_status_moved_rpc_handle_delay_ms * 1ms);
-  }
-
-  if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
-      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
-    } else {
-      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
-    }
-  }
-
-  auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
-
-  auto tablet = LookupLeaderTabletOrRespond(
-      server_->tablet_peer_lookup(), req->tablet_id(), resp, context.get());
-  if (!tablet) {
-    return Status::OK();
-  }
-
-  auto* participant = tablet.tablet->transaction_participant();
-  if (!participant) {
-    return STATUS(InvalidArgument, "No transaction participant to process transaction status move");
-  }
-
-  RETURN_NOT_OK(participant->UpdateTransactionStatusLocation(txn_id, req->new_status_tablet_id()));
-  context->RespondSuccess();
-  return Status::OK();
-}
-
 void TabletServiceImpl::UpdateTransactionWaitingForStatus(
     const UpdateTransactionWaitingForStatusRequestPB* req,
     UpdateTransactionWaitingForStatusResponsePB* resp,
@@ -2400,7 +2350,8 @@ Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
       "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
+      pgwrapper::PqEscapeLiteral(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =
@@ -3586,10 +3537,10 @@ void TabletServiceImpl::PgRemoteExec(
   VLOG(1) << "received remote pg exec query: " << req->query();
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
-  auto conn_res = server_->CreateInternalPGConn(
-      "template1", /* simple_query_protocol */ true);
-  if (!conn_res.ok()) {
-    SetupErrorAndRespond(resp->mutable_error(), conn_res.status(), &context);
+  auto conn = server_->CreateInternalPGConn(
+      "template1", /* simple_query_protocol */ false, context.GetClientDeadline());
+  if (!conn.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
   }
 
@@ -3597,7 +3548,20 @@ void TabletServiceImpl::PgRemoteExec(
     SleepFor(FLAGS_TEST_pause_remote_pg_query_execution_ms * 1ms);
   }
 
-  auto result = conn_res->Fetch(req->query());
+  // c_str() pointers borrow from req's protobuf strings, valid for the
+  // lifetime of this RPC handler.
+  std::vector<const char*> params;
+  params.reserve(req->params_size());
+  for (const auto& p : req->params()) {
+    if (p.has_value()) {
+      params.push_back(p.value().c_str());
+    } else {
+      params.push_back(nullptr);
+    }
+  }
+  // Postgres_fdw expects results in TEXT format
+  auto result = conn->Fetch(req->query(), pgwrapper::PGResultFormat::kText, params);
+
   auto* result_pb = resp->mutable_pg_result();
   if (!result.ok()) {
     // TODO(#30482): Fetch the error status from PGresult

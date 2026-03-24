@@ -49,14 +49,14 @@ explain (costs off) select * from lp where a > 'a' and a <= 'd';
 explain (costs off) select * from lp where a = 'a';
              QUERY PLAN              
 -------------------------------------
- Seq Scan on lp_ad lp
+ Seq Scan on lp_ad lp_1
    Storage Filter: (a = 'a'::bpchar)
 (2 rows)
 
 explain (costs off) select * from lp where 'a' = a;	/* commuted */
              QUERY PLAN              
 -------------------------------------
- Seq Scan on lp_ad lp
+ Seq Scan on lp_ad lp_1
    Storage Filter: ('a'::bpchar = a)
 (2 rows)
 
@@ -79,7 +79,7 @@ explain (costs off) select * from lp where a is not null;
 explain (costs off) select * from lp where a is null;
           QUERY PLAN           
 -------------------------------
- Seq Scan on lp_null lp
+ Seq Scan on lp_null lp_1
    Storage Filter: (a IS NULL)
 (2 rows)
 
@@ -153,7 +153,7 @@ create table coll_pruning_def partition of coll_pruning default;
 explain (costs off) select * from coll_pruning where a collate "C" = 'a' collate "C";
                   QUERY PLAN                   
 -----------------------------------------------
- Seq Scan on coll_pruning_a coll_pruning
+ Seq Scan on coll_pruning_a coll_pruning_1
    Storage Filter: (a = 'a'::text COLLATE "C")
 (2 rows)
 
@@ -194,14 +194,14 @@ create table rlp5_1 partition of rlp5 for values from (31) to (40);
 explain (costs off) select * from rlp where a < 1;
         QUERY PLAN         
 ---------------------------
- Seq Scan on rlp1 rlp
+ Seq Scan on rlp1 rlp_1
    Storage Filter: (a < 1)
 (2 rows)
 
 explain (costs off) select * from rlp where 1 > a;	/* commuted */
         QUERY PLAN         
 ---------------------------
- Seq Scan on rlp1 rlp
+ Seq Scan on rlp1 rlp_1
    Storage Filter: (1 > a)
 (2 rows)
 
@@ -218,14 +218,14 @@ explain (costs off) select * from rlp where a <= 1;
 explain (costs off) select * from rlp where a = 1;
         QUERY PLAN         
 ---------------------------
- Seq Scan on rlp2 rlp
+ Seq Scan on rlp2 rlp_1
    Storage Filter: (a = 1)
 (2 rows)
 
 explain (costs off) select * from rlp where a = 1::bigint;		/* same as above */
              QUERY PLAN              
 -------------------------------------
- Seq Scan on rlp2 rlp
+ Seq Scan on rlp2 rlp_1
    Storage Filter: (a = '1'::bigint)
 (2 rows)
 
@@ -237,31 +237,31 @@ explain (costs off) select * from rlp where a = 1::numeric;		/* no pruning */
          Storage Filter: ((a)::numeric = '1'::numeric)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp3abcd rlp_3
+   ->  Seq Scan on rlp3abcd rlp_4
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp3efgh rlp_4
+   ->  Seq Scan on rlp3efgh rlp_5
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp3nullxy rlp_5
+   ->  Seq Scan on rlp3nullxy rlp_6
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp3_default rlp_6
+   ->  Seq Scan on rlp3_default rlp_7
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp4_1 rlp_7
+   ->  Seq Scan on rlp4_1 rlp_9
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp4_2 rlp_8
+   ->  Seq Scan on rlp4_2 rlp_10
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp4_default rlp_9
+   ->  Seq Scan on rlp4_default rlp_11
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp5_1 rlp_10
+   ->  Seq Scan on rlp5_1 rlp_13
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp5_default rlp_11
+   ->  Seq Scan on rlp5_default rlp_14
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp_default_10 rlp_12
+   ->  Seq Scan on rlp_default_10 rlp_16
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp_default_30 rlp_13
+   ->  Seq Scan on rlp_default_30 rlp_17
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp_default_null rlp_14
+   ->  Seq Scan on rlp_default_null rlp_18
          Storage Filter: ((a)::numeric = '1'::numeric)
-   ->  Seq Scan on rlp_default_default rlp_15
+   ->  Seq Scan on rlp_default_default rlp_19
          Storage Filter: ((a)::numeric = '1'::numeric)
 (31 rows)
 
@@ -273,9 +273,9 @@ explain (costs off) select * from rlp where a <= 10;
          Storage Filter: (a <= 10)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: (a <= 10)
-   ->  Seq Scan on rlp_default_10 rlp_3
+   ->  Seq Scan on rlp_default_10 rlp_4
          Storage Filter: (a <= 10)
-   ->  Seq Scan on rlp_default_default rlp_4
+   ->  Seq Scan on rlp_default_default rlp_5
          Storage Filter: (a <= 10)
 (9 rows)
 
@@ -283,27 +283,27 @@ explain (costs off) select * from rlp where a > 10;
                   QUERY PLAN                  
 ----------------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp3efgh rlp_2
+   ->  Seq Scan on rlp3efgh rlp_3
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp3nullxy rlp_3
+   ->  Seq Scan on rlp3nullxy rlp_4
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp3_default rlp_4
+   ->  Seq Scan on rlp3_default rlp_5
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp4_1 rlp_5
+   ->  Seq Scan on rlp4_1 rlp_7
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp4_2 rlp_6
+   ->  Seq Scan on rlp4_2 rlp_8
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp4_default rlp_7
+   ->  Seq Scan on rlp4_default rlp_9
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp5_1 rlp_8
+   ->  Seq Scan on rlp5_1 rlp_11
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp5_default rlp_9
+   ->  Seq Scan on rlp5_default rlp_12
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp_default_30 rlp_10
+   ->  Seq Scan on rlp_default_30 rlp_14
          Storage Filter: (a > 10)
-   ->  Seq Scan on rlp_default_default rlp_11
+   ->  Seq Scan on rlp_default_default rlp_15
          Storage Filter: (a > 10)
 (23 rows)
 
@@ -315,31 +315,31 @@ explain (costs off) select * from rlp where a < 15;
          Storage Filter: (a < 15)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: (a < 15)
-   ->  Seq Scan on rlp_default_10 rlp_3
+   ->  Seq Scan on rlp_default_10 rlp_4
          Storage Filter: (a < 15)
-   ->  Seq Scan on rlp_default_default rlp_4
+   ->  Seq Scan on rlp_default_default rlp_5
          Storage Filter: (a < 15)
 (9 rows)
 
 explain (costs off) select * from rlp where a <= 15;
-                 QUERY PLAN                  
----------------------------------------------
+                  QUERY PLAN                  
+----------------------------------------------
  Append
    ->  Seq Scan on rlp1 rlp_1
          Storage Filter: (a <= 15)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp3abcd rlp_3
+   ->  Seq Scan on rlp3abcd rlp_4
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp3efgh rlp_4
+   ->  Seq Scan on rlp3efgh rlp_5
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp3nullxy rlp_5
+   ->  Seq Scan on rlp3nullxy rlp_6
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp3_default rlp_6
+   ->  Seq Scan on rlp3_default rlp_7
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp_default_10 rlp_7
+   ->  Seq Scan on rlp_default_10 rlp_9
          Storage Filter: (a <= 15)
-   ->  Seq Scan on rlp_default_default rlp_8
+   ->  Seq Scan on rlp_default_default rlp_10
          Storage Filter: (a <= 15)
 (17 rows)
 
@@ -347,21 +347,21 @@ explain (costs off) select * from rlp where a > 15 and b = 'ab';
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_1 rlp_2
+   ->  Seq Scan on rlp4_1 rlp_4
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_2 rlp_3
+   ->  Seq Scan on rlp4_2 rlp_5
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_default rlp_4
+   ->  Seq Scan on rlp4_default rlp_6
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_1 rlp_5
+   ->  Seq Scan on rlp5_1 rlp_8
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_default rlp_6
+   ->  Seq Scan on rlp5_default rlp_9
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_30 rlp_7
+   ->  Seq Scan on rlp_default_30 rlp_11
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_default rlp_8
+   ->  Seq Scan on rlp_default_default rlp_12
          Storage Filter: ((a > 15) AND ((b)::text = 'ab'::text))
 (17 rows)
 
@@ -369,27 +369,27 @@ explain (costs off) select * from rlp where a = 16;
               QUERY PLAN              
 --------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: (a = 16)
-   ->  Seq Scan on rlp3efgh rlp_2
+   ->  Seq Scan on rlp3efgh rlp_3
          Storage Filter: (a = 16)
-   ->  Seq Scan on rlp3nullxy rlp_3
+   ->  Seq Scan on rlp3nullxy rlp_4
          Storage Filter: (a = 16)
-   ->  Seq Scan on rlp3_default rlp_4
+   ->  Seq Scan on rlp3_default rlp_5
          Storage Filter: (a = 16)
 (9 rows)
 
 explain (costs off) select * from rlp where a = 16 and b in ('not', 'in', 'here');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Seq Scan on rlp3_default rlp
+ Seq Scan on rlp3_default rlp_2
    Storage Filter: ((a = 16) AND ((b)::text = ANY ('{not,in,here}'::text[])))
 (2 rows)
 
 explain (costs off) select * from rlp where a = 16 and b < 'ab';
                         QUERY PLAN                         
 -----------------------------------------------------------
- Seq Scan on rlp3_default rlp
+ Seq Scan on rlp3_default rlp_2
    Storage Filter: (((b)::text < 'ab'::text) AND (a = 16))
 (2 rows)
 
@@ -397,16 +397,16 @@ explain (costs off) select * from rlp where a = 16 and b <= 'ab';
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: (((b)::text <= 'ab'::text) AND (a = 16))
-   ->  Seq Scan on rlp3_default rlp_2
+   ->  Seq Scan on rlp3_default rlp_3
          Storage Filter: (((b)::text <= 'ab'::text) AND (a = 16))
 (5 rows)
 
 explain (costs off) select * from rlp where a = 16 and b is null;
                   QUERY PLAN                  
 ----------------------------------------------
- Seq Scan on rlp3nullxy rlp
+ Seq Scan on rlp3nullxy rlp_2
    Storage Filter: ((b IS NULL) AND (a = 16))
 (2 rows)
 
@@ -414,20 +414,20 @@ explain (costs off) select * from rlp where a = 16 and b is not null;
                        QUERY PLAN                       
 --------------------------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: ((b IS NOT NULL) AND (a = 16))
-   ->  Seq Scan on rlp3efgh rlp_2
+   ->  Seq Scan on rlp3efgh rlp_3
          Storage Filter: ((b IS NOT NULL) AND (a = 16))
-   ->  Seq Scan on rlp3nullxy rlp_3
+   ->  Seq Scan on rlp3nullxy rlp_4
          Storage Filter: ((b IS NOT NULL) AND (a = 16))
-   ->  Seq Scan on rlp3_default rlp_4
+   ->  Seq Scan on rlp3_default rlp_5
          Storage Filter: ((b IS NOT NULL) AND (a = 16))
 (9 rows)
 
 explain (costs off) select * from rlp where a is null;
-            QUERY PLAN            
-----------------------------------
- Seq Scan on rlp_default_null rlp
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on rlp_default_null rlp_2
    Storage Filter: (a IS NULL)
 (2 rows)
 
@@ -439,29 +439,29 @@ explain (costs off) select * from rlp where a is not null;
          Storage Filter: (a IS NOT NULL)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp3abcd rlp_3
+   ->  Seq Scan on rlp3abcd rlp_4
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp3efgh rlp_4
+   ->  Seq Scan on rlp3efgh rlp_5
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp3nullxy rlp_5
+   ->  Seq Scan on rlp3nullxy rlp_6
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp3_default rlp_6
+   ->  Seq Scan on rlp3_default rlp_7
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp4_1 rlp_7
+   ->  Seq Scan on rlp4_1 rlp_9
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp4_2 rlp_8
+   ->  Seq Scan on rlp4_2 rlp_10
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp4_default rlp_9
+   ->  Seq Scan on rlp4_default rlp_11
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp5_1 rlp_10
+   ->  Seq Scan on rlp5_1 rlp_13
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp5_default rlp_11
+   ->  Seq Scan on rlp5_default rlp_14
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp_default_10 rlp_12
+   ->  Seq Scan on rlp_default_10 rlp_16
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp_default_30 rlp_13
+   ->  Seq Scan on rlp_default_30 rlp_17
          Storage Filter: (a IS NOT NULL)
-   ->  Seq Scan on rlp_default_default rlp_14
+   ->  Seq Scan on rlp_default_default rlp_18
          Storage Filter: (a IS NOT NULL)
 (29 rows)
 
@@ -469,18 +469,18 @@ explain (costs off) select * from rlp where a > 30;
                  QUERY PLAN                  
 ---------------------------------------------
  Append
-   ->  Seq Scan on rlp5_1 rlp_1
+   ->  Seq Scan on rlp5_1 rlp_2
          Storage Filter: (a > 30)
-   ->  Seq Scan on rlp5_default rlp_2
+   ->  Seq Scan on rlp5_default rlp_3
          Storage Filter: (a > 30)
-   ->  Seq Scan on rlp_default_default rlp_3
+   ->  Seq Scan on rlp_default_default rlp_5
          Storage Filter: (a > 30)
 (7 rows)
 
 explain (costs off) select * from rlp where a = 30;	/* only default is scanned */
-           QUERY PLAN           
---------------------------------
- Seq Scan on rlp_default_30 rlp
+            QUERY PLAN            
+----------------------------------
+ Seq Scan on rlp_default_30 rlp_2
    Storage Filter: (a = 30)
 (2 rows)
 
@@ -492,34 +492,34 @@ explain (costs off) select * from rlp where a <= 31;
          Storage Filter: (a <= 31)
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp3abcd rlp_3
+   ->  Seq Scan on rlp3abcd rlp_4
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp3efgh rlp_4
+   ->  Seq Scan on rlp3efgh rlp_5
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp3nullxy rlp_5
+   ->  Seq Scan on rlp3nullxy rlp_6
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp3_default rlp_6
+   ->  Seq Scan on rlp3_default rlp_7
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp4_1 rlp_7
+   ->  Seq Scan on rlp4_1 rlp_9
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp4_2 rlp_8
+   ->  Seq Scan on rlp4_2 rlp_10
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp4_default rlp_9
+   ->  Seq Scan on rlp4_default rlp_11
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp5_1 rlp_10
+   ->  Seq Scan on rlp5_1 rlp_13
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_10 rlp_11
+   ->  Seq Scan on rlp_default_10 rlp_15
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_30 rlp_12
+   ->  Seq Scan on rlp_default_30 rlp_16
          Storage Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_default rlp_13
+   ->  Seq Scan on rlp_default_default rlp_17
          Storage Filter: (a <= 31)
 (27 rows)
 
 explain (costs off) select * from rlp where a = 1 or a = 7;
                QUERY PLAN               
 ----------------------------------------
- Seq Scan on rlp2 rlp
+ Seq Scan on rlp2 rlp_1
    Storage Filter: ((a = 1) OR (a = 7))
 (2 rows)
 
@@ -531,25 +531,25 @@ explain (costs off) select * from rlp where a = 1 or b = 'ab';
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
    ->  Seq Scan on rlp2 rlp_2
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp3abcd rlp_3
+   ->  Seq Scan on rlp3abcd rlp_4
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_1 rlp_4
+   ->  Seq Scan on rlp4_1 rlp_6
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_2 rlp_5
+   ->  Seq Scan on rlp4_2 rlp_7
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp4_default rlp_6
+   ->  Seq Scan on rlp4_default rlp_8
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_1 rlp_7
+   ->  Seq Scan on rlp5_1 rlp_10
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp5_default rlp_8
+   ->  Seq Scan on rlp5_default rlp_11
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_10 rlp_9
+   ->  Seq Scan on rlp_default_10 rlp_13
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_30 rlp_10
+   ->  Seq Scan on rlp_default_30 rlp_14
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_null rlp_11
+   ->  Seq Scan on rlp_default_null rlp_15
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
-   ->  Seq Scan on rlp_default_default rlp_12
+   ->  Seq Scan on rlp_default_default rlp_16
          Storage Filter: ((a = 1) OR ((b)::text = 'ab'::text))
 (25 rows)
 
@@ -557,16 +557,16 @@ explain (costs off) select * from rlp where a > 20 and a < 27;
                    QUERY PLAN                    
 -------------------------------------------------
  Append
-   ->  Seq Scan on rlp4_1 rlp_1
+   ->  Seq Scan on rlp4_1 rlp_2
          Storage Filter: ((a > 20) AND (a < 27))
-   ->  Seq Scan on rlp4_2 rlp_2
+   ->  Seq Scan on rlp4_2 rlp_3
          Storage Filter: ((a > 20) AND (a < 27))
 (5 rows)
 
 explain (costs off) select * from rlp where a = 29;
-          QUERY PLAN          
-------------------------------
- Seq Scan on rlp4_default rlp
+           QUERY PLAN           
+--------------------------------
+ Seq Scan on rlp4_default rlp_2
    Storage Filter: (a = 29)
 (2 rows)
 
@@ -574,15 +574,15 @@ explain (costs off) select * from rlp where a >= 29;
                  QUERY PLAN                  
 ---------------------------------------------
  Append
-   ->  Seq Scan on rlp4_default rlp_1
+   ->  Seq Scan on rlp4_default rlp_2
          Storage Filter: (a >= 29)
-   ->  Seq Scan on rlp5_1 rlp_2
+   ->  Seq Scan on rlp5_1 rlp_4
          Storage Filter: (a >= 29)
-   ->  Seq Scan on rlp5_default rlp_3
+   ->  Seq Scan on rlp5_default rlp_5
          Storage Filter: (a >= 29)
-   ->  Seq Scan on rlp_default_30 rlp_4
+   ->  Seq Scan on rlp_default_30 rlp_7
          Storage Filter: (a >= 29)
-   ->  Seq Scan on rlp_default_default rlp_5
+   ->  Seq Scan on rlp_default_default rlp_8
          Storage Filter: (a >= 29)
 (11 rows)
 
@@ -592,7 +592,7 @@ explain (costs off) select * from rlp where a < 1 or (a > 20 and a < 25);
  Append
    ->  Seq Scan on rlp1 rlp_1
          Storage Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
-   ->  Seq Scan on rlp4_1 rlp_2
+   ->  Seq Scan on rlp4_1 rlp_3
          Storage Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
 (5 rows)
 
@@ -601,9 +601,9 @@ explain (costs off) select * from rlp where a = 20 or a = 40;
                    QUERY PLAN                   
 ------------------------------------------------
  Append
-   ->  Seq Scan on rlp4_1 rlp_1
+   ->  Seq Scan on rlp4_1 rlp_2
          Storage Filter: ((a = 20) OR (a = 40))
-   ->  Seq Scan on rlp5_default rlp_2
+   ->  Seq Scan on rlp5_default rlp_4
          Storage Filter: ((a = 20) OR (a = 40))
 (5 rows)
 
@@ -618,7 +618,7 @@ explain (costs off) select * from rlp3 where a = 20;   /* empty */
 explain (costs off) select * from rlp where a > 1 and a = 10;	/* only default */
                 QUERY PLAN                
 ------------------------------------------
- Seq Scan on rlp_default_10 rlp
+ Seq Scan on rlp_default_10 rlp_2
    Storage Filter: ((a > 1) AND (a = 10))
 (2 rows)
 
@@ -626,27 +626,27 @@ explain (costs off) select * from rlp where a > 1 and a >=15;	/* rlp3 onwards, i
                    QUERY PLAN                    
 -------------------------------------------------
  Append
-   ->  Seq Scan on rlp3abcd rlp_1
+   ->  Seq Scan on rlp3abcd rlp_2
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp3efgh rlp_2
+   ->  Seq Scan on rlp3efgh rlp_3
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp3nullxy rlp_3
+   ->  Seq Scan on rlp3nullxy rlp_4
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp3_default rlp_4
+   ->  Seq Scan on rlp3_default rlp_5
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp4_1 rlp_5
+   ->  Seq Scan on rlp4_1 rlp_7
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp4_2 rlp_6
+   ->  Seq Scan on rlp4_2 rlp_8
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp4_default rlp_7
+   ->  Seq Scan on rlp4_default rlp_9
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp5_1 rlp_8
+   ->  Seq Scan on rlp5_1 rlp_11
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp5_default rlp_9
+   ->  Seq Scan on rlp5_default rlp_12
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp_default_30 rlp_10
+   ->  Seq Scan on rlp_default_30 rlp_14
          Storage Filter: ((a > 1) AND (a >= 15))
-   ->  Seq Scan on rlp_default_default rlp_11
+   ->  Seq Scan on rlp_default_default rlp_15
          Storage Filter: ((a > 1) AND (a >= 15))
 (23 rows)
 
@@ -663,13 +663,13 @@ explain (costs off) select * from rlp where (a = 1 and a = 3) or (a > 1 and a = 
  Append
    ->  Seq Scan on rlp2 rlp_1
          Storage Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
-   ->  Seq Scan on rlp3abcd rlp_2
+   ->  Seq Scan on rlp3abcd rlp_3
          Storage Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
-   ->  Seq Scan on rlp3efgh rlp_3
+   ->  Seq Scan on rlp3efgh rlp_4
          Storage Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
-   ->  Seq Scan on rlp3nullxy rlp_4
+   ->  Seq Scan on rlp3nullxy rlp_5
          Storage Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
-   ->  Seq Scan on rlp3_default rlp_5
+   ->  Seq Scan on rlp3_default rlp_6
          Storage Filter: (((a = 1) AND (a = 3)) OR ((a > 1) AND (a = 15)))
 (11 rows)
 
@@ -809,14 +809,14 @@ explain (costs off) select * from mc3p where a <= 10 and abs(b) < 10;
 explain (costs off) select * from mc3p where a = 11 and abs(b) = 0;
                   QUERY PLAN                   
 -----------------------------------------------
- Seq Scan on mc3p_default mc3p
+ Seq Scan on mc3p_default mc3p_1
    Storage Filter: ((a = 11) AND (abs(b) = 0))
 (2 rows)
 
 explain (costs off) select * from mc3p where a = 20 and abs(b) = 10 and c = 100;
                           QUERY PLAN                          
 --------------------------------------------------------------
- Seq Scan on mc3p6 mc3p
+ Seq Scan on mc3p6 mc3p_1
    Storage Filter: ((a = 20) AND (c = 100) AND (abs(b) = 10))
 (2 rows)
 
@@ -972,7 +972,7 @@ explain (costs off) select * from mc2p where a < 2;
 explain (costs off) select * from mc2p where a = 2 and b < 1;
                QUERY PLAN                
 -----------------------------------------
- Seq Scan on mc2p3 mc2p
+ Seq Scan on mc2p3 mc2p_1
    Storage Filter: ((b < 1) AND (a = 2))
 (2 rows)
 
@@ -995,7 +995,7 @@ explain (costs off) select * from mc2p where a > 1;
 explain (costs off) select * from mc2p where a = 1 and b > 1;
                QUERY PLAN                
 -----------------------------------------
- Seq Scan on mc2p2 mc2p
+ Seq Scan on mc2p2 mc2p_1
    Storage Filter: ((b > 1) AND (a = 1))
 (2 rows)
 
@@ -1003,35 +1003,35 @@ explain (costs off) select * from mc2p where a = 1 and b > 1;
 explain (costs off) select * from mc2p where a = 1 and b is null;
                  QUERY PLAN                  
 ---------------------------------------------
- Seq Scan on mc2p_default mc2p
+ Seq Scan on mc2p_default mc2p_1
    Storage Filter: ((b IS NULL) AND (a = 1))
 (2 rows)
 
 explain (costs off) select * from mc2p where a is null and b is null;
                    QUERY PLAN                    
 -------------------------------------------------
- Seq Scan on mc2p_default mc2p
+ Seq Scan on mc2p_default mc2p_1
    Storage Filter: ((a IS NULL) AND (b IS NULL))
 (2 rows)
 
 explain (costs off) select * from mc2p where a is null and b = 1;
                  QUERY PLAN                  
 ---------------------------------------------
- Seq Scan on mc2p_default mc2p
+ Seq Scan on mc2p_default mc2p_1
    Storage Filter: ((a IS NULL) AND (b = 1))
 (2 rows)
 
 explain (costs off) select * from mc2p where a is null;
-          QUERY PLAN           
--------------------------------
- Seq Scan on mc2p_default mc2p
+           QUERY PLAN            
+---------------------------------
+ Seq Scan on mc2p_default mc2p_1
    Storage Filter: (a IS NULL)
 (2 rows)
 
 explain (costs off) select * from mc2p where b is null;
-          QUERY PLAN           
--------------------------------
- Seq Scan on mc2p_default mc2p
+           QUERY PLAN            
+---------------------------------
+ Seq Scan on mc2p_default mc2p_1
    Storage Filter: (b IS NULL)
 (2 rows)
 
@@ -1051,16 +1051,16 @@ explain (costs off) select * from boolpart where a in (true, false);
 (5 rows)
 
 explain (costs off) select * from boolpart where a = false;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_f boolpart
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on boolpart_f boolpart_1
    Storage Filter: (NOT a)
 (2 rows)
 
 explain (costs off) select * from boolpart where not a = false;
-           QUERY PLAN            
----------------------------------
- Seq Scan on boolpart_t boolpart
+            QUERY PLAN             
+-----------------------------------
+ Seq Scan on boolpart_t boolpart_1
    Storage Filter: a
 (2 rows)
 
@@ -1089,7 +1089,7 @@ explain (costs off) select * from boolpart where a is not true;
 explain (costs off) select * from boolpart where a is not true and a is not false;
                     QUERY PLAN                    
 --------------------------------------------------
- Seq Scan on boolpart_default boolpart
+ Seq Scan on boolpart_default boolpart_1
    Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
 (2 rows)
 
@@ -1126,7 +1126,7 @@ create table boolrangep_ff2 partition of boolrangep for values from ('false', 'f
 explain (costs off)  select * from boolrangep where not a and not b and c = 25;
                       QUERY PLAN                      
 ------------------------------------------------------
- Seq Scan on boolrangep_ff1 boolrangep
+ Seq Scan on boolrangep_ff1 boolrangep_1
    Storage Filter: ((NOT a) AND (NOT b) AND (c = 25))
 (2 rows)
 
@@ -1208,7 +1208,7 @@ explain (costs off) select * from coercepart where a = any ('{ab,bc}');
 explain (costs off) select * from coercepart where a = any ('{ab,null}');
                         QUERY PLAN                         
 -----------------------------------------------------------
- Seq Scan on coercepart_ab coercepart
+ Seq Scan on coercepart_ab coercepart_1
    Storage Filter: ((a)::text = ANY ('{ab,NULL}'::text[]))
 (2 rows)
 
@@ -1222,7 +1222,7 @@ explain (costs off) select * from coercepart where a = any (null::text[]);
 explain (costs off) select * from coercepart where a = all ('{ab}');
                       QUERY PLAN                      
 ------------------------------------------------------
- Seq Scan on coercepart_ab coercepart
+ Seq Scan on coercepart_ab coercepart_1
    Storage Filter: ((a)::text = ALL ('{ab}'::text[]))
 (2 rows)
 
@@ -1260,11 +1260,11 @@ ALTER TABLE part_rev DROP COLUMN c;
 ALTER TABLE part ATTACH PARTITION part_rev FOR VALUES IN (3);  -- now it's ok
 INSERT INTO part VALUES (-1,-1), (1,1), (2,NULL), (NULL,-2),(NULL,NULL);
 EXPLAIN (COSTS OFF) SELECT tableoid::regclass as part, a, b FROM part WHERE a IS NULL ORDER BY 1, 2, 3;
-                       QUERY PLAN                        
----------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Sort
-   Sort Key: ((part.tableoid)::regclass), part.a, part.b
-   ->  Seq Scan on part_p2_p1 part
+   Sort Key: ((part_2.tableoid)::regclass), part_2.a, part_2.b
+   ->  Seq Scan on part_p2_p1 part_2
          Storage Filter: (a IS NULL)
 (4 rows)
 
@@ -1279,8 +1279,8 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM part p(x) ORDER BY x;
                Output: p_1.x, p_1.b
          ->  Seq Scan on public.part_rev p_2
                Output: p_2.x, p_2.b
-         ->  Seq Scan on public.part_p2_p1 p_3
-               Output: p_3.x, p_3.b
+         ->  Seq Scan on public.part_p2_p1 p_4
+               Output: p_4.x, p_4.b
 (10 rows)
 
 --
@@ -1352,7 +1352,7 @@ explain (costs off) select * from mc2p t1, lateral (select count(*) from mc3p t2
 ----------------------------------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  Seq Scan on mc3p1 t2
+         ->  Seq Scan on mc3p1 t2_1
                Storage Filter: ((a = 1) AND (c = 1) AND (abs(b) = 1))
                Partial Aggregate: true
    ->  Append
@@ -1444,9 +1444,9 @@ explain (costs off) select * from rlp where a = 15 and b <> 'ab' and b <> 'cd' a
                                                                     QUERY PLAN                                                                    
 --------------------------------------------------------------------------------------------------------------------------------------------------
  Append
-   ->  Seq Scan on rlp3efgh rlp_1
+   ->  Seq Scan on rlp3efgh rlp_2
          Storage Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
-   ->  Seq Scan on rlp3_default rlp_2
+   ->  Seq Scan on rlp3_default rlp_3
          Storage Filter: ((b IS NOT NULL) AND ((b)::text <> 'ab'::text) AND ((b)::text <> 'cd'::text) AND ((b)::text <> 'xy'::text) AND (a = 15))
 (5 rows)
 
@@ -1485,7 +1485,7 @@ explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'a' co
 explain (costs off) select * from coll_pruning_multi where substr(a, 1) = 'e' collate "C" and substr(a, 1) = 'a' collate "POSIX";
                                                 QUERY PLAN                                                 
 -----------------------------------------------------------------------------------------------------------
- Seq Scan on coll_pruning_multi2 coll_pruning_multi
+ Seq Scan on coll_pruning_multi2 coll_pruning_multi_1
    Storage Filter: ((substr(a, 1) = 'e'::text COLLATE "C") AND (substr(a, 1) = 'a'::text COLLATE "POSIX"))
 (2 rows)
 
@@ -1532,9 +1532,9 @@ explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
 create table rparted_by_int2_maxvalue partition of rparted_by_int2 for values from (16384) to (maxvalue);
 -- all partitions but rparted_by_int2_maxvalue pruned
 explain (costs off) select * from rparted_by_int2 where a > 100000000000000;
-                      QUERY PLAN                      
-------------------------------------------------------
- Seq Scan on rparted_by_int2_maxvalue rparted_by_int2
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Seq Scan on rparted_by_int2_maxvalue rparted_by_int2_1
    Storage Filter: (a > '100000000000000'::bigint)
 (2 rows)
 
@@ -1691,42 +1691,42 @@ explain (costs off) select * from hp where a <> 1 and b <> 'xxx';
 explain (costs off) select * from hp where a is null and b is null;
                    QUERY PLAN                    
 -------------------------------------------------
- Seq Scan on hp0 hp
+ Seq Scan on hp0 hp_1
    Storage Filter: ((a IS NULL) AND (b IS NULL))
 (2 rows)
 
 explain (costs off) select * from hp where a = 1 and b is null;
                  QUERY PLAN                  
 ---------------------------------------------
- Seq Scan on hp1 hp
+ Seq Scan on hp1 hp_1
    Storage Filter: ((b IS NULL) AND (a = 1))
 (2 rows)
 
 explain (costs off) select * from hp where a = 1 and b = 'xxx';
                     QUERY PLAN                     
 ---------------------------------------------------
- Seq Scan on hp0 hp
+ Seq Scan on hp0 hp_1
    Storage Filter: ((a = 1) AND (b = 'xxx'::text))
 (2 rows)
 
 explain (costs off) select * from hp where a is null and b = 'xxx';
                       QUERY PLAN                       
 -------------------------------------------------------
- Seq Scan on hp2 hp
+ Seq Scan on hp2 hp_1
    Storage Filter: ((a IS NULL) AND (b = 'xxx'::text))
 (2 rows)
 
 explain (costs off) select * from hp where a = 2 and b = 'xxx';
                     QUERY PLAN                     
 ---------------------------------------------------
- Seq Scan on hp3 hp
+ Seq Scan on hp3 hp_1
    Storage Filter: ((a = 2) AND (b = 'xxx'::text))
 (2 rows)
 
 explain (costs off) select * from hp where a = 1 and b = 'abcde';
                      QUERY PLAN                      
 -----------------------------------------------------
- Seq Scan on hp2 hp
+ Seq Scan on hp2 hp_1
    Storage Filter: ((a = 1) AND (b = 'abcde'::text))
 (2 rows)
 
@@ -1748,7 +1748,7 @@ drop table hp3;
 explain (costs off) select * from hp where a = 1 and b = 'abcde';
                      QUERY PLAN                      
 -----------------------------------------------------
- Seq Scan on hp2 hp
+ Seq Scan on hp2 hp_1
    Storage Filter: ((a = 1) AND (b = 'abcde'::text))
 (2 rows)
 
@@ -1756,7 +1756,7 @@ explain (costs off) select * from hp where a = 1 and b = 'abcde' and
   (c = 2 or c = 3);
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Seq Scan on hp2 hp
+ Seq Scan on hp2 hp_1
    Storage Filter: ((a = 1) AND (b = 'abcde'::text) AND ((c = 2) OR (c = 3)))
 (2 rows)
 
@@ -2094,47 +2094,47 @@ select * from ab where a = (select max(a) from lprt_a) and b = (select max(a)-1 
      ->  Finalize Aggregate (actual rows=1 loops=1)
            ->  Seq Scan on lprt_a lprt_a_1 (actual rows=3 loops=1)
                  Partial Aggregate: true
-   ->  YB Bitmap Table Scan on ab_a1_b1 ab_1 (never executed)
+   ->  YB Bitmap Table Scan on ab_a1_b1 ab_2 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b1_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a1_b2 ab_2 (never executed)
+   ->  YB Bitmap Table Scan on ab_a1_b2 ab_3 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b2_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a1_b3 ab_3 (never executed)
+   ->  YB Bitmap Table Scan on ab_a1_b3 ab_4 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a1_b3_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a2_b1 ab_4 (never executed)
+   ->  YB Bitmap Table Scan on ab_a2_b1 ab_6 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b1_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a2_b2 ab_5 (never executed)
+   ->  YB Bitmap Table Scan on ab_a2_b2 ab_7 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b2_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a2_b3 ab_6 (never executed)
+   ->  YB Bitmap Table Scan on ab_a2_b3 ab_8 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a2_b3_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a3_b1 ab_7 (never executed)
+   ->  YB Bitmap Table Scan on ab_a3_b1 ab_10 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b1_a_idx (never executed)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a3_b2 ab_8 (actual rows=0 loops=1)
+   ->  YB Bitmap Table Scan on ab_a3_b2 ab_11 (actual rows=0 loops=1)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b2_a_idx (actual rows=0 loops=1)
                Index Cond: (a = $0)
-   ->  YB Bitmap Table Scan on ab_a3_b3 ab_9 (never executed)
+   ->  YB Bitmap Table Scan on ab_a3_b3 ab_12 (never executed)
          Storage Recheck Cond: (a = $0)
          Storage Filter: (b = $1)
          ->  Bitmap Index Scan on ab_a3_b3_a_idx (never executed)
@@ -2150,35 +2150,35 @@ select * from (select * from ab where a = 1 union all select * from ab) ab where
    InitPlan 1 (returns $0)
      ->  Result *RESULT* (actual rows=1 loops=1)
    ->  Append (actual rows=0 loops=1)
-         ->  YB Bitmap Table Scan on ab_a1_b1 ab_2_1 (actual rows=0 loops=1)
+         ->  YB Bitmap Table Scan on ab_a1_b1 ab_16 (actual rows=0 loops=1)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b1_a_idx (actual rows=0 loops=1)
                      Index Cond: (a = 1)
-         ->  YB Bitmap Table Scan on ab_a1_b2 ab_2_2 (never executed)
+         ->  YB Bitmap Table Scan on ab_a1_b2 ab_17 (never executed)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b2_a_idx (never executed)
                      Index Cond: (a = 1)
-         ->  YB Bitmap Table Scan on ab_a1_b3 ab_2_3 (never executed)
+         ->  YB Bitmap Table Scan on ab_a1_b3 ab_18 (never executed)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b3_a_idx (never executed)
                      Index Cond: (a = 1)
-   ->  Seq Scan on ab_a1_b1 ab_1 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a1_b1 ab_3 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a1_b2 ab_1_1 (never executed)
+   ->  Seq Scan on ab_a1_b2 ab_4 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a1_b3 ab_1_2 (never executed)
+   ->  Seq Scan on ab_a1_b3 ab_5 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b1 ab_1_3 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a2_b1 ab_7 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b2 ab_1_4 (never executed)
+   ->  Seq Scan on ab_a2_b2 ab_8 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b3 ab_1_5 (never executed)
+   ->  Seq Scan on ab_a2_b3 ab_9 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b1 ab_1_6 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a3_b1 ab_11 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b2 ab_1_7 (never executed)
+   ->  Seq Scan on ab_a3_b2 ab_12 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b3 ab_1_8 (never executed)
+   ->  Seq Scan on ab_a3_b3 ab_13 (never executed)
          Storage Filter: (b = $0)
 (34 rows)
 
@@ -2191,37 +2191,37 @@ select * from (select * from ab where a = 1 union all (values(10,5)) union all s
    InitPlan 1 (returns $0)
      ->  Result *RESULT* (actual rows=1 loops=1)
    ->  Append (actual rows=0 loops=1)
-         ->  YB Bitmap Table Scan on ab_a1_b1 ab_2_1 (actual rows=0 loops=1)
+         ->  YB Bitmap Table Scan on ab_a1_b1 ab_16 (actual rows=0 loops=1)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b1_a_idx (actual rows=0 loops=1)
                      Index Cond: (a = 1)
-         ->  YB Bitmap Table Scan on ab_a1_b2 ab_2_2 (never executed)
+         ->  YB Bitmap Table Scan on ab_a1_b2 ab_17 (never executed)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b2_a_idx (never executed)
                      Index Cond: (a = 1)
-         ->  YB Bitmap Table Scan on ab_a1_b3 ab_2_3 (never executed)
+         ->  YB Bitmap Table Scan on ab_a1_b3 ab_18 (never executed)
                Storage Filter: (b = $0)
                ->  Bitmap Index Scan on ab_a1_b3_a_idx (never executed)
                      Index Cond: (a = 1)
    ->  Result (actual rows=0 loops=1)
          One-Time Filter: (5 = $0)
-   ->  Seq Scan on ab_a1_b1 ab_1 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a1_b1 ab_3 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a1_b2 ab_1_1 (never executed)
+   ->  Seq Scan on ab_a1_b2 ab_4 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a1_b3 ab_1_2 (never executed)
+   ->  Seq Scan on ab_a1_b3 ab_5 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b1 ab_1_3 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a2_b1 ab_7 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b2 ab_1_4 (never executed)
+   ->  Seq Scan on ab_a2_b2 ab_8 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a2_b3 ab_1_5 (never executed)
+   ->  Seq Scan on ab_a2_b3 ab_9 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b1 ab_1_6 (actual rows=0 loops=1)
+   ->  Seq Scan on ab_a3_b1 ab_11 (actual rows=0 loops=1)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b2 ab_1_7 (never executed)
+   ->  Seq Scan on ab_a3_b2 ab_12 (never executed)
          Storage Filter: (b = $0)
-   ->  Seq Scan on ab_a3_b3 ab_1_8 (never executed)
+   ->  Seq Scan on ab_a3_b3 ab_13 (never executed)
          Storage Filter: (b = $0)
 (36 rows)
 
@@ -2300,13 +2300,13 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                            Index Cond: (a = 1)
          ->  Materialize (actual rows=1 loops=1)
                ->  Append (actual rows=1 loops=1)
-                     ->  YB Bitmap Table Scan on ab_a1_b1 ab_1 (actual rows=0 loops=1)
+                     ->  YB Bitmap Table Scan on ab_a1_b1 ab_2 (actual rows=0 loops=1)
                            ->  Bitmap Index Scan on ab_a1_b1_a_idx (actual rows=0 loops=1)
                                  Index Cond: (a = 1)
-                     ->  YB Bitmap Table Scan on ab_a1_b2 ab_2 (actual rows=1 loops=1)
+                     ->  YB Bitmap Table Scan on ab_a1_b2 ab_3 (actual rows=1 loops=1)
                            ->  Bitmap Index Scan on ab_a1_b2_a_idx (actual rows=1 loops=1)
                                  Index Cond: (a = 1)
-                     ->  YB Bitmap Table Scan on ab_a1_b3 ab_3 (actual rows=0 loops=1)
+                     ->  YB Bitmap Table Scan on ab_a1_b3 ab_4 (actual rows=0 loops=1)
                            ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=0 loops=1)
                                  Index Cond: (a = 1)
 (26 rows)
@@ -2643,9 +2643,9 @@ select * from listp where a = (select null::int);
  Append (actual rows=0 loops=1)
    InitPlan 1 (returns $0)
      ->  Result *RESULT* (actual rows=1 loops=1)
-   ->  Seq Scan on listp_1_1 listp_1 (never executed)
+   ->  Seq Scan on listp_1_1 listp_2 (never executed)
          Storage Filter: (a = $0)
-   ->  Seq Scan on listp_2_1 listp_2 (never executed)
+   ->  Seq Scan on listp_2_1 listp_4 (never executed)
          Storage Filter: (a = $0)
 (7 rows)
 
@@ -2699,7 +2699,7 @@ select * from stable_qual_pruning
   where a = any(array['2000-02-01', '2010-01-01']::timestamp[]);
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
- Seq Scan on stable_qual_pruning2 stable_qual_pruning (actual rows=0 loops=1)
+ Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0 loops=1)
    Storage Filter: (a = ANY ('{"Tue Feb 01 00:00:00 2000","Fri Jan 01 00:00:00 2010"}'::timestamp without time zone[]))
 (2 rows)
 
@@ -2710,7 +2710,7 @@ select * from stable_qual_pruning
 ------------------------------------------------------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
-   ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0 loops=1)
+   ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_2 (actual rows=0 loops=1)
          Filter: (a = ANY (ARRAY['Tue Feb 01 00:00:00 2000'::timestamp without time zone, LOCALTIMESTAMP]))
 (4 rows)
 
@@ -2730,7 +2730,7 @@ select * from stable_qual_pruning
 ---------------------------------------------------------------------------------------------------------------------------
  Append (actual rows=0 loops=1)
    Subplans Removed: 2
-   ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_1 (actual rows=0 loops=1)
+   ->  Seq Scan on stable_qual_pruning2 stable_qual_pruning_2 (actual rows=0 loops=1)
          Filter: (a = ANY ('{"Tue Feb 01 00:00:00 2000 PST","Fri Jan 01 00:00:00 2010 PST"}'::timestamp with time zone[]))
 (4 rows)
 
@@ -2957,9 +2957,9 @@ create table pp_arrpart (a int[]) partition by list (a);
 create table pp_arrpart1 partition of pp_arrpart for values in ('{1}');
 create table pp_arrpart2 partition of pp_arrpart for values in ('{2, 3}', '{4, 5}');
 explain (costs off) select * from pp_arrpart where a = '{1}';
-             QUERY PLAN             
-------------------------------------
- Seq Scan on pp_arrpart1 pp_arrpart
+              QUERY PLAN              
+--------------------------------------
+ Seq Scan on pp_arrpart1 pp_arrpart_1
    Filter: (a = '{1}'::integer[])
 (2 rows)
 
@@ -3013,16 +3013,16 @@ select tableoid::regclass, * from pph_arrpart order by 1,2; -- YB: add more orde
 (3 rows)
 
 explain (costs off) select * from pph_arrpart where a = '{1}';
-              QUERY PLAN              
---------------------------------------
- Seq Scan on pph_arrpart2 pph_arrpart
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on pph_arrpart2 pph_arrpart_1
    Filter: (a = '{1}'::integer[])
 (2 rows)
 
 explain (costs off) select * from pph_arrpart where a = '{1, 2}';
-              QUERY PLAN              
---------------------------------------
- Seq Scan on pph_arrpart1 pph_arrpart
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on pph_arrpart1 pph_arrpart_1
    Filter: (a = '{1,2}'::integer[])
 (2 rows)
 
@@ -3043,9 +3043,9 @@ create table pp_enumpart (a pp_colors) partition by list (a);
 create table pp_enumpart_green partition of pp_enumpart for values in ('green');
 create table pp_enumpart_blue partition of pp_enumpart for values in ('blue');
 explain (costs off) select * from pp_enumpart where a = 'blue';
-                QUERY PLAN                
-------------------------------------------
- Seq Scan on pp_enumpart_blue pp_enumpart
+                 QUERY PLAN                 
+--------------------------------------------
+ Seq Scan on pp_enumpart_blue pp_enumpart_1
    Filter: (a = 'blue'::pp_colors)
 (2 rows)
 
@@ -3064,9 +3064,9 @@ create table pp_recpart (a pp_rectype) partition by list (a);
 create table pp_recpart_11 partition of pp_recpart for values in ('(1,1)');
 create table pp_recpart_23 partition of pp_recpart for values in ('(2,3)');
 explain (costs off) select * from pp_recpart where a = '(1,1)'::pp_rectype;
-              QUERY PLAN              
---------------------------------------
- Seq Scan on pp_recpart_11 pp_recpart
+               QUERY PLAN               
+----------------------------------------
+ Seq Scan on pp_recpart_11 pp_recpart_1
    Filter: (a = '(1,1)'::pp_rectype)
 (2 rows)
 
@@ -3084,9 +3084,9 @@ create table pp_intrangepart (a int4range) partition by list (a);
 create table pp_intrangepart12 partition of pp_intrangepart for values in ('[1,2]');
 create table pp_intrangepart2inf partition of pp_intrangepart for values in ('[2,)');
 explain (costs off) select * from pp_intrangepart where a = '[1,2]'::int4range;
-                  QUERY PLAN                   
------------------------------------------------
- Seq Scan on pp_intrangepart12 pp_intrangepart
+                   QUERY PLAN                    
+-------------------------------------------------
+ Seq Scan on pp_intrangepart12 pp_intrangepart_1
    Filter: (a = '[1,3)'::int4range)
 (2 rows)
 
@@ -3105,9 +3105,9 @@ create table pp_lp (a int, value int) partition by list (a);
 create table pp_lp1 partition of pp_lp for values in(1);
 create table pp_lp2 partition of pp_lp for values in(2);
 explain (costs off) select * from pp_lp where a = 1;
-        QUERY PLAN         
----------------------------
- Seq Scan on pp_lp1 pp_lp
+         QUERY PLAN         
+----------------------------
+ Seq Scan on pp_lp1 pp_lp_1
    Storage Filter: (a = 1)
 (2 rows)
 
@@ -3281,9 +3281,9 @@ explain (costs off) select * from pp_temp_parent where true;
 (3 rows)
 
 explain (costs off) select * from pp_temp_parent where a = 2;
-                 QUERY PLAN                  
----------------------------------------------
- Seq Scan on pp_temp_part_def pp_temp_parent
+                  QUERY PLAN                   
+-----------------------------------------------
+ Seq Scan on pp_temp_part_def pp_temp_parent_1
    Filter: (a = 2)
 (2 rows)
 
@@ -3315,9 +3315,9 @@ where s.a = 1 and s.b = 1 and s.c = (select 1);
  Append
    InitPlan 1 (returns $0)
      ->  Result *RESULT*
-   ->  Seq Scan on p1 p
+   ->  Seq Scan on p1 p_1
          Filter: ((a = 1) AND (b = 1) AND (c = $0))
-   ->  Seq Scan on q111 q1
+   ->  Seq Scan on q111 q1_2
          Filter: ((a = 1) AND (b = 1) AND (c = $0))
    ->  Result
          One-Time Filter: (1 = $0)
@@ -3378,9 +3378,9 @@ create table listp2_10 partition of listp2 for values in (10);
 -- YB: #26410
 explain (analyze, costs off, summary off, timing off)
 select * from listp where a = (select 2) and b <> 10;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on listp1 listp (actual rows=0 loops=1)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Seq Scan on listp1 listp_1 (actual rows=0 loops=1)
    Storage Filter: ((b <> 10) AND (a = $0))
    InitPlan 1 (returns $0)
      ->  Result *RESULT* (actual rows=1 loops=1)
@@ -3484,13 +3484,13 @@ select * from rangep where b IN((select 1),(select 2)) order by a;
      ->  Result *RESULT* (actual rows=1 loops=1)
    InitPlan 2 (returns $1)
      ->  Result *RESULT*_1 (actual rows=1 loops=1)
-   ->  Index Scan using rangep_0_to_100_1_a_idx on rangep_0_to_100_1 rangep_1 (actual rows=0 loops=1)
+   ->  Index Scan using rangep_0_to_100_1_a_idx on rangep_0_to_100_1 rangep_2 (actual rows=0 loops=1)
          Filter: (b = ANY (ARRAY[$0, $1]))
-   ->  Index Scan using rangep_0_to_100_2_a_idx on rangep_0_to_100_2 rangep_2 (actual rows=0 loops=1)
+   ->  Index Scan using rangep_0_to_100_2_a_idx on rangep_0_to_100_2 rangep_3 (actual rows=0 loops=1)
          Filter: (b = ANY (ARRAY[$0, $1]))
-   ->  Index Scan using rangep_0_to_100_3_a_idx on rangep_0_to_100_3 rangep_3 (never executed)
+   ->  Index Scan using rangep_0_to_100_3_a_idx on rangep_0_to_100_3 rangep_4 (never executed)
          Filter: (b = ANY (ARRAY[$0, $1]))
-   ->  Index Scan using rangep_100_to_200_a_idx on rangep_100_to_200 rangep_4 (actual rows=0 loops=1)
+   ->  Index Scan using rangep_100_to_200_a_idx on rangep_100_to_200 rangep_5 (actual rows=0 loops=1)
          Filter: (b = ANY (ARRAY[$0, $1]))
 (14 rows)
 
@@ -3508,7 +3508,7 @@ create table rp_prefix_test1_p2 partition of rp_prefix_test1 for values from (2,
 explain (costs off) select * from rp_prefix_test1 where a <= 1 and b = 'a';
                         QUERY PLAN                        
 ----------------------------------------------------------
- Seq Scan on rp_prefix_test1_p1 rp_prefix_test1
+ Seq Scan on rp_prefix_test1_p1 rp_prefix_test1_1
    Storage Filter: ((a <= 1) AND ((b)::text = 'a'::text))
 (2 rows)
 
@@ -3520,7 +3520,7 @@ create table rp_prefix_test2_p2 partition of rp_prefix_test2 for values from (2,
 explain (costs off) select * from rp_prefix_test2 where a <= 1 and b = 1 and c >= 0;
                       QUERY PLAN                       
 -------------------------------------------------------
- Seq Scan on rp_prefix_test2_p1 rp_prefix_test2
+ Seq Scan on rp_prefix_test2_p1 rp_prefix_test2_1
    Storage Filter: ((a <= 1) AND (c >= 0) AND (b = 1))
 (2 rows)
 
@@ -3532,7 +3532,7 @@ create table rp_prefix_test3_p2 partition of rp_prefix_test3 for values from (2,
 explain (costs off) select * from rp_prefix_test3 where a >= 1 and b >= 1 and b >= 2 and c >= 2 and d >= 0;
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
- Seq Scan on rp_prefix_test3_p2 rp_prefix_test3
+ Seq Scan on rp_prefix_test3_p2 rp_prefix_test3_1
    Storage Filter: ((a >= 1) AND (b >= 1) AND (b >= 2) AND (c >= 2) AND (d >= 0))
 (2 rows)
 
@@ -3542,7 +3542,7 @@ explain (costs off) select * from rp_prefix_test3 where a >= 1 and b >= 1 and b 
 explain (costs off) select * from rp_prefix_test3 where a >= 1 and b >= 1 and b = 2 and c = 2 and d >= 0;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Seq Scan on rp_prefix_test3_p2 rp_prefix_test3
+ Seq Scan on rp_prefix_test3_p2 rp_prefix_test3_1
    Storage Filter: ((a >= 1) AND (b >= 1) AND (d >= 0) AND (b = 2) AND (c = 2))
 (2 rows)
 
@@ -3553,7 +3553,7 @@ create table hp_prefix_test_p2 partition of hp_prefix_test for values with (modu
 explain (costs off) select * from hp_prefix_test where a = 1 and b is null and c = 1 and d = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
- Seq Scan on hp_prefix_test_p1 hp_prefix_test
+ Seq Scan on hp_prefix_test_p1 hp_prefix_test_1
    Storage Filter: ((b IS NULL) AND (a = 1) AND (c = 1) AND (d = 1))
 (2 rows)
 

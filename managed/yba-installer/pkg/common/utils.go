@@ -43,6 +43,8 @@ const PostgresPackageGlob = "yba_installer-*linux*/postgres-linux-*.tar.gz"
 
 const ybdbPackageGlob = "yba_installer-*linux*/yugabyte-*-linux-x86_64.tar.gz"
 
+const PACollectorPackageGlob = "yba_installer-*linux*/perf_advisor-*.tar.gz"
+
 var skipConfirmation = false
 
 var yumList = []string{"RedHat", "CentOS", "Oracle", "Alma", "Amazon"}

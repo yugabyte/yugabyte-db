@@ -161,7 +161,8 @@ public class DeviceInfo {
         && Objects.equals(diskIops, that.diskIops)
         && Objects.equals(throughput, that.throughput)
         && Objects.equals(mountPoints, that.mountPoints)
-        && Objects.equals(storageClass, that.storageClass)
+        && StringUtils.equals(
+            StringUtils.trimToEmpty(storageClass), StringUtils.trimToEmpty(that.storageClass))
         && storageType == that.storageType;
   }
 

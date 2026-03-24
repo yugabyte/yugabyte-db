@@ -3,7 +3,6 @@ title: Developing Secure Applications with Azure Key Vault, Azure SDKs and Yugab
 headerTitle: Secure applications using Azure Key Vault, Azure SDKs, and YugabyteDB
 linkTitle: Azure Key Vault
 description: Developing Secure Applications with Azure Key Vault, Azure SDKs and YugabyteDB
-image: /images/tutorials/azure/icons/Key-Vaults-Icon.svg
 headcontent: Use Azure SDKs to add services to applications
 menu:
   stable_develop:

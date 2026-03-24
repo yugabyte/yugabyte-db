@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -22,11 +22,10 @@ import {
   IconPosition
 } from '@yugabyte-ui-library/core';
 import { ResilienceTypeField } from '../../fields';
-import { StyledContent, StyledHeader, StyledPanel } from '../../components/DefaultComponents';
-import { GuidedMode, FreeFormMode, RegionSelection } from './index';
+import { GuidedMode, ExpertMode, RegionSelection } from './index';
 import { ResilienceAndRegionsSchema } from './ValidationSchema';
 import {
-  computeFaultToleranceTypeFromProvider,
+  computeResilienceTypeFromProvider,
   getFaultToleranceNeeded
 } from '../../CreateUniverseUtils';
 import {
@@ -35,19 +34,19 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from '../../CreateUniverseContext';
-import { ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
+import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   REGIONS_FIELD,
-  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../../fields/FieldNames';
 
 //icons
-import DocTick from '../../../../../assets/doc_tick.svg';
-import DocTickUnSelected from '../../../../../assets/doc_tick_unselected.svg';
-import Flash from '../../../../../assets/flash_transparent.svg';
+import MapIcon from '@app/redesign/assets/map.svg';
+import MapIconSelected from '@app/redesign/assets/map_selected.svg';
+import Flash from '@app/redesign/assets/flash_transparent.svg';
 
 const { Grid2: Grid, Collapse, styled, Box } = mui;
 
@@ -92,13 +91,14 @@ export const ResilienceAndRegions = forwardRef<
     resolver: yupResolver(ResilienceAndRegionsSchema(t))
   });
 
-  const { watch } = methods;
+  const { watch, trigger, clearErrors } = methods;
 
   const formMode = watch(RESILIENCE_FORM_MODE);
   const regions = watch(REGIONS_FIELD);
-  const replicationFactor = watch(REPLICATION_FACTOR);
-  const faultToleranceForRegion = getFaultToleranceNeeded(replicationFactor);
-  const faultToleranceforAz = getFaultToleranceNeeded(replicationFactor);
+  const resilienceFactor = watch(RESILIENCE_FACTOR);
+  const faultToleranceType = watch(FAULT_TOLERANCE_TYPE);
+  const faultToleranceForRegion = getFaultToleranceNeeded(resilienceFactor);
+  const faultToleranceforAz = getFaultToleranceNeeded(resilienceFactor);
   const resilienceType = watch(RESILIENCE_TYPE);
 
   const availabilityZoneCount = regions.reduce((acc, region) => {
@@ -106,6 +106,7 @@ export const ResilienceAndRegions = forwardRef<
   }, 0);
 
   const { errors, isSubmitted } = methods.formState;
+  const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
 
   useEffect(() => {
     setResilienceType(resilienceType);
@@ -114,10 +115,53 @@ export const ResilienceAndRegions = forwardRef<
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
   }, [resilienceType]);
 
+  // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
+  // errors until the user clicks Next again (do not carry forward stale validation UI).
+  const resilienceGoalRef = useRef<{
+    formMode: ResilienceFormMode;
+    faultToleranceType: string;
+    resilienceFactor: number;
+    resilienceType: ResilienceType;
+  } | null>(null);
+
+  useEffect(() => {
+    const next = {
+      formMode,
+      faultToleranceType,
+      resilienceFactor,
+      resilienceType
+    };
+    if (resilienceGoalRef.current === null) {
+      resilienceGoalRef.current = next;
+      return;
+    }
+    const prev = resilienceGoalRef.current;
+    const goalChanged =
+      prev.formMode !== next.formMode ||
+      prev.faultToleranceType !== next.faultToleranceType ||
+      prev.resilienceFactor !== next.resilienceFactor ||
+      prev.resilienceType !== next.resilienceType;
+    if (goalChanged) {
+      setShowErrorsAfterSubmit(false);
+      clearErrors();
+      resilienceGoalRef.current = next;
+    }
+  }, [formMode, faultToleranceType, resilienceFactor, resilienceType, clearErrors]);
+
+  // Re-validate when regions change after submit; when form becomes valid, hide errors without another Next.
+  useEffect(() => {
+    if (isSubmitted) {
+      trigger().then((isValid) => {
+        if (isValid) setShowErrorsAfterSubmit(false);
+      });
+    }
+  }, [regions, isSubmitted, trigger]);
+
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
+        setShowErrorsAfterSubmit(true);
         return methods.handleSubmit((data) => {
           saveResilienceAndRegionsSettings(data);
           moveToNextPage();
@@ -125,34 +169,41 @@ export const ResilienceAndRegions = forwardRef<
       },
       onPrev: () => {
         moveToPreviousPage();
-      }
+      },
+      setValue: methods.setValue as (name: string, value: unknown) => void
     }),
-    []
+    [methods]
   );
 
   useMount(() => {
     if (regions.length !== 0) return;
 
     if (!isGeoPartition && generalSettings?.providerConfiguration) {
-      const computedFaultToleranceType = computeFaultToleranceTypeFromProvider(
+      const computedFaultToleranceType = computeResilienceTypeFromProvider(
         generalSettings.providerConfiguration
       );
       methods.setValue(FAULT_TOLERANCE_TYPE, computedFaultToleranceType[FAULT_TOLERANCE_TYPE]);
-      methods.setValue(REPLICATION_FACTOR, computedFaultToleranceType[REPLICATION_FACTOR]);
+      methods.setValue(RESILIENCE_FACTOR, computedFaultToleranceType[RESILIENCE_FACTOR]);
     }
   });
 
   useEffect(() => {
     // if the user switches to guided mode and has set a high replication factor, reduce it to 3 which guided mode supports
-    if (formMode === ResilienceFormMode.GUIDED && replicationFactor > 3) {
-      methods.setValue(REPLICATION_FACTOR, 3);
+    if (formMode === ResilienceFormMode.GUIDED && resilienceFactor > 3) {
+      methods.setValue(RESILIENCE_FACTOR, 3, { shouldValidate: true });
     }
 
     // in free form mode, replication factor should always be odd
-    if (formMode === ResilienceFormMode.FREE_FORM && replicationFactor % 2 === 0) {
-      methods.setValue(REPLICATION_FACTOR, replicationFactor + 1);
+    if (formMode === ResilienceFormMode.EXPERT_MODE && resilienceFactor % 2 === 0) {
+      methods.setValue(RESILIENCE_FACTOR, resilienceFactor + 1, { shouldValidate: true });
     }
   }, [formMode]);
+
+  useEffect(() => {
+    if (faultToleranceType === FaultToleranceType.NONE && resilienceFactor > 1) {
+      methods.setValue(RESILIENCE_FACTOR, 1, { shouldValidate: true });
+    }
+  }, [faultToleranceType, resilienceFactor]);
 
   return (
     <FormProvider {...methods}>
@@ -179,62 +230,52 @@ export const ResilienceAndRegions = forwardRef<
         </Collapse>
       )}
       {resilienceType === ResilienceType.REGULAR && (
-        <StyledPanel>
-          <StyledHeader>
-            <Grid alignItems={'center'} justifyContent={'space-between'} container width="100%">
-              {t('title')}
-              <YBButtonGroup
-                size="large"
-                dataTestId="yb-button-group-multiselect-normal"
-                value={formMode}
-                buttons={[
-                  {
-                    value: ResilienceFormMode.GUIDED,
-                    label: t('formType.guidedMode'),
-                    icon:
-                      formMode === ResilienceFormMode.FREE_FORM ? (
-                        <DocTickUnSelected />
-                      ) : (
-                        <DocTick />
-                      ),
-                    onClick: () => {
-                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED);
-                    },
-                    buttonProps: {
-                      dataTestId: 'guided-mode-button'
-                    },
-                    tooltip: t('infoTooltips.guidedMode')
+        <>
+          <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
+            <YBButtonGroup
+              size="large"
+              dataTestId="yb-button-group-multiselect-normal"
+              value={formMode}
+              buttons={[
+                {
+                  value: ResilienceFormMode.GUIDED,
+                  label: t('formType.guidedMode'),
+                  icon: formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                  onClick: () => {
+                    methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.GUIDED, {
+                      shouldValidate: true
+                    });
                   },
-                  {
-                    value: ResilienceFormMode.FREE_FORM,
-                    label: t('formType.freeForm'),
-                    onClick: () => {
-                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.FREE_FORM);
-                    },
-                    buttonProps: {
-                      dataTestId: 'free-form-mode-button'
-                    },
-                    tooltip: (
-                      <Trans t={t} i18nKey="infoTooltips.freeForm" components={{ b: <b /> }} />
-                    )
+                  buttonProps: {
+                    dataTestId: 'guided-mode-button'
                   }
-                ]}
-              />
-            </Grid>
-          </StyledHeader>
-          <StyledContent style={{ display: 'flex', gap: '24px', flexDirection: 'column' }}>
-            {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <FreeFormMode />}
-          </StyledContent>
-        </StyledPanel>
+                },
+                {
+                  value: ResilienceFormMode.EXPERT_MODE,
+                  label: t('formType.expertMode'),
+                  onClick: () => {
+                    methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
+                      shouldValidate: true
+                    });
+                  },
+                  buttonProps: {
+                    dataTestId: 'expert-mode-button'
+                  }
+                }
+              ]}
+            />
+          </Grid>
+          {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
+        </>
       )}
-      <RegionSelection />
+      <RegionSelection showErrorsAfterSubmit={showErrorsAfterSubmit} />
       {!hideHelpText && (
         <StyledHelpText>
           <Flash />
           <Trans t={t} i18nKey="helpText" components={{ a: <a /> }} />
         </StyledHelpText>
       )}
-      {errors?.faultToleranceType?.message && isSubmitted && (
+      {showErrorsAfterSubmit && errors?.faultToleranceType?.message && (
         <div>
           <YBAlert
             open

@@ -51,6 +51,7 @@ class PgSharedMemoryPool;
 class SharedExchange;
 class SharedMemoryManager;
 class SharedMemorySegmentHandle;
+class TServerCgroupManager;
 class TSLocalLockManager;
 class TSTabletManager;
 class TableMutationCountSender;

@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -422,6 +423,9 @@ public class Audit extends Model {
     @EnumValue("Configure Metrics Export")
     ConfigureMetricsExport,
 
+    @EnumValue("Configure Export Telemetry Config")
+    ConfigureExportTelemetryConfig,
+
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
 
@@ -727,6 +731,11 @@ public class Audit extends Model {
   @Column(nullable = true)
   private String userAddress;
 
+  // Hide this from the API.
+  @ApiModelProperty(hidden = true)
+  @Column(nullable = false)
+  private int lastRedactedVersion;
+
   public Audit() {
     this.timestamp = new Date();
   }
@@ -792,5 +801,11 @@ public class Audit extends Model {
 
   public static List<Audit> getAllUserEntries(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  @Override
+  public void save() {
+    setLastRedactedVersion(RedactSecretsFromAudit.getLastRedactedVersion());
+    super.save();
   }
 }

@@ -176,7 +176,10 @@ function countryCodeToFlagEmoji(code: string): string {
  * @param region Cloud region name (e.g. "us-west", "asia-southeast1")
  * @returns Emoji flag or null if region not recognized
  */
-export function getFlagFromRegion(region: string): string | null {
+export function getFlagFromRegion(region: string | undefined): string | null {
+  if (!region) {
+    return '';
+  }
   const countryCode = regionToCountryCode[region];
   if (!countryCode || countryCode === 'GLOBE') {
     return `🌎`; // Globe emoji for global regions

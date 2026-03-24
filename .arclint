@@ -229,6 +229,16 @@
       "script-and-regex.script": "src/lint/yql_extern_c.sh",
       "script-and-regex.regex":
         "/^(?P<severity>\\w+):(?P<name>\\w+):(?P<message>[^:]+):(?P<line>\\d+):(?P<original>.*)/m"
+    },
+    "client-version-check": {
+      "type": "script-and-regex",
+      "include": [
+        "(^managed/src/main/resources/swagger[.]json$)",
+        "(^managed/src/main/resources/openapi/.*[.]yaml$)"
+      ],
+      "script-and-regex.script": "managed/lint/check-client-version.sh",
+      "script-and-regex.regex":
+        "/^ERROR: (?P<message>.*)$/m"
     }
   }
 }

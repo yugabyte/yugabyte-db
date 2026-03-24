@@ -154,6 +154,7 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
+  html_print_helper.cc
   json_document.cc
   jsonwriter.cc
   jwt_util.cc
@@ -244,7 +245,6 @@ set(UTIL_SRCS
   varint.cc
   write_buffer.cc
   yb_partition.cc
-  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   thread_holder.cc

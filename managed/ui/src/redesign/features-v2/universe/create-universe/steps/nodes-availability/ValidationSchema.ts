@@ -1,71 +1,166 @@
 import * as Yup from 'yup';
-import { TFunction } from 'i18next';
 import { uniq, values } from 'lodash';
 import { NodeAvailabilityProps, Zone } from './dtos';
+
+function collectPreferredRankErrors(
+  availabilityZones: NodeAvailabilityProps['availabilityZones'],
+  createError: (opts: { path: string; message: string }) => Yup.ValidationError,
+  /** Use lesserNodes so yupResolver surfaces errors on the same field as other node/AZ rules. */
+  errorPath: string
+): Yup.ValidationError[] {
+  const out: Yup.ValidationError[] = [];
+  const allZones = values(availabilityZones).flat() as Zone[];
+  if (allZones.length === 0) {
+    return out;
+  }
+
+  const preferredValues = allZones
+    .map((zone) => zone.preffered)
+    .filter((v) => typeof v === 'number' && !Number.isNaN(v)) as number[];
+
+  if (preferredValues.length !== allZones.length) {
+    out.push(
+      createError({
+        path: errorPath,
+        message: 'errMsg.preferredRankRequired'
+      })
+    );
+    return out;
+  }
+
+  const unique = [...uniq(preferredValues)].sort((a, b) => a - b);
+  const min = Math.min(...unique);
+  const max = Math.max(...unique);
+
+  for (let i = min; i <= max; i++) {
+    if (!unique.includes(i)) {
+      out.push(
+        createError({
+          path: errorPath,
+          message: 'errMsg.missingPreferredValue'
+        })
+      );
+      break;
+    }
+  }
+  return out;
+}
 import {
   FaultToleranceType,
   ResilienceAndRegionsProps,
-  ResilienceFormMode
+  ResilienceFormMode,
+  ResilienceType
 } from '../resilence-regions/dtos';
 import { getFaultToleranceNeeded, getNodeCount } from '../../CreateUniverseUtils';
 
-export const NodesAvailabilitySchema = (
-  t: TFunction,
-  resilienceAndRegionsProps?: ResilienceAndRegionsProps
-) => {
+export const NodesAvailabilitySchema = (resilienceAndRegionsProps?: ResilienceAndRegionsProps) => {
   return Yup.object<NodeAvailabilityProps>({
     lesserNodes: Yup.number().test('availabilityZones', 'Error', function () {
       const { path, createError } = this;
       const { availabilityZones, useDedicatedNodes } = this.parent;
       const nodeCounts = getNodeCount(availabilityZones);
       const faultToleranceNeeded = getFaultToleranceNeeded(
-        resilienceAndRegionsProps?.replicationFactor ?? 1
+        resilienceAndRegionsProps?.resilienceFactor ?? 1
       );
       const azCounts = values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);
       const fieldErrors: Yup.ValidationError[] = [];
-      if (resilienceAndRegionsProps?.resilienceFormMode === ResilienceFormMode.FREE_FORM) {
-        if (azCounts === faultToleranceNeeded) return true;
 
-        return createError({
-          path,
-          message: t('errMsg.lessNodes', {
-            nodeCount: azCounts,
-            faultToleranceNeeded: faultToleranceNeeded
-          })
-        });
-      }
-      if (resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.AZ_LEVEL) {
-        if (azCounts !== faultToleranceNeeded) {
+      const resilienceType = resilienceAndRegionsProps?.resilienceType;
+      const regionsFromResilience = resilienceAndRegionsProps?.regions ?? [];
+
+      // Every selected AZ must have at least one node (Regular multi-AZ flows).
+      if (
+        resilienceType !== ResilienceType.SINGLE_NODE &&
+        resilienceAndRegionsProps?.faultToleranceType !== FaultToleranceType.NONE
+      ) {
+        let hasZeroNodeAz = false;
+        for (const zones of values(availabilityZones)) {
+          for (const z of zones) {
+            if (typeof z.nodeCount !== 'number' || z.nodeCount < 1) {
+              hasZeroNodeAz = true;
+              break;
+            }
+          }
+          if (hasZeroNodeAz) break;
+        }
+        if (hasZeroNodeAz) {
           fieldErrors.push(
             createError({
               path,
-              message: t('errMsg.azErrFew', {
-                required_zones: faultToleranceNeeded,
-                availability_zone: azCounts,
-                keyPrefix: 'createUniverseV2.resilienceAndRegions'
-              })
-            })
-          );
-          fieldErrors.push(
-            createError({
-              path: 'availabilityZones'
+              message: 'errMsg.azZeroNodes'
             })
           );
         }
       }
+
+      // Node-level resilience: exactly one region with exactly one AZ (no multi-AZ placement).
       if (
         resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.NODE_LEVEL &&
-        nodeCounts < faultToleranceNeeded
+        resilienceType === ResilienceType.REGULAR
       ) {
-        fieldErrors.push(
-          createError({
-            path,
-            message: t(useDedicatedNodes ? 'errMsg.lessNodesDedicated' : 'errMsg.lessNodes', {
-              nodeCount: nodeCounts,
-              faultToleranceNeeded: faultToleranceNeeded
-            })
-          })
+        const regionsWithZones = values(availabilityZones).filter(
+          (zones) => zones && zones.length > 0
         );
+        const invalidNodeLevelPlacement =
+          regionsWithZones.length !== 1 || regionsWithZones[0].length !== 1;
+        if (invalidNodeLevelPlacement) {
+          fieldErrors.push(
+            createError({
+              path,
+              message: 'errMsg.nodeLevelOneRegionOneAz'
+            })
+          );
+        }
+      }
+
+      if (resilienceAndRegionsProps?.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
+        if (azCounts !== faultToleranceNeeded) {
+          fieldErrors.push(
+            createError({
+              path,
+              message: 'errMsg.expertAzCountMismatch'
+            })
+          );
+        }
+      } else {
+        if (resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.AZ_LEVEL) {
+          if (azCounts !== faultToleranceNeeded) {
+            fieldErrors.push(
+              createError({
+                path,
+                message:
+                  azCounts > faultToleranceNeeded
+                    ? 'errMsg.azCountTooMany'
+                    : 'errMsg.azCountTooFew'
+              })
+            );
+            fieldErrors.push(
+              createError({
+                path: 'availabilityZones'
+              })
+            );
+          }
+        }
+        if (
+          resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.NODE_LEVEL &&
+          nodeCounts < faultToleranceNeeded
+        ) {
+          fieldErrors.push(
+            createError({
+              path,
+              message: useDedicatedNodes ? 'errMsg.lessNodesDedicated' : 'errMsg.lessNodes'
+            })
+          );
+        }
+      }
+
+      // Preferred ranks apply only when the UI allows ranking (not NODE_LEVEL / NONE — see Zone.tsx).
+      if (
+        resilienceType === ResilienceType.REGULAR &&
+        resilienceAndRegionsProps?.faultToleranceType !== FaultToleranceType.NONE &&
+        resilienceAndRegionsProps?.faultToleranceType !== FaultToleranceType.NODE_LEVEL
+      ) {
+        fieldErrors.push(...collectPreferredRankErrors(availabilityZones, createError, path));
       }
 
       const error = new Yup.ValidationError(
@@ -81,24 +176,6 @@ export const NodesAvailabilitySchema = (
       }
       return true;
     }),
-    nodeCountPerAz: Yup.number().test('availabilityZones', 'Error', function () {
-      const preferredValues = values(this.parent.availabilityZones)
-        .flatMap((zones) => zones.map((zone: Zone) => zone.preffered))
-        .filter((v) => typeof v === 'number')
-        .sort((a, b) => a - b);
-      const unique = [...uniq(preferredValues)];
-      const min = Math.min(...unique);
-      const max = Math.max(...unique);
-
-      for (let i = min; i <= max; i++) {
-        if (!unique.includes(i)) {
-          return this.createError({
-            path: this.path,
-            message: t('errMsg.missingPreferredValue', { missingValue: i + 1 })
-          });
-        }
-      }
-      return true;
-    })
+    nodeCountPerAz: Yup.number()
   } as any);
 };

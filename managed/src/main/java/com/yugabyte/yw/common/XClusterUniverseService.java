@@ -24,6 +24,7 @@ import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -674,5 +675,10 @@ public class XClusterUniverseService {
       }
     }
     return result;
+  }
+
+  public Map<UUID, XClusterConfig> getXClusterConfigsByUuids(Collection<UUID> uuids) {
+    return XClusterConfig.getByUuids(uuids).stream()
+        .collect(Collectors.toMap(XClusterConfig::getUuid, c -> c));
   }
 }

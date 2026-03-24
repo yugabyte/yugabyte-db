@@ -4,8 +4,9 @@ headerTitle: CDC using gRPC replication protocol
 linkTitle: gRPC protocol
 description: CDC using YugabyteDB gRPC replication protocol.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
+cascade:
+  tags:
+    feature: early-access
 menu:
   v2025.1:
     identifier: explore-change-data-capture-grpc-replication
@@ -70,7 +71,7 @@ For reference documentation, see [YugabyteDB gRPC Connector](./debezium-connecto
 In addition, CDC support for the following features will be added in upcoming releases:
 
 * Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
-* Transaction savepoints are supported starting from v2025.1.3.0. Issue {{<issue 10936>}}.
+* Transaction savepoints are supported starting from v2025.1.4.0. Issue {{<issue 10936>}}.
 * Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 * Support for schema evolution with before image is tracked in issue {{<issue 15197>}}.
 

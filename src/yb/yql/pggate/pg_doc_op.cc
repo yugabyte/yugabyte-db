@@ -55,7 +55,7 @@ struct PgDocReadOpCachedHelper {
 
 class PgDocReadOpCached : private PgDocReadOpCachedHelper, public PgDocOp {
  public:
-  PgDocReadOpCached(const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data)
+  PgDocReadOpCached(const PgSessionPtr& pg_session, PrefetchedDataHolder data)
       : PgDocOp(pg_session, &dummy_table) {
     std::list<DocResult> results;
     for (const auto& d : *data) {
@@ -242,7 +242,7 @@ Result<PgDocResponse::Data> PgDocResponse::Get(PgSession& session) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocOp::PgDocOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, const Sender& sender)
+PgDocOp::PgDocOp(const PgSessionPtr& pg_session, PgTable* table, const Sender& sender)
     : pg_session_(pg_session), table_(*table), sender_(sender) {}
 
 Status PgDocOp::ExecuteInit(const YbcPgExecParameters *exec_params) {
@@ -388,29 +388,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
-  YbcReadPointHandle catalog_read_time_serial_no = YbcInvalidReadPointHandle;
-  TxnReadPoint read_point_before_catalog_op{};
-  if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table()) {
-    // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
-    // writes.
-    force_non_bufferable = ForceNonBufferable::kTrue;
-    read_point_before_catalog_op = pg_session_->GetCurrentReadPointState();
-    // Switch to catalog snapshot's read time serial no.
-    catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
-        table_->pg_table_id().object_oid, true /* create_if_not_exists */);
-    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
-      LOG(INFO) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-                << " and saving read time serial no "
-                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
-                << read_point_before_catalog_op.txn;
-    }
-    RSTATUS_DCHECK(
-        catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
-    // Avoid picking safe time for catalog reads.
-    RETURN_NOT_OK(pg_session_->EnsureReadPoint());
-  }
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
       {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, is_write));
@@ -423,15 +400,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     }
   }
 
-  if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table()) {
-    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
-      LOG(INFO) << "Restoring read time serial no after catalog operation to "
-                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
-                << read_point_before_catalog_op.txn;
-    }
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(read_point_before_catalog_op));
-  }
   return Status::OK();
 }
 
@@ -758,12 +726,12 @@ bool InPermutationBuilder::TargetsAreValid(const std::vector<size_t>& all_target
 
 //-------------------------------------------------------------------------------------------------
 
-PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocReadOp::PgDocReadOp(const PgSessionPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op)
     : PgDocOp(pg_session, table), read_op_(std::move(read_op)) {}
 
-PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocReadOp::PgDocReadOp(const PgSessionPtr& pg_session,
                          PgTable* table,
                          PgsqlReadOpPtr read_op,
                          const Sender& sender)
@@ -1496,7 +1464,7 @@ void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocWriteOp::PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
+PgDocWriteOp::PgDocWriteOp(const PgSessionPtr& pg_session,
                            PgTable* table,
                            PgsqlWriteOpPtr write_op)
     : PgDocOp(pg_session, table), write_op_(std::move(write_op)) {
@@ -1527,7 +1495,7 @@ LWPgsqlWriteRequestPB& PgDocWriteOp::GetWriteOp(int op_index) {
 }
 
 PgDocOp::SharedPtr MakeDocReadOpWithData(
-    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data) {
+    const PgSessionPtr& pg_session, PrefetchedDataHolder data) {
   return std::make_shared<PgDocReadOpCached>(pg_session, std::move(data));
 }
 

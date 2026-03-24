@@ -1060,16 +1060,11 @@ explain (hints on, costs off) select 1 from t2, t3, t1 where a1=a2 and a1=a3 and
 
 -- Check hint generation for partitioned tables.
 /*
- * Unexpected error until https://github.com/yugabyte/yugabyte-db/issues/28070 is fixed.
+ * Make sure individual partitions can be hinted corretcly.
  */
 explain (hints on, costs off) select count(*) from prt1 p1 join prt2 p2 on p1.a=p2.a;
-INFO:  pg_hint_plan: hint syntax error at or near " Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) "
-DETAIL:  MergeJoin hint requires at least two relations.
-WARNING:  errors found in hints
-WARNING:  error in hint: MergeJoin(p2)
-WARNING:  unused hints, and/or hints causing errors, exist
-                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                     
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                       
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
    ->  Merge Join
          Merge Cond: (p1.a = p2.a)
@@ -1088,14 +1083,14 @@ WARNING:  unused hints, and/or hints causing errors, exist
                      ->  Seq Scan on prt2_p1 p2_1
                      ->  Seq Scan on prt2_p2 p2_2
                      ->  Seq Scan on prt2_p3 p2_3
- Generated hints: /*+ MergeJoin(p2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((p1 p2)) MergeJoin(p1 p2)  IndexOnlyScan(p1_1 iprt1_p1_a_asc)  SeqScan(p1_2)  SeqScan(p1_3)  SeqScan(p2_1)  SeqScan(p2_2)  SeqScan(p2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (19 rows)
 
 -- Partitioned table where all partition-wise joins are forced to be merge joins. Should give no warnings/errors.
 SET enable_partitionwise_join to true;
 /*+ Mergejoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                 QUERY PLAN                  
----------------------------------------------
+                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Merge Append
    Sort Key: t1.a
    ->  Merge Join
@@ -1125,7 +1120,7 @@ SET enable_partitionwise_join to true;
          ->  Sort
                Sort Key: t2_3.b
                ->  Seq Scan on prt2_p3 t2_3
- Generated hints: none
+ Generated hints: /*+  Leading((t1_1 t2_1)) SeqScan(t1_1) SeqScan(t2_1) MergeJoin(t1_1 t2_1)  Leading((t1_2 t2_2)) SeqScan(t1_2) SeqScan(t2_2) MergeJoin(t1_2 t2_2)  Leading((t1_3 t2_3)) SeqScan(t1_3) SeqScan(t2_3) MergeJoin(t1_3 t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (30 rows)
 
 -- Hint/join 2 partitions individually and union results. Should be OK.
@@ -1157,8 +1152,8 @@ SET enable_partitionwise_join to true;
 -- Turn off join partitioning and try hinting. Should work fine.
 SET enable_partitionwise_join to false;
 /*+ Leading((t2 t1)) HashJoin(t1 t2) */ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Hash Join
@@ -1175,13 +1170,13 @@ SET enable_partitionwise_join to false;
                            Storage Filter: (b = 0)
                      ->  Seq Scan on prt1_p3 t1_3
                            Storage Filter: (b = 0)
- Generated hints: /*+ Leading((t2 t1)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t2 t1)) HashJoin(t1 t2)  SeqScan(t2_1)  SeqScan(t2_2)  SeqScan(t2_3)  SeqScan(t1_1)  SeqScan(t1_2)  SeqScan(t1_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 -- Make sure the internal hint test passes.
 explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Hash Join
@@ -1198,7 +1193,7 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
                      ->  Seq Scan on prt2_p1 t2_1
                      ->  Seq Scan on prt2_p2 t2_2
                      ->  Seq Scan on prt2_p3 t2_3
- Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2)  SeqScan(t1_1)  SeqScan(t1_2)  SeqScan(t1_3)  SeqScan(t2_1)  SeqScan(t2_2)  SeqScan(t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 -- Test hint table using query id instead of query text.
@@ -1651,8 +1646,8 @@ reset yb_prefer_bnl;
 -- GH28072 - Make sure the internal hint test passes.
 set yb_enable_parallel_append = on;
 explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.b = 0 ORDER BY t1.a, t2.b;
-                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                               
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
    Sort Key: t1.a
    ->  Hash Join
@@ -1669,7 +1664,7 @@ explain (hints on, costs off) SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t
                      ->  Seq Scan on prt2_p1 t2_1
                      ->  Seq Scan on prt2_p2 t2_2
                      ->  Seq Scan on prt2_p3 t2_3
- Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
+ Generated hints: /*+ Leading((t1 t2)) HashJoin(t1 t2)  SeqScan(t1_1)  SeqScan(t1_2)  SeqScan(t1_3)  SeqScan(t2_1)  SeqScan(t2_2)  SeqScan(t2_3) Set(yb_enable_optimizer_statistics off) Set(yb_enable_base_scans_cost_model off) Set(enable_hashagg on) Set(enable_material on) Set(enable_memoize on) Set(enable_sort on) Set(enable_incremental_sort on) Set(max_parallel_workers_per_gather 2) Set(parallel_tuple_cost 0.18) Set(parallel_setup_cost 1700.00) Set(min_parallel_table_scan_size 1024) Set(yb_prefer_bnl on) Set(yb_bnl_batch_size 1024) Set(yb_fetch_row_limit 1024) Set(from_collapse_limit 8) Set(join_collapse_limit 8) Set(geqo false) */
 (17 rows)
 
 reset yb_enable_parallel_append;

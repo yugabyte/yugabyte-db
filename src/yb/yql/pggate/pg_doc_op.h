@@ -359,7 +359,7 @@ class PgDocOp {
 
  protected:
   PgDocOp(
-    const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+    const PgSessionPtr& pg_session, PgTable* table,
     const Sender& = Sender(&PgDocOp::DefaultSender));
 
   // Populate Protobuf requests using the collected information for this DocDB operator.
@@ -383,7 +383,7 @@ class PgDocOp {
   bool HasActiveOps() const;
 
   // Session control.
-  PgSession::ScopedRefPtr pg_session_;
+  PgSessionPtr pg_session_;
 
   // Target table.
   PgTable& table_;
@@ -473,9 +473,9 @@ class PgDocOp {
 
 class PgDocReadOp : public PgDocOp {
  public:
-  PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
+  PgDocReadOp(const PgSessionPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
   PgDocReadOp(
-      const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+      const PgSessionPtr& pg_session, PgTable* table,
       PgsqlReadOpPtr read_op, const Sender& sender);
 
   Status ExecuteInit(const YbcPgExecParameters *exec_params) override;
@@ -637,7 +637,7 @@ class PgDocReadOp : public PgDocOp {
 
 class PgDocWriteOp : public PgDocOp {
  public:
-  PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
+  PgDocWriteOp(const PgSessionPtr& pg_session,
                PgTable* table,
                PgsqlWriteOpPtr write_op);
 
@@ -678,6 +678,6 @@ class PgDocWriteOp : public PgDocOp {
 };
 
 PgDocOp::SharedPtr MakeDocReadOpWithData(
-    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
+    const PgSessionPtr& pg_session, PrefetchedDataHolder data);
 
 }  // namespace yb::pggate

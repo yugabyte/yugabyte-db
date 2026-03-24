@@ -39,6 +39,10 @@
 
 namespace yb::pgwrapper {
 
+YB_DEFINE_TYPED_ENUM(PGResultFormat, int,
+    ((kText, 0))
+    ((kBinary, 1)));
+
 struct PGConnClose {
   void operator()(PGconn* conn) const;
 };
@@ -160,6 +164,7 @@ Result<std::string> ToString(const PGresult* result, int row, int column);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
+std::string PqEscapeStringConn(const std::string& input);
 
 namespace libpq_utils::internal {
 
@@ -347,7 +352,10 @@ class PGConn {
 
   ConnStatusType ConnStatus();
 
-  Result<PGResultPtr> Fetch(const std::string& command);
+  Result<PGResultPtr> Fetch(
+      const std::string& command,
+      std::optional<PGResultFormat> data_format = std::nullopt,
+      const std::vector<const char*>& params = {});
 
   template <class... Args>
   requires(sizeof...(Args) > 0)

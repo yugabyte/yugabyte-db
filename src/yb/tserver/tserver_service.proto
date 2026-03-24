@@ -90,9 +90,6 @@ service TabletServerService {
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB) {
     option (yb.rpc.send_metadata) = true;
   }
-  // Change the status tablet id used for a transaction.
-  rpc UpdateTransactionStatusLocation(UpdateTransactionStatusLocationRequestPB)
-      returns (UpdateTransactionStatusLocationResponsePB);
   rpc UpdateTransactionWaitingForStatus(UpdateTransactionWaitingForStatusRequestPB)
       returns (UpdateTransactionWaitingForStatusResponsePB);
   rpc ProbeTransactionDeadlock(ProbeTransactionDeadlockRequestPB)
@@ -545,20 +542,6 @@ message AbortTransactionResponsePB {
   optional fixed64 coordinator_safe_time = 5;
 }
 
-message UpdateTransactionStatusLocationRequestPB {
-  optional bytes tablet_id = 1;
-  optional bytes transaction_id = 2;
-  optional fixed64 propagated_hybrid_time = 3;
-
-  // ID of new status tablet that the transaction will be using.
-  optional bytes new_status_tablet_id = 4;
-}
-
-message UpdateTransactionStatusLocationResponsePB {
-  // Error message, if any.
-  optional TabletServerErrorPB error = 1;
-}
-
 message GetSplitKeyRequestPB {
   required bytes tablet_id = 1;
   optional fixed64 propagated_hybrid_time = 2;
@@ -716,6 +699,15 @@ message ConnectivityStateResponsePB {
 message PgRemoteExecRequestPB {
   optional string query = 1;
   optional string tserver_uuid = 2;
+
+  message PgQueryParamPB {
+    // Text-format value. Absent when the parameter is NULL.
+    optional string value = 1;
+  }
+
+  // One entry per query parameter ($1, $2, ...).
+  // A param with no value set represents SQL NULL.
+  repeated PgQueryParamPB params = 3;
 }
 
 message PgRemoteExecResponsePB {

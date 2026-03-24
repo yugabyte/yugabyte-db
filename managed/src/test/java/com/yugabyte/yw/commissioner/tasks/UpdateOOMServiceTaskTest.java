@@ -100,7 +100,7 @@ public class UpdateOOMServiceTaskTest extends CommissionerBaseTest {
       agentMap.put(nodeDetails.cloudInfo.private_ip, nodeAgent);
     }
 
-    when(mockNodeUniverseManager.maybeGetNodeAgent(any(), any(), anyBoolean()))
+    when(mockNodeUniverseManager.maybeUpgradeAndGetNodeAgent(any(), any(), anyBoolean()))
         .then(
             invocation -> {
               NodeDetails node = invocation.getArgument(1);

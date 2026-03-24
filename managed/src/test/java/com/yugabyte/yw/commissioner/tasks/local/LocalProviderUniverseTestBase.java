@@ -166,7 +166,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
-  private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_FAILED_UNIVERSE = false;
   private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
@@ -690,9 +690,13 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     taskParams.upsertPrimaryCluster(userIntent, null, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
-    taskParams.expectedUniverseVersion = -1;
     paramsCustomizer.accept(taskParams);
-    // CREATE
+    return createUniverse(taskParams);
+  }
+
+  protected Universe createUniverse(UniverseDefinitionTaskParams taskParams)
+      throws InterruptedException {
+    taskParams.expectedUniverseVersion = -1;
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo =
         waitForTask(universeResp.taskUUID, Universe.getOrBadRequest(universeResp.universeUUID));

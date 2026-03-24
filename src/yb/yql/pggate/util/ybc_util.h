@@ -175,6 +175,8 @@ void YBCPgSetClampUncertaintyWindow(bool clamp);
 
 bool YBCIsAutoAnalyzeEnabled();
 
+void YBCSetupCgroups();
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

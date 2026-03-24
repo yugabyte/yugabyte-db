@@ -91,6 +91,9 @@ class ObjectLockSharedStateManager {
 
   void SetupShared(ObjectLockSharedState& shared);
 
+  void PauseAndResetSharedLockState();
+  void ResumeSharedLockState();
+
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
   size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);

@@ -22,7 +22,7 @@ import {
   RunTimeConfig
 } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
-import { FAULT_TOLERANCE_TYPE, REPLICATION_FACTOR } from './fields/FieldNames';
+import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from './fields/FieldNames';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
@@ -43,10 +43,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-              {
-                title: t('nodesAndAvailabilityZone')
-              }
-            ]
+            {
+              title: t('nodesAndAvailabilityZone')
+            }
+          ]
           : [])
       ]
     },
@@ -124,26 +124,17 @@ export const assignRegionsAZNodeByReplicationFactor = (
 ): NodeAvailabilityProps['availabilityZones'] => {
   const {
     regions = [],
-    replicationFactor,
+    resilienceFactor,
     resilienceType,
     faultToleranceType,
     singleAvailabilityZone
   } = resilienceAndRegionsSettings;
 
-  if (
-    resilienceType === ResilienceType.SINGLE_NODE ||
-    faultToleranceType === FaultToleranceType.NONE
-  ) {
-    let singleZone: Region | AvailabilityZone | undefined;
-    if (resilienceType === ResilienceType.SINGLE_NODE) {
-      singleZone = singleAvailabilityZone
-        ? regions[0].zones.find((region) => region.code === singleAvailabilityZone)
-        : regions[0];
-    }
-    if (resilienceAndRegionsSettings.faultToleranceType === FaultToleranceType.NONE) {
-      singleZone = regions[0].zones[0];
-    }
-    if (singleZone) {
+  if (resilienceType === ResilienceType.SINGLE_NODE) {
+    const singleZone: Region | AvailabilityZone | undefined = singleAvailabilityZone
+      ? regions[0]?.zones.find((region) => region.code === singleAvailabilityZone)
+      : regions[0];
+    if (singleZone && regions[0]) {
       return {
         [regions[0].code]: [
           {
@@ -157,9 +148,107 @@ export const assignRegionsAZNodeByReplicationFactor = (
     return {};
   }
 
+  // None and node-level resilience: only the first region and a single AZ (same placement shape).
+  if (
+    faultToleranceType === FaultToleranceType.NONE ||
+    faultToleranceType === FaultToleranceType.NODE_LEVEL
+  ) {
+    const firstRegion = regions[0];
+    const singleZone = firstRegion?.zones?.[0];
+    if (!firstRegion || !singleZone) {
+      return {};
+    }
+    const nodeCount =
+      faultToleranceType === FaultToleranceType.NODE_LEVEL
+        ? getFaultToleranceNeeded(resilienceFactor)
+        : 1;
+    return {
+      [firstRegion.code]: [
+        {
+          ...singleZone,
+          nodeCount,
+          preffered: 0
+        }
+      ]
+    };
+  }
+
   const updatedRegions: NodeAvailabilityProps['availabilityZones'] = {};
 
-  const faultToleranceNeeded = getFaultToleranceNeeded(replicationFactor);
+  const faultToleranceNeeded = getFaultToleranceNeeded(resilienceFactor);
+
+  if (faultToleranceType === FaultToleranceType.AZ_LEVEL) {
+    // AZ-level defaults: split required AZs across regions (same remainder pattern as
+    // getNodeCountNeeded), then spill forward when a region has fewer zones than its target.
+    const selectedZonesByRegion: NodeAvailabilityProps['availabilityZones'] = {};
+    const regionCount = regions.length;
+    const N = faultToleranceNeeded;
+
+    regions.forEach((region) => {
+      selectedZonesByRegion[region.code] = [];
+    });
+
+    regions.forEach((region, index) => {
+      const targetAzs = getNodeCountNeeded(N, regionCount, index);
+      const toTake = Math.min(targetAzs, region.zones.length);
+      for (let i = 0; i < toTake; i++) {
+        selectedZonesByRegion[region.code].push({
+          ...region.zones[i],
+          nodeCount: 1, // placeholder; distributed below.
+          preffered: i
+        });
+      }
+    });
+
+    let selectedAzCount = values(selectedZonesByRegion).reduce((sum, zones) => sum + zones.length, 0);
+
+    while (selectedAzCount < N) {
+      let progressed = false;
+      for (const region of regions) {
+        if (selectedAzCount >= N) break;
+        const already = selectedZonesByRegion[region.code].length;
+        if (already >= region.zones.length) continue;
+        const zoneIndex = already;
+        selectedZonesByRegion[region.code].push({
+          ...region.zones[zoneIndex],
+          nodeCount: 1,
+          preffered: zoneIndex
+        });
+        selectedAzCount += 1;
+        progressed = true;
+        break;
+      }
+      if (!progressed) break;
+    }
+
+    if (selectedAzCount === 0) {
+      return selectedZonesByRegion;
+    }
+
+    let nodesRemaining = faultToleranceNeeded;
+    values(selectedZonesByRegion).forEach((zones) => {
+      zones.forEach((zone) => {
+        zone.nodeCount = 1;
+        nodesRemaining -= 1;
+      });
+    });
+
+    // Distribute any remaining nodes one-by-one in stable order.
+    while (nodesRemaining > 0) {
+      let assignedInPass = false;
+      values(selectedZonesByRegion).forEach((zones) => {
+        zones.forEach((zone) => {
+          if (nodesRemaining <= 0) return;
+          zone.nodeCount += 1;
+          nodesRemaining -= 1;
+          assignedInPass = true;
+        });
+      });
+      if (!assignedInPass) break;
+    }
+
+    return selectedZonesByRegion;
+  }
 
   values(regions).forEach((region, index) => {
     const nodeCount = getNodeCountNeeded(faultToleranceNeeded, regions.length, index);
@@ -250,14 +339,14 @@ export const mapCreateUniversePayload = (
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: otherAdvancedSettings?.enableIPV6,
+        enable_ipv6: otherAdvancedSettings.enableIPV6 ?? false,
         ...(otherAdvancedSettings?.enableExposingService && {
           enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
         })
       },
       clusters: [
         {
-          replication_factor: resilienceAndRegionsSettings.replicationFactor,
+          replication_factor: resilienceAndRegionsSettings.resilienceFactor,
           cluster_type: ClusterType.PRIMARY,
           use_spot_instance: instanceSettings.useSpotInstance,
           audit_log_config: {
@@ -285,17 +374,17 @@ export const mapCreateUniversePayload = (
             enable_exposing_service: 'UNEXPOSED',
             ...(proxySettings.enableProxyServer
               ? {
-                  proxy_config: {
-                    http_proxy:
-                      proxySettings.enableProxyServer && proxySettings.webProxy
-                        ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
-                        : '',
-                    https_proxy: proxySettings.secureWebProxy
-                      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                proxy_config: {
+                  http_proxy:
+                    proxySettings.enableProxyServer && proxySettings.webProxy
+                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
                       : '',
-                    no_proxy_list: proxySettings.byPassProxyListValues ?? []
-                  }
+                  https_proxy: proxySettings.secureWebProxy
+                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
+                    : '',
+                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
                 }
+              }
               : {})
           },
           num_nodes:
@@ -320,7 +409,7 @@ export const mapCreateUniversePayload = (
             {
               name: 'default',
               default_partition: true,
-              replication_factor: resilienceAndRegionsSettings.replicationFactor,
+              replication_factor: resilienceAndRegionsSettings.resilienceFactor,
               placement: {
                 cloud_list: [
                   {
@@ -351,12 +440,12 @@ export const getPlacementRegions = (
   resilienceAndRegionsSettings: ResilienceAndRegionsProps,
   availabilityZones?: NodeAvailabilityProps['availabilityZones']
 ) => {
-  const { replicationFactor, resilienceType } = resilienceAndRegionsSettings;
+  const { resilienceFactor, resilienceType } = resilienceAndRegionsSettings;
 
   const azs =
     availabilityZones ?? assignRegionsAZNodeByReplicationFactor(resilienceAndRegionsSettings);
 
-  // For single node, replication factor should be 1 for the single AZ
+  // For single node, resilience factor should be 1 for the single AZ
   if (resilienceType === ResilienceType.SINGLE_NODE) {
     const region = resilienceAndRegionsSettings.regions[0];
 
@@ -407,8 +496,8 @@ export const getPlacementRegions = (
   // Each AZ should get at least 1 replica if possible, then distribute remaining evenly
   // Ensure the sum of all AZ replication_factors equals the cluster replication_factor
   const baseReplicasPerAZ =
-    totalAZsWithNodes > 0 ? Math.floor(replicationFactor / totalAZsWithNodes) : 0;
-  const extraReplicas = totalAZsWithNodes > 0 ? replicationFactor % totalAZsWithNodes : 0;
+    totalAZsWithNodes > 0 ? Math.floor(resilienceFactor / totalAZsWithNodes) : 0;
+  const extraReplicas = totalAZsWithNodes > 0 ? resilienceFactor % totalAZsWithNodes : 0;
 
   let replicaIndex = 0;
   const regionList: PlacementRegion[] = keys(azsWithNodes).map((regionuuid) => {
@@ -502,10 +591,10 @@ const fillNodeSpec = (
       volume_size: deviceInfo.numVolumes * deviceInfo.volumeSize!,
       disk_iops: deviceInfo.diskIops!,
       throughput: deviceInfo.throughput!,
-      cloud_volume_encryption: {
-        enable_volume_encryption: enableEbsVolumeEncryption ?? false,
-        kms_config_uuid: enableEbsVolumeEncryption ? ebsKmsConfigUUID ?? '' : ''
-      }
+      // cloud_volume_encryption: {
+      //   enable_volume_encryption: enableEbsVolumeEncryption ?? false,
+      //   kms_config_uuid: enableEbsVolumeEncryption ? ebsKmsConfigUUID ?? '' : ''
+      // }
     }
   };
 
@@ -572,34 +661,34 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
   };
 };
 
-export const computeFaultToleranceTypeFromProvider = (
+export const computeResilienceTypeFromProvider = (
   provider: Provider
 ): {
   [FAULT_TOLERANCE_TYPE]: FaultToleranceType;
-  [REPLICATION_FACTOR]: number;
+  [RESILIENCE_FACTOR]: number;
 } => {
   const numOfRegions = provider.regions.length;
   const numOfAZs = ((provider.regions as unknown) as Region[]).reduce(
     (acc, region) => acc + region.zones.length,
     0
   );
-  if (numOfRegions >= 3) {
+  if (numOfRegions > 1) {
     return {
-      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.REGION_LEVEL,
-      [REPLICATION_FACTOR]: numOfRegions >= 7 ? 3 : numOfRegions > 4 ? 2 : 1
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
+      [RESILIENCE_FACTOR]:  1
     };
   }
 
   if (numOfAZs >= 3) {
     return {
       [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
-      [REPLICATION_FACTOR]: numOfAZs >= 7 ? 3 : numOfAZs > 5 ? 2 : 1
+      [RESILIENCE_FACTOR]: 1
     };
   }
 
   return {
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
-    [REPLICATION_FACTOR]: 3
+    [RESILIENCE_FACTOR]: 1
   };
 };
 
@@ -609,4 +698,25 @@ export const isV2CreateEditUniverseEnabled = (runtimeConfigs: RunTimeConfig) => 
       (config) => config.key === RuntimeConfigKey.ENABLE_V2_EDIT_UNIVERSE_UI
     )?.value === 'true'
   );
+};
+
+export const getAZCount = (availabilityZones: NodeAvailabilityProps['availabilityZones']) => {
+  return values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);
+};
+
+export const inferResilience = (resilience: ResilienceAndRegionsProps, nodesAndAvailability: NodeAvailabilityProps) => {
+  const { regions } = resilience;
+  const { replicationFactor = 1, availabilityZones } = nodesAndAvailability;
+
+  const azCount = getAZCount(availabilityZones);
+
+  if (regions.length > (replicationFactor)) {
+    return null;
+  }
+  if (regions.length === replicationFactor) {
+    return 'REGION_LEVEL';
+  }
+
+  return azCount === replicationFactor ? 'AZ_LEVEL' : 'NODE_LEVEL';
+
 };

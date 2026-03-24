@@ -2245,7 +2245,7 @@ bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
 bool		yb_enable_update_reltuples_after_create_index = false;
 bool		yb_enable_index_backfill_column_projection = false;
-int			yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
+int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
 bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
@@ -2763,8 +2763,9 @@ YBAddDdlTxnState(YbDdlMode mode)
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	ddl_transaction_state.num_create_function_stmts =
 		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());

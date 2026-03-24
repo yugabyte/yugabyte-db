@@ -10,6 +10,7 @@ import static play.inject.Bindings.bind;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.TaskQueue;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
@@ -58,6 +59,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public TelemetryProviderService mockTelemetryProviderService =
       mock(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
+  public RedactSecretsFromAudit mockRedactSecretsFromAudit = mock(RedactSecretsFromAudit.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
   public AccessManager mockAccessManager = mock(AccessManager.class);
@@ -137,6 +139,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(TelemetryProviderService.class).toInstance(mockTelemetryProviderService))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
+                .overrides(
+                    bind(RedactSecretsFromAudit.class).toInstance(mockRedactSecretsFromAudit))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
                 .overrides(bind(SessionStore.class).toInstance(mockSessionStore))

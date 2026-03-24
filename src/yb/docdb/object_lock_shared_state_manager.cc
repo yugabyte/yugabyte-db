@@ -86,15 +86,35 @@ void ObjectLockSharedStateManager::SetupShared(ObjectLockSharedState& shared) {
   ParentProcessGuard g;
   std::lock_guard lock(setup_mutex_);
 
-  DCHECK(!shared_.load(std::memory_order_relaxed));
+  DCHECK(!shared_.load(std::memory_order_acquire));
 
   shared_activate_ = shared.Activate(std::move(pre_setup_locks_));
   shared_.store(&shared, std::memory_order_release);
 }
 
+void ObjectLockSharedStateManager::PauseAndResetSharedLockState() {
+  auto* shared = shared_.load(std::memory_order_acquire);
+  if (PREDICT_FALSE(!shared)) {
+    return;
+  }
+
+  ParentProcessGuard g;
+  shared->PauseAndReset();
+}
+
+void ObjectLockSharedStateManager::ResumeSharedLockState() {
+  auto* shared = shared_.load(std::memory_order_acquire);
+  if (PREDICT_FALSE(!shared)) {
+    return;
+  }
+
+  ParentProcessGuard g;
+  shared->Resume();
+}
+
 size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
-  auto* shared = shared_.load(std::memory_order_relaxed);
+  auto* shared = shared_.load(std::memory_order_acquire);
   return CallWithRequestConsumer(
       shared,
       [shared](auto&& c) PARENT_PROCESS_ONLY { return shared->ConsumePendingLockRequests(c); },
@@ -104,7 +124,7 @@ size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
 size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
-  auto* shared = shared_.load(std::memory_order_relaxed);
+  auto* shared = shared_.load(std::memory_order_acquire);
   if (PREDICT_FALSE(!shared)) {
     std::lock_guard lock(setup_mutex_);
     shared = shared_.load(std::memory_order_acquire);
@@ -126,7 +146,7 @@ size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
 
 void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     const ObjectLockPrefix& object_id, LockState lock_state) {
-  auto* shared = shared_.load(std::memory_order_relaxed);
+  auto* shared = shared_.load(std::memory_order_acquire);
   if (PREDICT_FALSE(!shared)) {
     std::lock_guard lock(setup_mutex_);
     shared = shared_.load(std::memory_order_acquire);
@@ -143,11 +163,11 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
   ParentProcessGuard g;
   return registry_.GetOwnerInfo(
-      DCHECK_NOTNULL(shared_.load(std::memory_order_relaxed))->TEST_last_owner())->txn_id;
+      DCHECK_NOTNULL(shared_.load(std::memory_order_acquire))->TEST_last_owner())->txn_id;
 }
 
 [[nodiscard]] bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
-  auto* shared = shared_.load(std::memory_order_relaxed);
+  auto* shared = shared_.load(std::memory_order_acquire);
   ParentProcessGuard g;
   return shared ? shared->TEST_has_exclusive_intents() : 0;
 }

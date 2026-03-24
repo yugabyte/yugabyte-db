@@ -35,6 +35,9 @@ class MasterTabletServer : public tserver::TabletServerIf,
   tserver::TSTabletManager* tablet_manager() const override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
   tserver::TSLocalLockManagerPtr ts_local_lock_manager() const override;
+#ifdef __linux__
+  tserver::TServerCgroupManager* cgroup_manager() const override { return nullptr; }
+#endif
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;

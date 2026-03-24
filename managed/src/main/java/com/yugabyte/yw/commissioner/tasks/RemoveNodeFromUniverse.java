@@ -79,23 +79,6 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     runBasicChecks(getUniverse());
   }
 
-  // Check that there is a place to move the tablets and if not, make sure there are no tablets
-  // assigned to this tserver. Otherwise, do not allow the remove node task to succeed.
-  public void performPrecheck() {
-    Universe universe = getUniverse();
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-
-    if (!isTabletMovementAvailable(taskParams().nodeName)) {
-      log.debug(
-          "Tablets have nowhere to move off of tserver on node: {}. Checking if there are still"
-              + " tablets assigned to it. A healthy tserver should not be removed.",
-          currentNode.getNodeName());
-      // TODO: Move this into a subtask.
-      checkNoTabletsOnNode(universe, currentNode);
-    }
-    log.debug("Pre-check succeeded");
-  }
-
   @Override
   protected void createPrecheckTasks(Universe universe) {
     // Check again after locking.
@@ -103,7 +86,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     boolean alwaysWaitForDataMove =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
     if (alwaysWaitForDataMove) {
-      performPrecheck();
+      createCheckTabletsMovementAvailableTask(taskParams().nodeName);
     }
     addBasicPrecheckTasks();
     if (isFirstTry()) {
@@ -167,7 +150,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
               Collections.singleton(currentNode), universe.getUniverseDetails().clusters)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      if (alwaysWaitForDataMove || isTabletMovementAvailable(taskParams().nodeName)) {
+      if (alwaysWaitForDataMove) {
         createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 

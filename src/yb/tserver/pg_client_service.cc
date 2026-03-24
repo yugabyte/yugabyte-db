@@ -871,7 +871,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
                 tablet_server_.ObjectLockSharedStateManager()
                     ? &tablet_server_.ObjectLockSharedStateManager()->registry()
                     : nullptr,
-            .transaction_manager_provider = transaction_manager_provider_},
+            .transaction_manager_provider = transaction_manager_provider_,
+#ifdef __linux__
+            .cgroup_manager = tablet_server_.cgroup_manager(),
+#endif
+            },
         cdc_state_table_(client_future_),
         txn_snapshot_manager_(
             instance_id_,

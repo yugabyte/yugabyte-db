@@ -246,6 +246,7 @@ set(YB_BACKUP_TEST_BASE_SRCS
     yb-backup/yb-backup-test_base.cc)
 set(YB_BACKUP_TEST_BASE_DEPS
     pg_wrapper_test_base
+    yb_ysql_binary_runner
     admin-test-base)
 ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}

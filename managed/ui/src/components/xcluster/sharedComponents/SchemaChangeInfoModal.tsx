@@ -332,7 +332,7 @@ export const SchemaChangeModeInfoModal = (props: SchemaChangeModeInfoModalProps)
           </Typography>
           {props.isConfigInterface ? (
             <Typography variant="body2" className={classes.learnMoreLink}>
-              <DocumentationIcon />
+              <DocumentationIcon width={16} height={16} />
               <a
                 href={
                   props.isDrInterface
@@ -348,7 +348,7 @@ export const SchemaChangeModeInfoModal = (props: SchemaChangeModeInfoModalProps)
           ) : (
             <div className={classes.universeLevelLearnMoreContainer}>
               <Typography variant="body2" className={classes.universeLevelLearnMoreInstructions}>
-                <DocumentationIcon />
+                <DocumentationIcon width={16} height={16} />
                 {t('universeLevelLearnMore')}
               </Typography>
               <ul>

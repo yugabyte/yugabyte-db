@@ -32,8 +32,9 @@ ALTER OPERATOR FAMILY int_fam USING btree
 ALTER POLICY my_policy ON employees
     RENAME TO hr_select_policy;
 
--- ALTER PROCEDURE --- Not Supported on YB yet
--- ALTER PROCEDURE increment_salary(integer, integer) RENAME TO increase_salary;
+-- ALTER PROCEDURE
+ALTER PROCEDURE increment_salary(name CHARACTER VARYING, increment NUMERIC)
+    RENAME TO increase_salary;
 
 -- ALTER RULE --- Not Supported on YB yet
 -- ALTER RULE replace_insert ON employees

@@ -7,9 +7,11 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 @ApiModel(description = "Universe Logs Exporter Config")
 public class UniverseQueryLogsExporterConfig extends UniverseExporterConfig {
   @ApiModelProperty(value = "Maximum batch size for query logs exporter", accessMode = READ_WRITE)

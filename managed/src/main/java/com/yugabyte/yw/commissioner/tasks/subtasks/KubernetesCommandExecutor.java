@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.UpgradeDetails;
 import com.yugabyte.yw.models.helpers.UpgradeDetails.YsqlMajorVersionUpgradeState;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.WellKnownIssuerKind;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Service;
@@ -261,6 +262,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Set<String> deleteServiceNames;
     // Opentelemetry collector related params
     public AuditLogConfig auditLogConfig = null;
+    public QueryLogConfig queryLogConfig = null;
     // Only set false for create universe case initially
     public boolean masterJoinExistingCluster = true;
 
@@ -1379,21 +1381,28 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Add overrides for OpenTelemetry
-    if (primaryClusterIntent.auditLogConfig != null) {
+    if (primaryClusterIntent.auditLogConfig != null
+        || primaryClusterIntent.queryLogConfig != null) {
       AuditLogConfig auditLogConfig = primaryClusterIntent.auditLogConfig;
-      tserverGFlags.put(
-          GFlagsUtil.YSQL_PG_CONF_CSV,
+      QueryLogConfig queryLogConfig = primaryClusterIntent.queryLogConfig;
+      String combinedPGConfCSV =
           GFlagsUtil.mergeCSVs(
               tserverGFlags.getOrDefault(GFlagsUtil.YSQL_PG_CONF_CSV, ""),
               GFlagsUtil.getYsqlPgConfCsv(auditLogConfig),
-              true));
+              true);
+      combinedPGConfCSV =
+          GFlagsUtil.mergeCSVs(
+              combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
+      tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
       overrides.put(
           "otelCollector",
           otelCollectorConfigGenerator.getOtelHelmValues(
               auditLogConfig,
+              queryLogConfig,
               GFlagsUtil.getLogLinePrefix(
                   primaryClusterIntent.queryLogConfig,
-                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
+                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+              primaryClusterIntent.ybSoftwareVersion));
     }
 
     if (!tserverGFlags.isEmpty()) {

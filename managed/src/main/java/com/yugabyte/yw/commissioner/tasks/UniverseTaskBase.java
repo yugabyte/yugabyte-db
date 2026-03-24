@@ -5152,6 +5152,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return getOrCreateExecutionContext().isFollowerLagCheckEnabled();
   }
 
+  public void addToBlackListTask(
+      Collection<NodeDetails> addNodes,
+      boolean isLeaderBlacklist,
+      SubTaskGroupType subTaskGroupType) {
+    if (addNodes.isEmpty()) {
+      return;
+    }
+    createModifyBlackListTask(addNodes, Collections.emptyList(), isLeaderBlacklist)
+        .setSubTaskGroupType(subTaskGroupType);
+  }
+
+  public void removeFromBlackListTask(
+      Collection<NodeDetails> removedNodes,
+      boolean isLeaderBlacklist,
+      SubTaskGroupType subTaskGroupType) {
+    if (removedNodes.isEmpty()) {
+      return;
+    }
+    createModifyBlackListTask(Collections.emptyList(), removedNodes, isLeaderBlacklist)
+        .setSubTaskGroupType(subTaskGroupType);
+  }
+
   /**
    * Creates a task to add/remove nodes from blacklist on server.
    *

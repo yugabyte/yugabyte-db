@@ -158,11 +158,11 @@
 #include "catalog/pg_namespace_d.h"
 #include "executor/ybModifyTable.h"
 #include "pg_yb_utils.h"
+#include "postmaster/bgworker_internals.h"
 #include "postmaster/interrupt.h"
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
-#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*
@@ -339,6 +339,8 @@ static SlruCtlData NotifyCtlData;
  * SLRU_PAGES_PER_SEGMENT, for easier testing of queue-full behaviour.
  */
 #define QUEUE_MAX_PAGE			(SLRU_PAGES_PER_SEGMENT * 0x10000 - 1)
+
+bool		yb_enable_listen_notify = false;
 
 /*
  * listenChannels identifies the channels we are actually listening to
@@ -575,6 +577,23 @@ static Oid	pg_yb_notifications_relfilenode = InvalidOid;
 static List *ybNotifsPollerPendingEntries = NIL;
 static TransactionId ybNotifsPollerProcessingXid = InvalidTransactionId;
 
+/*
+ * Shared memory state used to communicate the initialization status of the
+ * 'notifications poller' background worker back to the process that started it.
+ */
+typedef enum
+{
+	YB_NOTIFS_POLLER_INIT_NOT_STARTED = 0,
+	YB_NOTIFS_POLLER_INIT_SUCCESS = 1,
+	YB_NOTIFS_POLLER_INIT_FAILED = 2
+} YbNotifsPollerInitStatus;
+
+typedef struct
+{
+	volatile YbNotifsPollerInitStatus init_status;
+	char		error_message[1024];
+} YbNotifsPollerShmemData;
+
 /* local function prototypes */
 static int	asyncQueuePageDiff(int p, int q);
 static bool asyncQueuePagePrecedes(int p, int q);
@@ -612,9 +631,12 @@ static void ybInsertPendingNotifiesToTable(void);
 /* YB: helper functions for LISTEN/UNLISTEN */
 static void ybCreateNotifsReplicationSlot(void);
 static void ybStartNotifsPollerBgWorker(void);
+static void ybCleanupListenState(void);
 static BackgroundWorkerHandle *ybShmemNotifsPollerBgwHandle(bool *found);
+static YbNotifsPollerShmemData *ybShmemNotifsPollerData(bool *found);
 
 /* YB: helper functions for 'notifications poller' bg worker */
+static void ybNotifsPollerInit(void);
 static void ybNotifsPollerLoop(void);
 static void ybNotifsPollerProcessRecord(const YbcPgRowMessage *record);
 static void ybNotifsPollerAddRecordToPendingEntries(const YbcPgRowMessage *record);
@@ -1330,18 +1352,18 @@ Exec_ListenPreCommit(void)
 	}
 	LWLockRelease(NotifyQueueLock);
 
+	/* Now we are listed in the global array, so remember we're listening */
+	amRegisteredListener = true;
+
 	if (ybIsFirstListenerOnNode)
 	{
 		/*
-		 * YB note: The first listener in the node creates the replication and
-		 * starts the 'notifications poller' bg worker.
+		 * YB note: The first listener in the node creates the replication slot
+		 * and starts the 'notifications poller' bg worker.
 		 */
 		ybCreateNotifsReplicationSlot();
 		ybStartNotifsPollerBgWorker();
 	}
-
-	/* Now we are listed in the global array, so remember we're listening */
-	amRegisteredListener = true;
 
 	/*
 	 * Try to move our pointer forward as far as possible.  This will skip
@@ -1454,6 +1476,9 @@ IsListeningOn(const char *channel)
 /*
  * Remove our entry from the listeners array when we are no longer listening
  * on any channel.  NB: must not fail if we're already not listening.
+ *
+ * YB note: Any changes to state cleanup logic here will likely need to be
+ * applied to YbCleanupListenStateForProc() as well.
  */
 static void
 asyncQueueUnregister(void)
@@ -1486,30 +1511,113 @@ asyncQueueUnregister(void)
 	}
 	QUEUE_NEXT_LISTENER(MyBackendId) = InvalidBackendId;
 
-	if (QUEUE_FIRST_LISTENER == InvalidBackendId)
-	{
-		/*
-		 * YB note: The last listener in the node terminates the 'notifications
-		 * poller' bg worker and drops the replication slot.
-		 */
-
-		bool		found;
-		BackgroundWorkerHandle *shm_handle =
-			ybShmemNotifsPollerBgwHandle(&found);
-
-		Assert(found);
-		TerminateBackgroundWorker(shm_handle);
-		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
-							 /* nowait = */ true,
-							 /* yb_force = */ true,
-							 /* yb_if_exists = */ false);
-		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
-	}
+	/*
+	 * YB: YB-speicific LISTEN state cleanup.
+	 */
+	ybCleanupListenState();
 
 	LWLockRelease(NotifyQueueLock);
 
 	/* mark ourselves as no longer listed in the global array */
 	amRegisteredListener = false;
+}
+
+/*
+ * Clean up the state (asyncQueueControl, notifications poller bg task) when a
+ * listening backend crashes. This function is called by the postmaster. It is
+ * derived from asyncQueueUnregister().
+ */
+void
+YbCleanupListenStateForProc(PGPROC *proc)
+{
+	Assert(MyProcPid == PostmasterPid);
+
+	Assert(proc->backendId);
+
+	BackendId	backendId = proc->backendId;
+
+	LWLockAcquire(NotifyQueueLock, LW_SHARED);
+	bool		cleanupNeeded = QUEUE_BACKEND_PID(backendId) == proc->pid;
+
+	LWLockRelease(NotifyQueueLock);
+	if (!cleanupNeeded)
+		return;
+
+	/*
+	 * Need exclusive lock here to manipulate list links.
+	 */
+	LWLockAcquire(NotifyQueueLock, LW_EXCLUSIVE);
+	/* Mark our entry as invalid */
+	QUEUE_BACKEND_PID(backendId) = InvalidPid;
+	QUEUE_BACKEND_DBOID(backendId) = InvalidOid;
+	/* and remove it from the list */
+	if (QUEUE_FIRST_LISTENER == backendId)
+		QUEUE_FIRST_LISTENER = QUEUE_NEXT_LISTENER(backendId);
+	else
+	{
+		for (BackendId i = QUEUE_FIRST_LISTENER; i > 0; i = QUEUE_NEXT_LISTENER(i))
+		{
+			if (QUEUE_NEXT_LISTENER(i) == backendId)
+			{
+				QUEUE_NEXT_LISTENER(i) = QUEUE_NEXT_LISTENER(backendId);
+				break;
+			}
+		}
+	}
+	QUEUE_NEXT_LISTENER(backendId) = InvalidBackendId;
+
+	/*
+	 * YB: YB-speicific LISTEN state cleanup.
+	 */
+	ybCleanupListenState();
+
+	LWLockRelease(NotifyQueueLock);
+}
+
+/*
+ * Perform YB-specific LISTEN state clean up.
+ *
+ * If there are no listening backends left on the node, terminate the
+ * 'notifications poller' bg worker and replication slot.
+ *
+ * Caller must hold exclusive NotifyQueueLock.
+ *
+ * When this function is called by postmaster, it is not possible to drop the
+ * replication slot (pggate is not available) and BackgroundWorkerStateChange()
+ * needs to be explicity called (postmaster cannot signal itself).
+ */
+static void
+ybCleanupListenState(void)
+{
+	/* Nothing to do if there are listening backends on this node.  */
+	if (QUEUE_FIRST_LISTENER != InvalidBackendId)
+		return;
+
+	bool		amPostmaster = MyProcPid == PostmasterPid;
+	bool		found;
+	YbNotifsPollerShmemData *yb_poller_data = ybShmemNotifsPollerData(&found);
+
+	if (found && yb_poller_data->init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
+	{
+		BackgroundWorkerHandle *shm_handle =
+			ybShmemNotifsPollerBgwHandle(&found);
+
+		Assert(found);
+		TerminateBackgroundWorker(shm_handle);
+		if (amPostmaster)
+			BackgroundWorkerStateChange(false);
+		memset(shm_handle, 0, YbBackgroundWorkerHandleSize());
+	}
+
+	/*
+	 * The replication slot may also not exist if startup failed
+	 * partway through, so use yb_if_exists for the slot drop.
+	 */
+	if (!amPostmaster)
+		ReplicationSlotDrop(ybNotifsReplicationSlotName(),
+							 /* nowait = */ true,
+							 /* yb_force = */ true,
+							 /* yb_if_exists = */ true);
 }
 
 /*
@@ -2785,6 +2893,16 @@ static void
 ybStartNotifsPollerBgWorker(void)
 {
 	BackgroundWorker worker;
+	BackgroundWorkerHandle *local_handle;
+	BgwHandleStatus status;
+	pid_t		pid;
+	bool		found;
+
+	/* Reset init status before starting the worker. */
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&found);
+
+	poller_data->init_status = YB_NOTIFS_POLLER_INIT_NOT_STARTED;
+	poller_data->error_message[0] = '\0';
 
 	memset(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "notifications poller");
@@ -2798,12 +2916,7 @@ ybStartNotifsPollerBgWorker(void)
 	worker.bgw_main_arg = (Datum) 0;
 	worker.bgw_notify_pid = getpid();
 
-	BackgroundWorkerHandle *local_handle;
-
 	RegisterDynamicBackgroundWorker(&worker, &local_handle);
-
-	BgwHandleStatus status;
-	pid_t		pid;
 
 	status = WaitForBackgroundWorkerStartup(local_handle, &pid);
 	if (status != BGWH_STARTED)
@@ -2812,7 +2925,37 @@ ybStartNotifsPollerBgWorker(void)
 				 errmsg("could not start background process"),
 				 errhint("More details may be available in the server log.")));
 
-	bool		found;
+	/*
+	 * Wait for the bg worker to complete initialization. The worker signals
+	 * success or failure via shared memory before entering its main loop.
+	 */
+	for (;;)
+	{
+		YbNotifsPollerInitStatus init_status = poller_data->init_status;
+
+		if (init_status == YB_NOTIFS_POLLER_INIT_SUCCESS)
+			break;
+
+		if (init_status == YB_NOTIFS_POLLER_INIT_FAILED)
+		{
+			TerminateBackgroundWorker(local_handle);
+			pfree(local_handle);
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("notifications poller background worker "
+							"failed to initialize"),
+					 (poller_data->error_message[0] ?
+					  errdetail("%s", poller_data->error_message) : 0)));
+		}
+
+		CHECK_FOR_INTERRUPTS();
+		pg_usleep(10000L);
+	}
+
+	/*
+	 * Copy handle to shared memory only after successful initialization, so
+	 * asyncQueueUnregister always sees a handle for a fully initialized worker.
+	 */
 	BackgroundWorkerHandle *shm_handle = ybShmemNotifsPollerBgwHandle(&found);
 
 	memcpy(shm_handle, local_handle, YbBackgroundWorkerHandleSize());
@@ -2826,6 +2969,13 @@ ybShmemNotifsPollerBgwHandle(bool *found)
 						   YbBackgroundWorkerHandleSize(), found);
 }
 
+static YbNotifsPollerShmemData *
+ybShmemNotifsPollerData(bool *found)
+{
+	return ShmemInitStruct("YbNotifsPollerData",
+						   sizeof(YbNotifsPollerShmemData), found);
+}
+
 void
 YbNotifsPollerMain(Datum main_arg)
 {
@@ -2837,37 +2987,76 @@ YbNotifsPollerMain(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
-	BackgroundWorkerInitializeConnection(YbSystemDbName, "yugabyte", 0);
+	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
+
+	ybNotifsPollerInit();
+
 	ybNotifsPollerLoop();
 }
 
-static void
-ybNotifsPollerLoop(void)
+static List *
+ybNotifsPublications()
 {
-	if (!yb_enable_replication_commands ||
-		!yb_enable_replication_slot_consumption)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("unable to poll notifications"),
-				 errdetail("For LISTEN/NOTIFY, yb_enable_replication_commands "
-						   "and yb_enable_replication_slot_consumption must be "
-						   "true.")));
+	return list_make1(PgYbNotificationsPublicationName);
+}
 
-	CheckSlotRequirements();
-	Assert(!MyReplicationSlot);
-	ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ true);
-	List	   *publications = list_make1(PgYbNotificationsPublicationName);
+static void
+ybNotifsPollerInit(void)
+{
+	bool		shmem_found;
+	YbNotifsPollerShmemData *poller_data = ybShmemNotifsPollerData(&shmem_found);
+	List	   *publications = NIL;
+	MemoryContext caller_context = CurrentMemoryContext;
 
-	YBCInitVirtualWal(publications);
+	PG_TRY();
+	{
+		if (!yb_enable_replication_commands ||
+			!yb_enable_replication_slot_consumption)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unable to poll notifications"),
+					 errdetail("For LISTEN/NOTIFY, yb_enable_replication_commands "
+							   "and yb_enable_replication_slot_consumption must be "
+							   "true.")));
+
+		CheckSlotRequirements();
+		Assert(!MyReplicationSlot);
+		ReplicationSlotAcquire(ybNotifsReplicationSlotName(), /* nowait = */ true);
+		publications = ybNotifsPublications();
+
+		YBCInitVirtualWal(publications);
+		pfree(publications);
+	}
+	PG_CATCH();
+	{
+		MemoryContext error_context = MemoryContextSwitchTo(caller_context);
+		ErrorData  *edata = CopyErrorData();
+
+		strlcpy(poller_data->error_message, edata->message,
+				sizeof(poller_data->error_message));
+		poller_data->init_status = YB_NOTIFS_POLLER_INIT_FAILED;
+		FreeErrorData(edata);
+		MemoryContextSwitchTo(error_context);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	poller_data->init_status = YB_NOTIFS_POLLER_INIT_SUCCESS;
+}
+
+/*
+ * In a loop, poll records from the virtual wal and add them to the central
+ * queue. When this background process gets terminated, CleanupSessions()
+ * will destroy the virtual wal. Also, it is okay to not invoke
+ * ReplicationSlotRelease() because no other process will try to acquire
+ * this slot.
+ */
+static void
+ybNotifsPollerLoop()
+{
 	YbVirtualWalRecord *record;
+	List	   *publications = ybNotifsPublications();
 
-	/*
-	 * In a loop, poll records from the virtual wal and add them to the central
-	 * queue. When this background process gets terminated, CleanupSessions()
-	 * will destroy the virtual wal. Also, it is okay to not invoke
-	 * ReplicationSlotRelease() because no other process will try to acquire
-	 * this slot.
-	 */
 	for (;;)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -3031,22 +3220,22 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 static void
 ybListenNotifyPreChecks(void)
 {
-	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_listen_notify)
+	if (!yb_enable_listen_notify)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("listen/notify is disabled. Enable it via runtime "
-						"tserver flag ysql_yb_enable_listen_notify")));
+				 errmsg("LISTEN/NOTIFY is disabled"),
+				 errdetail("Enable runtime flag ysql_yb_enable_listen_notify on the tserver and master")));
 
 	if (!OidIsValid(YbSystemDbOid()))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("creating internal objects for listen/notify, please try after a few seconds"),
+				 errmsg("creating internal objects for LISTEN/NOTIFY, please try after a few seconds"),
 				 errdetail("yb_system database is being created")));
 
 	if (!OidIsValid(ybNotificationsRelId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("creating internal objects for listen/notify, please try after a few seconds"),
+				 errmsg("creating internal objects for LISTEN/NOTIFY, please try after a few seconds"),
 				 errdetail("pg_yb_notifications table is being created")));
 
 	/* TODO(arpan): Add check for publication too. */

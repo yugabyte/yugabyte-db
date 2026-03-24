@@ -14,10 +14,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/ysql_binary_runner.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
@@ -390,5 +390,38 @@ TEST_F(PgConcurrentDDLsTest, ConcurrentMaterializedViewRefreshAndWrites) {
   LOG(INFO) << "Test completed - Refreshes: " << refresh_count.load()
             << ", Writes: " << write_count.load();
 }
+
+#ifdef NDEBUG
+TEST_F(PgConcurrentDDLsTest, ConcurrentCreateDropDatabase) {
+  // Use 2 threads to maximize the chance of a race condition on catalog version increments.
+  const int kNumThreads = 2;
+  const int kNumIterations = 100;
+
+  std::vector<yb::TestThreadHolder> thread_holders(kNumThreads);
+
+  for (int i = 0; i < kNumThreads; i++) {
+    thread_holders[i].AddThreadFunctor([this, i] {
+      auto conn = ASSERT_RESULT(Connect());
+
+      for (int j = 0; j < kNumIterations; j++) {
+        // Use a unique name per thread and iteration to avoid "database already exists"
+        // conflicts, focusing purely on the concurrency of the DDL engine itself.
+        std::string db_name = Format("db_t$0_i$1", i, j);
+
+        // 1. Create the database
+        ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", db_name));
+
+        // 2. Drop the database
+        ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", db_name));
+      }
+    });
+  }
+
+  // Join all threads to ensure the iterations complete.
+  for (int i = 0; i < kNumThreads; i++) {
+    thread_holders[i].JoinAll();
+  }
+}
+#endif
 
 }  // namespace yb::pgwrapper

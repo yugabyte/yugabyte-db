@@ -1494,19 +1494,19 @@ class TransactionParticipant::Impl
         std::max(ignore_all_transactions_started_before_, limit);
   }
 
-  TransactionStatusResult DoUpdateTransactionStatusLocation(
+  TransactionStatusResult DoUpdateTransactionPromoting(
       RunningTransaction& transaction, const TabletId& new_status_tablet) REQUIRES(mutex_) {
     const auto& metadata = transaction.metadata();
     VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
                         << metadata.transaction_id << " from tablet " << metadata.status_tablet
                         << " to " << new_status_tablet;
-    transaction.UpdateTransactionStatusLocation(new_status_tablet);
+    transaction.UpdateTransactionPromoting(new_status_tablet);
     return TransactionStatusResult{
         TransactionStatus::PROMOTED, transaction.last_known_status_hybrid_time(),
         transaction.last_known_aborted_subtxn_set(), new_status_tablet};
   }
 
-  Status ApplyUpdateTransactionStatusLocation(
+  Status ApplyUpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
@@ -1527,7 +1527,7 @@ class TransactionParticipant::Impl
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
                              PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
-      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+      txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -1537,7 +1537,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  Status ReplicateUpdateTransactionStatusLocation(
+  Status ReplicateUpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
@@ -1558,7 +1558,7 @@ class TransactionParticipant::Impl
         return Status::OK();
       }
 
-      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+      txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -2269,7 +2269,7 @@ class TransactionParticipant::Impl
   Status DoHandlePromoting(tablet::UpdateTxnOperation* operation) {
     const auto& request = *operation->request();
     auto id = VERIFY_RESULT(FullyDecodeTransactionId(request.transaction_id()));
-    return ApplyUpdateTransactionStatusLocation(id, request.tablets().front().ToBuffer());
+    return ApplyUpdateTransactionPromoting(id, request.tablets().front().ToBuffer());
   }
 
   void HandlePromoting(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
@@ -2329,7 +2329,7 @@ class TransactionParticipant::Impl
                            "Expected only one tablet during PROMOTING, state received: $0",
                            data.state);
     }
-    return ReplicateUpdateTransactionStatusLocation(id, data.state.tablets().front().ToBuffer());
+    return ReplicateUpdateTransactionPromoting(id, data.state.tablets().front().ToBuffer());
   }
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
@@ -3121,9 +3121,9 @@ void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit
   impl_->IgnoreAllTransactionsStartedBefore(limit);
 }
 
-Status TransactionParticipant::UpdateTransactionStatusLocation(
+Status TransactionParticipant::UpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
-  return impl_->ApplyUpdateTransactionStatusLocation(transaction_id, new_status_tablet);
+  return impl_->ApplyUpdateTransactionPromoting(transaction_id, new_status_tablet);
 }
 
 const TabletId& TransactionParticipant::tablet_id() const {

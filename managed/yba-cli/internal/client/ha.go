@@ -86,3 +86,61 @@ func (a *AuthAPIClient) DeleteHAConfig(uuid string) ybaclient.HAAPIDeleteHAConfi
 func (a *AuthAPIClient) GenerateClusterKey() ybaclient.HAAPIGenerateClusterKeyRequest {
 	return a.APIClient.HAAPI.GenerateClusterKey(a.ctx)
 }
+
+// CreateHAInstance creates a new HA instance
+func (a *AuthAPIClient) CreateHAInstance(
+	uuid string,
+) ybaclient.PlatformInstanceAPICreateInstanceRequest {
+	return a.APIClient.PlatformInstanceAPI.CreateInstance(a.ctx, uuid)
+}
+
+// DeleteHAInstance deletes an HA instance
+func (a *AuthAPIClient) DeleteHAInstance(
+	configUUID string,
+	instanceUUID string,
+) ybaclient.PlatformInstanceAPIDeleteInstanceRequest {
+	return a.APIClient.PlatformInstanceAPI.DeleteInstance(a.ctx, configUUID, instanceUUID)
+}
+
+// GetLocalHAInstance gives local HA instance information
+func (a *AuthAPIClient) GetLocalHAInstance(
+	uuid string,
+) ybaclient.PlatformInstanceAPIGetLocalRequest {
+	return a.APIClient.PlatformInstanceAPI.GetLocal(a.ctx, uuid)
+}
+
+// PromoteHAInstance promotes an HA instance to primary
+func (a *AuthAPIClient) PromoteHAInstance(
+	configUUID string,
+	instanceUUID string,
+) ybaclient.PlatformInstanceAPIPromoteInstanceRequest {
+	return a.APIClient.PlatformInstanceAPI.PromoteInstance(a.ctx, configUUID, instanceUUID)
+}
+
+// ListHABackups lists all backups in an HA configuration
+func (a *AuthAPIClient) ListHABackups(
+	configUUID string,
+) ybaclient.PlatformReplicationAPIListBackupsRequest {
+	return a.APIClient.PlatformReplicationAPI.ListBackups(a.ctx, configUUID)
+}
+
+// StartPeriodicBackup starts periodic backup for an HA configuration
+func (a *AuthAPIClient) StartPeriodicBackup(
+	configUUID string,
+) ybaclient.PlatformReplicationAPIStartPeriodicBackupRequest {
+	return a.APIClient.PlatformReplicationAPI.StartPeriodicBackup(a.ctx, configUUID)
+}
+
+// StopPeriodicBackup stops periodic backup for an HA configuration
+func (a *AuthAPIClient) StopPeriodicBackup(
+	configUUID string,
+) ybaclient.PlatformReplicationAPIStopPeriodicBackupRequest {
+	return a.APIClient.PlatformReplicationAPI.StopPeriodicBackup(a.ctx, configUUID)
+}
+
+// GetBackupInfo gets backup replication information for an HA configuration
+func (a *AuthAPIClient) GetBackupInfo(
+	configUUID string,
+) ybaclient.PlatformReplicationAPIGetBackupInfoRequest {
+	return a.APIClient.PlatformReplicationAPI.GetBackupInfo(a.ctx, configUUID)
+}
