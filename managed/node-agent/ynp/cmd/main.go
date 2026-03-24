@@ -333,6 +333,23 @@ func setDefaultConfigs(ynpConfig map[string]map[string]any) {
 	if _, ok := extraSection["is_ybm"]; !ok {
 		extraSection["is_ybm"] = false
 	}
+	ynpSection, ok := ynpConfig["ynp"]
+	if !ok {
+		ynpSection = make(map[string]any)
+		ynpConfig["ynp"] = ynpSection
+	}
+	if _, ok := ynpSection["use_system_level_systemd"]; !ok {
+		ynpSection["use_system_level_systemd"] = false
+	}
+	if _, ok := ynpSection["configure_thp_settings"]; !ok {
+		ynpSection["configure_thp_settings"] = true
+	}
+	if _, ok := ynpSection["is_ybcontroller_disabled"]; !ok {
+		ynpSection["is_ybcontroller_disabled"] = false
+	}
+	if _, ok := ynpSection["is_install_node_agent"]; !ok {
+		ynpSection["is_install_node_agent"] = true
+	}
 }
 
 // Merge extraVars into ynpConfig, giving preference to extraVars.
