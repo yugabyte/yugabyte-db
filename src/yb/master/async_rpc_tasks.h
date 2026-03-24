@@ -467,13 +467,13 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
       const TabletInfoPtr& tablet,
       const consensus::ConsensusStatePB& cstate,
       const std::string& change_config_ts_uuid,
-      bool should_remove,
+      bool also_remove_replica,
       LeaderEpoch epoch,
       const std::string& reason,
       const std::string& new_leader_uuid = "")
       : CommonInfoForRaftTask(
             master, callback_pool, tablet, cstate, change_config_ts_uuid, std::move(epoch)),
-        should_remove_(should_remove),
+        also_remove_replica_(also_remove_replica),
         new_leader_uuid_(new_leader_uuid),
         reason_(reason) {}
 
@@ -494,7 +494,7 @@ class AsyncTryStepDown : public CommonInfoForRaftTask {
   bool SendRequest(int attempt) override;
   void HandleResponse(int attempt) override;
 
-  const bool should_remove_;
+  const bool also_remove_replica_;
   const std::string new_leader_uuid_;
   const std::string reason_;
   consensus::LeaderStepDownRequestPB stepdown_req_;
