@@ -45,9 +45,10 @@ void YBThreadPool::DisableDetailedLogging() { detailed_logging = false; }
 namespace {
 
 class Worker;
+struct WorkerLink;
 
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;
-using WaitingWorkers = LockFreeStack<Worker>;
+using WaitingWorkers = LockFreeStack<WorkerLink>;
 
 constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
 
@@ -90,9 +91,7 @@ YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
 
 class Worker : public boost::intrusive::list_base_hook<> {
  public:
-  explicit Worker(ThreadPoolShare& share, bool persistent)
-      : share_(share), persistent_(persistent) {
-  }
+  explicit Worker(ThreadPoolShare& share, bool persistent);
 
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
@@ -101,18 +100,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
 
-  ~Worker() {
-    {
-      std::lock_guard lock(mutex_);
-      DCHECK(!task_);
-      if (state_ == WorkerState::kIdleStop) {
-        return;
-      }
-    }
-    if (thread_) {
-      thread_->Join();
-    }
-  }
+  ~Worker();
 
   Worker(const Worker& worker) = delete;
   void operator=(const Worker& worker) = delete;
@@ -252,31 +240,84 @@ class Worker : public boost::intrusive::list_base_hook<> {
 
   void AddToWaitingWorkers() REQUIRES(mutex_) {
     if (!added_to_waiting_workers_) {
-      share_.waiting_workers.Push(this);
+      share_.waiting_workers.Push(link_);
       added_to_waiting_workers_ = true;
     }
   }
 
-  friend void SetNext(Worker& worker, Worker* next) {
-    worker.next_waiting_worker_ = next;
-  }
-
-  friend Worker* GetNext(Worker& worker) {
-    return worker.next_waiting_worker_;
-  }
-
   ThreadPoolShare& share_;
   const bool persistent_;
+  WorkerLink* link_ = nullptr;
   scoped_refptr<Thread> thread_;
   mutable std::mutex mutex_;
   std::condition_variable cond_;
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
   ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
-  Worker* next_waiting_worker_ = nullptr;
+};
+
+struct WorkerLink {
+  Worker* worker = nullptr;
+  std::atomic<WorkerLink*> next_link{nullptr};
 };
 
 using Workers = boost::intrusive::list<Worker>;
+
+void SetNext(WorkerLink& worker, WorkerLink* next) {
+  worker.next_link.store(next, std::memory_order_release);
+}
+
+WorkerLink* GetNext(WorkerLink& worker) {
+  return worker.next_link.load(std::memory_order_acquire);
+}
+
+class FreeWorkerLinks {
+ public:
+  ~FreeWorkerLinks() {
+    while (auto link = free_links_.Pop()) {
+      delete link;
+    }
+  }
+
+  WorkerLink* Acquire() {
+    auto link = free_links_.Pop();
+    if (!link) {
+      link = new WorkerLink{};
+    }
+    return link;
+  }
+
+  void Release(WorkerLink* link) {
+    link->worker = nullptr;
+    free_links_.Push(link);
+  }
+
+ private:
+  LockFreeStack<WorkerLink> free_links_;
+};
+
+FreeWorkerLinks free_worker_links_;
+
+Worker::Worker(ThreadPoolShare& share, bool persistent)
+    : share_(share), persistent_(persistent),
+      link_(free_worker_links_.Acquire()) {
+  link_->worker = this;
+}
+
+Worker::~Worker() {
+  {
+    std::lock_guard lock(mutex_);
+    DCHECK(!task_);
+    if (state_ == WorkerState::kIdleStop) {
+      free_worker_links_.Release(link_);
+      return;
+    }
+  }
+  if (thread_) {
+    thread_->Join();
+  }
+  free_worker_links_.Release(link_);
+}
 
 } // namespace
 
@@ -392,8 +433,8 @@ class YBThreadPool::Impl {
 
   // Returns true if we found worker that will pick up this task, false otherwise.
   bool NotifyWorker(ThreadPoolTask* task) {
-    while (auto worker = share_.waiting_workers.Pop()) {
-      auto state = worker->Notify(task);
+    while (auto link = share_.waiting_workers.Pop()) {
+      auto state = link->worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
           if (task && share_.options.metrics.queue_time_us_stats) {
@@ -407,7 +448,7 @@ class YBThreadPool::Impl {
           std::lock_guard lock(mutex_);
           if (!closing_) {
             workers_.erase_and_dispose(
-                workers_.iterator_to(*worker), std::default_delete<Worker>());
+                workers_.iterator_to(*link->worker), std::default_delete<Worker>());
           }
         } break;
       }
