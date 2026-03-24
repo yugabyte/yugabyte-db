@@ -283,8 +283,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
               const std::string& storage_dir,
               const DocVectorIndexThreadPoolProvider& thread_pool_provider) {
     auto merge_filter_factory = [this]() -> typename LSM::Options::MergeFilterFactory::result_type {
-      auto reader = VERIFY_RESULT(
-          context_->CreateReverseMappingReader(ReadHybridTime::Max()));
+      auto reader =
+          VERIFY_RESULT(context_->CreateReverseMappingReader(ReadHybridTime::Max(), nullptr));
       return std::make_unique<VectorMergeFilter>(lsm_.LogPrefix(), std::move(reader));
     };
 
@@ -326,8 +326,8 @@ class DocVectorIndexImpl : public DocVectorIndex {
   }
 
   Result<DocVectorIndexSearchResult> Search(
-      Slice vector, const vector_index::SearchOptions& options,
-      bool could_have_missing_entries) override {
+      Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
+      DocDBStatistics* statistics) override {
     auto entries = VERIFY_RESULT(lsm_.Search(
         VERIFY_RESULT(VectorFromYSQL<Vector>(vector)), options));
 
@@ -335,7 +335,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     auto start_time = MonoTime::Now();
 
     auto reverse_mapping_reader = VERIFY_RESULT(
-        context_->CreateReverseMappingReader(ReadHybridTime::Max()));
+        context_->CreateReverseMappingReader(ReadHybridTime::Max(), statistics));
 
     DocVectorIndexSearchResult result;
     VLOG_WITH_FUNC(4) << "could_have_missing_entries: " << could_have_missing_entries
