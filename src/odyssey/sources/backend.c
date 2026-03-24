@@ -73,15 +73,15 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 	od_instance_t *instance = server->global->instance;
 	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
 
-	char *stmt_name;
-	uint32_t stmt_name_len;
-	int rc = kiwi_fe_read_parse_error_yb(data, size, &stmt_name, &stmt_name_len);
+	char *keyhash_str;
+	uint32_t keyhash_str_len;
+	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str, &keyhash_str_len);
 	if (rc == -1) {
 		od_error(&instance->logger, context, NULL, server, 
 			"failed to parse error message from server");
 		return;
 	}
-	od_hash_t keyhash = strtoul(stmt_name, NULL, 16);
+	od_hash_t keyhash = strtoul(keyhash_str, NULL, 16);
 	char **matched_keys = NULL;
 	int matched_count = 0;
 	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
@@ -1201,6 +1201,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 			machine_msg_free(msg);
 			continue;
 		} else if (type == YB_BE_PARSE_PREPARE_ERROR_RESPONSE) {
+			od_backend_evict_server_hashmap(server, context,
+				machine_msg_data(msg), machine_msg_size(msg));
+			machine_msg_free(msg);
+			continue;
+		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
 			od_backend_evict_server_hashmap(server, context,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);

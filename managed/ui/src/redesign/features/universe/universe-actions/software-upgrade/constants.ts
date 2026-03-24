@@ -1,3 +1,5 @@
+import type { DropReason as DropReasonType } from 'react-beautiful-dnd';
+
 export const DbUpgradeFormStep = {
   DB_VERSION: 'DB_VERSION',
   UPGRADE_METHOD: 'UPGRADE_METHOD',
@@ -21,3 +23,19 @@ export const UpgradePace = {
 export type UpgradePace = (typeof UpgradePace)[keyof typeof UpgradePace];
 
 export const DEFAULT_WAIT_BETWEEN_BATCHES_SECONDS = 180;
+
+/** 
+ * Runtime constants for DropResult.reason.
+ * This is typed against the react-beautiful-dnd library.
+ */
+export const DropReason: Record<DropReasonType, DropReasonType> = {
+  DROP: 'DROP',
+  CANCEL: 'CANCEL'
+};
+
+export const AzClusterKind = {
+  PRIMARY: 'primary',
+  READ_REPLICA: 'read-replica'
+} as const;
+export type AzClusterKind = (typeof AzClusterKind)[keyof typeof AzClusterKind];
+

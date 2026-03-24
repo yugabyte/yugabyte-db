@@ -29,30 +29,30 @@ YugabyteDB Aeon
     title="Chinook"
     body="Explore the popular sample dataset for a digital media store."
     href="chinook/"
-    icon="/images/section_icons/sample-data/s_s2-chinook-3x.png">}}
+    icon="fa-thin fa-database">}}
 
   {{<index/item
     title="Northwind"
     body="Explore the classic sales datasets for Northwind Traders."
     href="northwind/"
-    icon="/images/section_icons/sample-data/s_s3-northwind-3x.png">}}
+    icon="fa-thin fa-database">}}
 
   {{<index/item
     title="PgExercises"
     body="Learn SQL and test your knowledge by creating the PostgreSQL Exercises database and trying out the available exercises."
     href="pgexercises/"
-    icon="/images/section_icons/sample-data/s_s4-pgexercises-3x.png">}}
+    icon="fa-thin fa-database">}}
 
   {{<index/item
     title="SportsDB"
     body="Explore sample sports statistics for baseball, football, basketball, ice hockey, and soccer."
     href="sportsdb/"
-    icon="/images/section_icons/sample-data/s_s5-sportsdb-3x.png">}}
+    icon="fa-thin fa-database">}}
 
   {{<index/item
     title="Retail Analytics"
     body="Ad-hoc analytics of retail sales data using YugabyteDB's YSQL API."
     href="retail-analytics/"
-    icon="/images/section_icons/develop/apps/e-commerce.png">}}
+    icon="fa-thin fa-database">}}
 
 {{</index/block>}}

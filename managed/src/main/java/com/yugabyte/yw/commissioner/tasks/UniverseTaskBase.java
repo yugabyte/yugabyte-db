@@ -5077,6 +5077,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
     Universe universe = getUniverse();
+    if (!confGetter.getConfForScope(
+        universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
+      log.info(
+          "Skipping disable master on non-master nodes; "
+              + "yb.universe.allow_disable_master_on_non_master_node_subtask is false");
+      return;
+    }
     // Filter out all nodes that are not masters according to both YBA and YBDB.
     nodes =
         nodes.stream()
@@ -5150,6 +5157,28 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected boolean isFollowerLagCheckEnabled() {
     return getOrCreateExecutionContext().isFollowerLagCheckEnabled();
+  }
+
+  public void addToBlackListTask(
+      Collection<NodeDetails> addNodes,
+      boolean isLeaderBlacklist,
+      SubTaskGroupType subTaskGroupType) {
+    if (addNodes.isEmpty()) {
+      return;
+    }
+    createModifyBlackListTask(addNodes, Collections.emptyList(), isLeaderBlacklist)
+        .setSubTaskGroupType(subTaskGroupType);
+  }
+
+  public void removeFromBlackListTask(
+      Collection<NodeDetails> removedNodes,
+      boolean isLeaderBlacklist,
+      SubTaskGroupType subTaskGroupType) {
+    if (removedNodes.isEmpty()) {
+      return;
+    }
+    createModifyBlackListTask(Collections.emptyList(), removedNodes, isLeaderBlacklist)
+        .setSubTaskGroupType(subTaskGroupType);
   }
 
   /**

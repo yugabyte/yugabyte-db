@@ -35,19 +35,19 @@ Typically, troubleshooting involves a number of steps that are rather consistent
     title="Cluster-level issues and performance"
     body="Troubleshoot common YugabyteDB cluster issues and improve cluster performance."
     href="cluster/"
-    icon="/images/section_icons/quick_start/create_cluster.png">}}
+    icon="fa-thin fa-circle-nodes">}}
 
   {{<index/item
     title="Node-level issues"
     body="Diagnose and solve issues on an individual YugabyteDB node."
     href="nodes/"
-    icon="/images/section_icons/architecture/concepts/universe.png">}}
+    icon="fa-thin fa-circle-0">}}
 
    {{<index/item
     title="YSQL issues"
     body="Solve issues related to YSQL."
     href="ysql-issues/"
-    icon="/images/section_icons/api/ysql.png">}}
+    icon="fa-thin fa-gear-api">}}
 
    {{<index/item
     title="Other issues"

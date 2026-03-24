@@ -78,7 +78,7 @@ Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
     const ExternalTabletServer& pg_ts, const string& user) {
   return PGConnBuilder({
     .host = pg_ts.bind_host(),
-    .port = pg_ts.pgsql_rpc_port(),
+    .port = pg_ts.ysql_port(),
     .user = user
   }).Connect(true);
 }

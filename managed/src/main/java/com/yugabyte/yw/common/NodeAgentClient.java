@@ -66,6 +66,8 @@ import com.yugabyte.yw.nodeagent.UpdateResponse;
 import com.yugabyte.yw.nodeagent.UpgradeInfo;
 import com.yugabyte.yw.nodeagent.UploadFileRequest;
 import com.yugabyte.yw.nodeagent.UploadFileResponse;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckInput;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckOutput;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -688,6 +690,14 @@ public class NodeAgentClient {
       if (optional.isPresent() && optional.get().isActive()) {
         return optional;
       }
+      if (provider.isManualOnprem()) {
+        String errMsg =
+            String.format(
+                "Node agent must already be installed for %s but it is not installed or inactive",
+                ip);
+        log.error(errMsg);
+        throw new IllegalStateException(errMsg);
+      }
     }
     return Optional.empty();
   }
@@ -1115,6 +1125,18 @@ public class NodeAgentClient {
       builder.setUser(user);
     }
     return runAsyncTask(nodeAgent, builder.build(), DestroyServerOutput.class);
+  }
+
+  public YnpPreflightCheckOutput runYnpPreflightCheck(
+      NodeAgent nodeAgent, YnpPreflightCheckInput input, String user) {
+    SubmitTaskRequest.Builder builder =
+        SubmitTaskRequest.newBuilder()
+            .setTaskId(UUID.randomUUID().toString())
+            .setYnpPreflightCheckInput(input);
+    if (StringUtils.isNotBlank(user)) {
+      builder.setUser(user);
+    }
+    return runAsyncTask(nodeAgent, builder.build(), YnpPreflightCheckOutput.class);
   }
 
   public synchronized void cleanupCachedClients() {

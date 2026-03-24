@@ -10,15 +10,22 @@ import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -115,6 +122,45 @@ public class CreateBackupScheduleKubernetesTest extends CommissionerBaseTest {
           }
         };
     defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    Provider provider =
+        Provider.getOrBadRequest(
+            UUID.fromString(
+                defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    // KUBECONFIG only at provider level so getConfigPerAZ succeeds (region/AZ have no kube config).
+    Map<String, String> providerOnlyKubeConfig = new HashMap<>();
+    providerOnlyKubeConfig.put("KUBECONFIG", "/tmp/test-kubeconfig");
+    CloudInfoInterface.setCloudProviderInfoFromConfig(provider, providerOnlyKubeConfig);
+    provider.getDetails().getCloudInfo().getKubernetes().setLegacyK8sProvider(false);
+    provider.save();
+    Region region = Region.create(provider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              // Update all nodes to use the real AZ UUID
+              for (NodeDetails node : details.nodeDetailsSet) {
+                if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+                  node.azUuid = az.getUuid();
+                  node.cloudInfo.az = az.getCode();
+                  node.cloudInfo.region = region.getCode();
+                }
+              }
+              // Create placementInfo from the nodes
+              Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+              for (NodeDetails node : details.nodeDetailsSet) {
+                if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+                  azToNumNodesMap.put(
+                      node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+                }
+              }
+              if (!azToNumNodesMap.isEmpty()) {
+                details.getPrimaryCluster().placementInfo =
+                    ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+              }
+              u.setUniverseDetails(details);
+            });
     // Update volume size in task
     UniverseDefinitionTaskParams taskParams = defaultUniverse.getUniverseDetails();
     taskParams.clusters.get(0).userIntent.deviceInfo = new DeviceInfo();

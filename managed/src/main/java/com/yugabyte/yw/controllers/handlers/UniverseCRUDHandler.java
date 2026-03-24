@@ -42,6 +42,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
@@ -1275,8 +1277,8 @@ public class UniverseCRUDHandler {
           primaryCluster, taskParams.getNodesInCluster(primaryCluster.uuid));
       primaryCluster.userIntent.setUserIntentOverrides(
           KubernetesUtil.generateVolumeOverridesForUserIntent(
-              primaryCluster.userIntent,
-              primaryCluster.placementInfo,
+              primaryCluster.userIntent.getUserIntentOverrides(),
+              primaryCluster.placementInfo.getAllAZUUIDs(),
               primaryCluster.userIntent.universeOverrides,
               primaryCluster.userIntent.azOverrides,
               PlacementInfoUtil.findRetainedAZs(
@@ -1302,8 +1304,8 @@ public class UniverseCRUDHandler {
           cluster, taskParams.getNodesInCluster(cluster.uuid));
       cluster.userIntent.setUserIntentOverrides(
           KubernetesUtil.generateVolumeOverridesForUserIntent(
-              cluster.userIntent,
-              cluster.placementInfo,
+              cluster.userIntent.getUserIntentOverrides(),
+              cluster.placementInfo.getAllAZUUIDs(),
               u.getUniverseDetails().getPrimaryCluster().userIntent.universeOverrides,
               u.getUniverseDetails().getPrimaryCluster().userIntent.azOverrides,
               PlacementInfoUtil.findRetainedAZs(
@@ -2520,16 +2522,37 @@ public class UniverseCRUDHandler {
         throw new PlatformServiceException(BAD_REQUEST, "Cannot change geo partitions state");
       }
       if (!CollectionUtils.isEmpty(newCluster.getPartitions())) {
+        PlacementInfoUtil.validatePartitions(newCluster);
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> currentMap =
             curCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
         Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> newMap =
             newCluster.getPartitions().stream().collect(Collectors.toMap(g -> g.getUuid(), g -> g));
+
         for (UniverseDefinitionTaskParams.PartitionInfo cur : currentMap.values()) {
           UniverseDefinitionTaskParams.PartitionInfo newPartition = newMap.get(cur.getUuid());
           if (newPartition == null) {
             if (cur.isDefaultPartition()) {
               throw new PlatformServiceException(
                   BAD_REQUEST, "Cannot delete default partition " + cur.getName());
+            }
+          } else {
+            boolean autoTablespaceUpdate =
+                confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
+            if (!autoTablespaceUpdate
+                && !cur.getTablespaceName().equals(newPartition.getTablespaceName())) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot automatically modify partition name");
+            }
+            boolean tablespaceMoveWithTemporary =
+                confGetter.getGlobalConf(GlobalConfKeys.tablespaceMoveWithTemporary);
+            TableSpaceStructures.TableSpaceInfo newTbs =
+                TableSpaceUtil.partitionToTablespace(newPartition);
+            TableSpaceStructures.TableSpaceInfo oldTbs = TableSpaceUtil.partitionToTablespace(cur);
+            if (!newTbs.equals(oldTbs)
+                && cur.getTablespaceName().equals(newPartition.getTablespaceName())
+                && !tablespaceMoveWithTemporary) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, "Cannot modify partition without renaming tablespace");
             }
           }
           if (newCluster.clusterType == ClusterType.ASYNC && newMap.size() > 1) {

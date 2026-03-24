@@ -539,23 +539,22 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testK8sProviderEditAddZone() throws InterruptedException {
-    Provider k8sProvider = createK8sProvider();
+    Provider k8sProvider = createK8sProviderMultiAZ();
 
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    assertEquals(2, p.getRegions().get(0).getZones().size());
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
     JsonNode region = providerJson.get("regions").get(0);
     ArrayNode zones = (ArrayNode) region.get("zones");
 
     ObjectNode zone = Json.newObject();
-    zone.put("name", "Zone 2");
-    zone.put("code", "zone-2");
+    zone.put("name", "Zone 3");
+    zone.put("code", "zone-3");
     zones.add(zone);
     ((ObjectNode) region).set("zones", zones);
     ArrayNode regionsNode = Json.newArray();
     regionsNode.add(region);
     providerJson.set("regions", regionsNode);
-    p = Provider.getOrBadRequest(k8sProvider.getUuid());
-    assertEquals(1, p.getRegions().get(0).getZones().size());
 
     Result result = editProvider(providerJson, false);
     JsonNode json = Json.parse(contentAsString(result));
@@ -564,8 +563,8 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     p = Provider.getOrBadRequest(p.getUuid());
 
-    assertEquals(2, p.getRegions().get(0).getZones().size());
-    assertEquals("zone-2", p.getRegions().get(0).getZones().get(1).getCode());
+    assertEquals(3, p.getRegions().get(0).getZones().size());
+    assertEquals("zone-3", p.getRegions().get(0).getZones().get(2).getCode());
 
     // Gets called twice as we do both create  and edit
     verify(mockPrometheusConfigManager, times(2)).updateK8sScrapeConfigs();
@@ -622,9 +621,10 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
   @Test
   public void testK8sProviderAddRegion() throws InterruptedException {
-    Provider k8sProvider = createK8sProvider();
+    Provider k8sProvider = createK8sProviderMultiAZ();
 
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    assertEquals(2, p.getRegions().get(0).getZones().size());
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
     ArrayNode regions = (ArrayNode) providerJson.get("regions");
 
@@ -652,6 +652,37 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     assertEquals(2, p.getRegions().size());
     assertEquals("us-west2", p.getRegions().get(1).getCode());
     assertEquals("zone-2", p.getRegions().get(1).getZones().get(0).getCode());
+  }
+
+  @Test
+  public void testK8sProviderBlockSingleToMultiAZ() {
+    Provider k8sProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+
+    ObjectNode providerJson = (ObjectNode) Json.toJson(p);
+    JsonNode region = providerJson.get("regions").get(0);
+    ArrayNode zones = (ArrayNode) region.get("zones");
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "us-west1-b");
+    zone.put("code", "us-west1-b");
+    zones.add(zone);
+
+    verifyEditError(
+        Json.fromJson(providerJson, Provider.class),
+        false,
+        "Cannot change a single-AZ Kubernetes provider to multi-AZ.");
+  }
+
+  @Test
+  public void testK8sProviderBlockMultiToSingleAZ() {
+    Provider k8sProvider = createK8sProviderMultiAZ();
+    Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
+    assertEquals(2, p.getRegions().get(0).getZones().size());
+
+    p.getRegions().get(0).getZones().get(1).setActive(false);
+
+    verifyEditError(p, false, "Cannot change a multi-AZ Kubernetes provider to single-AZ.");
   }
 
   @Test
@@ -1098,10 +1129,18 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   private Provider createK8sProvider() {
-    return createK8sProvider(true);
+    return createK8sProvider(true, 1);
   }
 
   private Provider createK8sProvider(boolean withConfig) {
+    return createK8sProvider(withConfig, 1);
+  }
+
+  private Provider createK8sProviderMultiAZ() {
+    return createK8sProvider(true, 2);
+  }
+
+  private Provider createK8sProvider(boolean withConfig, int numZones) {
     ObjectMapper mapper = new ObjectMapper();
 
     String providerName = "Kubernetes-Provider";
@@ -1121,10 +1160,13 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     regionJson.put("code", "us-west1");
     regionJson.put("name", "US West");
     ArrayNode azs = mapper.createArrayNode();
-    ObjectNode azJson = Json.newObject();
-    azJson.put("code", "us-west1-a");
-    azJson.put("name", "us-west1-a");
-    azs.add(azJson);
+    for (int i = 0; i < numZones; i++) {
+      ObjectNode azJson = Json.newObject();
+      String suffix = String.valueOf((char) ('a' + i));
+      azJson.put("code", "us-west1-" + suffix);
+      azJson.put("name", "us-west1-" + suffix);
+      azs.add(azJson);
+    }
     regionJson.putArray("zoneList").addAll(azs);
     regions.add(regionJson);
     bodyJson.putArray("regionList").addAll(regions);

@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common.operator;
 
 import com.google.inject.Inject;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -97,22 +98,24 @@ public class KubernetesOperator {
                 }
 
                 try (KubernetesClient client = new DefaultKubernetesClient(config)) {
-                  LOG.info("Using namespace : {}", namespace);
+                  boolean ossMode = OperatorConfig.getOssMode();
+                  LOG.info("Using namespace : {}, ossMode: {}", namespace, ossMode);
 
                   this.releasesClient = client.resources(Release.class);
                   this.scClient = client.resources(StorageConfig.class);
                   this.backupClient = client.resources(Backup.class);
                   this.restoreJobClient = client.resources(RestoreJob.class);
-                  this.drConfigClient = client.resources(DrConfig.class);
-
                   this.supportBundleClient = client.resources(SupportBundle.class);
-                  this.ybCertificateClient = client.resources(YBCertificate.class);
+                  if (!ossMode) {
+                    this.drConfigClient = client.resources(DrConfig.class);
+                    this.ybCertificateClient = client.resources(YBCertificate.class);
+                  }
                   SharedIndexInformer<Release> ybSoftwareReleaseIndexInformer;
                   SharedIndexInformer<StorageConfig> ybStorageConfigIndexInformer;
                   SharedIndexInformer<Backup> ybBackupIndexInformer;
-                  SharedIndexInformer<DrConfig> ybDrConfigIndexInformer;
+                  SharedIndexInformer<DrConfig> ybDrConfigIndexInformer = null;
                   SharedIndexInformer<RestoreJob> ybRestoreJobIndexInformer;
-                  SharedIndexInformer<YBCertificate> ybCertificateIndexInformer;
+                  SharedIndexInformer<YBCertificate> ybCertificateIndexInformer = null;
 
                   SharedIndexInformer<SupportBundle> ybSupportBundleIndexInformer;
                   long resyncPeriodInMillis = 10 * 60 * 1000L;
@@ -172,22 +175,24 @@ public class KubernetesOperator {
                                 },
                                 resyncPeriodInMillis);
 
-                    ybDrConfigIndexInformer =
-                        client
-                            .resources(DrConfig.class)
-                            .inNamespace(namespace)
-                            .inform(
-                                new ResourceEventHandler<>() {
-                                  @Override
-                                  public void onAdd(DrConfig d) {}
+                    if (!ossMode) {
+                      ybDrConfigIndexInformer =
+                          client
+                              .resources(DrConfig.class)
+                              .inNamespace(namespace)
+                              .inform(
+                                  new ResourceEventHandler<>() {
+                                    @Override
+                                    public void onAdd(DrConfig d) {}
 
-                                  @Override
-                                  public void onUpdate(DrConfig d1, DrConfig d2) {}
+                                    @Override
+                                    public void onUpdate(DrConfig d1, DrConfig d2) {}
 
-                                  @Override
-                                  public void onDelete(DrConfig b, boolean deletedFinalUnknown) {}
-                                },
-                                resyncPeriodInMillis);
+                                    @Override
+                                    public void onDelete(DrConfig b, boolean deletedFinalUnknown) {}
+                                  },
+                                  resyncPeriodInMillis);
+                    }
 
                     ybRestoreJobIndexInformer =
                         client
@@ -222,23 +227,25 @@ public class KubernetesOperator {
                                       SupportBundle b1, boolean deletedFinalUnknown) {}
                                 },
                                 resyncPeriodInMillis);
-                    ybCertificateIndexInformer =
-                        client
-                            .resources(YBCertificate.class)
-                            .inNamespace(namespace)
-                            .inform(
-                                new ResourceEventHandler<>() {
-                                  @Override
-                                  public void onAdd(YBCertificate cm) {}
+                    if (!ossMode) {
+                      ybCertificateIndexInformer =
+                          client
+                              .resources(YBCertificate.class)
+                              .inNamespace(namespace)
+                              .inform(
+                                  new ResourceEventHandler<>() {
+                                    @Override
+                                    public void onAdd(YBCertificate cm) {}
 
-                                  @Override
-                                  public void onUpdate(YBCertificate cm1, YBCertificate cm2) {}
+                                    @Override
+                                    public void onUpdate(YBCertificate cm1, YBCertificate cm2) {}
 
-                                  @Override
-                                  public void onDelete(
-                                      YBCertificate cm, boolean deletedFinalUnknown) {}
-                                },
-                                resyncPeriodInMillis);
+                                    @Override
+                                    public void onDelete(
+                                        YBCertificate cm, boolean deletedFinalUnknown) {}
+                                  },
+                                  resyncPeriodInMillis);
+                    }
                   } else {
                     // Listen to all namespaces, use the factory to build informer.
                     ybSoftwareReleaseIndexInformer =
@@ -248,38 +255,35 @@ public class KubernetesOperator {
                             StorageConfig.class, resyncPeriodInMillis);
                     ybBackupIndexInformer =
                         informerFactory.sharedIndexInformerFor(Backup.class, resyncPeriodInMillis);
-                    ybDrConfigIndexInformer =
-                        informerFactory.sharedIndexInformerFor(
-                            DrConfig.class, resyncPeriodInMillis);
+                    if (!ossMode) {
+                      ybDrConfigIndexInformer =
+                          informerFactory.sharedIndexInformerFor(
+                              DrConfig.class, resyncPeriodInMillis);
+                    }
                     ybRestoreJobIndexInformer =
                         informerFactory.sharedIndexInformerFor(
                             RestoreJob.class, resyncPeriodInMillis);
                     ybSupportBundleIndexInformer =
                         informerFactory.sharedIndexInformerFor(
                             SupportBundle.class, resyncPeriodInMillis);
-                    ybCertificateIndexInformer =
-                        informerFactory.sharedIndexInformerFor(
-                            YBCertificate.class, resyncPeriodInMillis);
+                    if (!ossMode) {
+                      ybCertificateIndexInformer =
+                          informerFactory.sharedIndexInformerFor(
+                              YBCertificate.class, resyncPeriodInMillis);
+                    }
                   }
                   LOG.info("Finished setting up SharedIndexInformers");
+
+                  // OSS mode reconcilers: YBUniverse, Release, Backup, Restore,
+                  // StorageConfig, Provider, SupportBundle.
+                  // Non-OSS additionally: ScheduledBackup, PitrConfig, PitrRestore,
+                  // DrConfig, YBCertificate.
 
                   YBUniverseReconciler ybUniverseController =
                       reconcilerFactory.getYBUniverseReconciler(client);
 
-                  ScheduledBackupReconciler scheduledBackupReconciler =
-                      reconcilerFactory.getScheduledBackupReconciler(client);
-
                   YBProviderReconciler ybProviderReconciler =
                       reconcilerFactory.getYBProviderReconciler(client);
-
-                  PitrConfigReconciler pitrConfigReconciler =
-                      reconcilerFactory.getPitrConfigReconciler(client);
-
-                  PitrRestoreReconciler pitrRestoreReconciler =
-                      reconcilerFactory.getPitrRestoreReconciler(client);
-
-                  DrConfigReconciler drConfigReconciler =
-                      reconcilerFactory.getDrConfigReconciler(client);
 
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(
@@ -304,14 +308,6 @@ public class KubernetesOperator {
                   StorageConfigReconciler scReconciler =
                       new StorageConfigReconciler(
                           ybStorageConfigIndexInformer, scClient, ccs, namespace, operatorUtils);
-
-                  YBCertificateReconciler ybCertificateReconciler =
-                      new YBCertificateReconciler(
-                          ybCertificateIndexInformer,
-                          ybCertificateClient,
-                          namespace,
-                          operatorUtils,
-                          confGetter);
 
                   BackupReconciler backupReconciler =
                       new BackupReconciler(
@@ -339,48 +335,83 @@ public class KubernetesOperator {
                   startedInformersFuture.get();
                   releaseReconciler.run();
                   scReconciler.run();
-                  ybCertificateReconciler.run();
                   backupReconciler.run();
                   restoreJobReconciler.run();
                   supportBundleReconciler.run();
 
                   // Async start reconcilers
                   Thread ybUniverseReconcilerThread = new Thread(() -> ybUniverseController.run());
-                  Thread scheduledBackupReconcilerThread =
-                      new Thread(() -> scheduledBackupReconciler.run());
                   Thread ybProviderReconcilerThread = new Thread(() -> ybProviderReconciler.run());
-                  Thread pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
-                  Thread pitrRestoreReconcilerThread =
-                      new Thread(() -> pitrRestoreReconciler.run());
-                  Thread drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
+
+                  Thread scheduledBackupReconcilerThread = null;
+                  Thread pitrConfigReconcilerThread = null;
+                  Thread pitrRestoreReconcilerThread = null;
+                  Thread drConfigReconcilerThread = null;
+
+                  if (!ossMode) {
+                    YBCertificateReconciler ybCertificateReconciler =
+                        new YBCertificateReconciler(
+                            ybCertificateIndexInformer,
+                            ybCertificateClient,
+                            namespace,
+                            operatorUtils,
+                            confGetter);
+                    ybCertificateReconciler.run();
+
+                    ScheduledBackupReconciler scheduledBackupReconciler =
+                        reconcilerFactory.getScheduledBackupReconciler(client);
+                    PitrConfigReconciler pitrConfigReconciler =
+                        reconcilerFactory.getPitrConfigReconciler(client);
+                    PitrRestoreReconciler pitrRestoreReconciler =
+                        reconcilerFactory.getPitrRestoreReconciler(client);
+                    DrConfigReconciler drConfigReconciler =
+                        reconcilerFactory.getDrConfigReconciler(client);
+
+                    scheduledBackupReconcilerThread =
+                        new Thread(() -> scheduledBackupReconciler.run());
+                    pitrConfigReconcilerThread = new Thread(() -> pitrConfigReconciler.run());
+                    pitrRestoreReconcilerThread = new Thread(() -> pitrRestoreReconciler.run());
+                    drConfigReconcilerThread = new Thread(() -> drConfigReconciler.run());
+                  }
+
                   if (confGetter.getGlobalConf(
                       GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
                     Thread.UncaughtExceptionHandler exceptionHandler = getExceptionHandler();
                     ybUniverseReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
-                    scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
                     ybProviderReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
-                    pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
-                    pitrRestoreReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
-                    drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    if (!ossMode) {
+                      scheduledBackupReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      pitrConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      pitrRestoreReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                      drConfigReconcilerThread.setUncaughtExceptionHandler(exceptionHandler);
+                    }
                   }
+
                   ybUniverseReconcilerThread.start();
-                  scheduledBackupReconcilerThread.start();
                   ybProviderReconcilerThread.start();
-                  pitrConfigReconcilerThread.start();
-                  pitrRestoreReconcilerThread.start();
-                  drConfigReconcilerThread.start();
+                  if (!ossMode) {
+                    scheduledBackupReconcilerThread.start();
+                    pitrConfigReconcilerThread.start();
+                    pitrRestoreReconcilerThread.start();
+                    drConfigReconcilerThread.start();
+                  }
 
                   ybUniverseReconcilerThread.join();
-                  scheduledBackupReconcilerThread.join();
                   ybProviderReconcilerThread.join();
-                  pitrConfigReconcilerThread.join();
-                  pitrRestoreReconcilerThread.join();
-                  drConfigReconcilerThread.join();
+                  if (!ossMode) {
+                    scheduledBackupReconcilerThread.join();
+                    pitrConfigReconcilerThread.join();
+                    pitrRestoreReconcilerThread.join();
+                    drConfigReconcilerThread.join();
+                  }
 
                   LOG.info(
-                      "Finished running ybUniverseController, scheduledBackupReconciler,"
-                          + " ybProviderReconcilerThread, pitrConfigReconcilerThread,"
-                          + " pitrRestoreReconcilerThread drConfigReconcilerThread");
+                      "Finished running ybUniverseController,"
+                          + " ybProviderReconcilerThread"
+                          + (ossMode
+                              ? ""
+                              : ", scheduledBackupReconciler, pitrConfigReconcilerThread,"
+                                  + " pitrRestoreReconcilerThread, drConfigReconcilerThread"));
                 } catch (KubernetesClientException | ExecutionException exception) {
                   LOG.error("Kubernetes Client Exception : ", exception);
                   throw new RuntimeException(

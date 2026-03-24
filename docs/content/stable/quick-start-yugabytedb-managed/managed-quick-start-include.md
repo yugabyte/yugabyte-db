@@ -21,7 +21,7 @@ To create your Sandbox cluster:
 
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-1. Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+1. Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
 
 1. Select Sandbox and click **Choose**.
 

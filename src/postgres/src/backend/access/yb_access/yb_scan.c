@@ -499,7 +499,7 @@ ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 		case ROW_MARK_NOKEYEXCLUSIVE:
 		case ROW_MARK_SHARE:
 		case ROW_MARK_KEYSHARE:
-			YBCPgAddIntoForeignKeyReferenceCache(YbGetRelfileNodeId(ybScan->rs_base.rs_rd),
+			YBCPgAddIntoForeignKeyReferenceCache(YbGetRelfileNodeId(ybScan->table),
 												 ybctid);
 			break;
 		case ROW_MARK_REFERENCE:
@@ -514,7 +514,6 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 	HeapTuple	tuple = NULL;
 	bool		has_data = false;
 	TupleDesc	tupdesc = ybScan->target_desc;
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
 	Datum	   *values = (Datum *) palloc0(tupdesc->natts * sizeof(Datum));
 	bool	   *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YbcPgSysColumns syscols;
@@ -604,7 +603,7 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 					ereport(ERROR,
 							(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
 							 errmsg("could not obtain lock on row in relation \"%s\"",
-									RelationGetRelationName(tsdesc->rs_rd))));
+									RelationGetRelationName(ybScan->table))));
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_YB_TXN_CONFLICT),
@@ -630,7 +629,7 @@ ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 				HEAPTUPLE_YBCTID(tuple) = PointerGetDatum(syscols.ybctid);
 				ybcUpdateFKCache(ybScan, HEAPTUPLE_YBCTID(tuple));
 			}
-			tuple->t_tableOid = RelationGetRelid(tsdesc->rs_rd);
+			tuple->t_tableOid = RelationGetRelid(ybScan->table);
 			break;
 		}
 		else if (ybScan->pscan != NULL)
@@ -877,8 +876,7 @@ YbIsScanningEmbeddedIdx(Relation table, Relation index)
 static void
 ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
-	Relation	relation = tsdesc->rs_rd;
+	Relation	relation = ybScan->table;
 	Relation	index = ybScan->index;
 	int			i;
 
@@ -1753,7 +1751,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 
 			if (is_column_specified)
 			{
-				int			att_idx = YBAttnumToBmsIndex(((TableScanDesc) ybScan)->rs_rd,
+				int			att_idx = YBAttnumToBmsIndex(ybScan->table,
 														 subkeys[subkey_index]->sk_attno);
 
 				/* Set the first column in this RC to not null. */
@@ -1962,7 +1960,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	Datum	   *elem_values;
 	ScanKey		key = ybScan->keys[skey_index];
 	AttrNumber	scalar_attnum = scan_plan->bind_key_attnums[skey_index];
-	Relation	relation = ((TableScanDesc) ybScan)->rs_rd;
+	Relation	relation = ybScan->table;
 
 	*bail_out = false;
 
@@ -3250,20 +3248,14 @@ YbPredetermineNeedsRecheck(Scan *scan,
 						   ScanKey keys,
 						   int nkeys)
 {
-	YbScanDescData ybscan;
-
-	memset(&ybscan, 0, sizeof(YbScanDescData));
-	TableScanDesc tsdesc = (TableScanDesc) &ybscan;
-
-	tsdesc->rs_rd = relation;
-	tsdesc->rs_key = keys;
-	tsdesc->rs_nkeys = nkeys;
+	YbScanDescData ybscan = {0};
 
 	ybExtractScanKeys(keys, nkeys, &ybscan);
 
 	if (YbIsUnsatisfiableCondition(ybscan.nkeys, ybscan.keys))
 		return false;
 
+	ybscan.table = relation;
 	ybscan.index = index;
 
 	/* Set up the scan plan */
@@ -3321,11 +3313,6 @@ YbBeginScan(Relation table,
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc	ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
-
-	tsdesc->rs_rd = table;
-	tsdesc->rs_key = keys;
-	tsdesc->rs_nkeys = nkeys;
 
 	/* Flatten keys and store the results in ybScan. */
 	ybExtractScanKeys(keys, nkeys, ybScan);
@@ -3336,6 +3323,7 @@ YbBeginScan(Relation table,
 		return ybScan;
 	}
 	ybScan->exec_params = exec_params;
+	ybScan->table = table;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
 	ybScan->prepare_params.fetch_ybctids_only = fetch_ybctids_only;
@@ -3769,31 +3757,29 @@ ybc_heap_beginscan(Relation relation,
 				   ScanKey keys,
 				   uint32 flags)
 {
-	/*
-	 * Restart should not be prevented if operation caused by system read of
-	 * system table.
-	 */
-	YbScanDesc	ybScan = YbBeginScan(relation,
-									 NULL,	/* index */
-									 false, /* xs_want_itup */
-									 nkeys,
-									 keys,
-									 NULL,	/* pg_scan_plan */
-									 NULL,	/* rel_pushdown */
-									 NULL,	/* idx_pushdown */
-									 NULL,	/* aggrefs */
-									 0, /* distinct_prefixlen */
-									 NULL,	/* exec_params */
-									 false, /* is_internal_scan */
-									 false);	/* fetch_ybctids_only */
+	TableScanDesc tsdesc = palloc(sizeof(TableScanDescData));
 
-	Assert(!YbNeedsPgRecheck(ybScan));
-
-	/* Set up Postgres sys table scan description */
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
-
+	tsdesc->rs_rd = relation;
 	tsdesc->rs_snapshot = snapshot;
+	tsdesc->rs_nkeys = nkeys;
+	tsdesc->rs_key = keys;
 	tsdesc->rs_flags = flags;
+	tsdesc->rs_parallel = NULL;
+	tsdesc->ybscan = YbBeginScan(tsdesc->rs_rd,
+								 NULL,	/* index */
+								 false, /* xs_want_itup */
+								 tsdesc->rs_nkeys,
+								 tsdesc->rs_key,
+								 NULL,	/* pg_scan_plan */
+								 NULL,	/* rel_pushdown */
+								 NULL,	/* idx_pushdown */
+								 NULL,	/* aggrefs */
+								 0, /* distinct_prefixlen */
+								 NULL,	/* exec_params */
+								 false, /* is_internal_scan */
+								 false);	/* fetch_ybctids_only */
+
+	Assert(!YbNeedsPgRecheck(tsdesc->ybscan));
 
 	return tsdesc;
 }
@@ -3801,11 +3787,10 @@ ybc_heap_beginscan(Relation relation,
 HeapTuple
 ybc_heap_getnext(TableScanDesc tsdesc)
 {
-	YbScanDesc	ybdesc = (YbScanDesc) tsdesc;
 	HeapTuple	tuple;
 
-	Assert(PointerIsValid(tsdesc));
-	tuple = ybc_getnext_heaptuple(ybdesc, true /* is_forward_scan */ );
+	Assert(PointerIsValid(tsdesc->ybscan));
+	tuple = ybc_getnext_heaptuple(tsdesc->ybscan, true /* is_forward_scan */ );
 
 	return tuple;
 }
@@ -3813,11 +3798,9 @@ ybc_heap_getnext(TableScanDesc tsdesc)
 void
 ybc_heap_endscan(TableScanDesc tsdesc)
 {
-	YbScanDesc	ybdesc = (YbScanDesc) tsdesc;
-
 	if (tsdesc->rs_flags & SO_TEMP_SNAPSHOT)
 		UnregisterSnapshot(tsdesc->rs_snapshot);
-	ybc_free_ybscan(ybdesc);
+	ybc_free_ybscan(tsdesc->ybscan);
 }
 
 /*
@@ -3967,32 +3950,32 @@ ybcBuildScanPlanForIndexBuild(Relation relation, IndexInfo *indexInfo)
 TableScanDesc
 ybc_heap_beginscan_for_index_build(Relation relation,
 								   Snapshot snapshot,
-								   int nkeys,
-								   ScanKey key,
 								   IndexInfo *indexInfo)
 {
-	YbScanDesc	ybScan;
+	TableScanDesc tsdesc = palloc(sizeof(TableScanDescData));
 	Scan	   *pg_scan_plan;
 
 	pg_scan_plan = ybcBuildScanPlanForIndexBuild(relation, indexInfo);
 
-	ybScan = YbBeginScan(relation,
-						 NULL,	/* index */
-						 false, /* xs_want_itup */
-						 nkeys,
-						 key,
-						 pg_scan_plan,
-						 NULL,	/* rel_pushdown */
-						 NULL,	/* idx_pushdown */
-						 NIL,	/* aggrefs */
-						 0,		/* distinct_prefixlen */
-						 NULL,	/* exec_params */
-						 false, /* is_internal_scan */
-						 false);	/* fetch_ybctids_only */
-
-	TableScanDesc tsdesc = (TableScanDesc) ybScan;
+	tsdesc->rs_rd = relation;
 	tsdesc->rs_snapshot = snapshot;
+	tsdesc->rs_nkeys = 0;
+	tsdesc->rs_key = NULL;
 	tsdesc->rs_flags = SO_TYPE_SEQSCAN;
+	tsdesc->rs_parallel = NULL;
+	tsdesc->ybscan = YbBeginScan(tsdesc->rs_rd,
+								 NULL,	/* index */
+								 false, /* xs_want_itup */
+								 tsdesc->rs_nkeys,
+								 tsdesc->rs_key,
+								 pg_scan_plan,
+								 NULL,	/* rel_pushdown */
+								 NULL,	/* idx_pushdown */
+								 NIL,	/* aggrefs */
+								 0,		/* distinct_prefixlen */
+								 NULL,	/* exec_params */
+								 false, /* is_internal_scan */
+								 false);	/* fetch_ybctids_only */
 
 	return tsdesc;
 }

@@ -43,7 +43,32 @@ no_proxy =
 {% else %}
 no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
 {% endif %}
-node_exporter_port = {{ ynp_config['ynp'].node_exporter_port | default(9300) }}
+# Minimum required space in data dirs in gigabytes. Default is 49GB.
+min_mount_point_dir_space_gb = {{ ynp_config['ynp'].min_mount_point_dir_space_gb | default(49) }}
+# Minimum required space in home directory in gigabytes. Default is 3GB.
+min_home_dir_space_gb = {{ ynp_config['ynp'].min_home_dir_space_gb | default(3) }}
+# Minimum required space in temp directory in gigabytes. Default is 1GB.
+min_tmp_dir_space_gb = {{ ynp_config['ynp'].min_tmp_dir_space_gb | default(1) }}
+# Minimum required space for prometheus in gigabytes. Default is 1GB.
+min_prometheus_space_gb = {{ ynp_config['ynp'].min_prometheus_space_gb | default(1) }}
+# Check clean directories only if set for first time installation.
+check_clean_dirs = {{ ynp_config['ynp'].check_clean_dirs | default(false) }}
+# Check available ports only if set for first time installation.
+check_available_ports = {{ ynp_config['ynp'].check_available_ports | default(false) }}
+# Define ports with default values if not provided.
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_http_port | default(9300) }}
+master_http_port = {{ ynp_config['ynp'].master_http_port | default(7000) }}
+master_rpc_port = {{ ynp_config['ynp'].master_rpc_port | default(7100) }}
+tserver_http_port = {{ ynp_config['ynp'].tserver_http_port | default(9000) }}
+tserver_rpc_port = {{ ynp_config['ynp'].tserver_rpc_port | default(9100) }}
+yb_controller_http_port = {{ ynp_config['ynp'].yb_controller_http_port | default(14000) }}
+yb_controller_rpc_port = {{ ynp_config['ynp'].yb_controller_rpc_port | default(18018) }}
+redis_server_http_port = {{ ynp_config['ynp'].redis_server_http_port | default(11000) }}
+redis_server_rpc_port = {{ ynp_config['ynp'].redis_server_rpc_port | default(6379) }}
+ycql_server_http_port = {{ ynp_config['ynp'].ycql_server_http_port | default(12000) }}
+ycql_server_rpc_port = {{ ynp_config['ynp'].ycql_server_rpc_port | default(9042) }}
+ysql_server_http_port = {{ ynp_config['ynp'].ysql_server_http_port | default(13000) }}
+ysql_server_rpc_port = {{ ynp_config['ynp'].ysql_server_rpc_port | default(5433) }}
 {% if ynp_config['yba'].instance_type.mount_points %}
 mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
 {% endif %}
@@ -133,7 +158,6 @@ service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb
 
 [ConfigureNetwork]
 ip_address={{ ynp_config['ynp'].node_ip }}
-ports = 7000 7100 9000 9100 18018 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(ynp_config['yba']) -}}

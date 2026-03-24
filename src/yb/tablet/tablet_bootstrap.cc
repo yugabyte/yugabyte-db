@@ -85,6 +85,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/tablet_splitter.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 
@@ -267,8 +268,7 @@ struct ReplayState {
 
   // ----------------------------------------------------------------------------------------------
   // State specific to RocksDB-backed tables (not transaction status table)
-
-  const DocDbOpIds stored_op_ids;
+  DocDbOpIds stored_op_ids;
 
   // Total number of log entries applied to RocksDB.
   int64_t num_entries_applied_to_rocksdb = 0;
@@ -1816,6 +1816,8 @@ class TabletBootstrap {
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));
+    tablet_->vector_indexes().FillMaxPersistentOpIds(
+        replay_state_->stored_op_ids.vector_indexes, false);
     return s;
   }
 

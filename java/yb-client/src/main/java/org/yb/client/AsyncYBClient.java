@@ -287,6 +287,10 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final int maxAttempts;
 
+  private final int dnsWarningThresholdNs;
+
+  private final int dnsDebugThresholdNs;
+
   private AsyncYBClient(AsyncYBClientBuilder b) {
     this.executor = b.getOrCreateWorker();
     this.eventLoopGroup = b.createEventLoopGroup(executor);
@@ -306,6 +310,8 @@ public class AsyncYBClient implements AutoCloseable {
     this.numTabletsInTable = b.numTablets;
     this.maxAttempts = b.maxRpcAttempts;
     sleepTime = b.sleepTime;
+    this.dnsDebugThresholdNs = b.dnsDebugThresholdNs;
+    this.dnsWarningThresholdNs = b.dnsWarningThresholdNs;
   }
 
   /**
@@ -595,6 +601,43 @@ public class AsyncYBClient implements AutoCloseable {
       CdcSdkCheckpoint explicitCheckpoint,
       long safeHybridTime,
       int walSegmentIndex) {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+        needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex, null);
+  }
+
+  /**
+   * Get changes for a given tablet and stream, with an explicit per-request response size limit.
+   *
+   * @param table the table to get changes for.
+   * @param streamId the stream to get changes for.
+   * @param tabletId the tablet to get changes for.
+   * @param term the leader term to start getting changes for.
+   * @param index the log index to start get changes for.
+   * @param key the key to start get changes for.
+   * @param time the time to start get changes for.
+   * @param needSchemaInfo request schema from the response.
+   * @param explicitCheckpoint checkpoint works in explicit mode.
+   * @param safeHybridTime safe hybrid time received from the previous get changes call.
+   * @param walSegmentIndex wal segment index received from the previous get changes call.
+   * @param getchangesRespMaxSizeBytes when non-null, overrides the tserver flag
+   *     cdc_stream_records_threshold_size_bytes for this request. Honoured only when the tserver
+   *     flag enable_cdcsdk_setting_get_changes_response_byte_limit is true (the default).
+   * @return a deferred object for the response from server.
+   */
+  public Deferred<GetChangesResponse> getChangesCDCSDK(
+      YBTable table,
+      String streamId,
+      String tabletId,
+      long term,
+      long index,
+      byte[] key,
+      int write_id,
+      long time,
+      boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint,
+      long safeHybridTime,
+      int walSegmentIndex,
+      Long getchangesRespMaxSizeBytes) {
     checkIsClosed();
     GetChangesRequest rpc =
         new GetChangesRequest(
@@ -610,7 +653,8 @@ public class AsyncYBClient implements AutoCloseable {
             explicitCheckpoint,
             table.getTableId(),
             safeHybridTime,
-            walSegmentIndex);
+            walSegmentIndex,
+            getchangesRespMaxSizeBytes);
     rpc.maxAttempts = this.maxAttempts;
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(
@@ -3961,16 +4005,16 @@ public class AsyncYBClient implements AutoCloseable {
    * @return The IP address associated with the given hostname, or {@code null} if the address
    *     couldn't be resolved.
    */
-  private static String getIP(final String host) {
+  private String getIP(final String host) {
     // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
     for (int i = 0; i < 3; i++) {
      final long start = System.nanoTime();
      try {
        final String ip = InetAddress.getByName(host).getHostAddress();
        final long latency = System.nanoTime() - start;
-       if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
+       if (latency >= dnsDebugThresholdNs && LOG.isDebugEnabled()) {
          LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-       } else if (latency >= 3000000 /*ns*/) {
+       } else if (latency >= dnsWarningThresholdNs) {
          LOG.warn(
              "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
        }
@@ -4297,6 +4341,9 @@ public class AsyncYBClient implements AutoCloseable {
 
     private int sleepTime = 500;
 
+    private int dnsDebugThresholdNs = 1000000; // 1ms
+    private int dnsWarningThresholdNs = 200000000; // 200ms
+
     /**
      * Creates a new builder for a client that will connect to the specified masters.
      *
@@ -4461,6 +4508,16 @@ public class AsyncYBClient implements AutoCloseable {
       Preconditions.checkArgument(
           numTablets > 0, "Number of tablets in a table should " + "be greater than 0");
       this.numTablets = numTablets;
+      return this;
+    }
+
+    public AsyncYBClientBuilder dnsDebugThresholdNs(int dnsDebugThresholdNs) {
+      this.dnsDebugThresholdNs = dnsDebugThresholdNs;
+      return this;
+    }
+
+    public AsyncYBClientBuilder dnsWarningThresholdNs(int dnsWarningThresholdNs) {
+      this.dnsWarningThresholdNs = dnsWarningThresholdNs;
       return this;
     }
 

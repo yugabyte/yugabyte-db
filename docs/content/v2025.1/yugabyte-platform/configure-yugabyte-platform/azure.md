@@ -3,7 +3,7 @@ title: Configure the Microsoft Azure provider configuration
 headerTitle: Create cloud provider configuration
 linkTitle: Cloud providers
 description: Configure the Microsoft Azure provider configuration
-headContent: For deploying universes on Azure
+headContent: For deploying universes to cloud providers
 menu:
   v2025.1_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure
@@ -36,9 +36,17 @@ type: docs
 
 </ul>
 
-Before you can deploy universes using YugabyteDB Anywhere (YBA), you must create a provider configuration. Create a Microsoft Azure provider configuration if your target cloud is Azure.
+Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
-When deploying a universe, YBA uses the provider configuration settings to do the following:
+Create a Microsoft Azure provider configuration if your target cloud is Azure, and you can provide full SSH permissions to YugabyteDB Anywhere to orchestrate universe management.
+
+{{< tip title="Use on-premises provider" >}}
+
+If you can't provide YugabyteDB Anywhere with cloud permissions or SSH access to cloud VMs (due to security policies or other restrictions), you can still deploy to Azure using an on-premises provider configuration. Refer to [On-premises provider configurations](../on-premises/).
+
+{{< /tip >}}
+
+When deploying a universe, YugabyteDB Anywhere uses the provider configuration settings to do the following:
 
 - Create VMs on Azure using the following:
   - the resource group
@@ -57,7 +65,7 @@ You need to add the following Azure cloud provider credentials:
 - Tenant ID
 - SSH port and user
 
-YBA uses the credentials to automatically provision and deprovision YugabyteDB instances.
+YugabyteDB Anywhere uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
 For more information on setting up an Azure account and resource groups, refer to [Cloud permissions to deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nodes-azure/).
 
@@ -81,7 +89,7 @@ To create an Azure provider:
 
 The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
-When the configuration is completed, you can see all the resources managed by YBA in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
+When the configuration is completed, you can see all the resources managed by YugabyteDB Anywhere in your resource group, including virtual machines, network interface, network security groups, public IP addresses, and disks.
 
 If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
 
@@ -89,7 +97,7 @@ If you encounter problems, see [Troubleshoot Azure cloud provider configuration]
 
 To view a provider, select it in the list of AZU Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YugabyteDB Anywhere v2.20.1 and later, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
 
 - Provider Name
 - Client Secret
@@ -135,7 +143,7 @@ If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/
 #### Additional fields
 
 - **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
-- **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
+- **Subscription ID** is required for cost management. The virtual machine resources managed by YugabyteDB Anywhere are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
 - Optionally, if you created a different resource group for your network interfaces, provide the **Network Resource Group** name and the associated **Network Subscription ID**. If you do not provide a Network Resource Group or Network Subscription ID, network resources will be created in the default resource group.
 - **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
@@ -152,7 +160,7 @@ You can specify a region as follows:
 
 1. Optionally, specify a **Network Resource Group** and **Resource Group** for the region. If you do not provide a Network Resource Group or Resource Group, node compute and network resources for the region will be created in the resource group specified for the provider.
 
-1. Click **Add Zone** and provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YBA can deploy nodes in the correct network isolation that you need in your environment.
+1. Click **Add Zone** and provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you need in your environment.
 
 1. Click **Done**.
 
@@ -160,7 +168,7 @@ You can specify a region as follows:
 
 Specify the machine images to be used to install on nodes of universes created using this provider.
 
-To add machine images recommended and provisioned by YBA, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
+To add machine images recommended and provisioned by YugabyteDB Anywhere, select the **Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog** option, and choose the architectures.
 
 To add your own machine images to the catalog:
 
@@ -184,13 +192,13 @@ For YugabyteDB Anywhere v2025.1 and later, if you want to deploy a universe on A
 
 ### SSH Key Pairs
 
-To be able to provision cloud instances with YugabyteDB, YBA requires SSH access.
+To be able to provision cloud instances with YugabyteDB, YugabyteDB Anywhere requires SSH access.
 
 Enter the SSH user and port to use by default for machine images. You can override these values for custom Linux versions that you add to the Linux Version Catalog.
 
 You can manage SSH key pairs in the following ways:
 
-- Enable YBA to create and manage Key Pairs. In this mode, YBA creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
+- Enable YugabyteDB Anywhere to create and manage Key Pairs. In this mode, YugabyteDB Anywhere creates SSH Key Pairs and stores the relevant private key so that you will be able to SSH into future instances.
 - Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content.
 
 ### Advanced
@@ -199,7 +207,7 @@ You can customize the Network Time Protocol server, as follows:
 
 - Select **Use AZU's NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
 - Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Assume NTP server configured in machine image** to prevent YBA from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, you will be responsible for manually configuring NTP.
 
     {{< warning title="Important" >}}
 
@@ -223,7 +231,7 @@ Azure resource IDs typically have the following format:
 
 ### Define a private DNS zone
 
-You may choose to define a private DNS zone to instruct YBA to register the universe name to all of the IP addresses in the universe in that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
+You may choose to define a private DNS zone to instruct YugabyteDB Anywhere to register the universe name to all of the IP addresses in the universe in that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
 
 You can set a private DNS zone as follows:
 
@@ -237,9 +245,9 @@ You can set a private DNS zone as follows:
 
 1. Add a link to the virtual network to which you want it to be connected. For more information, see [Create an Azure private DNS zone using the Azure portal](https://docs.microsoft.com/en-us/azure/dns/private-dns-getstarted-portal).
 
-1. To use the private DNS zone in YBA, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the YBA UI.
+1. To use the private DNS zone in YugabyteDB Anywhere, add either the resource ID or the name of the DNS zone to the **Private DNS Zone** field of the **Cloud Provider Configuration** page in the YugabyteDB Anywhere UI.
 
-    If the private DNS zone is defined by an ID, YBA will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
+    If the private DNS zone is defined by an ID, YugabyteDB Anywhere will use it together with the default subscription ID and the resource group. If the private DNS zone is defined by a full URL that contains both the subscription ID and resource group, then these two values will be used instead of default values.
 
 In the setup example shown in the following illustration, the private DNS zone is specified as `dns.example.com`, and the resource group is explicitly specified as `myRG`:
 
@@ -279,6 +287,6 @@ You set up a shared gallery image on Azure as follows:
 
     ![Azure Shared Image Gallery example](/images/yb-platform/install/azure/shared-gallery-replication.png)
 
-1. To use the image in YBA, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
+1. To use the image in YugabyteDB Anywhere, enter the image version's resource ID into the **Marketplace Image URN / Shared Gallery Image ID** field of the **Specify Region Info** dialog.
 
-    The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, YBA will use them instead.
+    The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, YugabyteDB Anywhere will use them instead.

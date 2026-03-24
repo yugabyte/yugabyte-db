@@ -30,16 +30,22 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.cdc.CdcConsumer;
+import org.yb.client.AlterUniverseReplicationResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
+import org.yb.util.NetUtil;
 
 @Singleton
 @Slf4j
@@ -81,6 +87,10 @@ public class XClusterScheduler {
     return confGetter.getGlobalConf(GlobalConfKeys.xClusterMetricsSchedulerInterval);
   }
 
+  private Duration getMasterAddressSyncInterval() {
+    return confGetter.getGlobalConf(GlobalConfKeys.xClusterMasterAddressSyncInterval);
+  }
+
   public void start() {
     platformScheduler.schedule(
         "XCluster-Sync-Scheduler",
@@ -93,6 +103,12 @@ public class XClusterScheduler {
         Duration.ZERO /* initialDelay */,
         this.getMetricsSchedulerInterval(),
         this::metricsScheduleRunner);
+
+    platformScheduler.schedule(
+        "XCluster-MasterAddress-Sync-Scheduler",
+        Duration.ZERO /* initialDelay */,
+        this.getMasterAddressSyncInterval(),
+        this::masterAddressSyncRunner);
   }
 
   // Sync XCluster config methods.
@@ -315,6 +331,134 @@ public class XClusterScheduler {
 
   // --------------------------------------------------------------------------------
   // End of Sync XCluster config methods.
+
+  // Sync source master addresses methods.
+  // --------------------------------------------------------------------------------
+
+  private void syncMasterAddressesForConfig(XClusterConfig xClusterConfig) {
+    UUID targetUniverseUUID = xClusterConfig.getTargetUniverseUUID();
+    UUID sourceUniverseUUID = xClusterConfig.getSourceUniverseUUID();
+
+    Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
+
+    if (sourceUniverse.getUniverseDetails().universePaused
+        || targetUniverse.getUniverseDetails().universePaused) {
+      return;
+    }
+
+    String replicationGroupName = xClusterConfig.getReplicationGroupName();
+    Set<HostPortPB> currentMasterAddresses;
+    try (YBClient client = ybClientService.getUniverseClient(targetUniverse)) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+          XClusterConfigTaskBase.getClusterConfig(client, targetUniverseUUID);
+      Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =
+          clusterConfig.getConsumerRegistry().getProducerMapMap();
+      CdcConsumer.ProducerEntryPB replicationGroup = replicationGroups.get(replicationGroupName);
+      if (replicationGroup == null) {
+        log.debug(
+            "No replication group found for {} on target universe {}",
+            replicationGroupName,
+            targetUniverseUUID);
+        return;
+      }
+      currentMasterAddresses = new HashSet<>(replicationGroup.getMasterAddrsList());
+    } catch (Exception e) {
+      log.error(
+          "Error reading replication group for xCluster config {}: ", xClusterConfig.getUuid(), e);
+      return;
+    }
+
+    boolean locked = false;
+    try {
+      // For dual NIC, the universes will be able to communicate over the secondary addresses.
+      // The masters should be query-able so that the update happens after the ongoing task on the
+      // source universe is done.
+      Set<HostPortPB> expectedMasterAddresses =
+          new HashSet<>(
+              NetUtil.parseStringsAsPB(
+                  sourceUniverse.getMasterAddresses(
+                      true /* mastersQueryable */, true /* getSecondary */)));
+
+      if (currentMasterAddresses.equals(expectedMasterAddresses)) {
+        return;
+      }
+
+      log.info(
+          "Master addresses differ for xCluster config {} (replication group {}). "
+              + "Current: {}, Expected: {}",
+          xClusterConfig.getName(),
+          replicationGroupName,
+          currentMasterAddresses,
+          expectedMasterAddresses);
+
+      if (!Universe.UNIVERSE_KEY_LOCK.tryLock(targetUniverseUUID)) {
+        log.info(
+            "Could not acquire lock for target universe {}, "
+                + "will retry master address sync in next scheduled attempt",
+            targetUniverseUUID);
+        return;
+      }
+      locked = true;
+      Universe refreshedTarget = Universe.getOrBadRequest(targetUniverseUUID);
+      if (refreshedTarget.getUniverseDetails().updateInProgress) {
+        log.debug(
+            "Target universe {} has update in progress, skipping master address sync",
+            targetUniverseUUID);
+        return;
+      }
+
+      try (YBClient client = ybClientService.getUniverseClient(refreshedTarget)) {
+        AlterUniverseReplicationResponse resp =
+            client.alterUniverseReplicationSourceMasterAddresses(
+                replicationGroupName, expectedMasterAddresses);
+        if (resp.hasError()) {
+          log.error(
+              "Failed to update source master addresses for xCluster config {} "
+                  + "between source({}) and target({}): {}",
+              xClusterConfig.getName(),
+              sourceUniverseUUID,
+              targetUniverseUUID,
+              resp.errorMessage());
+          return;
+        }
+        log.info(
+            "Master addresses for xCluster config {} between source({}) and target({}) "
+                + "updated to {}",
+            xClusterConfig.getName(),
+            sourceUniverseUUID,
+            targetUniverseUUID,
+            sourceUniverse.getMasterAddresses());
+      }
+    } catch (Exception e) {
+      log.error(
+          "Error updating master addresses for xCluster config {}: ", xClusterConfig.getUuid(), e);
+    } finally {
+      if (locked) {
+        Universe.UNIVERSE_KEY_LOCK.releaseLock(targetUniverseUUID);
+      }
+    }
+  }
+
+  private void masterAddressSyncRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      log.debug("Skipping scheduler for follower platform");
+      return;
+    }
+    log.info("Running xCluster Master Address Sync Scheduler...");
+    try {
+      List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
+      xClusterConfigs.stream()
+          .filter(config -> !XClusterConfigTaskBase.isInMustDeleteStatus(config))
+          .filter(config -> config.getStatus() == XClusterConfigStatusType.Running)
+          .forEach(this::syncMasterAddressesForConfig);
+    } catch (Exception e) {
+      log.error("Error running xCluster Master Address Sync Scheduler:", e);
+    }
+  }
+
+  // --------------------------------------------------------------------------------
+  // End of Sync source master addresses methods.
 
   // Publish XCluster config metrics methods.
   // --------------------------------------------------------------------------------

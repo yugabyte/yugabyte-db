@@ -693,6 +693,7 @@ class GraphPanelHeader extends Component {
                           onRegionChanged={this.onRegionChanged}
                           currentSelectedRegion={currentSelectedRegion}
                           selectedRegionClusterUUID={selectedRegionClusterUUID}
+                          selectedProvider={this.props.provider}
                         />
                       )}
                       {this.props.origin !== MetricOrigin.TABLE && isDedicatedNodes && (

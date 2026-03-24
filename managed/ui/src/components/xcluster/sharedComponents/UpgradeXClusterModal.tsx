@@ -74,7 +74,7 @@ export const UpgradeXClusterModal = ({
           />
         </Typography>
         <Typography variant="body2" className={classes.learnMoreLink}>
-          <DocumentationIcon />
+          <DocumentationIcon width={16} height={16} />
           <a
             href={
               isDrInterface

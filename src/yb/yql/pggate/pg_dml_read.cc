@@ -170,7 +170,7 @@ class InOperatorYbctidsGenerator {
 
 } // namespace
 
-PgDmlRead::PgDmlRead(const PgSession::ScopedRefPtr& pg_session)
+PgDmlRead::PgDmlRead(const PgSessionPtr& pg_session)
     : PgDml(pg_session) {
 }
 

@@ -76,9 +76,10 @@ public class NFSUtil implements StorageUtil {
     }
     String storageLocation = getRegionLocationsMap(configData).get(region);
     String bucket = getRegionBucketMap(configData).get(region);
+    List<String> nfsVolumes = getRegionNfsVolumesMap(configData).get(region);
     Map<String, String> credsMap = createCredsMapYbc(storageLocation);
     return YbcBackupUtil.buildCloudStoreSpec(
-        bucket, cloudDir, previousCloudDir, credsMap, Util.NFS);
+        bucket, cloudDir, previousCloudDir, credsMap, Util.NFS, nfsVolumes);
   }
 
   @Override
@@ -90,6 +91,7 @@ public class NFSUtil implements StorageUtil {
       Universe universe) {
     String bucket = getRegionBucketMap(configData).get(region);
     String storageLocation = getRegionLocationsMap(configData).get(region);
+    List<String> nfsVolumes = getRegionNfsVolumesMap(configData).get(region);
     Map<String, String> credsMap = new HashMap<>();
     if (isDsm) {
       String location =
@@ -97,10 +99,11 @@ public class NFSUtil implements StorageUtil {
               cloudDir, bucket, ((CustomerConfigStorageData) configData).backupLocation);
       location = BackupUtil.appendSlash(location);
       credsMap = createCredsMapYbc(((CustomerConfigStorageData) configData).backupLocation);
-      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", credsMap, Util.NFS);
+      return YbcBackupUtil.buildCloudStoreSpec(
+          bucket, location, "", credsMap, Util.NFS, nfsVolumes);
     }
     credsMap = createCredsMapYbc(storageLocation);
-    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", credsMap, Util.NFS);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", credsMap, Util.NFS, nfsVolumes);
   }
 
   private Map<String, String> createCredsMapYbc(String storageLocation) {
@@ -128,6 +131,17 @@ public class NFSUtil implements StorageUtil {
     }
     regionBucketMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, nfsData.nfsBucket);
     return regionBucketMap;
+  }
+
+  private static Map<String, List<String>> getRegionNfsVolumesMap(CustomerConfigData configData) {
+    Map<String, List<String>> regionNfsVolumesMap = new HashMap<>();
+    CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) configData;
+    if (CollectionUtils.isNotEmpty(nfsData.regionLocations)) {
+      nfsData.regionLocations.stream()
+          .forEach(rL -> regionNfsVolumesMap.put(rL.region, rL.nfsVolumes));
+    }
+    regionNfsVolumesMap.put(YbcBackupUtil.DEFAULT_REGION_STRING, nfsData.nfsVolumes);
+    return regionNfsVolumesMap;
   }
 
   public void validateDirectory(CustomerConfigData customerConfigData, Universe universe) {

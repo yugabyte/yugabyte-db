@@ -28,10 +28,26 @@ import {
   RESILIENCE_TYPE,
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
+import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
+import pluralize from 'pluralize';
 
-const { Box } = mui;
+const { Box, MenuItem, styled, Typography } = mui;
 
-export const RegionSelection = () => {
+const StyledMenu = styled(MenuItem)({
+  display: 'flex',
+  flexDirection: 'row',
+  justifyContent: 'flex-start',
+  padding: '4px 16px',
+  height: 'auto !important',
+  minHeight: '52px !important'
+});
+
+
+interface RegionSelectionProps {
+  showErrorsAfterSubmit?: boolean;
+}
+
+export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectionProps) => {
   const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
@@ -101,13 +117,30 @@ export const RegionSelection = () => {
           <YBAutoComplete
             ybInputProps={{
               placeholder: t('selectRegion'),
-              error: !!errors[REGIONS_FIELD],
-              helperText: errors[REGIONS_FIELD]?.message,
+              error: showErrorsAfterSubmit && !!errors[REGIONS_FIELD],
+              helperText: showErrorsAfterSubmit ? errors[REGIONS_FIELD]?.message : undefined,
               dataTestId: 'region-selection-autocomplete'
             }}
             dataTestId="region-selection-autocomplete-parent"
             options={((regionsList as unknown) as Record<string, string>[]) ?? []}
             getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
+            renderOption={(props, row) => {
+              return (
+                <StyledMenu {...props}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <Box>
+                      {getFlagFromRegion(row.code)}
+                      <span style={{ marginLeft: '4px' }}>{row.name}</span>
+                    </Box>
+                    <Typography variant='subtitle1' color='textSecondary'>
+                      {
+                        pluralize(t('availabilityZonesCount', { count: row.zones?.length ?? 0 }), row.zones?.length)
+                      }
+                    </Typography>
+                  </Box>
+                </StyledMenu>
+              );
+            }}
             sx={{ marginRight: '24px' }}
             size="large"
             loading={isFetching}
@@ -117,14 +150,16 @@ export const RegionSelection = () => {
                 Array.isArray(option) ? option : option === null ? [] : [option],
                 'name'
               );
-              setValue(REGIONS_FIELD, (value as unknown) as Region[]);
+              setValue(REGIONS_FIELD, (value as unknown) as Region[], {
+                shouldValidate: true
+              });
             }}
             value={
               allowmultipleRegionsSelection
                 ? ((regions as unknown) as Record<string, string>[])
                 : isEmpty(regions)
-                ? null
-                : ((regions[0] as unknown) as Record<string, string>)
+                  ? null
+                  : ((regions[0] as unknown) as Record<string, string>)
             }
           />
         </Box>

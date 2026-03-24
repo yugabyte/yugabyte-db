@@ -2,12 +2,14 @@ package com.yugabyte.yw.common.operator;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
@@ -32,18 +34,25 @@ import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.OperatorResource;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import io.fabric8.kubernetes.api.model.IntOrString;
@@ -516,6 +525,37 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testEditUniverseTriggersToggleYbcWhenUseYbdbInbuiltYbcToggledInCr() throws Exception {
+    String universeName = "test-toggle-ybc-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    // Universe has useYbdbInbuiltYbc = false by default; ensure it stays false
+    assertFalse(
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Toggle useYbdbInbuiltYbc to true in the CR
+    ybUniverse.getSpec().setUseYbdbInbuiltYbc(true);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, oldUniverse, ybUniverse);
+
+    ArgumentCaptor<KubernetesToggleImmutableYbcParams> paramsCaptor =
+        ArgumentCaptor.forClass(KubernetesToggleImmutableYbcParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .kubernetesToggleImmutableYbc(paramsCaptor.capture(), eq(defaultCustomer), eq(oldUniverse));
+    assertTrue(
+        "toggle params should have useYbdbInbuiltYbc true",
+        paramsCaptor.getValue().isUseYbdbInbuiltYbc());
+    assertEquals(oldUniverse.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+  }
+
+  @Test
   public void testReconcileDeleteRemovesOperatorResource() {
     String universeName = "test-delete-tracked-universe";
     YBUniverse universe = ModelFactory.createYbUniverse(universeName, defaultProvider);
@@ -584,5 +624,515 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     overrides.setResource(resource);
 
     return overrides;
+  }
+
+  /*--- Tests for tserverVolume/masterVolume deviceInfo changes ---*/
+
+  @Test
+  public void testDeviceInfoChangeTriggeredFromTserverVolume() throws Exception {
+    String universeName = "test-tserver-volume-deviceinfo";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // Remove old deviceInfo and set tserverVolume instead
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(3L);
+    tserverVolume.setStorageClass("fast-ssd");
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // Create availability zones first
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+
+    // Create existing universe with different deviceInfo
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    // Modify deviceInfo to be different
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 50;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes = 1;
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+
+    // Update nodes to use the real AZ UUID and ensure placementInfo is set up properly
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          // Update all nodes to use the real AZ UUID
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              node.azUuid = az.getUuid();
+              node.cloudInfo.az = az.getCode();
+              node.cloudInfo.region = region.getCode();
+            }
+          }
+          // Create placementInfo from the nodes
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+    existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Call editUniverse - should trigger deviceInfo change
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Verify that universeCRUDHandler.configure and update were called (EditKubernetesUniverse
+    // task)
+    ArgumentCaptor<UniverseConfigureTaskParams> configureParamsCaptor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .configure(eq(defaultCustomer), configureParamsCaptor.capture());
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), eq(existingUniverse), configureParamsCaptor.capture());
+
+    // Verify deviceInfo was updated from tserverVolume
+    UniverseConfigureTaskParams capturedParams = configureParamsCaptor.getAllValues().get(0);
+    assertEquals(
+        100, capturedParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize.intValue());
+    assertEquals(3, capturedParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes.intValue());
+    assertEquals("fast-ssd", capturedParams.getPrimaryCluster().userIntent.deviceInfo.storageClass);
+  }
+
+  @Test
+  public void testDeviceInfoChangeTriggeredFromMasterVolume() throws Exception {
+    String universeName = "test-master-volume-deviceinfo";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // Remove old deviceInfo and set masterVolume instead
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume masterVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume();
+    masterVolume.setVolumeSize(75L);
+    masterVolume.setNumVolumes(1L);
+    masterVolume.setStorageClass("master-storage");
+    ybUniverse.getSpec().setMasterVolume(masterVolume);
+
+    // Create availability zones first
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+
+    // Create existing universe with different masterDeviceInfo
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    // Modify masterDeviceInfo to be different
+    taskParams.getPrimaryCluster().userIntent.masterDeviceInfo.volumeSize = 50;
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+
+    // Update nodes to use the real AZ UUID and ensure placementInfo is set up properly
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          // Update all nodes to use the real AZ UUID
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              node.azUuid = az.getUuid();
+              node.cloudInfo.az = az.getCode();
+              node.cloudInfo.region = region.getCode();
+            }
+          }
+          // Create placementInfo from the nodes
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+    existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Call editUniverse - should trigger deviceInfo change
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Verify that universeCRUDHandler.configure and update were called
+    ArgumentCaptor<UniverseConfigureTaskParams> configureParamsCaptor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .configure(eq(defaultCustomer), configureParamsCaptor.capture());
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), eq(existingUniverse), configureParamsCaptor.capture());
+
+    // Verify masterDeviceInfo was updated from masterVolume
+    UniverseConfigureTaskParams capturedParams = configureParamsCaptor.getAllValues().get(0);
+    assertEquals(
+        75, capturedParams.getPrimaryCluster().userIntent.masterDeviceInfo.volumeSize.intValue());
+    assertEquals(
+        1, capturedParams.getPrimaryCluster().userIntent.masterDeviceInfo.numVolumes.intValue());
+    assertEquals(
+        "master-storage",
+        capturedParams.getPrimaryCluster().userIntent.masterDeviceInfo.storageClass);
+  }
+
+  @Test
+  public void testAZOverridesAppliedWhenPerAZPresent() throws Exception {
+    String universeName = "test-peraz-overrides";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // Create availability zones in the provider
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
+
+    // Remove old deviceInfo and set tserverVolume with perAZ
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(3L);
+    tserverVolume.setStorageClass("base-storage");
+
+    // Add perAZ overrides
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ> perAZMap =
+        new HashMap<>();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az1Volume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az1Volume.setVolumeSize(200L);
+    az1Volume.setStorageClass("az1-storage");
+    perAZMap.put("az-1", az1Volume);
+
+    io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ az2Volume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.tservervolume.PerAZ();
+    az2Volume.setNumVolumes(5L);
+    perAZMap.put("az-2", az2Volume);
+
+    tserverVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // Create existing universe
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+
+    // Update nodes to use the real AZ UUIDs (distribute across az1 and az2) and ensure
+    // placementInfo is set up properly
+    final AvailabilityZone finalAz1 = az1;
+    final AvailabilityZone finalAz2 = az2;
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          // Update all nodes to use the real AZ UUIDs, distribute across az1 and az2
+          int nodeIndex = 0;
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              // Alternate between az1 and az2
+              AvailabilityZone targetAz = (nodeIndex % 2 == 0) ? finalAz1 : finalAz2;
+              node.azUuid = targetAz.getUuid();
+              node.cloudInfo.az = targetAz.getCode();
+              node.cloudInfo.region = targetAz.getRegion().getCode();
+              nodeIndex++;
+            }
+          }
+          // Create placementInfo from the nodes
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+    existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Call editUniverse
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Verify that universeCRUDHandler.configure and update were called
+    ArgumentCaptor<UniverseConfigureTaskParams> configureParamsCaptor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .configure(eq(defaultCustomer), configureParamsCaptor.capture());
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), eq(existingUniverse), configureParamsCaptor.capture());
+
+    // Verify AZ overrides were applied
+    UniverseConfigureTaskParams capturedParams = configureParamsCaptor.getAllValues().get(0);
+    assertNotNull(capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides());
+    assertNotNull(
+        capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides().getAzOverrides());
+
+    // Verify az1 overrides
+    AZOverrides az1Overrides =
+        capturedParams
+            .getPrimaryCluster()
+            .userIntent
+            .getUserIntentOverrides()
+            .getAzOverrides()
+            .get(az1.getUuid());
+    assertNotNull(az1Overrides);
+    assertNotNull(az1Overrides.getPerProcess());
+    assertNotNull(az1Overrides.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az1DeviceInfo = az1Overrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(200, az1DeviceInfo.volumeSize.intValue());
+    assertEquals("az1-storage", az1DeviceInfo.storageClass);
+
+    // Verify az2 overrides
+    AZOverrides az2Overrides =
+        capturedParams
+            .getPrimaryCluster()
+            .userIntent
+            .getUserIntentOverrides()
+            .getAzOverrides()
+            .get(az2.getUuid());
+    assertNotNull(az2Overrides);
+    assertNotNull(az2Overrides.getPerProcess());
+    assertNotNull(az2Overrides.getPerProcess().get(ServerType.TSERVER));
+    DeviceInfo az2DeviceInfo = az2Overrides.getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(5, az2DeviceInfo.numVolumes.intValue());
+  }
+
+  @Test
+  public void testAZOverridesNotAppliedWhenPerAZNotPresent() throws Exception {
+    String universeName = "test-no-peraz-overrides";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // Remove old deviceInfo and set tserverVolume WITHOUT perAZ
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(3L);
+    tserverVolume.setStorageClass("base-storage");
+    // perAZ is null - should not apply AZ overrides
+    tserverVolume.setPerAZ(null);
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    // Create availability zones first
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+
+    // Create existing universe
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+
+    // Update nodes to use the real AZ UUID and ensure placementInfo is set up properly
+    final AvailabilityZone finalAz = az;
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          // Update all nodes to use the real AZ UUID
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              node.azUuid = finalAz.getUuid();
+              node.cloudInfo.az = finalAz.getCode();
+              node.cloudInfo.region = finalAz.getRegion().getCode();
+            }
+          }
+          // Create placementInfo from the nodes
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+    existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Call editUniverse
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Verify that universeCRUDHandler.configure and update were called
+    ArgumentCaptor<UniverseConfigureTaskParams> configureParamsCaptor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .configure(eq(defaultCustomer), configureParamsCaptor.capture());
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), eq(existingUniverse), configureParamsCaptor.capture());
+
+    // Verify AZ overrides were NOT applied (should be null or empty)
+    UniverseConfigureTaskParams capturedParams = configureParamsCaptor.getAllValues().get(0);
+    if (capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides() != null
+        && capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides().getAzOverrides()
+            != null) {
+      // If AZ overrides exist, they should be empty (no perAZ volume overrides)
+      assertTrue(
+          capturedParams
+                  .getPrimaryCluster()
+                  .userIntent
+                  .getUserIntentOverrides()
+                  .getAzOverrides()
+                  .isEmpty()
+              || capturedParams
+                  .getPrimaryCluster()
+                  .userIntent
+                  .getUserIntentOverrides()
+                  .getAzOverrides()
+                  .values()
+                  .stream()
+                  .noneMatch(
+                      azOverrides ->
+                          azOverrides.getPerProcess() != null
+                              && azOverrides.getPerProcess().containsKey(ServerType.TSERVER)
+                              && azOverrides
+                                      .getPerProcess()
+                                      .get(
+                                          com.yugabyte.yw.commissioner.tasks.UniverseTaskBase
+                                              .ServerType.TSERVER)
+                                      .getDeviceInfo()
+                                  != null));
+    }
+
+    // Verify base deviceInfo was still updated
+    assertEquals(
+        100, capturedParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize.intValue());
+    assertEquals(3, capturedParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes.intValue());
+    assertEquals(
+        "base-storage", capturedParams.getPrimaryCluster().userIntent.deviceInfo.storageClass);
+  }
+
+  @Test
+  public void testMasterVolumePerAZOverridesApplied() throws Exception {
+    String universeName = "test-master-peraz-overrides";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+
+    // Create availability zones in the provider
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+
+    // Remove old deviceInfo and set masterVolume with perAZ
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume masterVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume();
+    masterVolume.setVolumeSize(50L);
+    masterVolume.setNumVolumes(1L);
+    masterVolume.setStorageClass("base-master-storage");
+
+    // Add perAZ overrides for master
+    Map<String, io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ> perAZMap =
+        new HashMap<>();
+    io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ az1Volume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.mastervolume.PerAZ();
+    az1Volume.setVolumeSize(100L);
+    az1Volume.setStorageClass("az1-master-storage");
+    perAZMap.put("az-1", az1Volume);
+
+    masterVolume.setPerAZ(perAZMap);
+    ybUniverse.getSpec().setMasterVolume(masterVolume);
+
+    // Create existing universe
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    taskParams.getPrimaryCluster().userIntent.deviceInfo = new DeviceInfo();
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 100;
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+
+    // Update nodes to use the real AZ UUID and ensure placementInfo is set up properly
+    final AvailabilityZone finalAz = az;
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          // Update all nodes to use the real AZ UUID
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              node.azUuid = finalAz.getUuid();
+              node.cloudInfo.az = finalAz.getCode();
+              node.cloudInfo.region = finalAz.getRegion().getCode();
+            }
+          }
+          // Create placementInfo from the nodes
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+    existingUniverse = Universe.getOrBadRequest(existingUniverse.getUniverseUUID());
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    // Call editUniverse
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Verify that universeCRUDHandler.configure and update were called
+    ArgumentCaptor<UniverseConfigureTaskParams> configureParamsCaptor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .configure(eq(defaultCustomer), configureParamsCaptor.capture());
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), eq(existingUniverse), configureParamsCaptor.capture());
+
+    // Verify master AZ overrides were applied
+    UniverseConfigureTaskParams capturedParams = configureParamsCaptor.getAllValues().get(0);
+    assertNotNull(capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides());
+    assertNotNull(
+        capturedParams.getPrimaryCluster().userIntent.getUserIntentOverrides().getAzOverrides());
+
+    // Verify az1 master overrides
+    AZOverrides az1Overrides =
+        capturedParams
+            .getPrimaryCluster()
+            .userIntent
+            .getUserIntentOverrides()
+            .getAzOverrides()
+            .get(az.getUuid());
+    assertNotNull(az1Overrides);
+    assertNotNull(az1Overrides.getPerProcess());
+    assertNotNull(az1Overrides.getPerProcess().get(ServerType.MASTER));
+    DeviceInfo az1MasterDeviceInfo =
+        az1Overrides.getPerProcess().get(ServerType.MASTER).getDeviceInfo();
+    assertEquals(100, az1MasterDeviceInfo.volumeSize.intValue());
+    assertEquals("az1-master-storage", az1MasterDeviceInfo.storageClass);
   }
 }

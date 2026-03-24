@@ -332,7 +332,8 @@ void AshCopyTServerSample(
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
-  cb_metadata->query_id = tserver_metadata.query_id();
+  cb_metadata->qp.query_id = tserver_metadata.query_id();
+  cb_metadata->qp.plan_id = tserver_metadata.plan_id();
   // if the pid is zero, it's a tserver background activity
   cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
                                             : pgapi->GetLocalTServerPid();
@@ -508,6 +509,10 @@ YbcStatus YBCInitPgGate(
             type_entities, *pg_callbacks, *ash_config, *init_postgres_info, *session_stats,
             is_binary_upgrade);
   }));
+}
+
+void YBCSetupPgBackendCgroup(YbcPgOid dboid) {
+  pgapi->SetupPgBackendCgroup(dboid);
 }
 
 void YBCDestroyPgGate() {
@@ -3345,6 +3350,11 @@ YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle)
 
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
   handle->ResetScan();
+}
+
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
+  handle->SetParams(num_params, param_values);
 }
 
 YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {

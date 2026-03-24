@@ -1577,6 +1577,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_disable_master_on_non_master_node_subtask",
+          ScopeType.UNIVERSE,
+          "Allow disable master on non-master node subtask",
+          "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not"
+              + " master nodes in the cluster configuration or YBA configuration.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
@@ -1798,14 +1807,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time to sleep after upgrading tservers in each AZ",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
-      new ConfKeyInfo<>(
-          "yb.checks.tablespaces_before_edit.enabled",
-          ScopeType.UNIVERSE,
-          "Check if edit operation will affect existing tablespaces",
-          "Check if edit operation will affect existing tablespaces",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_new_perf_advisor_ui",

@@ -3943,6 +3943,17 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_enable_listen_notify", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Enables LISTEN/NOTIFY."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_listen_notify,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -5641,7 +5652,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&yb_wait_for_backends_catalog_version_timeout,
-		5 * 60 * 1000, 0, INT_MAX,
+		15 * 60 * 1000, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -7764,7 +7775,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"yb_pg_stat_plans_cache_replacement_algorithm", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Enable true LRU in Query Plan Management."),
+			gettext_noop("Specifies cache replacement policy for Query Plan Management."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},

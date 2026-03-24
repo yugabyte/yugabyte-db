@@ -361,6 +361,121 @@ using PgTabletSplitWaitEventAux = ConfigurableTest<kTabletSplitRPCs>;
 using PgCronWaitEventAux = ConfigurableTest<kPgCronRPCs>;
 using PgCDCWaitEventAux = ConfigurableTest<kPgCDCRPCs>;
 
+// Fixture for nested query tracking tests. SetUp creates tables, a trigger, and
+// runs a discovery query with pgss=all to capture both outer and inner query_ids.
+class PgAshNestedQueryTracking : public PgAshSingleNode {
+ public:
+  void SetUp() override {
+    PgAshSingleNode::SetUp();
+
+    ASSERT_OK(conn_->Execute("CREATE TABLE trig_data (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn_->Execute("CREATE TABLE trig_outer (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(conn_->Execute("CREATE TABLE trig_result (k INT, v INT)"));
+
+    ASSERT_OK(conn_->ExecuteFormat(
+        "INSERT INTO trig_data SELECT i, i FROM generate_series(1, $0) i", kNumRows));
+
+    // Trigger fires a nested INSERT per row, exercising the (query_id, plan_id)
+    // stack push/pop at nested_level > 0.
+    ASSERT_OK(conn_->Execute(
+        "CREATE OR REPLACE FUNCTION inner_fn() RETURNS TRIGGER AS $$ "
+        "BEGIN "
+        "  INSERT INTO trig_result SELECT k, v FROM trig_data WHERE k = NEW.k; "
+        "  RETURN NEW; "
+        "END; $$ LANGUAGE plpgsql"));
+
+    ASSERT_OK(conn_->Execute(
+        "CREATE TRIGGER trg_inner AFTER INSERT ON trig_outer "
+        "FOR EACH ROW EXECUTE FUNCTION inner_fn()"));
+
+    // Discovery run: pgss=all captures both outer and inner query_ids.
+    ASSERT_OK(conn_->Execute("SET pg_stat_statements.track = 'all'"));
+    ASSERT_OK(conn_->Execute("SET yb_pg_stat_plans_track = 'all'"));
+    ASSERT_OK(conn_->Execute(kOuterQuery));
+
+    outer_query_id_ = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+        "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO trig_outer%'"));
+    inner_query_id_ = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+        "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO trig_result%'"));
+  }
+
+ protected:
+  // Resets stats, applies the given pgss/qpm config, runs the outer query, and
+  // verifies the outer query is always tracked (top-level, so both PGSS and QPM
+  // always capture it).
+  Status ResetAndRun(std::string_view pgss_track, std::string_view qpm_track) {
+    RETURN_NOT_OK(conn_->Execute("TRUNCATE trig_outer, trig_result"));
+    RETURN_NOT_OK(conn_->Fetch("SELECT pg_stat_statements_reset()"));
+    RETURN_NOT_OK(conn_->Fetch("SELECT yb_pg_stat_plans_reset(NULL, NULL, NULL, NULL)"));
+
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "SET pg_stat_statements.track = '$0'", pgss_track));
+    RETURN_NOT_OK(conn_->ExecuteFormat(
+        "SET yb_pg_stat_plans_track = '$0'", qpm_track));
+
+    // Capture a timestamp before execution so ASH queries below only see
+    // samples from this run, not leftovers from SetUp or prior runs.
+    run_start_ts_ = VERIFY_RESULT(
+        conn_->FetchRow<std::string>("SELECT clock_timestamp()::text"));
+
+    RETURN_NOT_OK(conn_->Execute(kOuterQuery));
+
+    // Outer query is always top-level, so PGSS and QPM always track it.
+    auto outer_qpm = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_pg_stat_plans WHERE queryid = $0",
+        outer_query_id_)));
+    SCHECK_EQ(outer_qpm, static_cast<int64_t>(1), IllegalState,
+              "Expected exactly one QPM entry for outer query");
+
+    auto outer_ash_match = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history('$0'::timestamptz) ash "
+        "JOIN yb_pg_stat_plans qpm ON ash.plan_id = qpm.planid "
+        "AND ash.query_id = qpm.queryid "
+        "WHERE ash.query_id = $1",
+        run_start_ts_, outer_query_id_)));
+    SCHECK_GT(outer_ash_match, 0, IllegalState,
+              "Expected ASH samples with QPM-valid plan_id for outer query");
+
+    // Stack must be restored correctly after each trigger firing.
+    auto distinct_outer_plans = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(DISTINCT plan_id) "
+        "FROM yb_active_session_history('$0'::timestamptz) "
+        "WHERE query_id = $1 AND plan_id != 0",
+        run_start_ts_, outer_query_id_)));
+    SCHECK_EQ(distinct_outer_plans, static_cast<int64_t>(1), IllegalState,
+              "Expected exactly one distinct plan_id for outer query");
+
+    return Status::OK();
+  }
+
+  Result<int64_t> InnerPgssCount() {
+    return conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM pg_stat_statements WHERE queryid = $0", inner_query_id_));
+  }
+
+  Result<int64_t> InnerQpmCount() {
+    return conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_pg_stat_plans WHERE queryid = $0", inner_query_id_));
+  }
+
+  Result<int64_t> InnerAshQpmMatch() {
+    return conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM "
+        "yb_active_session_history('$0'::timestamptz) ash "
+        "JOIN yb_pg_stat_plans qpm ON ash.plan_id = qpm.planid "
+        "AND ash.query_id = qpm.queryid "
+        "WHERE ash.query_id = $1",
+        run_start_ts_, inner_query_id_));
+  }
+
+  static constexpr auto kOuterQuery = "INSERT INTO trig_outer SELECT k, v FROM trig_data";
+  static constexpr int kNumRows = 1000;
+
+  int64_t outer_query_id_;
+  int64_t inner_query_id_;
+  std::string run_start_ts_;
+};
+
 }  // namespace
 
 TEST_F(PgAshTest, NoMemoryLeaks) {
@@ -902,6 +1017,49 @@ TEST_F(PgAshMasterMetadataSerializerTest, TestMasterMetadataSerializer) {
   ASSERT_GT(count, 0);
 }
 
+TEST_F(PgAshTest, TestIndexBackfillWaitEvent) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_slowdown_backfill_by_ms", "100"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("num_concurrent_backfills_allowed", "1"));
+
+  static constexpr auto kTableName = "backfill_test";
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (k INT PRIMARY KEY, v INT) split into 6 tablets", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series(1, 10000) AS i", kTableName));
+
+  // Inject latency on write-apply after loading data so that the BACKFILL INDEX writes to the
+  // index tablet are slow enough for the ASH sampler to capture tserver-side samples.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "TEST_tablet_inject_latency_on_apply_write_txn_ms", "100"));
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX idx_$0 ON $0 (v)", kTableName));
+
+  // Wait for ASH samples to be collected
+  SleepFor(2s * kTimeMultiplier);
+
+  const auto backfill_samples_with_queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE "
+      "wait_event IN ('BackfillIndex_WaitForAFreeSlot', 'BackfillIndex_WaitToBackfillTablet')")));
+  ASSERT_GT(backfill_samples_with_queryid, 0) <<
+      "No ASH index backfill samples found";
+
+  // Verify that there are ASH samples with the index backfill event and query id as 0
+  const auto backfill_samples_with_no_queryid = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = 0 AND "
+      "wait_event IN ('BackfillIndex_WaitForAFreeSlot', 'BackfillIndex_WaitToBackfillTablet')")));
+  ASSERT_EQ(backfill_samples_with_no_queryid, 0) <<
+      "ASH index backfill samples with query_id 0 found";
+
+  // Verify that the "BACKFILL INDEX ..." SQL statements also have tserver-side ASH samples.
+  const auto tserver_samples_for_backfill = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE wait_event_component = 'TServer' AND query_id IN "
+      "(SELECT queryid FROM pg_stat_statements WHERE query LIKE 'BACKFILL INDEX%')")));
+  ASSERT_GT(tserver_samples_for_backfill, 0) <<
+      "No tserver ASH samples found for BACKFILL INDEX statement";
+}
+
 TEST_F(PgAshTest, TestUserIdConsistency) {
   // Test: Check current userid and verify it matches between ASH and pg_user
   static constexpr auto kTableName = "a";
@@ -967,6 +1125,176 @@ TEST_F(PgAshTest, TestUserIdChangeReflectedInAsh) {
   const auto orig_user_ash_count_after_reset = ASSERT_RESULT(
       conn_->FetchRow<int64_t>(Format(ash_count_query, orig_user_oid)));
   ASSERT_GT(orig_user_ash_count_after_reset, 0);
+}
+
+TEST_F(PgAshSingleNode, TestDmlPlanIdNonZero) {
+  static constexpr auto kTableName = "plan_id_dml_test";
+  const auto kRowCount = 100000;
+
+  ASSERT_OK(conn_->Execute("SET yb_pg_stat_plans_track = 'top'"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE dml_src (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO dml_src SELECT i, i FROM generate_series(1, $0) AS i", kRowCount));
+
+  // All tested DMLs scan real tables (not function scans like generate_series),
+  // so QPM generates method hints and stores their plans.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT k, v FROM dml_src", kTableName));
+
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT * FROM $0 WHERE k BETWEEN 1 AND $1", kTableName, kRowCount));
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "UPDATE $0 SET v = v + 1 WHERE k BETWEEN 1 AND $1", kTableName, kRowCount));
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "DELETE FROM $0 WHERE k BETWEEN 1 AND $1", kTableName, kRowCount));
+
+  auto verify_plan_id = [&](const std::string& query_pattern) -> Status {
+    auto query_id = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT queryid FROM pg_stat_statements WHERE query LIKE '$0'", query_pattern)));
+
+    auto total_samples = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id)));
+    SCHECK_GT(total_samples, 0, IllegalState,
+              Format("No ASH samples for: $0", query_pattern));
+
+    auto valid_plan_count = VERIFY_RESULT(conn_->FetchRow<int64_t>(Format(
+        "SELECT COUNT(*) FROM yb_active_session_history ash "
+        "JOIN yb_pg_stat_plans qpm ON ash.plan_id = qpm.planid AND ash.query_id = qpm.queryid "
+        "WHERE ash.query_id = $0",
+        query_id)));
+    SCHECK_GT(valid_plan_count, 0, IllegalState,
+              Format("No ASH samples with a QPM-valid plan_id for: $0", query_pattern));
+
+    return Status::OK();
+  };
+
+  ASSERT_OK(verify_plan_id("INSERT INTO plan_id_dml_test%"));
+  ASSERT_OK(verify_plan_id("SELECT%plan_id_dml_test%"));
+  ASSERT_OK(verify_plan_id("UPDATE plan_id_dml_test%"));
+  ASSERT_OK(verify_plan_id("DELETE FROM plan_id_dml_test%"));
+}
+
+TEST_F(PgAshSingleNode, TestPlanIdZeroWhenQpmOff) {
+  static constexpr auto kTableName = "plan_id_qpm_off_test";
+
+  ASSERT_OK(conn_->Execute("SET yb_pg_stat_plans_track = 'none'"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 SELECT i, i FROM generate_series($1, $2) AS i",
+      kTableName, 1, 100000));
+
+  auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'INSERT INTO $0%'",
+      kTableName)));
+
+  auto total_samples = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history WHERE query_id = $0", query_id)));
+  ASSERT_GT(total_samples, 0);
+
+  // With QPM off, plan_id must be 0 for all samples of this query.
+  auto nonzero_plan_id_count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(*) FROM yb_active_session_history "
+      "WHERE query_id = $0 AND plan_id != 0", query_id)));
+  ASSERT_EQ(nonzero_plan_id_count, 0);
+}
+
+TEST_F(PgAshSingleNode, TestPlanIdExistsInStatPlans) {
+  ASSERT_OK(conn_->Execute("SET yb_pg_stat_plans_track = 'top'"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE t1 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE t2 (k INT PRIMARY KEY, v INT)"));
+
+  // Use enough rows so the JOIN query runs long enough to be sampled by ASH.
+  const auto num_rows = 100000;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO t1 SELECT i, i FROM generate_series(1, $0) i", num_rows));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO t2 SELECT i, i FROM generate_series(1, $0) i", num_rows));
+
+  ASSERT_OK(conn_->Fetch("SELECT * FROM t1 JOIN t2 ON t1.k = t2.k WHERE t1.v > 500"));
+
+  auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements WHERE query LIKE 'SELECT%t1 JOIN t2%'"));
+
+  // Verify ASH has plan_ids for this query and that they match QPM.
+  auto ash_plan_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT DISTINCT plan_id FROM yb_active_session_history "
+      "WHERE query_id = $0 AND plan_id != 0", query_id)));
+  auto qpm_plan_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT planid FROM yb_pg_stat_plans WHERE queryid = $0", query_id)));
+  ASSERT_EQ(ash_plan_id, qpm_plan_id)
+      << "ASH plan_id " << ash_plan_id << " should match QPM planid " << qpm_plan_id;
+}
+
+TEST_F(PgAshSingleNode, TestDifferentPlansHaveDifferentPlanIds) {
+  ASSERT_OK(conn_->Execute("SET yb_pg_stat_plans_track = 'top'"));
+  ASSERT_OK(conn_->Execute("CREATE TABLE plan_test (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn_->Execute("CREATE INDEX plan_test_v_idx ON plan_test (v)"));
+
+  const auto num_rows = 100000;
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO plan_test SELECT i, i FROM generate_series(1, $0) i", num_rows));
+
+  // Query 1: Force index scan.
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = off"));
+  ASSERT_OK(conn_->FetchRow<int64_t>(
+      "SELECT count(*) FROM plan_test WHERE v < 100000"));
+
+  // Query 2: Force seq scan.
+  ASSERT_OK(conn_->Execute("SET enable_seqscan = on"));
+  ASSERT_OK(conn_->Execute("SET enable_indexscan = off"));
+  ASSERT_OK(conn_->Execute("SET enable_bitmapscan = off"));
+  ASSERT_OK(conn_->FetchRow<int64_t>(
+      "SELECT count(*) FROM plan_test WHERE v < 100000"));
+
+  auto query_id = ASSERT_RESULT(conn_->FetchRow<int64_t>(
+      "SELECT queryid FROM pg_stat_statements "
+      "WHERE query LIKE 'SELECT count(%)%plan_test WHERE%'"));
+
+  auto distinct_plan_ids = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT COUNT(DISTINCT plan_id) FROM yb_active_session_history "
+      "WHERE query_id = $0 AND plan_id != 0", query_id)));
+  ASSERT_EQ(distinct_plan_ids, 2);
+}
+
+// Exercises all four (pgss_track, qpm_track) combinations for nested queries
+// fired via a trigger:
+//   (all, all) - both PGSS and QPM track the inner query; ASH plan_ids match QPM.
+//   (top, all) - PGSS skips (nested), QPM tracks independently; no ASH match.
+//   (all, top) - PGSS tracks, QPM skips (nested level > 0).
+//   (top, top) - both skip the inner query.
+TEST_F(PgAshNestedQueryTracking, TestNestedQueryTrackingConfigs) {
+  // Outer query_id/plan_id validation is done inside ResetAndRun().
+  // Here we only assert on the inner query behavior per config.
+  // QPM counts use ASSERT_GE because yb_pg_stat_plans tracks (queryid, planid)
+  // pairs and the inner query may produce more than one plan across 1000 trigger
+  // firings (see InnerQpmCount()).
+
+  // pgss=all, qpm=all: full tracking.
+  ASSERT_OK(ResetAndRun("all"sv, "all"sv));
+  ASSERT_EQ(ASSERT_RESULT(InnerPgssCount()), 1);
+  ASSERT_GE(ASSERT_RESULT(InnerQpmCount()), 1);
+  ASSERT_GE(ASSERT_RESULT(InnerAshQpmMatch()), 1);
+
+  // pgss=top, qpm=all: PGSS skips nested, QPM tracks independently.
+  ASSERT_OK(ResetAndRun("top"sv, "all"sv));
+  ASSERT_EQ(ASSERT_RESULT(InnerPgssCount()), 0);
+  ASSERT_GE(ASSERT_RESULT(InnerQpmCount()), 1);
+  ASSERT_EQ(ASSERT_RESULT(InnerAshQpmMatch()), 0);
+
+  // pgss=all, qpm=top: PGSS tracks, QPM skips (nested level > 0).
+  ASSERT_OK(ResetAndRun("all"sv, "top"sv));
+  ASSERT_EQ(ASSERT_RESULT(InnerPgssCount()), 1);
+  ASSERT_EQ(ASSERT_RESULT(InnerQpmCount()), 0);
+  ASSERT_EQ(ASSERT_RESULT(InnerAshQpmMatch()), 0);
+
+  // pgss=top, qpm=top: both skip the inner query.
+  ASSERT_OK(ResetAndRun("top"sv, "top"sv));
+  ASSERT_EQ(ASSERT_RESULT(InnerPgssCount()), 0);
+  ASSERT_EQ(ASSERT_RESULT(InnerQpmCount()), 0);
+  ASSERT_EQ(ASSERT_RESULT(InnerAshQpmMatch()), 0);
 }
 
 // Template test class for transaction wait events - parameterized by wait code

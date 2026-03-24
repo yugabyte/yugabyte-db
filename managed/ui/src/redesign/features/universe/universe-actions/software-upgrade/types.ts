@@ -1,5 +1,3 @@
-import { Cluster, RollMaxBatchSize } from '@app/redesign/features/universe/universe-form/utils/dto';
-import { UPGRADE_TYPE } from '@app/redesign/features/universe/universe-actions/rollback-upgrade/utils/types';
 import { YbdbRelease } from './dtos';
 import { UpgradeMethod, UpgradePace } from './constants';
 
@@ -10,19 +8,22 @@ export interface DBUpgradeFormFields {
 
   maxNodesPerBatch?: number;
   waitBetweenBatchesSeconds?: number;
+
+  canaryUpgradeConfig?: CanaryUpgradeConfig;
 }
 
-export interface DBUpgradePayload {
-  ybSoftwareVersion: string;
-  sleepAfterMasterRestartMillis: number;
-  sleepAfterTServerRestartMillis: number;
-  universeUUID: string;
-  taskType: string;
-  upgradeOption: UPGRADE_TYPE;
-  clusters: Cluster[];
-  nodePrefix: string;
-  enableYbc: boolean;
-  rollMaxBatchSize?: RollMaxBatchSize;
+export interface AzUpgradeStep {
+  azUuid: string;
+  displayName: string;
+  pauseAfterTserverUpgrade: boolean;
+}
+
+export interface CanaryUpgradeConfig {
+  pauseAfterMasters: boolean;
+  primaryClusterAzOrder: string[];
+  primaryClusterAzSteps: Record<string, AzUpgradeStep>;
+  readReplicaClusterAzOrder: string[];
+  readReplicaClusterAzSteps: Record<string, AzUpgradeStep>;
 }
 
 export interface PrecheckResponse {

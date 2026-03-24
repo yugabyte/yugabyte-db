@@ -59,6 +59,7 @@
 #include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
 #include "tcop/cmdtag.h"
+#include "utils/builtins.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
@@ -510,8 +511,9 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	appendStringInfo(&query_buf,
 					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
-					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
-					 rewritten_table_name, schema_name);
+					 "WHERE i.tablename = %s AND i.schemaname = %s;",
+					 quote_literal_cstr(rewritten_table_name),
+					 quote_literal_cstr(schema_name));
 
 	/*
 	 * Preserve current state of SPI_processed and SPI_tuptable because they
@@ -822,20 +824,9 @@ PushVariableMap(JsonbParseState *state)
 	 * different defaults and changes of which DDLs use these variables.
 	 *----------
 	 */
-
-	/* This affects what tablespace a table is created in. */
-	PushVariable(state, "default_tablespace");
-	/* This affects whether a table is range or hash started. */
-	PushVariable(state, "yb_use_hash_splitting_by_default");
-
-	/* Settings that affect parsing of string literals. */
-	PushVariable(state, "standard_conforming_strings");
-	/* Settings that affect parsing of dates, times, and intervals. */
-	PushVariable(state, "DateStyle");
-	PushVariable(state, "TimeZone");
-	PushVariable(state, "IntervalStyle");
-	/* Settings that affect parsing of function bodies. */
-	PushVariable(state, "check_function_bodies");
+#define X(name) PushVariable(state, name);
+#include "xcluster_ddl_replication_gucs.def"
+#undef X
 
 	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
 }

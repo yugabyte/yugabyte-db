@@ -2,20 +2,35 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
+import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeConfig.Type;
 import com.yugabyte.yw.models.helpers.NodeConfig.ValidationResult;
 import com.yugabyte.yw.models.helpers.NodeConfigValidator;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckInput;
+import com.yugabyte.yw.nodeagent.YnpPreflightCheckOutput;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -27,12 +42,16 @@ import play.libs.Json;
 public class PrecheckNodeDetached extends AbstractTaskBase {
 
   private final NodeConfigValidator nodeConfigValidator;
+  private final YNPConfigGenerator ynpConfigGenerator;
 
   @Inject
   protected PrecheckNodeDetached(
-      BaseTaskDependencies baseTaskDependencies, NodeConfigValidator nodeConfigValidator) {
+      BaseTaskDependencies baseTaskDependencies,
+      NodeConfigValidator nodeConfigValidator,
+      YNPConfigGenerator ynpConfigGenerator) {
     super(baseTaskDependencies);
     this.nodeConfigValidator = nodeConfigValidator;
+    this.ynpConfigGenerator = ynpConfigGenerator;
   }
 
   public NodeManager getNodeManager() {
@@ -95,8 +114,7 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
     response.processErrors(errMsg);
   }
 
-  @Override
-  public void run() {
+  private void runLegacyPreflightChecks() {
     ShellResponse response =
         getNodeManager().detachedNodeCommand(NodeManager.NodeCommandType.Precheck, taskParams());
     processPreflightResponse(
@@ -106,5 +124,57 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
         taskParams().getNodeName(),
         true,
         response);
+  }
+
+  private void runYnpPreflightChecks(
+      Provider provider, NodeInstance instance, NodeAgent nodeAgent) {
+    Path nodeAgentHome = Paths.get(nodeAgent.getHome());
+    YNPConfigGenerator.ConfigParams configParams =
+        YNPConfigGenerator.ConfigParams.builder()
+            .nodeAgentHome(nodeAgentHome)
+            .provider(provider)
+            .nodeInstance(instance)
+            .build();
+    ObjectNode rootNode = ynpConfigGenerator.generateConfig(configParams);
+    String customTmpDirectory =
+        confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
+    YnpPreflightCheckInput checkParams =
+        YnpPreflightCheckInput.newBuilder()
+            .setConfigJson(rootNode.toString())
+            .setRemoteTmp(customTmpDirectory)
+            .build();
+    YnpPreflightCheckOutput checkOutput =
+        nodeAgentClient.runYnpPreflightCheck(nodeAgent, checkParams, null /* custom user */);
+    log.info("YNP preflight check for node instance {} ran successfully", instance.getNodeName());
+    if (checkOutput.getExitCode() != 0) {
+      String errMsg =
+          String.format(
+              "Failed YNP preflight checks for node %s with exit code %d. Output: %s",
+              instance.getNodeName(), checkOutput.getExitCode(), checkOutput.getOutput());
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+  }
+
+  @Override
+  public void run() {
+    Provider provider = taskParams().getProvider();
+    if (provider.getCloudCode() == CloudType.onprem && provider.getDetails().skipProvisioning) {
+      NodeInstance instance = NodeInstance.getOrBadRequest(taskParams().getNodeUuid());
+      Optional<NodeAgent> nodeAgentOpt =
+          nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
+              instance.getDetails().ip, provider, null /* universe */);
+      if (nodeAgentOpt.isEmpty()
+          || confGetter.getGlobalConf(GlobalConfKeys.disableYnpNodePreflightCheck)) {
+        // Run preflight_checks.sh.
+        runLegacyPreflightChecks();
+      } else {
+        // Run the new YNP preflight checks implemented in node-agent.
+        runYnpPreflightChecks(provider, instance, nodeAgentOpt.get());
+      }
+    } else {
+      // Sudo access is available, and YNP is not set up yet.
+      runLegacyPreflightChecks();
+    }
   }
 }

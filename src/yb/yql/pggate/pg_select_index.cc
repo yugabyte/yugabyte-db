@@ -24,7 +24,7 @@
 
 namespace yb::pggate {
 
-PgSelectIndex::PgSelectIndex(const PgSession::ScopedRefPtr& pg_session)
+PgSelectIndex::PgSelectIndex(const PgSessionPtr& pg_session)
     : PgSelect(pg_session) {
 }
 
@@ -43,19 +43,18 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  ybctids_.clear();
+  ybctids_.Clear();
+  auto& ybctids = ybctids_.values;
   if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
-          [this](Slice ybctid) {
-            ybctids_.push_back(ybctid);
-          }))) {
+          [&ybctids](Slice ybctid) { ybctids.push_back(ybctid); }, &ybctids_.retention))) {
     return std::nullopt;
   }
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return YbctidBatch{ybctids_, read_req_->has_is_forward_scan()};
+  return YbctidBatch{ybctids, read_req_->has_is_forward_scan()};
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+    const PgSessionPtr& pg_session, const PgObjectId& index_id,
     const YbcPgTableLocalityInfo& locality_info,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};

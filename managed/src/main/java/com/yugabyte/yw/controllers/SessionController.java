@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -157,6 +158,8 @@ public class SessionController extends AbstractPlatformController {
   @Inject private RoleBindingUtil roleBindingUtil;
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
+
+  @Inject private EmbeddedCollectorInitializer embeddedCollectorInitializer;
 
   private final ApiHelper apiHelper;
 
@@ -778,6 +781,8 @@ public class SessionController extends AbstractPlatformController {
           newRbacRole.getName(),
           createdRoleBinding.toString());
     }
+
+    embeddedCollectorInitializer.start();
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;

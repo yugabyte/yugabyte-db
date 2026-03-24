@@ -33,7 +33,7 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
   }
 
   static Result<std::unique_ptr<PgInsert>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
       const YbcPgTableLocalityInfo& locality_info,
       YbcPgTransactionSetting transaction_setting, bool packed) {
     std::unique_ptr<PgInsert> result{new PgInsert{pg_session, transaction_setting, packed}};
@@ -43,7 +43,7 @@ class PgInsert final : public PgStatementLeafBase<PgDmlWrite, StmtOp::kInsert> {
 
  private:
   PgInsert(
-      const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+      const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting,
       bool packed)
       : BaseType(pg_session, transaction_setting, packed) {}
 

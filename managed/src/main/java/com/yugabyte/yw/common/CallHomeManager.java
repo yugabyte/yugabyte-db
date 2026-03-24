@@ -28,12 +28,14 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,6 +61,7 @@ public class CallHomeManager {
   @Inject private AlertService alertService;
   @Inject private AlertChannelService alertChannelService;
   @Inject private AlertDestinationService alertDestinationService;
+  @Inject private XClusterUniverseService xClusterUniverseService;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
@@ -156,7 +159,33 @@ public class CallHomeManager {
     Set<UUID> universeUuids =
         universes.stream().map(u -> u.universeUUID).collect(Collectors.toSet());
 
-    payload.set("universes", Json.toJson(universes));
+    ArrayNode universesPayload = Json.newArray();
+    for (UniverseResp universeResp : universes) {
+      ObjectNode universeNode = (ObjectNode) Json.toJson(universeResp);
+
+      List<UUID> sourceConfigUuids =
+          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+              ? universeResp.universeDetails.delegate.xClusterInfo.getSourceXClusterConfigs()
+              : Collections.emptyList();
+
+      List<UUID> targetConfigUuids =
+          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+              ? universeResp.universeDetails.delegate.xClusterInfo.getTargetXClusterConfigs()
+              : Collections.emptyList();
+
+      universeNode.put(
+          "is_xcluster_repl_configured",
+          !sourceConfigUuids.isEmpty() || !targetConfigUuids.isEmpty());
+      universeNode.put(
+          "is_xclusterDR_configured",
+          (universeResp.drConfigUuidsAsSource != null
+                  && !universeResp.drConfigUuidsAsSource.isEmpty())
+              || (universeResp.drConfigUuidsAsTarget != null
+                  && !universeResp.drConfigUuidsAsTarget.isEmpty()));
+      enrichUniverseXCluster(sourceConfigUuids, targetConfigUuids, universeNode);
+      universesPayload.add(universeNode);
+    }
+    payload.set("universes", universesPayload);
     // Build provider details json
     ArrayNode providers = Json.newArray();
     Set<UUID> providerUuids = new HashSet<>();
@@ -352,5 +381,42 @@ public class CallHomeManager {
     Instant cutoff = clock.instant().minus(CALLHOME_ALERT_PERIOD);
     List<Alert> alerts = alertService.listByCustomerSince(c.getUuid(), Date.from(cutoff));
     payload.set("alert_list", Json.toJson(alerts));
+  }
+
+  private void enrichUniverseXCluster(
+      List<UUID> sourceConfigUuids, List<UUID> targetConfigUuids, ObjectNode universeNode) {
+
+    Set<UUID> allUuids = new HashSet<>();
+    allUuids.addAll(sourceConfigUuids);
+    allUuids.addAll(targetConfigUuids);
+
+    Map<UUID, XClusterConfig> configMap =
+        xClusterUniverseService.getXClusterConfigsByUuids(allUuids);
+
+    ArrayNode asSource = Json.newArray();
+    ArrayNode asTarget = Json.newArray();
+
+    for (UUID configUuid : sourceConfigUuids) {
+      XClusterConfig config = configMap.get(configUuid);
+      if (config != null) {
+        ObjectNode item = (ObjectNode) Json.toJson(config);
+        config.maybeGetDrConfig().ifPresent(dr -> item.set("dr_config", Json.toJson(dr)));
+        asSource.add(item);
+      }
+    }
+
+    for (UUID configUuid : targetConfigUuids) {
+      XClusterConfig config = configMap.get(configUuid);
+      if (config != null) {
+        ObjectNode item = (ObjectNode) Json.toJson(config);
+        config.maybeGetDrConfig().ifPresent(dr -> item.set("dr_config", Json.toJson(dr)));
+        asTarget.add(item);
+      }
+    }
+
+    ObjectNode xclusterSettings = Json.newObject();
+    xclusterSettings.set("asSource", asSource);
+    xclusterSettings.set("asTarget", asTarget);
+    universeNode.set("xclusterSettings", xclusterSettings);
   }
 }

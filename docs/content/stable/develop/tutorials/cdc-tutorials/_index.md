@@ -4,7 +4,6 @@ headerTitle: Kafka environments
 linkTitle: Kafka environments
 description: Use YugabyteDB CDC to stream data with different Kafka environments such as Amazon MSK, Event Hubs, Confluent Cloud, and more.
 headcontent: Use YugabyteDB CDC to stream data with different Kafka environments
-image: /images/section_icons/develop/ecosystem/apache-kafka-icon.png
 aliases:
   - /stable/integrations/apache-kafka/
 tags:

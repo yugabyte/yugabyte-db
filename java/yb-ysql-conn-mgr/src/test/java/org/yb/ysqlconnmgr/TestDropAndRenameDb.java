@@ -357,7 +357,6 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
   @Test
   public void testRenameWithRecreateDb() throws Exception {
-    assumeFalse(BaseYsqlConnMgr.DISABLE_TEST_WITH_ASAN, BuildTypeUtil.isASAN());
     disableWarmupModeAndRestartCluster();
     testRenameDbWithNoPhysicalConnection();
     testRenameDbWithPhysicalConnection();

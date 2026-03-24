@@ -55,7 +55,7 @@ public class ChangeInstanceType extends NodeTaskBase {
     Optional<NodeAgent> optional =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
             ? Optional.empty()
-            : nodeUniverseManager.maybeGetNodeAgent(
+            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                 getUniverse(), nodeDetails, true /*check feature flag*/);
     log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",

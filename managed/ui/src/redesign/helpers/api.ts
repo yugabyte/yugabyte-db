@@ -121,6 +121,11 @@ export const universeQueryKey = {
     ...universeQueryKey.detail(universeUuid),
     ,
     'namespaces'
+  ],
+  detailsV2: (universeUuid: string | undefined) => [
+    ...universeQueryKey.ALL,
+    'detailsV2',
+    universeUuid
   ]
 };
 
@@ -215,7 +220,7 @@ export const telemetryProviderQueryKey = {
 };
 
 export const dbReleaseQueryKey = {
-  ALL: ['dbRelease'],
+  ALL: ['dbReleaseg'],
   list: () => [...dbReleaseQueryKey.ALL, 'list']
 };
 
@@ -397,9 +402,7 @@ class ApiService {
     this.cancellers.findUniverseByName = source.cancel;
 
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find?name=${universeName}`;
-    return axios
-      .get<string[]>(requestUrl, { cancelToken: source.token })
-      .then((resp) => resp.data);
+    return axios.get<string[]>(requestUrl, { cancelToken: source.token }).then((resp) => resp.data);
   };
 
   fetchUniverseList = (): Promise<Universe[]> => {

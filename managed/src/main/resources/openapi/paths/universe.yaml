@@ -1200,6 +1200,57 @@
         checkOnlyPermission: false
     x-yba-api-since: 2025.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/export-telemetry-configs':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      required: true
+  post:
+    operationId: configureExportTelemetryConfig
+    summary: Configure export telemetry configs (unified API)
+    description: |
+      Configure all telemetry export configs (audit logs, query logs, metrics) for a universe
+      in a single idempotent API. Replaces the separate audit_log_config, query-log-config,
+      and metrics-export-config APIs.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/ExportTelemetryConfigReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ConfigureExportTelemetryConfig
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2025.2.0.0
+    x-yba-api-visibility: internal
 '/customers/{cUUID}/universes/{uniUUID}/operator-import':
   parameters:
     - name: cUUID

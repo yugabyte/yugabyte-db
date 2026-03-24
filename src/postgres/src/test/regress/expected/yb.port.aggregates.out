@@ -1178,8 +1178,8 @@ insert into minmaxtest2 values(15), (16);
 insert into minmaxtest3 values(17), (18);
 explain (costs off)
   select min(f1), max(f1) from minmaxtest;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Result
    InitPlan 1 (returns $0)
      ->  Limit
@@ -1196,13 +1196,13 @@ explain (costs off)
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_2_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_3_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_4_1
 (23 rows)
 
 select min(f1), max(f1) from minmaxtest;
@@ -1214,8 +1214,8 @@ select min(f1), max(f1) from minmaxtest;
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
 /*+ Set(enable_hashagg off) */ explain (costs off) -- YB: disable hashagg to get the same plan as PG
   select distinct min(f1), max(f1) from minmaxtest;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
  Unique
    InitPlan 1 (returns $0)
      ->  Limit
@@ -1232,13 +1232,13 @@ select min(f1), max(f1) from minmaxtest;
      ->  Limit
            ->  Merge Append
                  Sort Key: minmaxtest_5.f1 DESC
-                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_6
+                 ->  Index Only Scan Backward using minmaxtesti on minmaxtest minmaxtest_1_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_7
+                 ->  Index Only Scan Backward using minmaxtest1i on minmaxtest1 minmaxtest_2_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_8
+                 ->  Index Only Scan using minmaxtest2i on minmaxtest2 minmaxtest_3_1
                        Index Cond: (f1 IS NOT NULL)
-                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_9
+                 ->  Index Only Scan Backward using minmaxtest3i on minmaxtest3 minmaxtest_4_1
    ->  Sort
          Sort Key: ($0), ($1)
          ->  Result

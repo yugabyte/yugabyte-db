@@ -380,4 +380,23 @@ public class ExplainAnalyzeUtils {
     }
     throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }
+
+  public static String getExplainOutput(Statement stmt, String query,
+                                        String format,
+                                        boolean analyze,
+                                        boolean costs,
+                                        boolean debug,
+                                        boolean dist,
+                                        boolean summary,
+                                        boolean timing,
+                                        boolean verbose) throws Exception {
+    String explainQuery = String.format(
+        "EXPLAIN (FORMAT %s, ANALYZE %b, COSTS %b, DEBUG %b, DIST %b, SUMMARY %b, " +
+        "TIMING %b, VERBOSE %b) %s", format, analyze, costs, debug, dist, summary, timing,
+        verbose, query);
+
+    ResultSet rs = stmt.executeQuery(explainQuery);
+    assertTrue(rs.next());
+    return rs.getString(1);
+  }
 }

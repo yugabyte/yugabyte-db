@@ -23,7 +23,7 @@
 
 namespace yb::pggate {
 
-PgSelect::PgSelect(const PgSession::ScopedRefPtr& pg_session)
+PgSelect::PgSelect(const PgSessionPtr& pg_session)
     : BaseType(pg_session) {}
 
 Status PgSelect::Prepare(
@@ -72,7 +72,7 @@ Status PgSelect::Prepare(
 }
 
 Result<std::unique_ptr<PgSelect>> PgSelect::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info, const std::optional<IndexQueryInfo>& index_info) {
   std::unique_ptr<PgSelect> result{new PgSelect{pg_session}};
   RETURN_NOT_OK(result->Prepare(table_id, locality_info, index_info));

@@ -9,8 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
+import org.yb.pgsql.ConnectionBuilder;
 import org.yb.util.Timeouts;
-
 import com.google.common.net.HostAndPort;
 
 public class BaseMiniYugabytedClusterTest extends BaseYBTest {
@@ -146,4 +146,7 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
         return new TreeMap<>();
     }
 
+    protected ConnectionBuilder getConnectionBuilder() {
+        return new ConnectionBuilder(miniYugabytedCluster.getPostgresContactPoints());
+    }
 }

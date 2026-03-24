@@ -1605,9 +1605,23 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 		 * is logged here.
 		 */
 		fsstate->cursor_number = GetCursorNumber(fsstate->conn);
-		fsstate->cursor_exists = false;
 	}
 
+	/*
+	 * YB: For federatedYB tables (yb_gvr path), no SQL cursor is used.
+	 * Instead, create_cursor sets cursor_exists = true after binding
+	 * parameters via YBCPgGlobalViewReadSetParams.
+	 *
+	 * postgresIterateForeignScan checks this flag and calls create_cursor on
+	 * the first iterate when it is false.  Without this guard, create_cursor
+	 * would be called on every iterate, redundantly re-binding parameters.
+	 * postgresReScanForeignScan resets it to false for yb_gvr scans (which
+	 * cannot be rewound), so that the next iterate re-initializes the scan
+	 * with fresh parameters.  postgresEndForeignScan skips the close_cursor
+	 * call for yb_gvr scans entirely, destroying the YBCPg handle directly
+	 * instead.
+	 */
+	fsstate->cursor_exists = false;
 	fsstate->yb_gvr = NULL;
 
 	/* Get private info created by planner functions. */
@@ -1737,16 +1751,21 @@ postgresReScanForeignScan(ForeignScanState *node)
 	char		sql[64];
 	PGresult   *res;
 
+	/* If we haven't created the cursor yet, nothing to do. */
+	if (!fsstate->cursor_exists)
+		return;
+
 	if (fsstate->yb_gvr)
 	{
 		YBCPgGlobalViewReadResetScan(fsstate->yb_gvr);
 		YbResetForeignScanControlState(fsstate);
+		/*
+		 * YB: yb_gvr scans cannot be rewound, so force create_cursor on the
+		 * next iterate to re-evaluate parameters.
+		 */
+		fsstate->cursor_exists = false;
 		return;
 	}
-
-	/* If we haven't created the cursor yet, nothing to do. */
-	if (!fsstate->cursor_exists)
-		return;
 
 	/*
 	 * If the node is async-capable, and an asynchronous fetch for it has been
@@ -3846,11 +3865,8 @@ create_cursor(ForeignScanState *node)
 	StringInfoData buf;
 	PGresult   *res;
 
-	if (fsstate->yb_gvr)
-		return;
-
 	/* First, process a pending asynchronous request, if any. */
-	if (fsstate->conn_state->pendingAreq)
+	if (!fsstate->yb_gvr && fsstate->conn_state->pendingAreq)
 		process_pending_request(fsstate->conn_state->pendingAreq);
 
 	/*
@@ -3870,6 +3886,14 @@ create_cursor(ForeignScanState *node)
 							 values);
 
 		MemoryContextSwitchTo(oldcontext);
+	}
+
+	if (fsstate->yb_gvr)
+	{
+		if (numParams > 0)
+			YBCPgGlobalViewReadSetParams(fsstate->yb_gvr, numParams, values);
+		fsstate->cursor_exists = true;
+		return;
 	}
 
 	/* Construct the DECLARE CURSOR command */

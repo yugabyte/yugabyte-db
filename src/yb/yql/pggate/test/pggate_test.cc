@@ -190,7 +190,7 @@ Status PggateTest::Init(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
-  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serialization
+  ash_metadata.qp.query_id = 5; // to make sure a DCHECK passes during metadata serialization
   ash_config.metadata = &ash_metadata;
 
   YbcPgInitPostgresInfo init_info{

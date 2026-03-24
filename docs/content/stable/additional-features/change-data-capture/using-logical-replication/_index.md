@@ -6,6 +6,9 @@ description: CDC using YugabyteDB PostgreSQL replication protocol.
 headcontent: Capture changes made to data in the database
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/
+cascade:
+  tags:
+    feature: early-access
 menu:
   stable:
     identifier: explore-change-data-capture-logical-replication
@@ -111,7 +114,7 @@ For reference documentation, see [YugabyteDB Connector](./yugabytedb-connector/)
 
 - Support for point-in-time recovery (PITR) is tracked in issue {{<issue 10938>}}.
 
-- Transaction savepoints are supported starting from v2025.2.1.0. Issue {{<issue 10936>}}.
+- Transaction savepoints are supported starting from v2025.2.2.0. Issue {{<issue 10936>}}.
 
 - Support for enabling CDC on Read Replicas is tracked in issue {{<issue 11116>}}.
 

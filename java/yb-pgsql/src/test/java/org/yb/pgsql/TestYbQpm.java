@@ -34,6 +34,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import static org.yb.AssertionWrappers.*;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainQueryId;
 import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainPlanId;
+import static org.yb.pgsql.ExplainAnalyzeUtils.getExplainOutput;
 
 /**
  * Run tests for Query Plan Managment (QPM).
@@ -55,6 +56,9 @@ public class TestYbQpm extends BasePgSQLTest {
   private String getQpmByQueryIdPlanIdNoQuery = new String("SELECT queryid, planid, " +
     "hints, plan " +
     "FROM yb_pg_stat_plans ORDER BY queryid, planid /* __YB_STAT_PLANS_SKIP */");
+  private String createSimpleTable = new String("CREATE TABLE simple_table(c1 INT)");
+  private String insertSimpleTable = new String("INSERT INTO simple_table VALUES(1)");
+  private String querySimpleTable = new String("SELECT c1 FROM simple_table");
 
   private static long seed;
   private static Random rand;
@@ -618,6 +622,39 @@ public class TestYbQpm extends BasePgSQLTest {
     }
 
     assertFalse(hitException);
+  }
+
+  /**
+   * testYbQpmPlanFormat
+   *  Verify QPM JSON plan format is correct.
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testYbQpmPlanFormat() throws Exception {
+
+    Map<String, String> flagMap = super.getTServerFlags();
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track=top");
+    appendToYsqlPgConf(flagMap, "yb_pg_stat_plans_track_catalog_queries=false");
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
+
+    Statement stmt = connection.createStatement();
+
+    stmt.execute("SELECT yb_pg_stat_plans_reset(null, null, null, null)");
+
+    stmt.execute(createSimpleTable);
+    stmt.execute(insertSimpleTable);
+    ResultSet rs = stmt.executeQuery(querySimpleTable);
+    assertTrue(rs.next());
+
+    String explainString = getExplainOutput(stmt, querySimpleTable, "json", false,
+                                            false, false, false, false, false, false);
+
+    String qpmString = null;
+    rs = stmt.executeQuery("SELECT plan FROM yb_pg_stat_plans");
+    assertTrue(rs.next());
+    qpmString = rs.getString("plan");
+    assertTrue(explainString.equals(qpmString));
   }
 
   public static char randomLetterOrDigit(Random rand) {

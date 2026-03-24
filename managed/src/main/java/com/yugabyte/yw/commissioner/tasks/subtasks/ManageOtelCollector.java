@@ -69,7 +69,7 @@ public class ManageOtelCollector extends NodeTaskBase {
     Optional<NodeAgent> optional =
         confGetter.getGlobalConf(GlobalConfKeys.nodeAgentDisableConfigureServer)
             ? Optional.empty()
-            : nodeUniverseManager.maybeGetNodeAgent(
+            : nodeUniverseManager.maybeUpgradeAndGetNodeAgent(
                 getUniverse(), node, true /*check feature flag*/);
 
     if (optional.isPresent()) {

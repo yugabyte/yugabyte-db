@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 
 /** Helper class to create PlacementInfo from CRD */
@@ -186,16 +187,23 @@ public class OperatorPlacementInfoHelper {
   }
 
   public static PlacementInfo createPlacementInfo(
-      io.yugabyte.operator.v1alpha1.ybuniversespec.PlacementInfo placement, Provider provider) {
+      io.yugabyte.operator.v1alpha1.ybuniversespec.PlacementInfo placement,
+      Provider provider,
+      @Nullable PlacementInfo existingPlacementInfo) {
     return createPlacementInfo(
-        new OperatorPlacementInfoHelper.PrimaryPlacementAdapter(placement), provider);
+        new OperatorPlacementInfoHelper.PrimaryPlacementAdapter(placement),
+        provider,
+        existingPlacementInfo);
   }
 
   public static PlacementInfo createPlacementInfo(
       io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.PlacementInfo placement,
-      Provider provider) {
+      Provider provider,
+      @Nullable PlacementInfo existingPlacementInfo) {
     return createPlacementInfo(
-        new OperatorPlacementInfoHelper.ReadReplicaPlacementAdapter(placement), provider);
+        new OperatorPlacementInfoHelper.ReadReplicaPlacementAdapter(placement),
+        provider,
+        existingPlacementInfo);
   }
 
   /**
@@ -203,11 +211,14 @@ public class OperatorPlacementInfoHelper {
    *
    * @param crPlacementInfo The placement information from the CRD
    * @param provider The provider containing region and zone definitions
+   * @param existingPlacementInfo The existing placement info
    * @return A PlacementInfo object ready for universe creation
    * @throws IllegalArgumentException if validation fails
    */
   private static PlacementInfo createPlacementInfo(
-      PlacementInfoAdapter crPlacementInfo, Provider provider) {
+      PlacementInfoAdapter crPlacementInfo,
+      Provider provider,
+      @Nullable PlacementInfo existingPlacementInfo) {
     PlacementInfo placementInfo = new PlacementInfo();
     PlacementInfo.PlacementCloud placementCloud = new PlacementInfo.PlacementCloud();
     placementCloud.uuid = provider.getUuid();
@@ -260,6 +271,15 @@ public class OperatorPlacementInfoHelper {
         placementAZ.numNodesInAZ = crZone.getNumNodes();
         placementAZ.isAffinitized = crZone.getPreferred() != null ? crZone.getPreferred() : true;
         placementAZ.leaderPreference = placementAZ.isAffinitized ? 1 : 0;
+        // Handle STSIndex
+        if (existingPlacementInfo != null) {
+          PlacementInfo.PlacementAZ existingAZ =
+              existingPlacementInfo.findByAZCode(crZone.getCode());
+          if (existingAZ != null) {
+            placementAZ.tsStsIndex = existingAZ.tsStsIndex;
+            placementAZ.masterStsIndex = existingAZ.masterStsIndex;
+          }
+        }
 
         // Find matching provider zone
         AvailabilityZone providerZone =

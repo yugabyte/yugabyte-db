@@ -1956,6 +1956,25 @@ public class YBClient implements AutoCloseable {
       long safeHybridTime,
       int walSegmentIndex)
       throws Exception {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+        needSchemaInfo, explicitCheckpoint, safeHybridTime, walSegmentIndex, null);
+  }
+
+  public GetChangesResponse getChangesCDCSDK(
+      YBTable table,
+      String streamId,
+      String tabletId,
+      long term,
+      long index,
+      byte[] key,
+      int write_id,
+      long time,
+      boolean needSchemaInfo,
+      CdcSdkCheckpoint explicitCheckpoint,
+      long safeHybridTime,
+      int walSegmentIndex,
+      Long getchangesRespMaxSizeBytes)
+      throws Exception {
     Deferred<GetChangesResponse> d =
         asyncClient.getChangesCDCSDK(
             table,
@@ -1969,7 +1988,8 @@ public class YBClient implements AutoCloseable {
             needSchemaInfo,
             explicitCheckpoint,
             safeHybridTime,
-            walSegmentIndex);
+            walSegmentIndex,
+            getchangesRespMaxSizeBytes);
     return d.join(2 * getDefaultAdminOperationTimeoutMs());
   }
 
@@ -2944,6 +2964,30 @@ public class YBClient implements AutoCloseable {
      */
     public YBClientBuilder workerCount(int workerCount) {
       clientBuilder.workerCount(workerCount);
+      return this;
+    }
+
+    /**
+     * Sets the threshold for DNS debug logging of slow dns lookups. Optional.
+     * If not provided, defaults to 5ms.
+     *
+     * @param dnsDebugThresholdNs a threshold in nanoseconds
+     * @return this builder
+     */
+    public YBClientBuilder dnsDebugThresholdNs(int dnsDebugThresholdNs) {
+      clientBuilder.dnsDebugThresholdNs(dnsDebugThresholdNs);
+      return this;
+    }
+
+    /**
+     * Sets the threshold for DNS warning logging of slow dns lookups. Optional.
+     * If not provided, defaults to 300ms.
+     *
+     * @param dnsWarningThresholdNs a threshold in nanoseconds
+     * @return this builder
+     */
+    public YBClientBuilder dnsWarningThresholdNs(int dnsWarningThresholdNs) {
+      clientBuilder.dnsWarningThresholdNs(dnsWarningThresholdNs);
       return this;
     }
 

@@ -70,6 +70,13 @@ if [ -d {{ yb_home_dir }} ]; then
 
     echo "{{ yb_home_dir }} has the correct ownership and acceptable permissions"
     add_result "Yugabyte Home Directory Permissions Check" "PASS" "{{ yb_home_dir }} has the correct ownership and acceptable permissions"
+    threshold={{ min_home_dir_space_gb }}
+    free_space_gb=$(df -B1G --output=avail "{{ yb_home_dir }}" | tail -n 1)
+    if [ "$free_space_gb" -gt "$threshold" ]; then
+        add_result "Yugabyte Home Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
+    else
+        add_result "Yugabyte Home Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+    fi
 else
     echo "{{ yb_home_dir }} does not exist"
     add_result "Yugabyte Home Directory Existence Check" "FAIL" "{{ yb_home_dir }} does not exist"
@@ -90,15 +97,14 @@ is_subdirectory() {
   esac
 }
 
-yb_home_dir={{ yb_home_dir }}
-threshold=49 #Gigabytes
+threshold={{ min_mount_point_dir_space_gb }}
 # Convert the space-separated string to an array
 mount_points="{{ mount_points | default('') | trim }}"
 IFS=' ' read -ra mount_points_array <<< "$mount_points"
 # Verify each mount point
 for mount_point in "${mount_points_array[@]}"; do
-    if is_subdirectory "$mount_point" "$yb_home_dir"; then
-        message="Mountpoint $mount_point is inside home directory $yb_home_dir"
+    if is_subdirectory "$mount_point" "{{ yb_home_dir }}"; then
+        message="Mountpoint $mount_point is inside home directory {{ yb_home_dir }}"
         add_result "home directory check" "FAIL" "$message"
     fi
     if [ -d "$mount_point" ]; then
@@ -126,7 +132,7 @@ for mount_point in "${mount_points_array[@]}"; do
 
     if [ -d "$mount_point" ]; then
         # Get available disk space in gigabytes
-        free_space_gb=$(df -BG --output=avail "$mount_point" | tail -n 1 | tr -d 'G ')
+        free_space_gb=$(df -B1G --output=avail "$mount_point" | tail -n 1 )
         if [ "$free_space_gb" -gt "$threshold" ]; then
             result="PASS"
             message="Sufficient disk space available: ${free_space_gb}G"
@@ -140,3 +146,55 @@ for mount_point in "${mount_points_array[@]}"; do
         add_result "$mount_point Free Space Check" "$result" "$message"
     fi
 done
+
+threshold={{ min_tmp_dir_space_gb }}
+# Get available disk space in gigabytes
+free_space_gb=$(df -B1G --output=avail "{{ tmp_directory }}" | tail -n 1 )
+if [ "$free_space_gb" -gt "$threshold" ]; then
+    add_result "Yugabyte Temp Directory Free Space Check" "PASS" "Sufficient disk space available: ${free_space_gb}G"
+else
+    add_result "Yugabyte Temp Directory Free Space Check" "FAIL" "Insufficient disk space: ${free_space_gb}G available, ${threshold}G required."
+fi
+
+if [ "{{ check_clean_dirs }}" == "True" ]; then
+  # Check whether yugabyte home directory is cleaned up.
+  if [[ -e "{{ yb_home_dir }}" ]]; then
+    files=""
+    if [[ "$check_type" == "provision" ]]; then
+      files=$(sudo find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+    else
+      files=$(find "{{ yb_home_dir }}" -maxdepth 1 -mindepth 1  -name "bin" -o -name ".yugabytedb" -o -name "controller" -o -name "master" -o -name "tserver")
+    fi
+    if [[ -n "$files" ]]; then
+        add_result "Yugabyte Home Directory Clean Check" "FAIL" "Directory {{ yb_home_dir }} is not clean"
+    else
+        add_result "Yugabyte Home Directory Clean Check" "PASS" "Directory {{ yb_home_dir }} is clean"
+    fi
+  fi
+
+  # Check whether files in data directory are cleaned up.
+  data_dir_clean=true
+  processes=("tserver" "master" "controller")
+  IFS="," read -ra mount_points_arr <<< "$mount_points"
+  for path in "${mount_points_arr[@]}"; do
+    if [ -e "$path/pg_data" ]; then
+      data_dir_clean=false
+      break
+    fi
+    if [ -e "$path/ybc-data" ]; then
+      data_dir_clean=false
+      break
+    fi
+    for daemon in "${processes[@]}"; do
+      if [ -e "$path/yb-data/$daemon" ]; then
+        data_dir_clean=false
+        break
+      fi
+    done
+  done
+  if [[ "$data_dir_clean" == "true" ]]; then
+    add_result "Yugabyte Data Directory Clean Check" "PASS" "Data directories are clean"
+  else
+    add_result "Yugabyte Data Directory Clean Check" "FAIL" "Data directories are not clean"
+  fi
+fi

@@ -1671,7 +1671,7 @@ YbQpmExplainPlan(QueryDesc *queryDesc, ExplainFormat format)
 	list_free_deep(pspList);
 
 	/* Ignore trailing newline emitted by ExplainPrintPlan */
-	if (es_str->len > 0)
+	if (es_str->len > 0 && es_str->data[es_str->len - 1] == '\n')
 		es_str->data[es_str->len - 1] = '\0';
 
 	return es_str->data;

@@ -17,24 +17,24 @@ type: indexpage
     title="Sandbox"
     body="Create your free single-node Sandbox cluster."
     href="create-clusters-free/"
-    icon="/images/section_icons/architecture/concepts/single_node.png">}}
+    icon="fa-thin fa-box">}}
 
   {{<index/item
     title="Single region"
     body="Deploy single-region clusters with node- and availability zone-level fault tolerance."
     href="create-single-region/"
-    icon="/images/section_icons/quick_start/create_cluster.png">}}
+    icon="fa-thin fa-city">}}
 
   {{<index/item
     title="Replicate across regions"
     body="Create a stretched multi-region synchronous cluster."
     href="create-clusters-multisync/"
-    icon="/images/section_icons/explore/planet_scale.png">}}
+    icon="fa-thin fa-planet-moon">}}
 
   {{<index/item
     title="Partition by region"
     body="Pin data to specific geographical regions."
     href="create-clusters-geopartition/"
-    icon="/images/section_icons/explore/planet_scale.png">}}
+    icon="fa-thin fa-planet-moon">}}
 
 {{</index/block>}}

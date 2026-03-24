@@ -337,10 +337,6 @@ od_frontend_attach(od_client_t *client, char *context,
 		 * ALTER DATABASE set command has been executed that bumped up the
 		 * current_version in pg_yb_logical_client_version.
 		*/
-		/* 
-		 * FIXME: What if there was a backend available at same version but was
-		 * active and we tried to create a new server
-		 */
 		if (instance->config.yb_alter_guc_adoption_strategy ==
 			    YB_GUC_ADOPTION_CONNECTION_STATIC &&
 		    client->yb_logical_client_version <
@@ -768,6 +764,11 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 	case YB_BE_PARSE_PREPARE_ERROR_RESPONSE:
 		// YB: Custom packet not required to be forwarded to client.
 		od_backend_evict_server_hashmap(server, "parse prepare error", data, size);
+		skip_forward_to_client = true;
+		break;
+	case YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME:
+		// YB: Custom packet not required to be forwarded to client.
+		od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
 		skip_forward_to_client = true;
 		break;
 	case KIWI_BE_ERROR_RESPONSE:
@@ -1748,25 +1749,127 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			}
 
 			if (type == KIWI_FE_CLOSE_PREPARED_STATEMENT) {
-				retstatus = OD_SKIP;
-				od_log(
-					&instance->logger,
-					"close prepared statement",
-					client, server, "ignore closing prepared statement: %.*s, report it as closed "
-					"by returning a close complete message from connection manager",
-					name_len, name);
 
-				machine_msg_t *pmsg;
-				pmsg = kiwi_be_write_close_complete(NULL);
+				/*
+				 * YB: TODO(mkumar):GH#30481 Add support for closing unnamed prepared statements.
+				 */
+				if (name[0] != '\0' && instance->config.yb_deallocate_if_invalid_prep_stmt) {
 
-				/* TODO(#29442): Replace with async write to avoid TCP deadlock */
-				rc = od_write(&client->io, &pmsg);
-				if (rc == -1) {
-					od_error(&instance->logger,
-						 "close report", NULL, server,
-						 "write error: %s",
-						 od_io_error(&server->io));
-					return OD_ECLIENT_WRITE;
+					od_hashmap_elt_t key;
+					key.len = name_len;
+					key.data = name;
+
+					od_hash_t keyhash = od_murmur_hash(name, name_len);
+
+					od_hashmap_list_item_t *item = yb_od_hashmap_find_item(
+							client->prep_stmt_ids, keyhash, &key);
+					
+					kiwi_fe_close_type_t close_type;
+					od_hash_t yb_stmt_hash = 0;
+					if (item != NULL) {
+
+						od_hashmap_elt_t *desc = &item->value;
+
+						int server_key_len = 0;
+						char *server_key = yb_prepare_server_key(name, name_len,
+									desc->data, desc->len,
+									client->id.id,
+									instance->config.yb_optimized_extended_query_protocol?
+										0 : strlen(client->id.id),
+									&server_key_len);
+
+						if (!server_key) {
+							od_error(&instance->logger, "CLOSE", client,
+								server, "failed to allocate memory");
+							return OD_EOOM;
+						}
+
+						od_hashmap_list_item_free(item);
+						od_debug(&instance->logger, "CLOSE", client, server,
+							"Removed %.*s from client's hashmap", name_len, name);
+
+						od_hashmap_elt_t server_key_desc = {server_key, server_key_len};
+
+						yb_stmt_hash = od_murmur_hash(server_key_desc.data, server_key_desc.len);
+
+						if (od_hashmap_find(server->prep_stmts, yb_stmt_hash,
+							&server_key_desc)) {
+							close_type = KIWI_FE_CLOSE_PREPARED_STATEMENT;
+							od_debug(&instance->logger, "CLOSE", client, server,
+										"Found %08x entry in server hashmap, CLOSE sent.",
+										yb_stmt_hash);
+						} else {
+						   /*
+							* YB: In order to return CloseComplete send a dummy CLOSE which
+							* is a no-op.
+							*/
+							close_type = YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE;
+							od_debug(&instance->logger, "CLOSE", client, server,
+									"Did not found entry %08x in server hashmap, dummy CLOSE sent.",
+									yb_stmt_hash);
+						}
+
+						free(server_key_desc.data);
+					} else {
+						/*
+						 * YB: Although client has not prepared the statement, send dummy
+						 * CLOSE to server, to get CloseComplete response to match PG behaviour.
+						 */
+						close_type = YB_KIWI_FE_CLOSE_ONLY_CLOSE_COMPLETE;
+						od_debug(&instance->logger, "CLOSE", client, server,
+							"Client has not prepared the statement %.*s, dummy CLOSE sent.",
+							name_len, name);
+					}
+
+					machine_msg_t *msg;
+					char buf[OD_HASH_LEN];
+					od_snprintf(buf, OD_HASH_LEN, "%08x",
+								yb_stmt_hash);
+
+					msg = kiwi_fe_write_close(
+						NULL, close_type, buf, OD_HASH_LEN);
+
+					if (msg == NULL) {
+						return OD_ESERVER_WRITE;
+					}
+
+					/*
+					* YB: Remove the entry from server hashmap on receiving
+					* YBCloseCompletePrepStmtName as an acknowledgement
+					* named prepared statement has been deallocated by server.
+					*/
+					rc = machine_iov_add(relay->iov, msg);
+					retstatus = OD_SKIP;
+
+					if (rc == -1) {
+						od_error(&instance->logger, "rewrite close",
+							client, server, "out of memory");
+						machine_msg_free(msg);
+						return OD_EOOM;
+					}
+				}
+				else {
+					retstatus = OD_SKIP;
+					od_log(
+						&instance->logger,
+						"close prepared statement",
+						client, server, "ignore closing prepared statement: %.*s. Consider setting "
+						"ysql_conn_mgr_deallocate_if_invalid_prep_stmt to true to enable support for "
+						"CLOSE packet.",
+						name_len, name);
+
+					machine_msg_t *pmsg;
+					pmsg = kiwi_be_write_close_complete(NULL);
+
+					/* TODO(#29442): Replace with async write to avoid TCP deadlock */
+					rc = od_write(&client->io, &pmsg);
+					if (rc == -1) {
+						od_error(&instance->logger,
+							"close report", NULL, server,
+							"write error: %s",
+							od_io_error(&server->io));
+						return OD_ECLIENT_WRITE;
+					}
 				}
 			}
 

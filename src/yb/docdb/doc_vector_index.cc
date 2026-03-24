@@ -100,27 +100,31 @@ vector_index::HNSWOptions ConvertToHnswOptions(const PgVectorIdxOptionsPB& optio
   };
 }
 
+template <class LSM, template<class, class> class Factory>
+typename LSM::Options::VectorIndexFactory VectorLSMFactoryImpl(
+    const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
+    const MemTrackerPtr& mem_tracker) {
+  auto hnsw_options = ConvertToHnswOptions(options);
+  using FactoryImpl = vector_index::MakeVectorIndexFactory<Factory, LSM>;
+  return [block_cache, hnsw_options,
+          backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
+    return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
+  };
+}
+
 template <class LSM>
 typename LSM::Options::VectorIndexFactory VectorLSMFactory(
     const hnsw::BlockCachePtr& block_cache, const PgVectorIdxOptionsPB& options,
     const MemTrackerPtr& mem_tracker) {
-  auto hnsw_options = ConvertToHnswOptions(options);
   switch (options.hnsw().backend()) {
     case HnswBackend::USEARCH: [[fallthrough]];
-    case HnswBackend::YB_HNSW: {
-      using FactoryImpl = vector_index::MakeVectorIndexFactory<
-          ann_methods::UsearchIndexFactory, LSM>;
-      return [block_cache, hnsw_options,
-              backend = options.hnsw().backend(), mem_tracker](vector_index::FactoryMode mode) {
-        return FactoryImpl::Create(mode, block_cache, hnsw_options, backend, mem_tracker);
-      };
-    }
-    case HnswBackend::HNSWLIB: {
-      using FactoryImpl = vector_index::MakeVectorIndexFactory<
-          ann_methods::HnswlibIndexFactory, LSM>;
-      return [hnsw_options](vector_index::FactoryMode mode) {
-        return FactoryImpl::Create(mode, hnsw_options);
-      };
+    case HnswBackend::YB_HNSW_USEARCH:
+      return VectorLSMFactoryImpl<LSM, ann_methods::UsearchIndexFactory>(
+          block_cache, options, mem_tracker);
+    case HnswBackend::HNSWLIB: [[fallthrough]];
+    case HnswBackend::YB_HNSW_HNSWLIB: {
+      return VectorLSMFactoryImpl<LSM, ann_methods::HnswlibIndexFactory>(
+          block_cache, options, mem_tracker);
     }
   }
   FATAL_INVALID_PB_ENUM_VALUE(HnswBackend, options.hnsw().backend());
@@ -231,10 +235,13 @@ class DocVectorIndexImpl : public DocVectorIndex {
       Slice indexed_table_key_prefix, DocVectorIndexContextPtr vector_index_context,
       const hnsw::BlockCachePtr& block_cache, const MemTrackerPtr& mem_tracker,
       const MetricEntityPtr& metric_entity)
-      : table_id_(table_id), indexed_table_key_prefix_(indexed_table_key_prefix),
-        options_(options), hybrid_time_(hybrid_time),
+      : table_id_(table_id),
+        indexed_table_key_prefix_(indexed_table_key_prefix),
+        options_(options),
+        hybrid_time_(hybrid_time),
         context_(std::move(vector_index_context)),
-        block_cache_(block_cache), mem_tracker_(mem_tracker),
+        block_cache_(block_cache),
+        mem_tracker_(mem_tracker),
         metric_entity_(metric_entity),
         metrics_(metric_entity) {
     DCHECK_ONLY_NOTNULL(context_.get());

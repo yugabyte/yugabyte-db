@@ -494,6 +494,7 @@ class PgSession::RunHelper {
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
+    PrivateTag,
     PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YbcPgCallbacks& pg_callbacks,
@@ -1016,6 +1017,22 @@ Status PgSession::ValidatePlacements(
   return Status::OK();
 }
 
+Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table_oid) {
+  const auto original_read_point = pg_txn_manager_->GetCurrentReadPointState();
+  auto catalog_read_time_serial_no = pg_callbacks_.GetCatalogSnapshotReadPoint(
+      catalog_table_oid, /* create_if_not_exists = */ true);
+  LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
+      << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
+      << " and saving read time serial no " << original_read_point.read_time_serial_no
+      << " for txn no " << original_read_point.txn;
+  RSTATUS_DCHECK(
+      catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+  RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
+  // Avoid picking safe time for catalog reads.
+  RETURN_NOT_OK(pg_txn_manager_->EnsureReadPoint());
+  return original_read_point;
+}
+
 template<class Generator>
 Result<PerformFuture> PgSession::DoRunAsync(
     const Generator& generator, const RunOptions& options,
@@ -1030,17 +1047,27 @@ Result<PerformFuture> PgSession::DoRunAsync(
   // If we're in major PG version upgrade mode, then it's safe to use a non-DDL transaction for
   // access to the PG catalog because it will be the next-version catalog which is only being
   // accessed by the one process that's currently doing the writes.
+  const auto& first_table = *first_table_op.table;
   const auto non_ddl_txn_for_sys_tables_allowed =
       yb_non_ddl_txn_for_sys_tables_allowed || is_major_pg_version_upgrade_;
   const auto group_session_type = VERIFY_RESULT(GetRequiredSessionType(
-      *pg_txn_manager_, *first_table_op.table, **first_table_op.operation,
+      *pg_txn_manager_, first_table, **first_table_op.operation,
       non_ddl_txn_for_sys_tables_allowed));
   if (group_session_type != SessionType::kCatalog) {
     RETURN_NOT_OK(rw_operations_hook_(options.marker));
   }
-  auto table_op = generator();
+  auto force_non_bufferable = options.force_non_bufferable;
+  std::optional<TxnReadPoint> original_read_point;
+  if (!YBCIsLegacyModeForCatalogOps() &&
+      first_table.schema().table_properties().is_ysql_catalog_table()) {
+    // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
+    // writes.
+    force_non_bufferable = ForceNonBufferable::kTrue;
+    original_read_point.emplace(VERIFY_RESULT(UpdateReadPointForCatalogOps(
+        first_table.pg_table_id().object_oid)));
+  }
   RunHelper runner(
-      this, group_session_type, options.in_txn_limit, options.force_non_bufferable);
+      this, group_session_type, options.in_txn_limit, force_non_bufferable);
   const auto ddl_force_catalog_mod_opt = pg_txn_manager_->GetDdlForceCatalogModification();
   auto processor =
       [this,
@@ -1075,11 +1102,17 @@ Result<PerformFuture> PgSession::DoRunAsync(
             (is_ddl && op->is_write() && is_ysql_catalog_table);
         return runner.Apply(table, op);
     };
-  RETURN_NOT_OK(processor(first_table_op));
-  for (; !table_op.IsEmpty(); table_op = generator()) {
+  for (auto table_op = first_table_op; !table_op.IsEmpty(); table_op = generator()) {
     RETURN_NOT_OK(processor(table_op));
   }
-  return runner.Flush(std::move(cache_options));
+  auto result = runner.Flush(std::move(cache_options));
+  if (original_read_point) {
+    LOG_IF(INFO, VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt)
+        << "Restoring original read time serial no to "
+        << original_read_point->read_time_serial_no << " for txn no " << original_read_point->txn;
+    RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*original_read_point));
+  }
+  return result;
 }
 
 Result<PerformFuture> PgSession::RunAsync(
@@ -1199,11 +1232,6 @@ Status PgSession::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool 
     lock_oid.set_object_sub_oid(lock_id.object_sub_oid);
   }
   return pg_client_.ReleaseSessionObjectLock(&req, CoarseTimePoint());
-}
-
-YbcReadPointHandle PgSession::GetCatalogSnapshotReadPoint(
-    YbcPgOid table_oid, bool create_if_not_exists) {
-  return pg_callbacks_.GetCatalogSnapshotReadPoint(table_oid, create_if_not_exists);
 }
 
 }  // namespace yb::pggate

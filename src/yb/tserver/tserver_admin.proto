@@ -431,17 +431,25 @@ service TabletServerAdminService {
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
 
   // Alter a tablet's schema.
-  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // GetSafeTime API to get the current safe time.
-  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB);
+  rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // Backfill the index for the specified index tables. Addressed to the indexed
   // table.
-  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
+  rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   // Marks an index table as having completed backfilling.
-  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
 
   rpc FlushTablets(FlushTabletsRequestPB) returns (FlushTabletsResponsePB);
 

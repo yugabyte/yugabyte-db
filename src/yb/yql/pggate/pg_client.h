@@ -381,7 +381,8 @@ class PgClient {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& tserver_uuid);
+      std::string_view query, const std::string& tserver_uuid,
+      const std::vector<std::optional<std::string>>& params);
 
  private:
   class Impl;

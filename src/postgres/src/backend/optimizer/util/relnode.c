@@ -407,12 +407,18 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	if (IsYugaByteEnabled())
 	{
 		rte->ybScannedObjectName = rel->ybRelationName;
-		if (rte->ybHintAlias != NULL)
+		if (rte->ybHintAlias != NULL && rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
 		{
 			/*
 			 * This code path is taken when we have an INSERT, UPDATE, DELETE, or MERGE statement
 			 * and have already processed the target RTE (when PlannerGlobal instance was allocated
 			 * standard_planner()). Just place the information on 'rel'.
+			 *
+			 * However, for rels the are of kind RELOPT_OTHER_MEMBER_REL, e.g. children in an inheritance
+			 * hierarchy, or an individual partition of a partitioned table, we do not want to take
+			 * this path and use the hint alias but rather generate a unique one. For these cases,
+			 * PG assigns the same alias to the children as the one used for the parent, which makes
+			 * hint generation incorrect and makes hinting individual partitions/children impossible.
 			 */
 			rel->ybHintAlias = rte->ybHintAlias;
 			rel->ybBlockId = root->ybBlockId;

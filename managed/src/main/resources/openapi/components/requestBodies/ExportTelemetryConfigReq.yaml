@@ -1,0 +1,8 @@
+description: Export telemetry config request (unified telemetry configs + upgrade options)
+x-yba-api-since: 2026.1.0.0
+x-yba-api-visibility: internal
+required: false
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/ExportTelemetryConfigSpec.yaml"

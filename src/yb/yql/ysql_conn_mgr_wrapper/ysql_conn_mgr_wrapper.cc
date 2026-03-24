@@ -129,6 +129,13 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
+    "When enabled, the YSQL Connection Manager deallocates a prepared statement "
+    "upon receiving a Close message if the statement exists on the backend "
+    "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
+    "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
+    "needs to be enabled to enable this flag.");
+
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
     "When false, the older static pool sizes are used."
@@ -195,6 +202,9 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 } // namespace
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
+
+DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {

@@ -142,6 +142,7 @@
 /* YB includes */
 #include "access/xact.h"
 #include "arpa/inet.h"
+#include "commands/async.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -1093,6 +1094,12 @@ PostmasterMain(int argc, char *argv[])
 		 * any process that needs it is forked.
 		 */
 		YBCSetupSharedMemoryAddressSegment();
+
+		/*
+		 * Set up cgroups. This needs to be done before any fork calls, to ensure that all
+		 * subprocesses inherit the cgroup.
+		 */
+		YBCSetupCgroups();
 
 		/* Register ASH collector */
 		if (yb_enable_ash)
@@ -3811,6 +3818,9 @@ CleanupKilledProcess(PGPROC *proc)
 
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
+
+		/* From Exec_ListenPreCommit */
+		YbCleanupListenStateForProc(proc);
 	}
 
 	/* From ProcKill */

@@ -512,7 +512,7 @@ Default: `1`
 
 Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
-Default: `2`
+Default: `100`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
@@ -530,7 +530,7 @@ Default: `1`
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `10`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
