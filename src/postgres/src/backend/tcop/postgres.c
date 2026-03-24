@@ -7254,15 +7254,29 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 				if (YbIsClientYsqlConnMgr())
 				{
-					/*
-					 * Do not rely on cache during authentication passthrough.
-					 * "ALTER ROLE" does not change the catalog version due to this
-					 * local cache may have an invalid cache.
-					 *
-					 * TODO (GH #21998): Invalidate cache specific to the role credentials and
-					 * logic permissions.
-					 */
-					ResetCatalogCaches();
+					MyProcPort->yb_is_auth_passthrough_req = true;
+					MyProcPort->yb_has_auth_passthrough_failed = false;
+
+
+					if (!YBCIsSysTablePrefetchingStarted() &&
+						YbUseTserverResponseCacheForAuth(YbGetSharedCatalogVersion()))
+					{
+						/*
+						 * Use catalog table entries from the Tserver's response
+						 * cache to avoid forwarding an RPC to master for each
+						 * catalog table read.
+						 * YbPrefetchRequiredData registers (among others)
+						 * pg_authid, pg_database, pg_db_role_setting and
+						 * pg_yb_logical_client_version catalog tables for
+						 * prefetching.
+						 * Only "prefetch registered" catalog tables are read
+						 * from the Tserver's response cache when prefetching is
+						 * started.
+						 */
+						start_xact_command();
+						YbPrefetchRequiredData(false);
+						finish_xact_command();
+					}
 
 					/* Store a copy of the old context */
 					char	   *db_name = MyProcPort->database_name;
@@ -7300,8 +7314,6 @@ PostgresMain(const char *dbname, const char *username)
 						(struct sockaddr_in *) (&MyProcPort->raddr.addr);
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
-					MyProcPort->yb_is_auth_passthrough_req = true;
-					MyProcPort->yb_has_auth_passthrough_failed = false;
 
 					/* Start authentication */
 					{
@@ -7374,6 +7386,16 @@ PostgresMain(const char *dbname, const char *username)
 							  &(ip_address_1->sin_addr));
 
 					MyProcPort->authn_id = authn_id;
+
+
+					/*
+					 * Stop prefetching to allow invalidation messages to be processed.
+					 * Refer to `YBRefreshCacheUsingInvalMsgs` for more details.
+					 * If this is skipped, the local cache is never invalidated,
+					 * and the subsequent queries will use the stale cache.
+					 */
+					if (YBCIsSysTablePrefetchingStarted())
+						YBCStopSysTablePrefetching();
 
 					send_ready_for_query = true;
 				}

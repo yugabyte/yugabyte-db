@@ -39,5 +39,8 @@ extern void YbDeleteMasterDBLogicalClientVersionTableEntry(Oid db_oid);
 
 extern YbLogicalClientVersionType YbGetLogicalClientVersionType();
 
+/* Check if the logical client version table exists. */
+extern bool YbLogicalClientVersionTableExists();
+
 /* Get the latest logical client version from the master leader. */
 extern uint64_t YbGetMasterLogicalClientVersion();

@@ -13,10 +13,6 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/yb_scan.h"
-#include "catalog/indexing.h"
-#include "catalog/pg_database.h"
-#include "catalog/pg_namespace_d.h"
-#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_logical_client_version.h"
 #include "catalog/schemapg.h"
@@ -27,7 +23,6 @@
 #include "nodes/makefuncs.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
-#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -54,6 +49,9 @@ YbGetMasterLogicalClientVersion()
 		case LOGICAL_CLIENT_VERSION_CATALOG_TABLE:
 			if (YbGetMasterLogicalClientVersionFromTable(MyDatabaseId, &version))
 				return version;
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("failed to get master logical client version from table")));
 			yb_switch_fallthrough();
 
 		case LOGICAL_CLIENT_VERSION_UNSET:	/* should not happen. */
@@ -97,24 +95,10 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, 1, pkey_expr));
 
-	/* Add scan targets */
+	/* Add scan targets: regular columns in ascending attnum order,
+	 * matching the order used by the sys table prefetcher's OrderColumns(). */
 	for (AttrNumber attnum = 1; attnum <= natts; attnum++)
-	{
-		/*
-		 * Before copying the following code, see if YbDmlAppendTargetRegular
-		 * or similar could be used instead.  Reason this doesn't use
-		 * YbDmlAppendTargetRegular is that it doesn't have access to
-		 * TupleDesc.  YbDmlAppendTargetRegular could be changed to take
-		 * Form_pg_attribute instead, but that would make it inconvenient for
-		 * other callers.
-		 */
-		Form_pg_attribute att = &Desc_pg_yb_logical_client_version[attnum - 1];
-		YbcPgTypeAttrs type_attrs = {att->atttypmod};
-		YbcPgExpr	expr = YBCNewColumnRef(ybc_stmt, attnum, att->atttypid,
-										   att->attcollation, &type_attrs);
-
-		HandleYBStatus(YBCPgDmlAppendTarget(ybc_stmt, expr, false /* is_for_secondary_index */ ));
-	}
+		YbDmlAppendTargetRegularAttr(&Desc_pg_yb_logical_client_version[attnum - 1], ybc_stmt);
 
 	HandleYBStatus(YBCPgExecSelect(ybc_stmt, NULL /* exec_params */ ));
 
@@ -125,17 +109,36 @@ YbGetMasterLogicalClientVersionFromTable(Oid db_oid, uint64_t *version)
 	YbcPgSysColumns syscols;
 	bool		result = false;
 
-	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-								 natts,
-								 (uint64_t *) values,
-								 nulls,
-								 &syscols,
-								 &has_data));
-
-	if (has_data)
+	/*
+	 * When prefetching is enabled the prefetcher loads all rows from the table
+	 * even though we bind to the row matching db_oid.  Iterate through the
+	 * returned rows and pick the one that matches db_oid, mirroring the
+	 * workaround in YbGetMasterCatalogVersionFromTable.
+	 */
+	while (true)
 	{
-		*version = DatumGetUInt64(values[current_version_attnum - 1]);
-		result = true;
+		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+									 natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (!has_data)
+		{
+			ereport(LOG,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("logical client version for database %u was "
+							"not found", db_oid)));
+			break;
+		}
+
+		if (DatumGetUInt32(values[oid_attnum - 1]) == db_oid)
+		{
+			*version = DatumGetUInt64(values[current_version_attnum - 1]);
+			result = true;
+			break;
+		}
 	}
 
 	pfree(values);
@@ -353,14 +356,20 @@ YbGetLogicalClientVersionType()
 	}
 	else if (yb_logical_client_version_type == LOGICAL_CLIENT_VERSION_UNSET)
 	{
-		bool		logical_client_version_table_exists = false;
-
-		HandleYBStatus(YBCPgTableExists(Template1DbOid,
-										YBLogicalClientVersionRelationId,
-										&logical_client_version_table_exists));
-		yb_logical_client_version_type = (logical_client_version_table_exists ?
+		yb_logical_client_version_type = (YbLogicalClientVersionTableExists() ?
 										  LOGICAL_CLIENT_VERSION_CATALOG_TABLE :
 										  LOGICAL_CLIENT_VERSION_UNSET);
 	}
 	return yb_logical_client_version_type;
+}
+
+bool
+YbLogicalClientVersionTableExists()
+{
+	bool		exists = false;
+
+	HandleYBStatus(YBCPgTableExists(Template1DbOid,
+									YBLogicalClientVersionRelationId,
+									&exists));
+	return exists;
 }
