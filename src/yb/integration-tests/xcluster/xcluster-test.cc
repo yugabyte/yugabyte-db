@@ -3086,9 +3086,12 @@ TEST_F_EX(XClusterTest, TestPrematureLogGC, XClusterTestNoParam) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_stop_retaining_min_disk_mb) =
       std::numeric_limits<int64_t>::max();
 
-  // Write another batch of records.
+  // Write two batches of records. The first batch will be GCed,
+  // the second batch will not be GCed due to it will be in the last segment.
   ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
   ASSERT_OK(VerifyNumRecordsOnProducer(2 * kNumWriteRecords));
+  ASSERT_OK(InsertRowsInProducer(2 *kNumWriteRecords, 3 * kNumWriteRecords));
+  ASSERT_OK(VerifyNumRecordsOnProducer(3 * kNumWriteRecords));
 
   // Unflushed WAL segments can not be garbage collected. Flush all tablets WALs now.
   ASSERT_OK(
@@ -3270,6 +3273,8 @@ TEST_P(XClusterTest, YB_DISABLE_TEST(LeaderFailoverTest)) {
 
   ASSERT_OK(InsertRowsInProducer(kNumWriteRecords, 2 * kNumWriteRecords));
   ASSERT_OK(VerifyNumRecordsOnConsumer(2 * kNumWriteRecords));
+  ASSERT_OK(InsertRowsInProducer(2 * kNumWriteRecords, 3 * kNumWriteRecords));
+  ASSERT_OK(VerifyNumRecordsOnConsumer(3 * kNumWriteRecords));
 
   // GC log on producer.
   // Note: Ideally cdc checkpoint should advance but we do not see that with our combination of

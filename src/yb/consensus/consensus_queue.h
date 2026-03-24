@@ -584,12 +584,13 @@ class PeerMessageQueue {
   Result<ReadOpsResult> ReadFromLogCache(
       int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
       log::ObeyMemoryLimit obey_memory_limit,
-      const CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
+      const CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false,
+      const OpId* known_preceding_op = nullptr);
 
   // May return status Busy if obey_memory_limit is true and reading even one operation would exceed
   // the log reader memory tracker limit.
   Result<ReadOpsResult> ReadFromLogCacheForXRepl(
-      int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
+      const yb::OpId& last_op_id, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
       CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
 
   std::pair<int64_t, int64_t> GetCommittedAndMajorityReplicatedIndex();

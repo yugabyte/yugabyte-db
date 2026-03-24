@@ -692,13 +692,14 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(
     int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
     log::ObeyMemoryLimit obey_memory_limit, const CoarseTimePoint deadline,
-    const bool fetch_single_entry) {
+    const bool fetch_single_entry, const OpId* known_preceding_op) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
 
   // We try to get the follower's next_index from our log.
   // Note this is not using "term" and needs to change
   auto result = log_cache_.ReadOps(
-      after_index, to_index, max_batch_size, obey_memory_limit, deadline, fetch_single_entry);
+      after_index, to_index, max_batch_size, obey_memory_limit, deadline, fetch_single_entry,
+      known_preceding_op);
   if (PREDICT_FALSE(!result.ok())) {
     auto s = result.status();
     if (PREDICT_TRUE(s.IsNotFound())) {
@@ -737,14 +738,15 @@ Result<int64_t> PeerMessageQueue::GetStartOpIdIndex(int64_t start_index) {
 }
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCacheForXRepl(
-    int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
+    const yb::OpId& last_op_id, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
     CoarseTimePoint deadline, bool fetch_single_entry) {
-  // If an empty OpID is only sent on the first read request, start at the earliest known entry.
-  int64_t after_op_index = VERIFY_RESULT(GetStartOpIdIndex(last_op_id_index));
+  // If an empty OpID is only sent on the first read request, start at the earliest known entry,
+  // and LogCache skips LookupOpId in this case.
+  int64_t after_op_index = VERIFY_RESULT(GetStartOpIdIndex(last_op_id.index));
 
   auto result = ReadFromLogCache(
       after_op_index, to_index, FLAGS_consensus_max_batch_size_bytes, local_peer_uuid_,
-      obey_memory_limit, deadline, fetch_single_entry);
+      obey_memory_limit, deadline, fetch_single_entry, &last_op_id);
   if (PREDICT_FALSE(!result.ok()) && PREDICT_TRUE(result.status().IsNotFound())) {
     const std::string premature_gc_warning = Format(
         "The logs from index $0 have been garbage collected and cannot be read ", after_op_index);
@@ -775,7 +777,7 @@ Result<XClusterReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForXCluste
   }
 
   auto read_result = ReadFromLogCacheForXRepl(
-      last_op_id.index, committed_index, log::ObeyMemoryLimit::kTrue, deadline, fetch_single_entry);
+      last_op_id, committed_index, log::ObeyMemoryLimit::kTrue, deadline, fetch_single_entry);
   if (!read_result) {
     if (read_result.status().IsBusy()) {
       xcluster_result.result.have_more_messages = HaveMoreMessages(true);
@@ -822,7 +824,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
 
   // TODO(#28779): Switch this to obeying the memory limit.
   auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
-      last_op_id.index, to_index, log::ObeyMemoryLimit::kFalse, deadline, fetch_single_entry));
+      last_op_id, to_index, log::ObeyMemoryLimit::kFalse, deadline, fetch_single_entry));
 
   result.have_more_messages =
       HaveMoreMessages(result.have_more_messages.get() || pending_messages);
@@ -874,7 +876,7 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForConsistentCDC(
 
     // TODO(#28779): Switch this to obeying the memory limit.
     auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
-        last_op_id.index, committed_op_id_index, log::ObeyMemoryLimit::kFalse, deadline,
+        last_op_id, committed_op_id_index, log::ObeyMemoryLimit::kFalse, deadline,
         fetch_single_entry));
     VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
@@ -994,13 +996,14 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
                     << " consistent_stream_safe_time = " << consistent_stream_safe_time
                     << " start_op_id_index = " << start_op_id_index;
 
+  OpId last_consumed_wal_op = from_op_id;
   auto current_index = start_op_id_index;
 
   // Read the ops from the segment starting from current_index + 1.
   while (current_index < segment_last_index) {
     // TODO(#28779): Switch this to obeying the memory limit.
     auto result = VERIFY_RESULT(ReadFromLogCacheForXRepl(
-        current_index, segment_last_index, log::ObeyMemoryLimit::kFalse, deadline,
+        last_consumed_wal_op, segment_last_index, log::ObeyMemoryLimit::kFalse, deadline,
         fetch_single_entry));
     VLOG_WITH_FUNC(1) << "Read " << result.messages.size() << " messages from WAL";
 
@@ -1009,7 +1012,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesInSegmentForCDC(
         read_ops.messages.end(), result.messages.begin(), result.messages.end());
 
     if (!result.messages.empty()) {
-      current_index = result.messages.back()->id().index();
+      last_consumed_wal_op = OpId::FromPB(result.messages.back()->id());
+      current_index = last_consumed_wal_op.index;
     }
   }
 
