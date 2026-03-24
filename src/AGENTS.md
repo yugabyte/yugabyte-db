@@ -3,6 +3,9 @@ Never operate on master branch directly. Always create a new local branch and wo
 Pushing the branch to yugabyte/yugabyte-db repository is not allowed. If you are on a personal fork, you can push to that.
 arc and phorge are used to review, run lab tests, and merge changes. This should ONLY be done by the human.
 
+Avoid using non-ASCII characters in files and commit messages.
+There may be some exceptions where appropriate such as `collate.icu.utf8.sql` and `jsonpath_encoding.out`.
+
 ## Build System
 
 The primary build entry point is `yb_build.sh` at the repository root.
