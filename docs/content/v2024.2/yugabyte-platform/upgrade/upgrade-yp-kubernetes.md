@@ -82,7 +82,7 @@ The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-ope
 1. Run the following `helm upgrade` command to enable the YBA upgrade:
 
     ```sh
-    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="stable" format="short">}} \
+    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="v2024.2" format="short">}} \
       --set yugaware.kubernetesOperatorEnabled=true,yugaware.kubernetesOperatorNamespace=yb-platform-test
     ```
 
