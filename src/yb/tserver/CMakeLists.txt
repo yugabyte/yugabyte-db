@@ -317,6 +317,7 @@ set(TSERVER_DEPS
   yb_ash
   yb_client
   yb_pggate_flags
+  yb_ysql_binary_runner
   yrpc
   ysql_upgrade
 )
