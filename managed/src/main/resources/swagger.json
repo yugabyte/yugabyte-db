@@ -2412,10 +2412,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -3767,10 +3763,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4352,10 +4344,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "pointInTimeRestoreEnabled" : {
           "description" : "Point in time restore available",
           "type" : "boolean"
@@ -4680,10 +4668,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -5302,10 +5286,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -5929,10 +5909,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6665,10 +6641,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -8432,10 +8404,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -9250,10 +9218,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -10791,10 +10755,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -11543,10 +11503,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -12903,10 +12859,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -16068,10 +16020,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -16759,10 +16707,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -17817,10 +17761,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -18672,10 +18612,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -19402,10 +19338,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prefixUUID" : {
           "description" : "Prefix UUID",
           "format" : "uuid",
@@ -19813,10 +19745,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -20233,10 +20161,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -22677,10 +22601,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -23842,10 +23762,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -24427,10 +24343,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -25183,10 +25095,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -25875,10 +25783,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -26536,10 +26440,6 @@
           "description" : "Error message",
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -26704,10 +26604,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -27365,10 +27261,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -28019,10 +27911,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -28807,6 +28695,10 @@
           "description" : "Universe name",
           "type" : "string"
         },
+        "platformVersion" : {
+          "description" : "YugabyteDB Anywhere platform software version for this YBA instance",
+          "type" : "string"
+        },
         "pricePerHour" : {
           "description" : "Price",
           "format" : "double",
@@ -28957,10 +28849,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -29185,10 +29073,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
@@ -30395,10 +30279,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prevYBSoftwareConfig" : {
