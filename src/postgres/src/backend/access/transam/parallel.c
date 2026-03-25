@@ -558,6 +558,11 @@ ReinitializeParallelDSM(ParallelContext *pcxt)
 			pcxt->worker[i].error_mqh = shm_mq_attach(mq, pcxt->seg, NULL);
 		}
 	}
+
+	/*
+	 * YB TODO(#30936): Dump and restore transaction state similar to the way it
+	 * is done in InitializeParallelDSM.
+	 */
 }
 
 /*

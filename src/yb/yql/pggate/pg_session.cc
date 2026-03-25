@@ -363,9 +363,13 @@ class PgSession::RunHelper {
     if (ops_info_.ops.Empty() && pg_session_.buffering_enabled_ &&
         !force_non_bufferable_ && op->is_write()) {
         if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-          LOG_WITH_PREFIX(INFO) << "Buffering operation on table "
-            << table.table_name().table_name() << ": "
-            << op->ToString();
+          const auto rp = pg_session_.pg_txn_manager_->GetCurrentReadPointState();
+          LOG_WITH_PREFIX(INFO)
+              << "Buffering operation on table "
+              << table.table_name().table_name()
+              << ", txn_serial_no: " << rp.txn
+              << ", read_time_serial_no: " << rp.read_time_serial_no
+              << ": " << op->ToString();
         }
         return buffer.Add(table,
                           PgsqlWriteOpPtr(std::move(op), down_cast<PgsqlWriteOp*>(op.get())),
@@ -403,9 +407,13 @@ class PgSession::RunHelper {
     }
 
     if (PREDICT_FALSE(yb_debug_log_docdb_requests)) {
-      LOG_WITH_PREFIX(INFO) << "Applying operation on table "
-                            << table.table_name().table_name()
-                            << ": " << op->ToString();
+      const auto rp = pg_session_.pg_txn_manager_->GetCurrentReadPointState();
+      LOG_WITH_PREFIX(INFO)
+          << "Applying operation on table "
+          << table.table_name().table_name()
+          << ", txn_serial_no: " << rp.txn
+          << ", read_time_serial_no: " << rp.read_time_serial_no
+          << ": " << op->ToString();
     }
 
     const auto row_mark_type = GetRowMarkType(*op);

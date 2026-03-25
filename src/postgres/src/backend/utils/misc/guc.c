@@ -3986,6 +3986,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_skip_ensure_read_time_in_parallel_execution", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Skip forcing ENSURE_READ_TIME_IS_SET during parallel execution."),
+			gettext_noop("When true, parallel execution will not force read time to be "
+						 "picked on the proxy. This should be used with caution."),
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&yb_skip_ensure_read_time_in_parallel_execution,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL

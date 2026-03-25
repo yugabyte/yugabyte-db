@@ -799,6 +799,19 @@ Status PgTxnManager::SetupPerformOptions(
     }
   }
 
+  // In parallel execution (leader and workers), always pick read time on the proxy instead
+  // of a remote tserver. This is required because the "used_read_time" mechanism
+  // doesn't work with parallel rpcs. In other words, if some operation from Pg to the proxy
+  // doesn't have a read time picked already and expects one to be picked on the remote tserver,
+  // no simultaneous operation should be performed before the response for the rpc is received.
+  //
+  // For serializable isolation, there is no read time.
+  if (pg_callbacks_.IsInParallelMode() &&
+      isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION &&
+      !yb_skip_ensure_read_time_in_parallel_execution) {
+    read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
+  }
+
   if (!IsDdlModeWithSeparateTransaction()) {
     // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
     // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
@@ -858,13 +871,17 @@ void PgTxnManager::IncTxnSerialNo() {
 }
 
 void PgTxnManager::DumpSessionState(YbcPgSessionState* session_data) {
+  VLOG(2) << "DumpSessionState: txn_serial_no=" << serial_no_.txn()
+          << ", read_time_serial_no=" << serial_no_.read_time();
   session_data->txn_serial_no = serial_no_.txn();
   session_data->read_time_serial_no = serial_no_.read_time();
   session_data->active_sub_transaction_id = active_sub_transaction_id_;
+  // TODO (#30932): Dump and Restore other necessary session state here.
 }
 
 void PgTxnManager::RestoreSessionState(const YbcPgSessionState& session_data) {
-  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
+  VLOG(2) << "RestoreSessionState: txn_serial_no=" << session_data.txn_serial_no
+          << ", read_time_serial_no=" << session_data.read_time_serial_no;
   serial_no_ =
       SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
   active_sub_transaction_id_ = session_data.active_sub_transaction_id;

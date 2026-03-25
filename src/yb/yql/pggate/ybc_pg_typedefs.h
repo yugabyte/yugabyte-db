@@ -405,6 +405,8 @@ typedef struct {
   uint16_t (*GetSessionReplicationOriginId)();
   /* CHECK_FOR_INTERRUPTS */
   void (*CheckForInterrupts)();
+  /* xact.h */
+  bool (*IsInParallelMode)();
 } YbcPgCallbacks;
 
 typedef struct {

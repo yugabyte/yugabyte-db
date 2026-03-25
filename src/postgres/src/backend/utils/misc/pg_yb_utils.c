@@ -1215,6 +1215,7 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			.GetCatalogSnapshotReadPoint = &YbGetCatalogSnapshotReadPoint,
 			.GetSessionReplicationOriginId = &YbGetSessionReplicationOriginId,
 			.CheckForInterrupts = &YBCheckForInterrupts,
+			.IsInParallelMode = &IsInParallelMode,
 		};
 
 		ash_config.metadata = &MyProc->yb_ash_metadata;

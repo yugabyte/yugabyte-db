@@ -1,0 +1,331 @@
+--
+-- Test snapshot switching in parallel workers (GH #30588).
+--
+-- In Read Committed isolation, calling a PL/pgSQL function that performs a
+-- sub-query triggers a fresh transaction snapshot. When this happens inside
+-- parallel workers, they independently create and switch to new snapshots.
+--
+SET max_parallel_workers_per_gather = 4;
+SET parallel_setup_cost = 0;
+SET parallel_tuple_cost = 0;
+SET yb_parallel_range_rows = 1;
+SET yb_enable_cbo = on;
+CREATE TABLE pss_test (k INT PRIMARY KEY, v TEXT) SPLIT INTO 5 TABLETS;
+CREATE TABLE pss_dummy (k INT PRIMARY KEY, v INT);
+INSERT INTO pss_test SELECT i, 'value_' || i FROM generate_series(1, 10000) i;
+ALTER TABLE pss_test SET (parallel_workers = 4);
+NOTICE:  storage parameters are currently ignored in YugabyteDB
+ANALYZE pss_test;
+-- This function triggers a snapshot switch on each invocation in RC isolation,
+-- because the SELECT inside the function acquires a new snapshot.
+CREATE OR REPLACE FUNCTION pss_snapshot_fn(n INT) RETURNS INT AS $$
+DECLARE
+  v INT;
+BEGIN
+  SELECT pss_dummy.v INTO v FROM pss_dummy WHERE k = n;
+  RETURN n;
+END;
+$$ LANGUAGE plpgsql;
+ALTER FUNCTION pss_snapshot_fn(int) PARALLEL SAFE;
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/parallel_snapshot_switching_query.sql'
+SET DEFAULT_TRANSACTION_ISOLATION = 'READ COMMITTED';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+\set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 4
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(6 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 4
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(6 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+SET DEFAULT_TRANSACTION_ISOLATION = 'REPEATABLE READ';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+\set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 4
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(6 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather
+         Workers Planned: 4
+         ->  Partial Aggregate
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(6 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+SET DEFAULT_TRANSACTION_ISOLATION = 'SERIALIZABLE';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+\set query ':P SELECT count(*) FROM pss_test WHERE pss_snapshot_fn(k) = k;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                QUERY PLAN                
+------------------------------------------
+ Aggregate
+   ->  Seq Scan on pss_test
+         Filter: (pss_snapshot_fn(k) = k)
+(3 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                QUERY PLAN                
+------------------------------------------
+ Aggregate
+   ->  Seq Scan on pss_test
+         Filter: (pss_snapshot_fn(k) = k)
+(3 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+-- Test with Gather Merge (sorted parallel output).
+\set filename :abs_srcdir '/yb_commands/parallel_snapshot_switching_query_with_gather_merge.sql'
+SET DEFAULT_TRANSACTION_ISOLATION = 'READ COMMITTED';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+-- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
+\set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Gather Merge
+         Workers Planned: 4
+         ->  Sort
+               Sort Key: pss_test.k
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(7 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Gather Merge
+         Workers Planned: 4
+         ->  Sort
+               Sort Key: pss_test.k
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(7 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+SET DEFAULT_TRANSACTION_ISOLATION = 'REPEATABLE READ';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+-- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
+\set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Gather Merge
+         Workers Planned: 4
+         ->  Sort
+               Sort Key: pss_test.k
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(7 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                      QUERY PLAN                      
+------------------------------------------------------
+ Aggregate
+   ->  Gather Merge
+         Workers Planned: 4
+         ->  Sort
+               Sort Key: pss_test.k
+               ->  Parallel Seq Scan on pss_test
+                     Filter: (pss_snapshot_fn(k) = k)
+(7 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+SET DEFAULT_TRANSACTION_ISOLATION = 'SERIALIZABLE';
+\i :filename
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set pq_param :abs_srcdir '/yb_commands/parameterized_query.sql'
+\i :pq_param
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 'EXPLAIN (COSTS OFF)'
+\set P2
+-- The ORDER BY on the primary key with a parallel scan should produce a Gather Merge plan.
+\set query ':P SELECT count(*) FROM (SELECT k FROM pss_test WHERE pss_snapshot_fn(k) = k ORDER BY k) t;'
+BEGIN;
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                   QUERY PLAN                   
+------------------------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: pss_test.k
+         ->  Seq Scan on pss_test
+               Filter: (pss_snapshot_fn(k) = k)
+(5 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+COMMIT;
+-- Also run outside a transaction block.
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
+                   QUERY PLAN                   
+------------------------------------------------
+ Aggregate
+   ->  Sort
+         Sort Key: pss_test.k
+         ->  Seq Scan on pss_test
+               Filter: (pss_snapshot_fn(k) = k)
+(5 rows)
+
+ count 
+-------
+ 10000
+(1 row)
+
+RESET max_parallel_workers_per_gather;
+RESET parallel_setup_cost;
+RESET parallel_tuple_cost;
+RESET yb_parallel_range_rows;
+RESET yb_enable_cbo;
