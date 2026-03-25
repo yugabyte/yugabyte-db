@@ -2894,7 +2894,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -5791,7 +5792,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -8912,7 +8914,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -9737,7 +9740,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -11272,7 +11276,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -12022,7 +12027,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -16544,7 +16550,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -17236,7 +17243,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -18297,7 +18305,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -19145,7 +19154,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -20707,7 +20717,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -21372,7 +21383,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -21792,7 +21804,8 @@
               "CheckNodeDataDirDiskSpace",
               "OperatorImportResource",
               "UpdateParentTaskParams",
-              "SaveSoftwareUpgradeProgress"
+              "SaveSoftwareUpgradeProgress",
+              "CheckDuplicateInstance"
             ],
             "type" : "string"
           },
@@ -22361,7 +22374,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -23145,7 +23159,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -24309,7 +24324,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -25649,7 +25665,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -26340,7 +26357,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27173,7 +27191,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27828,7 +27847,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -28483,7 +28503,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -29648,7 +29669,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -30865,7 +30887,8 @@
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
             "UpdateParentTaskParams",
-            "SaveSoftwareUpgradeProgress"
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },

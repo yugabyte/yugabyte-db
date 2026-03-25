@@ -1320,7 +1320,9 @@ public enum TaskType {
   UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class),
 
   SaveSoftwareUpgradeProgress(
-      com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class);
+      com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class),
+
+  CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class);
 
   private final Class<? extends ITask> taskClass;
 

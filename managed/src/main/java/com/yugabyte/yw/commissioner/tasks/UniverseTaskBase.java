@@ -5461,7 +5461,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format("Node %s already exist. Pick different universe name.", taskParams.nodeName));
   }
 
-  public Optional<Map<String, JsonNode>> maybeGetInstanceDetails(NodeTaskParams taskParams) {
+  /**
+   * Fetches the instance details from the IaaS for the node in taskParams. If ensureSingleInstance
+   * is true, it will throw exception if multiple instances are found. It returns empty if no
+   * instance is found.
+   *
+   * @param taskParams the task params containing the node information.
+   * @param ensureSingleInstance if true, it will throw exception if multiple instances are found
+   *     for the node, else it will return all the instances found for the node.
+   * @return Optional of list of instance details. It will be empty if and only if no instance is
+   *     found for the node.
+   */
+  public Optional<List<Map<String, JsonNode>>> maybeGetInstancesDetails(
+      NodeTaskParams taskParams, boolean ensureSingleInstance) {
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
     if (Strings.isNullOrEmpty(response.message)) {
@@ -5469,22 +5481,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return Optional.empty();
     }
     JsonNode jsonNode = Json.parse(response.message);
-    if (jsonNode.isArray()) {
-      jsonNode = jsonNode.get(0);
+    if (!jsonNode.isArray()) {
+      jsonNode = Json.newArray().add(jsonNode);
     }
-    return Optional.of(
-        Streams.stream(jsonNode.fields())
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+    List<Map<String, JsonNode>> details =
+        Streams.stream(jsonNode.elements())
+            .map(
+                n ->
+                    Streams.stream(n.fields())
+                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())))
+            .collect(Collectors.toList());
+    if (ensureSingleInstance && details.size() > 1) {
+      String errMsg =
+          String.format(
+              "Multiple instances found for node %s. Details: %s",
+              taskParams.nodeName, Util.filterInstanceDetailsForLogging(details));
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
+    return details.isEmpty() ? Optional.empty() : Optional.of(details);
   }
 
   public boolean isInstanceRunning(NodeTaskParams taskParams) {
-    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    Optional<List<Map<String, JsonNode>>> optional =
+        maybeGetInstancesDetails(taskParams, true /* ensureSingleInstance */);
     if (!optional.isPresent()) {
       String errMsg = String.format("Node %s is not found", taskParams.nodeName);
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
-    JsonNode node = optional.get().getOrDefault("is_running", BooleanNode.TRUE);
+    JsonNode node = optional.get().get(0).getOrDefault("is_running", BooleanNode.TRUE);
     return !node.isNull() && node.asBoolean();
   }
 
@@ -5492,7 +5518,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     log.info("Expected tags: {}", expectedTags);
-    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    Optional<List<Map<String, JsonNode>>> optional =
+        maybeGetInstancesDetails(taskParams, true /* ensureSingleInstance */);
     if (!optional.isPresent()) {
       // Instance does not exist.
       return Optional.empty();
@@ -5500,7 +5527,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (MapUtils.isEmpty(expectedTags)) {
       return Optional.of(true);
     }
-    Map<String, JsonNode> properties = optional.get();
+    Map<String, JsonNode> properties = optional.get().get(0);
     int unmatchedCount = 0;
     for (Map.Entry<String, String> entry : expectedTags.entrySet()) {
       JsonNode node = properties.get(entry.getKey());

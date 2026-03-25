@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -121,7 +122,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       log.debug("Comprehensive prechecks are disabled, skipping.");
       return;
     }
-
+    // On the first try, we only want to check the nodes that are being added.
+    // On retry, some nodes might have transitioned into some other state.
+    Collection<NodeDetails> nodesToCheck =
+        isFirstTry() ? taskParams().nodeDetailsSet : universe.getNodes();
+    createCheckDuplicateInstances(universe, nodesToCheck);
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
     if (liveNodes.isEmpty()) {
       log.debug("No live nodes found, skipping comprehensive prechecks.");
