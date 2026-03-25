@@ -279,7 +279,7 @@ DEFINE_RUNTIME_int32(ysql_num_tablets, 1,
 
 // Non-runtime because pggate uses it.
 DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
-    20000,
+    40000,
     "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
     "postgres-to-tserver and tserver-to-master RPC timeout.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);

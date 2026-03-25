@@ -96,6 +96,9 @@ class ObjectLockInfoManager {
 
   void BootstrapLocksPostLoad();
 
+  TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
+  bool TabletServerHasLiveLease(const std::string& ts_uuid) const;
+
  private:
   template <class Req>
   friend class UpdateAllTServers;
