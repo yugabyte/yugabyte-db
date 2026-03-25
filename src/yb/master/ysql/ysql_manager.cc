@@ -41,7 +41,8 @@
 DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
 
-DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1, "Number of advisory lock tablets");
+DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 3,
+    "Number of advisory lock tablets. Should be set before universe creation");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
