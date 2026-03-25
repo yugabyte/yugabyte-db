@@ -448,23 +448,32 @@ These settings control the division of memory available to the Master process.
 
 ##### --db_block_cache_size_bytes
 
-Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
-
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
 Default: `-1`
+{{% /tags/wrap %}}
+
+Size of the shared RocksDB block cache (in bytes).  A value of `-1` specifies to instead use a percentage of this processes' hard memory limit; see [--db_block_cache_size_percentage](#db-block-cache-size-percentage) for the percentage used.  A value of `-2` disables the block cache.
 
 ##### --db_block_cache_size_percentage
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `-1000` (use the built-in default percentage; commonly `25` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
+{{% /tags/wrap %}}
+
 Percentage of the process' hard memory limit to use for the shared RocksDB block cache if [`--db_block_cache_size_bytes`](#db-block-cache-size-bytes) is `-1`. The special value `-1000` means to use the built-in default for this flag. The special value `-3` means to use an older default that does not take the amount of RAM into account.
 
-Default: `-1000` (use the built-in default percentage; commonly `25` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
-
 ##### --tablet_overhead_size_percentage
+
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
+{{% /tags/wrap %}}
 
 Percentage of the process' hard memory limit to use for tablet-related overheads. A value of `0` means no limit.  Must be between `0` and `100` inclusive. Exception: `-1000` specifies to instead use the default value for this flag.
 
 Each tablet replica generally requires 700 MiB of this memory.
-
-Default: `-1000` (use the built-in recommended value; commonly `0` when [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is false).
 
 ## Raft flags
 
@@ -504,13 +513,16 @@ For read replica clusters, set the value to `10` in all yb-tserver and yb-master
 
 ##### --leader_lease_duration_ms
 
+{{% tags/wrap %}}
+{{<tags/feature/restart-needed>}}
+Default: `2000`
+{{% /tags/wrap %}}
+
 The leader lease duration, in milliseconds. A leader keeps establishing a new lease or extending the existing one with every consensus update. A new server is not allowed to serve as a leader (that is, serve up-to-date read requests or acknowledge write requests) until a lease of this duration has definitely expired on the old leader's side, or the old leader has explicitly acknowledged the new leader's lease.
 
 This lease allows the leader to safely serve reads for the duration of its lease, even during a network partition. For more information, refer to [Leader leases](../../../architecture/transactions/single-row-transactions/#leader-leases-reading-the-latest-data-in-case-of-a-network-partition).
 
 Leader lease duration should be longer than the heartbeat interval, and less than the multiple of `--leader_failure_max_missed_heartbeat_periods` multiplied by `--raft_heartbeat_interval_ms`.
-
-Default: `2000`
 
 ##### --raft_heartbeat_interval_ms
 
@@ -595,7 +607,7 @@ The size, in megabytes (MB), of a WAL segment (file). When the WAL segment reach
 
 {{% tags/wrap %}}
 {{<tags/feature/t-server>}}
-Default: The default value in [v2.18.1](/stable/releases/ybdb-releases/end-of-life/v2.18/#v2.18.1.0) is `-1` - feature is disabled by default. The default value starting from {{<release "2.19.1">}} is `524288` (0.5 MB) - feature is enabled by default.
+Default: `9223372036854775807`
 {{% /tags/wrap %}}
 
 When the server restarts from a previous crash, if the tablet's last WAL file size is less than or equal to this threshold value, the last WAL file will be reused. Otherwise, WAL will allocate a new file at bootstrap. To disable WAL reuse, set the value to `-1`.
@@ -610,75 +622,78 @@ For detailed information on cluster balancing scenarios, monitoring, and configu
 
 ##### --enable_load_balancing
 
-Enables or disables the cluster balancing algorithm, to move tablets around.
-
 Default: `true`
+
+Enables or disables the cluster balancing algorithm, to move tablets around.
 
 ##### --leader_balance_threshold
 
-Specifies the number of leaders per tablet server to balance below. If this is configured to `0` (the default), the leaders will be balanced optimally at extra cost.
-
 Default: `0`
+
+Specifies the number of leaders per tablet server to balance below. If this is configured to `0` (the default), the leaders will be balanced optimally at extra cost.
 
 ##### --leader_balance_unresponsive_timeout_ms
 
-Specifies the period of time, in milliseconds, that a YB-Master can go without receiving a heartbeat from a YB-TServer before considering it unresponsive. Unresponsive servers are excluded from leader balancing.
-
 Default: `3000` (3 seconds)
+
+Specifies the period of time, in milliseconds, that a YB-Master can go without receiving a heartbeat from a YB-TServer before considering it unresponsive. Unresponsive servers are excluded from leader balancing.
 
 ##### --load_balancer_max_concurrent_adds
 
-Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
-
 Default: `25`
+
+Specifies the maximum number of tablet peer replicas to add in a cluster balancer operations.
 
 ##### --load_balancer_max_concurrent_moves
 
-Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
-
 Default: `100`
+
+Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
-Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
-
 Default: `-1`
+
+Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
 ##### --load_balancer_max_concurrent_removals
 
-Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
-
 Default: `50`
+
+Specifies the maximum number of over-replicated tablet peer removals to do in any one run of the cluster balancer. A value less than 0 means no limit.
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps
 
-Specifies the maximum number of tablets being remote bootstrapped across the cluster.
-
 Default: `-1`
+
+Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
-Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
-
 Default: `-1`
+
+Maximum number of tablets being remote bootstrapped for any table. The maximum number of remote bootstraps across the cluster is still limited by the flag `load_balancer_max_concurrent_tablet_remote_bootstraps`. This flag is meant to prevent a single table use all the available remote bootstrap sessions and starving other tables.
 
 ##### --load_balancer_max_over_replicated_tablets
 
-Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
-
 Default: `50`
+
+Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
 ##### --load_balancer_num_idle_runs
 
-Specifies the number of idle runs of load balancer to deem it idle.
-
 Default: `5`
+
+Specifies the number of idle runs of load balancer to deem it idle.
 
 ##### --load_balancer_skip_leader_as_remove_victim
 
-Should the LB skip a leader as a possible remove candidate.
-
+{{% tags/wrap %}}
+{{<tags/feature/deprecated>}}
 Default: `false`
+{{% /tags/wrap %}}
+
+Should the LB skip a leader as a possible remove candidate.
 
 ## Sharding flags
 
@@ -693,9 +708,9 @@ The expected maximum clock skew, in microseconds (µs), between any two servers 
 
 ##### --replication_factor
 
-The number of replicas, or copies of data, to store for each tablet in the universe.
-
 Default: `3`
+
+The number of replicas, or copies of data, to store for each tablet in the universe.
 
 ##### --yb_num_shards_per_tserver
 
@@ -769,35 +784,35 @@ For more details, see [clusters in colocated tables](../../../additional-feature
 
 ##### enforce_tablet_replica_limits
 
-Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
+Default: `false`
 
-Default: `true`. No limits are enforced if this is false.
+Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
 
 ##### split_respects_tablet_replica_limits
 
-If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
+Default: `false`
 
-Default: `true`
+If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
 
 ##### tablet_replicas_per_core_limit
 
-The number of tablet replicas that each core on a YB-TServer can support.
-
 Default: `0` for no limit.
+
+The number of tablet replicas that each core on a YB-TServer can support.
 
 ##### tablet_replicas_per_gib_limit
 
-The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+Default: `1462`
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
 ## Tablet splitting flags
 
 ##### --max_create_tablets_per_ts
 
-The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
-
 Default: `50`
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
 
 ##### --enable_automatic_tablet_splitting
 
@@ -816,87 +831,87 @@ This value must match on all yb-master and yb-tserver configurations of a Yugaby
 
 ##### --tablet_split_low_phase_shard_count_per_node
 
-The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
-
 Default: `1`
+
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_low_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
 
 ##### --tablet_split_low_phase_size_threshold_bytes
 
-The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
+Default: `134217728`
 
-Default: `128 MiB`
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
-The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_high_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
-
 Default: `24`
+
+The threshold number of shards (per cluster node) in a table below which automatic tablet splitting will use [`--tablet_split_high_phase_size_threshold_bytes`](./#tablet-split-low-phase-size-threshold-bytes) to determine which tablets to split.
 
 ##### --tablet_split_high_phase_size_threshold_bytes
 
-The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
+Default: `10737418240`
 
-Default: `10 GiB`
+The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
 ##### --tablet_force_split_threshold_bytes
 
-The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
+Default: `107374182400`
 
-Default: `100 GiB`
+The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
 ##### --tablet_split_limit_per_table
 
-The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
-
 Default: `0`
+
+The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 
-Total time to wait for tablet splitting to complete on a table on which a backfill is running before aborting the backfill and marking it as failed.
-
 Default: `30`
+
+Total time to wait for tablet splitting to complete on a table on which a backfill is running before aborting the backfill and marking it as failed.
 
 ##### --index_backfill_tablet_split_completion_poll_freq_ms
 
-Delay before retrying to see if tablet splitting has completed on the table on which a backfill is running.
-
 Default: `2000`
+
+Delay before retrying to see if tablet splitting has completed on the table on which a backfill is running.
 
 ##### --process_split_tablet_candidates_interval_msec
 
-The minimum time between automatic splitting attempts. The actual splitting time between runs is also affected by `catalog_manager_bg_task_wait_ms`, which controls how long the background tasks thread sleeps at the end of each loop.
-
 Default: `0`
+
+The minimum time between automatic splitting attempts. The actual splitting time between runs is also affected by `catalog_manager_bg_task_wait_ms`, which controls how long the background tasks thread sleeps at the end of each loop.
 
 ##### --outstanding_tablet_split_limit
 
-Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
-
 Default: `0`
+
+Limits the number of total outstanding tablet splits. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
 ##### --outstanding_tablet_split_limit_per_tserver
 
-Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
-
 Default: `1`
+
+Limits the number of outstanding tablet splits per node. Limitation is disabled if value is set to `0`. Limit includes tablets that are performing post-split compactions.
 
 ##### --enable_tablet_split_of_pitr_tables
 
-Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
-
 Default: `true`
+
+Enables automatic tablet splitting of tables covered by Point-In-Time Recovery schedules.
 
 ##### --prevent_split_for_ttl_tables_for_seconds
 
-Number of seconds between checks for whether to split a tablet with a default TTL. Checks are disabled if this value is set to 0.
-
 Default: `86400`
+
+Number of seconds between checks for whether to split a tablet with a default TTL. Checks are disabled if this value is set to 0.
 
 ##### --prevent_split_for_small_key_range_tablets_for_seconds
 
-Number of seconds between checks for whether to split a tablet whose key range is too small to be split. Checks are disabled if this value is set to 0.
-
 Default: `300`
+
+Number of seconds between checks for whether to split a tablet whose key range is too small to be split. Checks are disabled if this value is set to 0.
 
 ##### --sort_automatic_tablet_splitting_candidates
 
@@ -969,9 +984,9 @@ Determines when to use private IP addresses. Possible values are `never` (defaul
 
 ##### --auto_create_local_transaction_tables
 
-If true, transaction tables will be automatically created for any YSQL tablespace which has a placement and at least one other table in it.
-
 Default: `true`
+
+If true, transaction tables will be automatically created for any YSQL tablespace which has a placement and at least one other table in it.
 
 ## Security flags
 
