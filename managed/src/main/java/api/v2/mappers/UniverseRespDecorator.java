@@ -20,7 +20,7 @@ public abstract class UniverseRespDecorator implements UniverseRespMapper {
     // Now fill the V2 Universe object with the top-level properties from the V1 UniverseResp
     universe.getSpec().setName(v1UniverseResp.name);
     delegate.fillV2UniverseInfoFromV1UniverseResp(v1UniverseResp, universe.getInfo());
-
+    universe.getInfo().setPlatformVersion(v1UniverseResp.platformVersion);
     return universe;
   }
 }

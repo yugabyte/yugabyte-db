@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -37,6 +38,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -66,12 +68,14 @@ public class UniverseResp {
     if (batchRollEnabled) {
       rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
     }
+    String ybaSoftwareVersion = currentYbaSoftwareVersion();
     return new UniverseResp(
         universe,
         taskUUID,
         resourceDetails,
         allowedTasks.get(universe.getUniverseUUID()),
-        rollMaxBatchSize);
+        rollMaxBatchSize,
+        ybaSoftwareVersion);
   }
 
   public static List<UniverseResp> create(
@@ -91,6 +95,7 @@ public class UniverseResp {
           }
         });
 
+    String ybaSoftwareVersion = currentYbaSoftwareVersion();
     return universeList.stream()
         .map(
             universe ->
@@ -103,8 +108,24 @@ public class UniverseResp {
                             universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context),
                     allowedTasks.get(universe.getUniverseUUID()),
-                    suggests.get(universe.getUniverseUUID())))
+                    suggests.get(universe.getUniverseUUID()),
+                    ybaSoftwareVersion))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * YBA release to be injected to API responses for the sake of backwards compatibility of removed
+   * platformVersion field.
+   */
+  private static String currentYbaSoftwareVersion() {
+    try {
+      ConfigHelper configHelper = StaticInjectorHolder.injector().instanceOf(ConfigHelper.class);
+      Object v = configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version");
+      return v == null ? null : Objects.toString(v, null);
+    } catch (RuntimeException e) {
+      log.warn("Could not read YBA software version for UniverseResp: ", e);
+      return null;
+    }
   }
 
   private static void fillRegions(Collection<Universe> universes) {
@@ -203,12 +224,15 @@ public class UniverseResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.0.0")
   public final RollMaxBatchSize rollMaxBatchSize;
 
+  @ApiModelProperty(value = "YugabyteDB Anywhere platform software version for this YBA instance")
+  public final String platformVersion;
+
   public UniverseResp(Universe entity) {
-    this(entity, null, null, null, null);
+    this(entity, null, null, null, null, currentYbaSoftwareVersion());
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
-    this(entity, taskUUID, null, null, null);
+    this(entity, taskUUID, null, null, null, currentYbaSoftwareVersion());
   }
 
   public UniverseResp(
@@ -217,6 +241,16 @@ public class UniverseResp {
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
       RollMaxBatchSize rollMaxBatchSize) {
+    this(entity, taskUUID, resources, allowedTasks, rollMaxBatchSize, currentYbaSoftwareVersion());
+  }
+
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      UniverseResourceDetails resources,
+      AllowedTasks allowedTasks,
+      RollMaxBatchSize rollMaxBatchSize,
+      String platformVersion) {
     this(
         entity,
         taskUUID,
@@ -225,7 +259,8 @@ public class UniverseResp {
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources,
         allowedTasks,
-        rollMaxBatchSize);
+        rollMaxBatchSize,
+        platformVersion);
   }
 
   public UniverseResp(
@@ -235,7 +270,8 @@ public class UniverseResp {
       Provider provider,
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
-      RollMaxBatchSize rollMaxBatchSize) {
+      RollMaxBatchSize rollMaxBatchSize,
+      String platformVersion) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
@@ -257,6 +293,7 @@ public class UniverseResp {
     this.allowedTasks = allowedTasks == null ? null : new AllowedUniverseTasksResp(allowedTasks);
 
     this.rollMaxBatchSize = rollMaxBatchSize;
+    this.platformVersion = platformVersion;
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
