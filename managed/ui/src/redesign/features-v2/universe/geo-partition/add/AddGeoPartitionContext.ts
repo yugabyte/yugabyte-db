@@ -46,7 +46,6 @@ export const initialAddGeoPartitionFormState: AddGeoPartitionContextProps = {
       },
       nodesAndAvailability: {
         availabilityZones: {},
-        nodeCountPerAz: 1,
         useDedicatedNodes: false
       }
     }

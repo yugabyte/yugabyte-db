@@ -67,7 +67,6 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
   },
   nodesAvailabilitySettings: {
     availabilityZones: {},
-    nodeCountPerAz: 1,
     useDedicatedNodes: false
   },
   databaseSettings: {

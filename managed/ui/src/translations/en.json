@@ -3602,7 +3602,8 @@
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
           "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
-          "totalNodes": "Total Nodes"
+          "totalNodes": "Total Nodes",
+          "totalNodesTserver": "Total Nodes (Tserver)"
         },
         "availabilityZones": {
           "title": "Availability Zones and Nodes",
@@ -3610,7 +3611,8 @@
           "add_button": "Add Availability Zone",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
-            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.",
+            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
+            "addAvailabilityZoneDisabledNodeLevel": "Node-level resilience allows at most {{max_az}} availability zones.Remove an availability zone before adding.",
             "regionNoMoreAz": "This region has only {{count}} availability zones.",
             "guidedNodeCount": "To set up a cluster with different node counts per availability zone, switch to <b>Expert Mode</b> in the previous step (Regions).",
             "learnMore": "Learn more"
@@ -3623,7 +3625,7 @@
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
           "disabledToolip": "you need atleast {{nodeCount}} nodes to enable this option",
-          "title": "Master Node Placement (Optional)",
+          "title": "Advanced Configurations",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
           "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
@@ -3655,7 +3657,7 @@
           "title": "YugabyteDB 101",
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
-          "learn": "<a>Learn more about Replication Factor .</a>"
+          "learn": "<a>Learn more about Replication Factor.</a>"
         },
         "prefferedInfoModal": {
           "title": "YugabyteDB 101",
@@ -3670,7 +3672,8 @@
           "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
           "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
           "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
-          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires <b>one region</b> with <b>one availability zone</b>. Remove extra zones or regions.",
+          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
+          "nodeLevelAzTooMany": "<b>Invalid configuration:</b> Node-level resilience allows at most <b>{{max_az}} availability zones</b> (replication factor minus one). You have selected <b>{{availability_zone}}</b>. Remove zones to proceed.",
           "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps."
