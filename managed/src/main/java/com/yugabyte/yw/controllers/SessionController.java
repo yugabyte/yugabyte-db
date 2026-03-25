@@ -399,7 +399,7 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/json")
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/javascript")
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
@@ -414,7 +414,7 @@ public class SessionController extends AbstractPlatformController {
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
     responseJson.put("allow_local_login_with_sso", allowLocalLoginWithSso);
     platformConfig = String.format(platformConfig, responseJson.toString());
-    return ok(platformConfig).as(MimeTypes.JSON);
+    return ok(platformConfig).as("application/javascript");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
