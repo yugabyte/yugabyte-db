@@ -97,6 +97,11 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
         restoration_id, TxnSnapshotId::Nil(), resp);
   }
 
+  Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) override {
+    return master_->snapshot_coordinator().CheckForwardRestoreDisallowed(schedule_id, restore_at);
+  }
+
   // Catalog manager.
   Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override {
     return catalog_manager_->GetTabletInfo(tablet_id);
@@ -308,6 +313,9 @@ Result<std::pair<NamespaceId, uint32_t>> CloneStateManager::CloneNamespace(
         InvalidArgument, "Could not find snapshot schedule for namespace $0",
         source_namespace_identifier.name());
   }
+
+  RETURN_NOT_OK(external_funcs_->CheckForwardRestoreDisallowed(
+      snapshot_schedule_id, restore_time));
 
   // Set up clone state.
   // Past this point, we should abort the clone state if we get a non-OK status from any step.

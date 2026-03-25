@@ -149,6 +149,12 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Result<TxnSnapshotRestorationId> Restore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term);
 
+  // Checks whether restoring to restore_at would be a disallowed forward restore for the given
+  // schedule. A forward restore is one where restore_at falls between a previous restoration's
+  // restore_at and its complete_time, a time range where data was rolled back by PITR.
+  Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at);
+
   Status ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
       ListSnapshotRestorationsResponsePB* resp);

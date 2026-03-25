@@ -110,6 +110,9 @@ class CloneStateManagerTest : public YBTest {
         Status, ListRestorations,
         (const TxnSnapshotRestorationId& restoration_id,
         ListSnapshotRestorationsResponsePB* resp), (override));
+    MOCK_METHOD(
+        Status, CheckForwardRestoreDisallowed,
+        (const SnapshotScheduleId& schedule_id, HybridTime restore_at), (override));
 
     MOCK_METHOD(Result<TabletInfoPtr>, GetTabletInfo, (const TabletId& tablet_id), (override));
 
@@ -569,6 +572,8 @@ TEST_F(CloneStateManagerTest, AbortInStartTabletsCloning) {
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(Return(
       STATUS_FORMAT(IllegalState, "Fail GenerateSnapshotInfoFromScheduleForClone for test")));
@@ -584,6 +589,8 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(Status::OK()));
   TSDescriptorPtr dummy_ts_desc = std::make_shared<TSDescriptor>(
       "ts0" /* perm_id*/, RegisteredThroughHeartbeat::kTrue, CloudInfoPB(), nullptr);
   EXPECT_CALL(MockFuncs(), GenerateSnapshotInfoFromScheduleForClone).WillOnce(
@@ -761,6 +768,21 @@ TEST_F(CloneStateManagerTest, AbortIncompleteCloneOnLoad) {
             loaded_lock->pb.abort_message(), "aborted by master failover");
     }
   }
+}
+
+TEST_F(CloneStateManagerTest, DisallowCloneIntoForwardRestoreGap) {
+  EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
+  EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
+      .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
+  EXPECT_CALL(MockFuncs(), CheckForwardRestoreDisallowed(kSnapshotScheduleId, kRestoreTime))
+      .WillOnce(Return(STATUS(NotSupported, "Cannot perform a forward restore.")));
+
+  auto result = CloneNamespace(
+      source_ns_identifier_, kRestoreTime, kTargetNamespaceName,
+      CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
+  ASSERT_NOK(result);
+  ASSERT_TRUE(result.status().IsNotSupported());
+  ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Cannot perform a forward restore.");
 }
 
 } // namespace master

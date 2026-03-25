@@ -673,6 +673,12 @@ class MasterSnapshotCoordinator::Impl {
     return restoration_id;
   }
 
+  Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+    std::lock_guard lock(mutex_);
+    return ForwardRestoreCheck(schedule_id, restore_at);
+  }
+
   Result<SnapshotScheduleId> CreateSchedule(
       const CreateSnapshotScheduleRequestPB& req, int64_t leader_term, CoarseTimePoint deadline) {
     // Get the validated table from the request.
@@ -2082,11 +2088,9 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status ForwardRestoreCheck(
-      const SnapshotState& snapshot, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id) const REQUIRES(mutex_) {
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) const REQUIRES(mutex_) {
     const auto& index = restorations_.get<ScheduleTag>();
-    // Fetch all restorations under the given schedule id.
-    auto restores = index.equal_range(snapshot.schedule_id());
+    auto restores = index.equal_range(schedule_id);
 
     for (auto it = restores.first; it != restores.second; it++) {
       RestorationState* restore_state = it->get();
@@ -2151,7 +2155,7 @@ class MasterSnapshotCoordinator::Impl {
         }
       }
       if (restore_sys_catalog) {
-        RETURN_NOT_OK(ForwardRestoreCheck(snapshot, restore_at, restoration_id));
+        RETURN_NOT_OK(ForwardRestoreCheck(snapshot.schedule_id(), restore_at));
       }
       // Get the restoration state. Construct if in initial phase.
       RestorationState* restoration_ptr;
@@ -2513,6 +2517,11 @@ Status MasterSnapshotCoordinator::AbortRestore(const TxnSnapshotRestorationId& r
 Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
     const TxnSnapshotId& snapshot_id, HybridTime restore_at, int64_t leader_term) {
   return impl_->Restore(snapshot_id, restore_at, leader_term);
+}
+
+Status MasterSnapshotCoordinator::CheckForwardRestoreDisallowed(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  return impl_->CheckForwardRestoreDisallowed(schedule_id, restore_at);
 }
 
 Status MasterSnapshotCoordinator::ListRestorations(
