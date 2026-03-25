@@ -56,10 +56,11 @@ class YbctidReaderProvider {
     auto Read(
         PgOid database_id, const OidSet& region_local_tables,
         const TablespaceMap& tablespace_map,
-        const ExecParametersMutator& exec_params_mutator) {
+        const ExecParametersMutator& exec_params_mutator,
+        std::optional<PgSessionRunOperationMarker> marker = {}) {
       DCHECK(!read_called_);
       read_called_ = true;
-      return DoRead(database_id, region_local_tables, tablespace_map, exec_params_mutator);
+      return DoRead(database_id, region_local_tables, tablespace_map, exec_params_mutator, marker);
     }
 
    private:
@@ -73,7 +74,8 @@ class YbctidReaderProvider {
     Result<std::span<LightweightTableYbctid>> DoRead(
         PgOid database_id, const OidSet& region_local_tables,
         const TablespaceMap& tablespace_map,
-        const ExecParametersMutator& exec_params_mutator);
+        const ExecParametersMutator& exec_params_mutator,
+        std::optional<PgSessionRunOperationMarker> marker);
 
     const PgSessionPtr& session_;
     Buffers& holders_;

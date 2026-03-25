@@ -65,11 +65,17 @@ class PrecastRequestSender {
   };
 
  public:
+  explicit PrecastRequestSender(std::optional<PgSessionRunOperationMarker> marker)
+      : marker_{marker} {}
+
   Result<PgDocResponse> Send(
       PgSession& session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
       const PgSession::RunOptions& options) {
     if (!collecting_mode_) {
-      return PgDocOp::DefaultSender(&session, ops, table, options, IsForWritePgDoc::kFalse);
+      DCHECK(!options.marker);
+      auto actual_options = options;
+      actual_options.marker = marker_;
+      return PgDocOp::DefaultSender(&session, ops, table, actual_options, IsForWritePgDoc::kFalse);
     }
     // For now PrecastRequestSender can work only with a new in txn limit set to the current time
     // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
@@ -113,12 +119,13 @@ class PrecastRequestSender {
               }
               auto& info = *i++;
               return TO{.operation = &info.operation, .table = info.table};
-            }))),
+            }), {.marker = marker_})),
         {TableType::USER, IsForWritePgDoc::kFalse, IsOpBuffered::kFalse});
     *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
   }
 
+  const std::optional<PgSessionRunOperationMarker> marker_;
   bool collecting_mode_ = true;
   ResponseProvider::StatePtr provider_state_;
   boost::container::small_vector<OperationInfo, 16> ops_;
@@ -129,7 +136,8 @@ class PrecastRequestSender {
 Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
     PgOid database_id, const OidSet& region_local_tables,
     const TablespaceMap& tablespace_map,
-    const ExecParametersMutator& exec_params_mutator) {
+    const ExecParametersMutator& exec_params_mutator,
+    std::optional<PgSessionRunOperationMarker> marker) {
   // Group the items by the table ID.
   std::sort(ybctids_.begin(), ybctids_.end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
@@ -137,7 +145,7 @@ Result<std::span<LightweightTableYbctid>> YbctidReaderProvider::Reader::DoRead(
 
   auto arena = std::make_shared<ThreadSafeArena>();
 
-  PrecastRequestSender precast_sender;
+  PrecastRequestSender precast_sender(marker);
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,

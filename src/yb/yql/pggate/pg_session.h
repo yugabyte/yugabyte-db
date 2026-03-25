@@ -39,24 +39,22 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
 
-YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
-YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
-YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
-
 struct PgSessionRunOptions {
   HybridTime in_txn_limit{};
   ForceNonBufferable force_non_bufferable{ForceNonBufferable::kFalse};
+  std::optional<PgSessionRunOperationMarker> marker{};
 
   friend bool operator==(const PgSessionRunOptions&, const PgSessionRunOptions&) = default;
 
   std::string ToString() const {
-      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable);
+      return YB_STRUCT_TO_STRING(in_txn_limit, force_non_bufferable, marker);
   }
 };
 
@@ -65,7 +63,8 @@ struct PgSessionRunOptions {
 class PgSession final : public RefCountedThreadSafe<PgSession> {
  public:
   // Public types.
-  using ScopedRefPtr = scoped_refptr<PgSession>;
+  using ScopedRefPtr = PgSessionPtr;
+  using RunRWOperationsHook = std::function<Status(std::optional<PgSessionRunOperationMarker>)>;
 
   // Constructors.
   PgSession(
@@ -75,7 +74,8 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
       YbcPgExecStatsState& stats_state,
       bool is_pg_binary_upgrade,
       std::reference_wrapper<const WaitEventWatcher> wait_event_watcher,
-      BufferingSettings& buffering_settings);
+      BufferingSettings& buffering_settings,
+      RunRWOperationsHook&& hook);
   ~PgSession();
 
   // Resets the read point for catalog tables.
@@ -407,6 +407,7 @@ class PgSession final : public RefCountedThreadSafe<PgSession> {
   const bool is_major_pg_version_upgrade_;
 
   const WaitEventWatcher& wait_event_watcher_;
+  RunRWOperationsHook rw_operations_hook_;
 };
 
 template<class PB>
