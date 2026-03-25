@@ -49399,6 +49399,37 @@
         ]
       }
     },
+    "/api/v1/settings/ha/internal/backups/{backupName}/validate" : {
+      "get" : {
+        "operationId" : "validateBackup",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "backupName",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          }
+        ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "tags" : [
+          "Internal HA"
+        ]
+      }
+    },
     "/api/v1/settings/ha/internal/config" : {
       "get" : {
         "operationId" : "getHAConfigByClusterKey",

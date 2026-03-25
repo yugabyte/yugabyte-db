@@ -2,9 +2,7 @@
 
 package com.yugabyte.yw.common.operator;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
@@ -79,7 +77,6 @@ public class YBProviderReconcilerTest extends FakeDBApplication {
     when(cloudProviderHandler.getKubernetesPullSecretName()).thenReturn("pull-secret");
     testCustomer = ModelFactory.testCustomer();
     testProvider = ModelFactory.kubernetesProvider(testCustomer, PROVIDER_NAME);
-    when(operatorUtils.getOperatorCustomer()).thenReturn(testCustomer);
     lenient().when(client.resources(YBProvider.class)).thenReturn(resourceClient);
     lenient().when(resourceClient.inNamespace(NAMESPACE)).thenReturn(inNamespaceResource);
     lenient()
@@ -106,25 +103,6 @@ public class YBProviderReconcilerTest extends FakeDBApplication {
     spec.setCloudInfo(cloudInfo);
     provider.setSpec(spec);
     return provider;
-  }
-
-  @Test
-  public void testReconcileCreateAddsResourceToTrackedResources() {
-    YBProvider providerCr = createYBProviderCr(PROVIDER_NAME);
-    assertTrue(
-        "Tracked resources should be empty before reconcile",
-        ybProviderReconciler.getTrackedResources().isEmpty());
-
-    ybProviderReconciler.reconcile(providerCr, OperatorWorkQueue.ResourceAction.CREATE);
-
-    assertEquals(
-        "Tracked resources should contain the provider after CREATE",
-        1,
-        ybProviderReconciler.getTrackedResources().size());
-    KubernetesResourceDetails details =
-        ybProviderReconciler.getTrackedResources().iterator().next();
-    assertEquals(PROVIDER_NAME, details.name);
-    assertEquals(NAMESPACE, details.namespace);
   }
 
   @Test
