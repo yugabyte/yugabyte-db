@@ -14,14 +14,20 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+
+#include "yb/common/transaction.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/test_macros.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::chrono_literals;
@@ -35,6 +41,7 @@ DECLARE_int32(replication_factor);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(autoscale_transaction_tables);
 DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 namespace yb {
 
@@ -51,7 +58,7 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
     pgwrapper::PgMiniTestBase::SetUp();
     LOG(INFO) << "MasterTxnStatusCheck SetUp: "
         << "tservers: " << cluster_->num_tablet_servers()
-        << ", bgtask run count: " << master::TEST_transaction_status_check_run_count()
+        << ", bgtask run count: " << master::TEST_catalog_manager_bg_task_run_count()
         << ", flag:autoscale: " << FLAGS_autoscale_transaction_tables
         << ", flag:check_interval_sec: " << FLAGS_transaction_table_check_interval_sec
         << ", flag:num_tablets: " << FLAGS_transaction_table_num_tablets
@@ -107,33 +114,21 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
   // Helper to verify number of tablets for global and local transaction status tables
   // using their table info.
   Status VerifyTransactionTableTablets(
-      const std::string& local_txnstatus_name,
-      size_t expected_global_tablets,
-      size_t expected_local_tablets) {
+      const std::string& txn_table_name,
+      size_t expected_tablets) {
     auto cm = VERIFY_RESULT(catalog_manager());
 
-    // Get global transactions table info.
-    auto table_id = VERIFY_RESULT(GetTableIDFromTableName("transactions"));
-    auto global_table_info = VERIFY_RESULT(cm->FindTableById(table_id));
-    LOG(INFO) << "Global table info: " << global_table_info->name()
-              << ", table ID: " << global_table_info->id()
-              << ", tablets: " << global_table_info->TabletCount();
+    auto table_id = VERIFY_RESULT(GetTableIDFromTableName(txn_table_name));
+    auto txn_table_info = VERIFY_RESULT(cm->FindTableById(table_id));
+    LOG(INFO) << "Txn table info: " << txn_table_info->name()
+              << ", table ID: " << txn_table_info->id()
+              << ", tablets: " << txn_table_info->TabletCount();
 
-    // Get local transactions table info.
-    table_id = VERIFY_RESULT(GetTableIDFromTableName(local_txnstatus_name));
-    auto local_table_info = VERIFY_RESULT(cm->FindTableById(table_id));
-    LOG(INFO) << "Local Table info: " << local_table_info->name()
-              << ", table ID: " << local_table_info->id()
-              << ", tablets: " << local_table_info->TabletCount();
-
-    // Verify tablet counts.
-    SCHECK_EQ(global_table_info->TabletCount(), expected_global_tablets, IllegalState,
-              Format("Global transaction table tablet count mismatch. Expected: $0, Got: $1",
-                     expected_global_tablets, global_table_info->TabletCount()));
-    SCHECK_EQ(local_table_info->TabletCount(), expected_local_tablets, IllegalState,
-              Format("Local transaction table tablet count mismatch. Expected: $0, Got: $1",
-                     expected_local_tablets, local_table_info->TabletCount()));
-
+    SCHECK_EQ(
+        txn_table_info->TabletCount(), expected_tablets, IllegalState,
+        Format(
+            "Txn transaction table $0 tablet count mismatch. Expected: $1, Got: $2",
+            txn_table_info->name(), expected_tablets, txn_table_info->TabletCount()));
     return Status::OK();
   }
 
@@ -168,7 +163,7 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
       size_t expected_local_tablets,
       MonoDelta timeout = MonoDelta::FromSeconds(30)) {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
-    return WaitFor([&]() -> Result<bool> {
+    return WaitFor([&] -> Result<bool> {
       auto result = client->GetTransactionStatusTablets(cloud_info);
       if (!result.ok()) {
         return false;
@@ -184,7 +179,18 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
   // Helper to sleep and return background task run count.
   int32_t SleepAndGetBackgroundTaskRunCount() {
     SleepFor(MonoDelta::FromSeconds(FLAGS_transaction_table_check_interval_sec * 3 + 2));
-    return master::TEST_transaction_status_check_run_count();
+    return master::TEST_catalog_manager_bg_task_run_count();
+  }
+
+  Status WaitForBackgroundTaskRunCount(int32_t count, MonoDelta timeout) {
+    return WaitFor([&] -> Result<bool> {
+        return master::TEST_catalog_manager_bg_task_run_count() >= count;
+      }, timeout, "Waiting for catalog manager bg task to run");
+  }
+
+  Status WaitForBackgroundTaskRun(MonoDelta timeout = MonoDelta::FromSeconds(30)) {
+    return WaitForBackgroundTaskRunCount(
+        master::TEST_catalog_manager_bg_task_run_count() + 2, timeout);
   }
 
   std::string RebootTriggerLogline() {
@@ -193,14 +199,14 @@ class MasterTxnStatusCheck : public pgwrapper::PgMiniTestBase {
   }
 
   Status WaitUntilBgTaskRunCountExceeds(int32_t prev_run_count) {
-    return WaitFor([&]() -> Result<bool> {
-      return master::TEST_transaction_status_check_run_count() > prev_run_count;
+    return WaitFor([&] -> Result<bool> {
+      return master::TEST_catalog_manager_bg_task_run_count() > prev_run_count;
     }, MonoDelta::FromSeconds(60), "Waiting for background task to trigger");
   }
 
   Status WaitForGlobalTxnStatusTableCreation(MonoDelta timeout = MonoDelta::FromSeconds(30)) {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
-    return WaitFor([&]() -> Result<bool> {
+    return WaitFor([&] -> Result<bool> {
       auto result = client->GetTransactionStatusTablets(CloudInfoPB());
       if (!result.ok()) {
         return false;
@@ -231,14 +237,12 @@ TEST_F(MasterTxnStatusCheck, RebootNoChange) {
   // Create a log waiter to wait for the mismatch message.
   PatternWaiterLogSink<std::string> log_sink2(mismatch_logline_);
 
-  auto run_count_before = master::TEST_transaction_status_check_run_count();
-
   // Restart the cluster.
   ASSERT_OK(cluster_->RestartSync());
 
   // Background task should trigger on every boot.
   // But no action is taken since tserver/config did not change.
-  ASSERT_OK(WaitUntilBgTaskRunCountExceeds(run_count_before));
+  ASSERT_OK(WaitForBackgroundTaskRun());
   // Trigger message should have been logged.
   ASSERT_EQ(log_sink.GetEventCount(), 1);
   // No mismatch message should have been logged.
@@ -261,12 +265,11 @@ TEST_F(MasterTxnStatusCheck, NoActionOnScaleDown) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
       original_transaction_table_num_tablets - 1;
 
-  auto run_count_before = master::TEST_transaction_status_check_run_count();
   // Restart the cluster.
   ASSERT_OK(cluster_->RestartSync());
   // Background task should trigger on reboot.
   // But no action is taken since the number of tablets is more than the expected number.
-  ASSERT_OK(WaitUntilBgTaskRunCountExceeds(run_count_before));
+  ASSERT_OK(WaitForBackgroundTaskRun());
   ASSERT_EQ(log_sink_scale_down.GetEventCount(), 1);
   ASSERT_EQ(log_sink2.GetEventCount(), 0);
 }
@@ -282,20 +285,14 @@ TEST_F(MasterTxnStatusCheck, CheckInterval) {
   const auto kCheckInterval = FLAGS_transaction_table_check_interval_sec;
   ASSERT_EQ(kCheckInterval, 30); // setup assumption
 
-  auto run_count_before = master::TEST_transaction_status_check_run_count();
   // Add a new tserver.
   auto ts_opts = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
   ts_opts.SetPlacement("test_cloud", "test_region", "zone2");
   ASSERT_OK(cluster_->AddTabletServer(ts_opts, true));
   ASSERT_OK(cluster_->WaitForTabletServerCount(2));
 
-  // Verify that the background task does not trigger if the elapsed time since
-  // the last check (on boot) is less than the check interval.
-  SleepFor(MonoDelta::FromSeconds(kCheckInterval / 2));
-  ASSERT_EQ(master::TEST_transaction_status_check_run_count(), run_count_before);
-
   // It will eventually trigger after the check interval.
-  ASSERT_OK(WaitUntilBgTaskRunCountExceeds(run_count_before));
+  ASSERT_OK(WaitForBackgroundTaskRun());
 
   // Verify that the flag validator rejects zero and negative values.
   std::string old_value, output_msg;
@@ -326,12 +323,10 @@ TEST_F(MasterTxnStatusCheck, RebootFlagChange) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) =
       original_transaction_table_num_tablets + 1;
 
-  auto run_count_before = master::TEST_transaction_status_check_run_count();
-
   // Restart the cluster.
   ASSERT_OK(cluster_->RestartSync());
   // Background task should trigger on boot and take action.
-  ASSERT_OK(WaitUntilBgTaskRunCountExceeds(run_count_before));
+  ASSERT_OK(WaitForBackgroundTaskRun());
   ASSERT_EQ(log_sink_scale_down.GetEventCount(), 1);
   ASSERT_EQ(log_sink2.GetEventCount(), 1);
 }
@@ -351,8 +346,6 @@ TEST_F(MasterTxnStatusCheck, Disabled) {
   // Decrease the check interval to a smaller value.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
 
-  auto run_count_before = master::TEST_transaction_status_check_run_count();
-
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto txn_tablets = ASSERT_RESULT(client->GetTransactionStatusTablets(CloudInfoPB()));
   auto initial_global_tablets = txn_tablets.global_tablets.size();
@@ -366,7 +359,7 @@ TEST_F(MasterTxnStatusCheck, Disabled) {
 
   ASSERT_OK(cluster_->RestartSync());
 
-  ASSERT_EQ(SleepAndGetBackgroundTaskRunCount(), run_count_before);
+  ASSERT_OK(WaitForBackgroundTaskRun());
   txn_tablets = ASSERT_RESULT(client->GetTransactionStatusTablets(CloudInfoPB()));
   ASSERT_EQ(txn_tablets.global_tablets.size(), initial_global_tablets);
 }
@@ -390,8 +383,6 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   // Wait for the global transaction status table to be created.
   ASSERT_OK(WaitForGlobalTxnStatusTableCreation());
 
-  // Background task runs once each time tserver joins.
-  ASSERT_EQ(SleepAndGetBackgroundTaskRunCount(), 1) << "init";
   // Note placement info from the initial tserver (default placement).
   auto* initial_tserver = cluster_->mini_tablet_server(0);
   std::string initial_cloud = initial_tserver->options()->placement_cloud();
@@ -403,10 +394,10 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   initial_cloud_info.set_placement_region(initial_region);
   initial_cloud_info.set_placement_zone(initial_zone);
 
-  LOG(INFO) << "Initial cloud: " << initial_cloud
-            << ", Initial region: " << initial_region
-            << ", Initial zone: " << initial_zone
-            << ", Global transactions Table ID: " << GetTableIDFromTableName("transactions");
+  LOG(INFO) << Format(
+      "Initial cloud: $0, Initial region: $1, Initial zone: $2, Global transactions Table ID: $3",
+      initial_cloud, initial_region, initial_zone,
+      GetTableIDFromTableName(kGlobalTransactionsTableName));
 
   // (1) Create a local transaction status table.
 
@@ -446,17 +437,22 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
             << local_txnstatus_name << "[ "
             << GetTableIDFromTableName(local_txnstatus_name) << "]";
 
-  // Background task runs once more when tserver (zone2) joins.
-  ASSERT_EQ(SleepAndGetBackgroundTaskRunCount(), 2) << "after tserver1 (zone2) joins";
-
   // Verify the tablets are as expected. This table info based check
   // is guaranteed to work since the background task has already added
   // the tablets by now. But the tablets may not be physically created
   // yet.
-  ASSERT_OK(VerifyTransactionTableTablets(
-      local_txnstatus_name,
-      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      1 * FLAGS_transaction_table_num_tablets_per_tserver));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName,
+                   cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok() &&
+               VerifyTransactionTableTablets(
+                   local_txnstatus_name, FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok();
+      },
+      MonoDelta::FromSeconds(30),
+      "Waiting for background task to add a tablet to the global txn table"));
 
   // Wait until the tablet server finishes creating the tablets.
   // GetTransactionStatusTablets will return service not available
@@ -470,7 +466,7 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   ASSERT_OK(WaitForTransactionStatusTablets(
       zone2_cloud_info,
       2 * FLAGS_transaction_table_num_tablets_per_tserver,
-      1 * FLAGS_transaction_table_num_tablets_per_tserver));
+      FLAGS_transaction_table_num_tablets_per_tserver));
 
   // Verify the number of tablets available for global and local transaction
   // status tables for all the 3 placements is as expected. This is the API
@@ -484,7 +480,7 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   ASSERT_OK(VerifyTransactionStatusTabletsFromClient(
       zone2_cloud_info,
       cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      1 * FLAGS_transaction_table_num_tablets_per_tserver,
+      FLAGS_transaction_table_num_tablets_per_tserver,
       "Zone2"));
 
   CloudInfoPB zone3_cloud_info;
@@ -503,18 +499,26 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   ASSERT_OK(cluster_->AddTabletServer(ts_opts_new3, true));
   ASSERT_OK(cluster_->WaitForTabletServerCount(3));
 
-  // Verify background task ran once more.
-  ASSERT_EQ(SleepAndGetBackgroundTaskRunCount(), 3) << "after tserver3 (zone3) joins";
-
-  ASSERT_OK(VerifyTransactionTableTablets(
-      local_txnstatus_name,
-      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      1 * FLAGS_transaction_table_num_tablets_per_tserver));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName,
+                   cluster_->num_tablet_servers() *
+                       FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok() &&
+               VerifyTransactionTableTablets(
+                   local_txnstatus_name, FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok();
+      },
+      MonoDelta::FromSeconds(30),
+      "Waiting for background task to add a tablet to the global txn table"));
 
   // Wait until the tablet server finishes creating the tablets.
+  // We don't expect any transaction tablets in zone3 because we never created a tablespace or a
+  // table in that zone, local transaction tables are created lazily when needed.
   ASSERT_OK(WaitForTransactionStatusTablets(
       zone3_cloud_info,
-      3 * FLAGS_transaction_table_num_tablets_per_tserver,
+      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
       0));
 
   // Verify the number of tablets for all the 3 placements.
@@ -527,14 +531,23 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   ASSERT_OK(VerifyTransactionStatusTabletsFromClient(
       zone2_cloud_info,
       cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      1 * FLAGS_transaction_table_num_tablets_per_tserver,
+      FLAGS_transaction_table_num_tablets_per_tserver,
       "Zone2"));
 
   ASSERT_OK(VerifyTransactionStatusTabletsFromClient(
       zone3_cloud_info,
-      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      0,
+      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver, 0,
       "Zone3"));
+
+  // Wait until the tablet server finishes creating the tablets.
+  ASSERT_OK(WaitForTransactionStatusTablets(
+      zone3_cloud_info,
+      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
+      0));
+
+  // Restart the master leader to confirm changes are persisted to the sys catalog.
+  LOG(INFO) << "Stepping down leader master";
+  ASSERT_OK(cluster_->StepDownMasterLeader());
 
   // (3) Add another tablet server, but to the same placement (zone2).
   auto ts_opts_new4 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
@@ -543,12 +556,18 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
   ASSERT_OK(cluster_->WaitForTabletServerCount(4));
 
   // Verify background task ran once more.
-  ASSERT_EQ(SleepAndGetBackgroundTaskRunCount(), 4) << "after tserver4 (zone2) joins";
-
-  ASSERT_OK(VerifyTransactionTableTablets(
-      local_txnstatus_name,
-      cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver,
-      2 * FLAGS_transaction_table_num_tablets_per_tserver));
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName,
+                   cluster_->num_tablet_servers() * FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok() &&
+               VerifyTransactionTableTablets(
+                   local_txnstatus_name, 2 * FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok();
+      },
+      MonoDelta::FromSeconds(30),
+      "Waiting for background task to add a tablet to the global txn table"));
 
   // Wait until the tablet server finishes creating the tablets.
   ASSERT_OK(WaitForTransactionStatusTablets(
@@ -575,6 +594,90 @@ TEST_F(MasterTxnStatusCheck, AutoScale) {
       0,
       "Zone3"));
 
+}
+
+TEST_F(MasterTxnStatusCheck, AutoScaleRetriesWhenTablespaceInfoUnavailable) {
+  // Scale-up check fires every 2 seconds.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_check_interval_sec) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_table_num_tablets_per_tserver) = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_name_transaction_tables_with_tablespace_id) = true;
+
+  ASSERT_EQ(cluster_->num_tablet_servers(), 1);
+  ASSERT_OK(WaitForGlobalTxnStatusTableCreation());
+
+  // -- Setup: create tablespace, add a tserver for it, and create a table to trigger
+  // local transaction table creation.
+  CloudInfoPB zone2_cloud_info;
+  zone2_cloud_info.set_placement_cloud("test_cloud");
+  zone2_cloud_info.set_placement_region("test_region");
+  zone2_cloud_info.set_placement_zone("zone2");
+
+  std::string tablespace_name = "tablespace_zone2";
+  auto tablespace_oid = ASSERT_RESULT(CreateTablespaceAndGetOid(tablespace_name));
+
+  auto ts_opts1 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ts_opts1.SetPlacement("test_cloud", "test_region", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(ts_opts1, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(2));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_table (key INT PRIMARY KEY) TABLESPACE $0", tablespace_name));
+
+  std::string local_txnstatus_name = "transactions_" + std::to_string(tablespace_oid);
+  LOG(INFO) << "Local transaction status table: " << local_txnstatus_name;
+
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   local_txnstatus_name, FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok() &&
+               VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName,
+                   2 * FLAGS_transaction_table_num_tablets_per_tserver)
+                   .ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for a local transaction table"));
+
+  // Disable the ysql tablespace refresh task on the master leader, restart the master leader, and
+  // add another tablet server. Because tablespace information is not available, the auto scale up
+  // logic should not be able to add another tablet to the local txn table. But it should succeed in
+  // adding another tablet to the global txn table.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 0;
+  LOG(INFO) << "Stepping down leader master. Ysql tablespace refresh task should not run.";
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Restart());
+
+  auto ts_opts2 = ASSERT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+  ts_opts2.SetPlacement("test_cloud", "test_region", "zone2");
+  ASSERT_OK(cluster_->AddTabletServer(ts_opts2, true));
+  ASSERT_OK(cluster_->WaitForTabletServerCount(3));
+
+  // Scaling up the global table should have worked.
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   kGlobalTransactionsTableName,
+                   3 * FLAGS_transaction_table_num_tablets_per_tserver)
+            .ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for global transaction tablet"));
+
+  // But scaling up the local table should not have worked.
+  ASSERT_OK(VerifyTransactionTableTablets(
+      local_txnstatus_name, FLAGS_transaction_table_num_tablets_per_tserver));
+
+  // Re-enable the background ysql table space refresher task so the auto scale up logic can get the
+  // replication info for the local txn table and scale it up.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 5;
+  ASSERT_OK(WaitFor(
+      [&] -> Result<bool> {
+        return VerifyTransactionTableTablets(
+                   local_txnstatus_name, 2 * FLAGS_transaction_table_num_tablets_per_tserver)
+            .ok();
+      },
+      MonoDelta::FromSeconds(30), "Waiting for transaction tablets in the local table"));
 }
 
 }  // namespace yb

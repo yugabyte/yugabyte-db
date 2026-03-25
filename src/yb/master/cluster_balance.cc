@@ -242,12 +242,9 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
     global_state_->activity_info_.CountWarning(type, warn_msg); \
   } while (false)
 
-ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(
-    const scoped_refptr<const TableInfo>& table) const {
-  return CatalogManagerUtil::GetTableReplicationInfo(
-      table,
-      catalog_manager_->GetTablespaceManager(),
-      catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info());
+ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(const TableInfoPtr& table) const {
+  // todo(GH30679): We should fix this before we remove load balancer wait on new master leaders.
+  return catalog_manager_->GetTableReplicationInfoWithDefault(table);
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {

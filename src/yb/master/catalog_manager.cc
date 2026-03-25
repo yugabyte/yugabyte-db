@@ -2436,14 +2436,22 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(const TableInfoPtr& table) {
-  ReplicationInfoPB cluster_replication_info;
-  {
-    auto l = ClusterConfig()->LockForRead();
-    cluster_replication_info = l->pb.replication_info();
-  }
+ReplicationInfoPB CatalogManager::GetTableReplicationInfoWithDefault(
+    const TableInfoPtr& table) const {
+  ReplicationInfoPB cluster_replication_info =
+      ClusterConfig()->LockForRead()->pb.replication_info();
+  return ResultToValue(
+      CatalogManagerUtil::GetTableReplicationInfo(
+          table, GetTablespaceManager(), cluster_replication_info),
+      cluster_replication_info);
+}
+
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfoNoDefault(
+    const TableInfoPtr& table) const {
+  ReplicationInfoPB cluster_replication_info =
+      ClusterConfig()->LockForRead()->pb.replication_info();
   return CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), cluster_replication_info);
+          table, GetTablespaceManager(), cluster_replication_info);
 }
 
 std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
@@ -2986,10 +2994,9 @@ Status CatalogManager::ShouldSplitValidCandidate(
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   size_t num_servers = 0;
-  auto table_replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      tablet_info.table(),
-      GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info());
+  auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
+      tablet_info.table(), GetTablespaceManager(),
+      ClusterConfig()->LockForRead()->pb.replication_info()));
 
   // If there is custom placement information present then
   // only count the tservers which the table has access to
@@ -5377,16 +5384,13 @@ Status CatalogManager::AddTransactionStatusTablet(
               IllegalState, "New tablet not in PREPARING state");
   }
 
-  table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet);
-  auto s = sys_catalog_->Upsert(epoch, table);
-  if (PREDICT_FALSE(!s.ok())) {
-    return s;
-  }
-
+  auto old_tablet_lock = VERIFY_RESULT(
+      table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, old_tablet));
   write_lock.Commit();
-  TRACE("Wrote table to system table");
-
+  old_tablet_lock.Commit();
   new_tablet->mutable_metadata()->CommitMutation();
+  TRACE("Wrote table to system table");
 
   // Increment transaction status version if needed.
   RETURN_NOT_OK(IncrementTransactionTablesVersion());
@@ -12608,7 +12612,8 @@ Status CatalogManager::GetTableLocations(
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
-  GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas);
+  RETURN_NOT_OK(
+      GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas));
 
   resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const TabletInfoPtr& tablet : tablets) {
@@ -12917,16 +12922,6 @@ Result<size_t> CatalogManager::GetReplicationFactor() {
   return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
 }
 
-
-Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& table) const {
-  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
-  if (replication_info.has_live_replicas()) {
-    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
-  }
-  return FLAGS_replication_factor;
-}
-
 Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet) {
   // For system tables, the set of replicas is always the set of masters.
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
@@ -12947,19 +12942,18 @@ Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     // Some clients expect non-ok statuses to have a certain form.
     return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
   }
-  GetExpectedNumberOfReplicasForTable(
+  return GetExpectedNumberOfReplicasForTable(
       (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
-  return Status::OK();
 }
 
-void CatalogManager::GetExpectedNumberOfReplicasForTable(
+Status CatalogManager::GetExpectedNumberOfReplicasForTable(
     const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
-  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
+  auto replication_info = GetTableReplicationInfoWithDefault(table);
   *num_live_replicas = GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }
+  return Status::OK();
 }
 
 Result<string> CatalogManager::placement_uuid() const {

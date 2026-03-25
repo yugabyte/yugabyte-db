@@ -2809,7 +2809,7 @@ class PgClientSession::Impl {
             MakeAdvisoryLockId(req.db_oid(), lock.lock_id()), lock.lock_mode())));
       }
     } else {
-      session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockAllOp(req.db_oid())));
+      session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockAllOps(req.db_oid())));
     }
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     auto flush_status = session.FlushFuture().get();

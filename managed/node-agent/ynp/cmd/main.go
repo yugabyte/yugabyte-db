@@ -244,8 +244,6 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	setDefaultConfigs(ynpConfig)
 	mergeConfigs(ynpConfig, exVars)
-	// Setup logger first to use the custom logger.
-	config.SetupLogger(ctx, pArgs.YnpConfig)
 	// Override config values from command line if any into the YNP config.
 	err = schemaHandler.OverrideProperties(pArgs.configOverrides, ynpConfig)
 	if err != nil {
@@ -253,6 +251,8 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	// Fix the types in the parsed config after merging the extra_vars.
 	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
+	// Setup logger now to use the custom logger with the final logging config.
+	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
 }
 

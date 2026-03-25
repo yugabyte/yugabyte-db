@@ -1577,6 +1577,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_disable_master_on_non_master_node_subtask",
+          ScopeType.UNIVERSE,
+          "Allow disable master on non-master node subtask",
+          "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not"
+              + " master nodes in the cluster configuration or YBA configuration.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",

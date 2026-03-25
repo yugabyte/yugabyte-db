@@ -5977,7 +5977,7 @@ YbJumbleRangeTableList(YbJumbleState *jstate, List *rtable)
 					{
 						char	   *relName = rte->ybScannedObjectName;
 
-						if (relName == NULL)
+						if (relName == NULL && OidIsValid(rte->relid))
 						{
 							relName = get_rel_name(rte->relid);
 							rte->ybScannedObjectName = relName;

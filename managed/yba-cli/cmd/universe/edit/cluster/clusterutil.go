@@ -264,8 +264,9 @@ func editClusterUtil(
 	clusters[clusterIndex] = cluster
 
 	req := ybaclient.UniverseConfigureTaskParams{
-		UniverseUUID: util.GetStringPointer(universeUUID),
-		Clusters:     clusters,
+		UniverseUUID:       util.GetStringPointer(universeUUID),
+		CurrentClusterType: util.GetStringPointer(clusterType),
+		Clusters:           clusters,
 		NodeDetailsSet: universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
 			universeDetails.GetNodeDetailsSet()),
 		CommunicationPorts: universeDetails.CommunicationPorts,

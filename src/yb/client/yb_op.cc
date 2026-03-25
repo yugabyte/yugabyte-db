@@ -1053,8 +1053,15 @@ void YBPgsqlLockOp::SetHashCode(uint16_t hash_code) {
 }
 
 Status YBPgsqlLockOp::GetPartitionKey(std::string* partition_key) const {
-  return table_->partition_schema().EncodeKey(
-      request_.lock_id().lock_partition_column_values(), partition_key);
+  if (request_.lock_id().lock_partition_column_values().size()) {
+    return table_->partition_schema().EncodeKey(
+        request_.lock_id().lock_partition_column_values(), partition_key);
+  }
+  RSTATUS_DCHECK(
+      !request_.is_lock() && tablet() != nullptr,
+      IllegalState, "");
+  *partition_key = tablet()->partition().partition_key_start();
+  return Status::OK();
 }
 
 ////////////////////////////////////////////////////////////

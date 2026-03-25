@@ -3163,7 +3163,6 @@ Status PgsqlLockOperation::Init(
   auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
       schema.num_hash_key_columns(), schema.num_range_key_columns()));
-  SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));
   encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();

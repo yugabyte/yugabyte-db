@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
+import java.util.Collections;
 import java.util.Map;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -31,14 +32,26 @@ import java.util.Set;
 @RunWith(value=YBTestRunner.class)
 public class TestPgForeignKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgForeignKey.class);
+  private boolean skipPrefixLocks = false;
 
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("skip_prefix_locks", String.valueOf(skipPrefixLocks));
+    if (skipPrefixLocks) {
+      flagMap.put("ysql_enable_packed_row", "true");
+    }
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     setFailOnConflictFlags(flagMap);
     return flagMap;
+  }
+
+  private void restartWithSkipPrefixLocks() throws Exception {
+    skipPrefixLocks = true;
+    Map<String, String> flagMap = getTServerFlags();
+    flagMap.put("skip_prefix_locks", String.valueOf(skipPrefixLocks));
+    restartClusterWithFlags(Collections.emptyMap(), flagMap);
   }
 
   private void checkRows(Statement statement,
@@ -52,10 +65,14 @@ public class TestPgForeignKey extends BasePgSQLTest {
   @Test
   public void testForeignKeyConflictsWithSerializableIsolation() throws Exception {
     testForeignKeyConflicts(Connection.TRANSACTION_SERIALIZABLE);
+    restartWithSkipPrefixLocks();
+    testForeignKeyConflicts(Connection.TRANSACTION_SERIALIZABLE);
   }
 
   @Test
   public void testForeignKeyConflictsWithSnapshotIsolation() throws Exception {
+    testForeignKeyConflicts(Connection.TRANSACTION_REPEATABLE_READ);
+    restartWithSkipPrefixLocks();
     testForeignKeyConflicts(Connection.TRANSACTION_REPEATABLE_READ);
   }
 
@@ -157,6 +174,12 @@ public class TestPgForeignKey extends BasePgSQLTest {
   // Ensure that foreign key caching maintains data correctness and referential integrity.
   @Test
   public void testForeignKeyCaching() throws Exception {
+    testForeignKeyCachingHelper();
+    restartWithSkipPrefixLocks();
+    testForeignKeyCachingHelper();
+  }
+
+  private void testForeignKeyCachingHelper() throws Exception {
     Set<Row> expectedPkRows = new HashSet<>();
     Set<Row> expectedFkPrimaryRows = new HashSet<>();
     Set<Row> expectedFkUniqueRows = new HashSet<>();
@@ -268,10 +291,14 @@ public class TestPgForeignKey extends BasePgSQLTest {
   @Test
   public void testRowLockSerializableIsolation() throws Exception {
     testRowLock(Connection.TRANSACTION_SERIALIZABLE);
+    restartWithSkipPrefixLocks();
+    testRowLock(Connection.TRANSACTION_SERIALIZABLE);
   }
 
   @Test
   public void testRowLockSnapshotIsolation() throws Exception {
+    testRowLock(Connection.TRANSACTION_REPEATABLE_READ);
+    restartWithSkipPrefixLocks();
     testRowLock(Connection.TRANSACTION_REPEATABLE_READ);
   }
 
@@ -279,6 +306,9 @@ public class TestPgForeignKey extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement();
          Connection extraConnection = getConnectionBuilder().connect();
          Statement extraStmt = extraConnection.createStatement()) {
+      stmt.execute("SET yb_transaction_priority_lower_bound = 0.5");
+      extraStmt.execute("SET yb_transaction_priority_upper_bound = 0.4");
+
       stmt.execute("CREATE TABLE parent(k int PRIMARY KEY) SPLIT INTO 1 TABLETS");
       stmt.execute("CREATE TABLE child(pk int PRIMARY KEY," +
         "CONSTRAINT parent_fk FOREIGN KEY(pk) REFERENCES parent(k)) SPLIT INTO 1 TABLETS");
@@ -288,6 +318,16 @@ public class TestPgForeignKey extends BasePgSQLTest {
       stmt.execute("INSERT INTO parent VALUES(1)");
       stmt.execute("INSERT INTO child VALUES(1)");
       extraStmt.execute("BEGIN");
+
+      boolean conflict_expected = skipPrefixLocks &&
+                                  pgIsolationLevel == Connection.TRANSACTION_SERIALIZABLE;
+      if (conflict_expected) {
+        runInvalidQuery(extraStmt, "INSERT INTO parent VALUES(2)",
+                        "could not serialize access due to concurrent update");
+        extraStmt.execute("ROLLBACK");
+        return;
+      }
+
       extraStmt.execute("INSERT INTO parent VALUES(2)");
       extraStmt.execute("INSERT INTO child VALUES(2)");
       stmt.execute("COMMIT");
@@ -298,14 +338,25 @@ public class TestPgForeignKey extends BasePgSQLTest {
   @Test
   public void testInsertConcurrencySnapshotIsolation() throws Exception {
     testInsertConcurrency(Connection.TRANSACTION_REPEATABLE_READ);
+    restartWithSkipPrefixLocks();
+    testInsertConcurrency(Connection.TRANSACTION_REPEATABLE_READ);
   }
+
   @Test
   public void testInsertConcurrencySerializableIsolation() throws Exception {
+    testInsertConcurrency(Connection.TRANSACTION_SERIALIZABLE);
+    restartWithSkipPrefixLocks();
     testInsertConcurrency(Connection.TRANSACTION_SERIALIZABLE);
   }
 
   @Test
   public void testAddForeignKeyConcurrent() throws Exception {
+    testAddForeignKeyConcurrentHelper();
+    restartWithSkipPrefixLocks();
+    testAddForeignKeyConcurrentHelper();
+  }
+
+  private void testAddForeignKeyConcurrentHelper() throws Exception {
     try (Statement stmt = connection.createStatement();
          Connection ddlConnection = getConnectionBuilder().connect();
          Statement ddlStmt = ddlConnection.createStatement()) {

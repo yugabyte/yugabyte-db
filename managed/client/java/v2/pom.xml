@@ -1,6 +1,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <groupId>com.yugabyte</groupId>
     <artifactId>yba-client-v2</artifactId>
     <packaging>jar</packaging>
     <name>yba-client-v2</name>
@@ -130,65 +131,6 @@
                             <sources>
                                 <source>src/test/java</source>
                             </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.5.1</version>
-                <executions>
-                    <execution>
-                        <id>shade</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>true</createDependencyReducedPom>
-                            <dependencyReducedPomLocation>${project.build.directory}/dependency-reduced-pom.xml</dependencyReducedPomLocation>
-                            <shadedArtifactAttached>true</shadedArtifactAttached>
-                            <shadedClassifierName>shaded</shadedClassifierName>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                            <relocations>
-                                <relocation>
-                                    <pattern>com.fasterxml.jackson</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.jackson</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.glassfish</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.glassfish</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.openapitools.jackson</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.openapitools.jackson</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.apache.http</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.apache.http</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.objectweb.asm</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.asm</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>com.google.code.findbugs</pattern>
-                                    <shadedPattern>com.yugabyte.yba.v2.shaded.findbugs</shadedPattern>
-                                </relocation>
-                            </relocations>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
-                            </transformers>
                         </configuration>
                     </execution>
                 </executions>
@@ -371,6 +313,12 @@
             <version>${jackson-version}</version>
         </dependency>
         <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>${jakarta-annotation-version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.glassfish.jersey.connectors</groupId>
             <artifactId>jersey-apache-connector</artifactId>
             <version>${jersey-version}</version>
@@ -390,6 +338,7 @@
         <jackson-version>2.19.2</jackson-version>
         <jackson-databind-version>2.19.2</jackson-databind-version>
         <jackson-databind-nullable-version>0.2.8</jackson-databind-nullable-version>
+        <jakarta-annotation-version>1.3.5</jakarta-annotation-version>
         <beanvalidation-version>2.0.2</beanvalidation-version>
         <junit-version>5.10.0</junit-version>
         <spotless.version>2.21.0</spotless.version>

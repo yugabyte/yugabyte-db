@@ -2390,7 +2390,7 @@ Result<vector<pair<TabletInfoPtr, vector<string>>>>
     if (table->is_system()) {
       continue;
     }
-    auto replication_info = VERIFY_RESULT(catalog_mgr->GetTableReplicationInfo(table));
+    auto replication_info = catalog_mgr->GetTableReplicationInfoWithDefault(table);
     for (TabletInfoPtr tablet : VERIFY_RESULT(table->GetTablets())) {
       auto underreplicated_placements =
           GetTabletUnderReplicatedPlacements(tablet, replication_info);
