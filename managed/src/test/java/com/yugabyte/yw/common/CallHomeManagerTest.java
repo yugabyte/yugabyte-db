@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -44,6 +45,8 @@ import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -674,5 +677,76 @@ public class CallHomeManagerTest extends FakeDBApplication {
     assertEquals(0.0, m.get("ycql_read_ops").asDouble(), 0.01);
     assertEquals(0.0, m.get("ycql_write_ops").asDouble(), 0.01);
     assertEquals(8.0, m.get("memory_used_gb").asDouble(), 0.01);
+  }
+
+  @Test
+  public void testSendPlatformDiagnosticsSkipsWhenCallhomeDisabled() {
+    ModelFactory.setCallhomeLevel(defaultCustomer, "NONE");
+    callHomeManager.sendPlatformDiagnostics();
+    verifyNoInteractions(apiHelper);
+  }
+
+  @Test
+  public void testCollectPlatformDiagnostics() {
+    String yugawareUuid = "0146179d-a623-4b2a-a095-bfb0062eae9f";
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.of("yugaware_uuid", yugawareUuid, "version", "2.25.0"));
+    when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
+    when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
+
+    JsonNode payload = callHomeManager.collectPlatformDiagnostics();
+    assertEquals("platform", payload.get("payload_type").asText());
+    assertEquals(yugawareUuid, payload.get("yugaware_uuid").asText());
+    assertEquals("2.25.0", payload.get("yba_version").asText());
+    assertEquals(
+        Instant.parse("2024-03-25T10:00:00.000Z").getEpochSecond(),
+        payload.get("timestamp").asLong());
+    assertTrue(payload.get("customer_uuids").isArray());
+    assertEquals(1, payload.get("customer_uuids").size());
+    assertEquals(
+        defaultCustomer.getUuid().toString(), payload.get("customer_uuids").get(0).asText());
+    assertFalse(payload.get("is_yba_ha_enabled").asBoolean());
+    assertEquals(0, payload.get("hostname_of_standby_yba_ha_instances").size());
+    assertEquals(0, payload.get("yba_backup_history").size());
+    assertEquals(0, payload.get("yba_restore_history").size());
+    assertFalse(payload.get("is_user_auth_via_oidc_configured").asBoolean());
+    assertFalse(payload.get("is_user_auth_via_ldap").asBoolean());
+    assertTrue(payload.get("oidc_config").isNull());
+    assertTrue(payload.get("ldap_config").isNull());
+
+    HighAvailabilityConfig haConfig = HighAvailabilityConfig.create("test-cluster-key");
+    PlatformInstance.create(haConfig, "http://local.yba.example.com", true, true);
+    PlatformInstance.create(haConfig, "http://standby.yba.example.com", false, false);
+    JsonNode haPayload = callHomeManager.collectPlatformDiagnostics();
+    assertTrue(haPayload.get("is_yba_ha_enabled").asBoolean());
+    JsonNode standbys = haPayload.get("hostname_of_standby_yba_ha_instances");
+    assertEquals(1, standbys.size());
+    assertEquals("http://standby.yba.example.com", standbys.get(0).asText());
+  }
+
+  @Test
+  public void testSendPlatformDiagnostics() {
+    String yugawareUuid = "0146179d-a623-4b2a-a095-bfb0062eae9f";
+    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
+        .thenReturn(ImmutableMap.of("yugaware_uuid", yugawareUuid, "version", "2.25.0"));
+    when(clock.instant()).thenReturn(Instant.parse("2024-03-25T10:00:00.000Z"));
+    when(mockRuntimeConf.getGlobalConfValues(any())).thenReturn(Collections.emptyMap());
+
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("success", true);
+    when(apiHelper.postRequest(anyString(), any(), any())).thenReturn(Json.toJson(responseJson));
+
+    callHomeManager.sendPlatformDiagnostics();
+
+    ArgumentCaptor<String> url = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<JsonNode> params = ArgumentCaptor.forClass(JsonNode.class);
+    ArgumentCaptor<Map<String, String>> headers = ArgumentCaptor.forClass(Map.class);
+
+    verify(apiHelper).postRequest(url.capture(), params.capture(), headers.capture());
+
+    assertEquals("https://diagnostics.yugabyte.com", url.getValue());
+    assertEquals("platform", params.getValue().get("payload_type").asText());
+    assertEquals(yugawareUuid, params.getValue().get("yugaware_uuid").asText());
+    assertNull(headers.getValue());
   }
 }
