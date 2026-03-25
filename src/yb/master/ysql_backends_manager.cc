@@ -38,7 +38,7 @@
 
 using namespace std::chrono_literals;
 
-DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 DEFINE_RUNTIME_int32(wait_for_ysql_backends_catalog_version_master_tserver_rpc_timeout_ms,
     60 * 1000, // 60s
@@ -71,8 +71,9 @@ using server::MonitoredTaskState;
 using tserver::TabletServerErrorPB;
 
 YsqlBackendsManager::YsqlBackendsManager(
-    Master* master, ThreadPool* callback_pool)
-    : master_(master), callback_pool_(callback_pool) {
+    Master* master, ObjectLockInfoManager* object_lock_info_manager, ThreadPool* callback_pool)
+    : master_(master), object_lock_info_manager_(object_lock_info_manager),
+      callback_pool_(callback_pool) {
 }
 
 namespace {
@@ -92,7 +93,7 @@ Status CheckLeadership(
     return l->first_failed_status();
   }
   if (catalog_manager->TimeSinceElectedLeader() <
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms))) {
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms))) {
     return SetupError(
         resp->mutable_error(),
         STATUS(
@@ -101,6 +102,12 @@ Status CheckLeadership(
           .CloneAndAddErrorCode(MasterError(MasterErrorPB::IN_TRANSITION_CAN_RETRY)));
   }
   return Status::OK();
+}
+
+// Static helper to centralize "Live Lease" logic
+bool IsTSLeaseLive(const TSDescriptor& ts_desc,
+                   const ObjectLockInfoManager& manager) {
+  return manager.TabletServerHasLiveLease(ts_desc.permanent_uuid()) && !ts_desc.IsReplaced();
 }
 
 } // namespace
@@ -211,8 +218,8 @@ Status YsqlBackendsManager::WaitForYsqlBackendsCatalogVersion(
       job->Touch();
     } else {
       job = std::make_shared<BackendsCatalogVersionJob>(
-          master_, callback_pool_, req->database_oid(), version, req->requestor_ts_uuid(),
-          req->requestor_pg_backend_pid());
+          master_, object_lock_info_manager_, callback_pool_, req->database_oid(), version,
+          req->requestor_ts_uuid(), req->requestor_pg_backend_pid());
       jobs_[db_version] = job;
     }
   }
@@ -500,7 +507,7 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(
 Status BackendsCatalogVersionJob::Launch(int64_t term) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
-  const auto& descs = master_->ts_manager()->GetAllDescriptors();
+  const auto descs = object_lock_info_manager_->GetAllTSDescriptorsWithALiveLease();
   // If any new tservers join after this point, they should have up-to-date catalog version.
 
   std::vector<std::string> ts_uuids;
@@ -514,9 +521,8 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
     term_ = term;
 
     for (const auto& ts_desc : descs) {
-      if (!ts_desc->HasYsqlCatalogLease()) {
+      if (!IsTSLeaseLive(*ts_desc, *object_lock_info_manager_)) {
         // Ignore tservers with expired lease since they should be resolved.
-        // TODO(#13369): ensure these tservers abort/block ops until they successfully heartbeat.
         continue;
       }
 
@@ -535,7 +541,7 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
 
 Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends);
+      shared_from_this(), object_lock_info_manager_, ts_uuid, num_lagging_backends);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -746,6 +752,7 @@ std::string BackendsCatalogVersionJob::LogPrefix() const {
 
 BackendsCatalogVersionTS::BackendsCatalogVersionTS(
     std::shared_ptr<BackendsCatalogVersionJob> job,
+    ObjectLockInfoManager* object_lock_info_manager,
     const std::string& ts_uuid,
     int prev_num_lagging_backends)
     : RetryingTSRpcTask(job->master(),
@@ -753,6 +760,7 @@ BackendsCatalogVersionTS::BackendsCatalogVersionTS(
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(job->master(), ts_uuid)),
                         nullptr /* async_task_throttler */),
       job_(job),
+      object_lock_info_manager_(object_lock_info_manager),
       prev_num_lagging_backends_(prev_num_lagging_backends) {
   DCHECK_NE(ts_uuid, "") << LogPrefix();
 }
@@ -794,14 +802,12 @@ void BackendsCatalogVersionTS::HandleResponse(int attempt) {
   VLOG_WITH_PREFIX_AND_FUNC(1) << resp_.ShortDebugString();
 
   // First, check if the tserver's lease expired.
-  if (!target_ts_desc()->HasYsqlCatalogLease()) {
+  if (!HasLiveLease()) {
     // A similar check is done in RetryingTSRpcTask::DoRpcCallback.  That check is hit when this RPC
     // failed and tserver's leaes expired.  This check is hit when this RPC succeeded and tserver's
     // lease expired.
-    // TODO(#13369): ensure lease-expired tservers abort/block ops until they successfully
-    // heartbeat.
     LOG_WITH_PREFIX(WARNING)
-        << "TS " << permanent_uuid() << " catalog lease expired. Assume backends on that TS"
+        << "TS " << permanent_uuid() << " YSQL lease expired. Assume backends on that TS"
         << " will be resolved to sufficient catalog version";
     TransitionToCompleteState();
     found_lease_expired_ = true;
@@ -918,11 +924,10 @@ void BackendsCatalogVersionTS::UnregisterAsyncTaskCallback() {
   if (auto job = job_.lock()) {
     if (indirectly_resolved) {
       // There are four cases of indirectly resolved tservers, outlined in a comment above.
-      if (found_lease_expired_ || !target_ts_desc()->HasYsqlCatalogLease()) {
+      if (found_lease_expired_ || !HasLiveLease()) {
         // The two tserver-lease-expired cases.
         LOG_WITH_PREFIX(INFO)
-            << "tserver catalog lease expired, so assuming its backends are at latest catalog"
-            << " version";
+            << "tserver YSQL lease expired, so assuming its backends are at latest catalog version";
       } else {
         // The two tserver-found-behind cases.
         LOG_WITH_PREFIX(INFO) << "tserver behind, so skipping backends catalog version check";
@@ -956,13 +961,17 @@ bool BackendsCatalogVersionTS::RetryTaskAfterRPCFailure(const Status& status) {
                              << " is on an older version that doesn't"
                              << " support backends catalog version RPC. Ignoring.";
     return false;
-  } else if (!ts->HasYsqlCatalogLease()) {
+  } else if (!HasLiveLease()) {
     LOG_WITH_PREFIX(WARNING) << "TS " << ts->id()
-                             << " catalog lease expired. Assume backends"
+                             << " YSQL lease expired. Assume backends"
                              << " on that TS will be resolved to sufficient catalog version";
     return false;
   }
   return true;
+}
+
+bool BackendsCatalogVersionTS::HasLiveLease() const {
+  return IsTSLeaseLive(*target_ts_desc(), *object_lock_info_manager_);
 }
 
 }  // namespace master

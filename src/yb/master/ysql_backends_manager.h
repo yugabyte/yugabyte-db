@@ -27,6 +27,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/object_lock_info_manager.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/monitored_task.h"
 
@@ -137,14 +138,10 @@ class BackendsCatalogVersionTS;
 //     master leader, jobs are started from scratch.  This is no big issue since there is no major
 //     accumulated progress in the first place.
 //   - On tserver network partitioning, master may be unable to reach a tserver to determine whether
-//     its backends satisfy the requested db+ver.  master_ts_ysql_catalog_lease_ms bounds the amount
-//     of time we can be in this uncertain state.  The lease needs to be handled on both sides:
+//     its backends satisfy the requested db+ver.  master_ysql_operation_lease_ttl_ms bounds the
+//     amount of time we can be in this uncertain state.  The lease needs to be handled on both
+//     sides:
 //     - tserver: block its own backends from functioning when its "lease" with master expires.
-// TODO(#13369): the blocking is currently not implemented and is required for correctness.
-//     - master: if newly elected as leader, it currently won't know when all tservers have
-//       re-registered.  In other words, it doesn't know all the tservers that exist.  Since there
-//       could always exist a tserver that is network partitioned, the new master must wait the
-//       lease period before it can be sure all tservers are accounted for.
 //
 // - Ownership: there are multiple in-memory objects that it is worth mentioning the memory model.
 //   - YsqlBackendsManager: there is only a single instance of this owned by master
@@ -223,7 +220,8 @@ class YsqlBackendsManager {
   // Must be ordered map because pair has no hash function but has ordering.
   typedef std::map<DbVersion, std::shared_ptr<BackendsCatalogVersionJob>> DbVersionToJobMap;
 
-  YsqlBackendsManager(Master* master, ThreadPool* callback_pool);
+  YsqlBackendsManager(Master* master, ObjectLockInfoManager* object_lock_info_manager,
+                      ThreadPool* callback_pool);
 
   Status AccessYsqlBackendsManagerTestRegister(
       const AccessYsqlBackendsManagerTestRegisterRequestPB* req,
@@ -266,6 +264,7 @@ class YsqlBackendsManager {
       WaitForYsqlBackendsCatalogVersionResponsePB* resp);
 
   Master* master_;
+  ObjectLockInfoManager* object_lock_info_manager_;
   ThreadPool* callback_pool_;
 
   mutable rw_spinlock mutex_;
@@ -281,9 +280,11 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   typedef YsqlBackendsManager::DbVersion DbVersion;
 
   BackendsCatalogVersionJob(
-      Master* master, ThreadPool* callback_pool, PgOid database_oid, Version target_version,
+      Master* master, ObjectLockInfoManager* object_lock_info_manager,
+      ThreadPool* callback_pool, PgOid database_oid, Version target_version,
       TabletServerId requestor_ts_uuid, pid_t requestor_pg_backend_pid)
       : master_(master),
+        object_lock_info_manager_(object_lock_info_manager),
         callback_pool_(callback_pool),
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
@@ -359,6 +360,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
  private:
   // dependency vars
   Master* master_;
+  ObjectLockInfoManager* object_lock_info_manager_;
   ThreadPool* callback_pool_;
 
   // mutex to protect in-memory objects.
@@ -391,6 +393,7 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
  public:
   BackendsCatalogVersionTS(
       std::shared_ptr<BackendsCatalogVersionJob> job,
+      ObjectLockInfoManager* object_lock_info_manager,
       const std::string& ts_uuid,
       int prev_num_lagging_backends);
 
@@ -412,8 +415,11 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   bool RetryTaskAfterRPCFailure(const Status& status) override;
 
  private:
+  bool HasLiveLease() const;
+
   // Use a weak ptr because this doesn't own job and job can be destroyed at any moment.
   std::weak_ptr<BackendsCatalogVersionJob> job_;
+  ObjectLockInfoManager* object_lock_info_manager_;
   tserver::WaitForYsqlBackendsCatalogVersionResponsePB resp_;
 
   // Previously known number of lagging backends.  Used by tserver to determine when that number
