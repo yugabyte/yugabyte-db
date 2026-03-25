@@ -1039,11 +1039,11 @@ Use client-to-server (client-to-node) encryption to protect data in transit betw
 
 ##### --use_node_to_node_encryption
 
+Default: `false`
+
 Enables server-server (node-to-node) encryption between YB-Master and YB-TServer servers in a cluster or universe. To work properly, all YB-TServer servers must also have their [--use_node_to_node_encryption](../yb-tserver/#use-node-to-node-encryption) flag enabled.
 
 When enabled, [--allow_insecure_connections](#allow-insecure-connections) should be set to false to disallow insecure connections.
-
-Default: `false`
 
 ##### --cipher_list
 
