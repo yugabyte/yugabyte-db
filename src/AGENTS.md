@@ -10,10 +10,16 @@ There may be some exceptions where appropriate such as `collate.icu.utf8.sql` an
 
 The primary build entry point is `yb_build.sh` at the repository root.
 
-Use release build by default. Only use debug builds when explicitly asked to do so.
+Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
+Use cmake targets `daemons initdb` unless you need more targets.
 Skip java build (`--sj`) unless you have to run java tests.
+Skip pg_parquet build (`--skip-pg-parquet`) unless you need it.
+Skip odyssey build (`--no-odyssey`) unless you need it.
+Skip YBC build (`--no-ybc`) unless you need it.
 
-The first time you run a test, you will need to run initdb beforehand:
+`initdb` cmake target in conjunction with test flags may not build `initdb`, so in that case, do them one by one.
+Use `reinitdb` cmake target if there are changes to the system catalog since last build.
+Use `--clean` if there are changes to third-party since last build.
 
 ```bash
 ./yb_build.sh release initdb
@@ -22,7 +28,7 @@ The first time you run a test, you will need to run initdb beforehand:
 ### Common Build Commands
 
 ```bash
-./yb_build.sh release --sj
+./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc
 ```
 
 ### C++ Tests
