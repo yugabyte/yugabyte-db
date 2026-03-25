@@ -120,6 +120,71 @@ void ReleaseObjectLocksForLostMessages(
   ReleaseWithRetriesGlobalNow(client.get(), lock_manager_weak, release_req);
 }
 
+Result<std::vector<const tserver::AcquireObjectLockRequestPB*>>
+TopoSortByBackgroundTxnDependency(const tserver::DdlLockEntriesPB& entries) {
+  // Map of lock entries keyed by their owner/transaction id.
+  std::unordered_map<std::string, std::vector<const tserver::AcquireObjectLockRequestPB*>>
+      entries_by_txn;
+  // Map of transactions list that depend on the keyed transaction i.e. locks of the keyed txn
+  // have to be replayed prior to replaying the txns in the value list.
+  std::unordered_map<std::string, std::vector<std::string>> txn_dependents;
+  // Map with key as txn and value as its background txn.
+  std::unordered_map<std::string, std::string> bg_txn_map;
+  // Map to track in degree of each txn for topologically sorting the dependencies.
+  std::unordered_map<std::string, size_t> in_degree;
+
+  // 1. A transaction can have multiple lock entries corresponding to multiple subtxns.
+  // 2. A transaction can have at most one background transaction.
+  // 3. The background transaction itself could have released the locks and be inactive.
+  for (const auto& req : entries.lock_entries()) {
+    auto txn_id = req.txn_id();
+    entries_by_txn[txn_id].push_back(&req);
+    in_degree.try_emplace(txn_id, 0);
+
+    if (!req.background_transaction_id().empty()) {
+      auto bg_txn_id = req.background_transaction_id();
+      if (bg_txn_map.emplace(txn_id, bg_txn_id).second) {
+        txn_dependents[bg_txn_id].push_back(txn_id);
+        in_degree[txn_id]++;
+      }
+      in_degree.try_emplace(bg_txn_id, 0);
+    }
+  }
+
+  std::deque<std::string> queue;
+  for (const auto& [txn_id, deg] : in_degree) {
+    if (deg == 0) {
+      queue.push_back(txn_id);
+    }
+  }
+
+  std::vector<const tserver::AcquireObjectLockRequestPB*> result;
+  result.reserve(entries.lock_entries_size());
+  while (!queue.empty()) {
+    auto txn_id = std::move(queue.front());
+    queue.pop_front();
+    auto it = entries_by_txn.find(txn_id);
+    if (it != entries_by_txn.end()) {
+      for (const auto* req : it->second) {
+        result.push_back(req);
+      }
+    }
+    auto dep_it = txn_dependents.find(txn_id);
+    if (dep_it != txn_dependents.end()) {
+      for (const auto& dep_txn_id : dep_it->second) {
+        if (--in_degree[dep_txn_id] == 0) {
+          queue.push_back(dep_txn_id);
+        }
+      }
+    }
+  }
+
+  SCHECK_EQ(
+      result.size(), static_cast<size_t>(entries.lock_entries_size()), IllegalState,
+      "Expected to see all entries in topologically sorted vector of bootstrap entries");
+  return result;
+}
+
 }  // namespace
 
 class TSLocalLockManager::Impl {
@@ -577,10 +642,19 @@ class TSLocalLockManager::Impl {
     if (IsBootstrapped()) {
       return STATUS(IllegalState, "TSLocalLockManager is already bootstrapped.");
     }
-    for (const auto& acquire_req : entries.lock_entries()) {
-      // This call should not block on anything.
-      RETURN_NOT_OK(AcquireObjectLocks(
-          acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse));
+    // This call should not block on anything.
+    //
+    // Topologically sort entries so that locks of A txns's background transaction are always
+    // acquired first. Else, it could lead to false conflicts during bootstrap of lock manager.
+    auto sorted = VERIFY_RESULT(TopoSortByBackgroundTxnDependency(entries));
+    for (const auto* acquire_req : sorted) {
+      auto s = AcquireObjectLocks(
+          *acquire_req, CoarseMonoClock::Now() + 1s, tserver::WaitForBootstrap::kFalse);
+      if (!s.ok()) {
+        LOG(WARNING) << "Bootstrap of object lock manager failed with status " << s
+                     << ". Entries: " << yb::ToString(entries.lock_entries());
+        return s;
+      }
     }
     MarkBootstrapped();
     VLOG_WITH_FUNC(2) << "success.";
