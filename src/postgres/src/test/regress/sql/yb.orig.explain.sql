@@ -51,3 +51,31 @@ EXPLAIN (ANALYZE, DEBUG, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
 -- DEBUG with yb_explain_hide_non_deterministic_fields should produce a warning and no debug metrics
 SHOW yb_explain_hide_non_deterministic_fields;
 EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
+
+-- Check planner stats fields (#30768 shouldn't be printed twice!)
+SET client_min_messages TO 'warning';
+drop function if exists explain_filter_to_json_text cascade;
+create function explain_filter_to_json_text(text) returns text
+language plpgsql as
+$$
+declare
+    data text := '';
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just '0'
+        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
+        data := data || ln;
+    end loop;
+    return data;
+end;
+$$;
+
+SET yb_explain_hide_non_deterministic_fields = off;
+SET yb_enable_cbo = on;
+
+select explain_filter_to_json_text($$/*+ IndexScan(p1) */EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, FORMAT JSON) SELECT * from p1 where k = 1$$);
+
+RESET yb_explain_hide_non_deterministic_fields;
+RESET yb_enable_cbo;

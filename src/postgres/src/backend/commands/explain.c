@@ -131,7 +131,6 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									YbPlanInfo *yb_plan_info,
 									bool yb_is_agg_pushdown,
 									Scan *ybScan, /* YB */
 									ExplainState *es);
@@ -2647,7 +2646,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										&indexscan->yb_plan_info,
 										yb_is_agg_pushdown,
 										(Scan *) indexscan, /* YB */
 										es);
@@ -2660,7 +2658,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										&indexonlyscan->yb_plan_info,
 										yb_is_agg_pushdown,
 										(Scan *) indexonlyscan, /* YB */
 										es);
@@ -5254,7 +5251,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						YbPlanInfo *yb_plan_info, bool yb_is_agg_pushdown,
+						bool yb_is_agg_pushdown,
 						Scan *ybScan, /* YB */
 						ExplainState *es)
 {
@@ -5291,8 +5288,6 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (es->yb_debug && yb_enable_base_scans_cost_model)
-			show_yb_planning_stats(yb_plan_info, es);
 	}
 }
 
