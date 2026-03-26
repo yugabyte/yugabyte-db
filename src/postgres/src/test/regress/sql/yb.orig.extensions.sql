@@ -109,5 +109,52 @@ ALTER EXTENSION vector DROP ACCESS METHOD dummy_am_yb_user;
 ALTER EXTENSION vector ADD FUNCTION test_func(INT);
 ALTER EXTENSION vector DROP FUNCTION func_not_found(TEXT);
 ALTER EXTENSION vector DROP FUNCTION test_func(INT);
+
+-- Test [NO] DEPENDS ON EXTENSION
+CREATE OR REPLACE FUNCTION get_extension_deps(mask text)
+RETURNS TABLE (procedure_name regprocedure,
+               extension_name name,
+               dependency_type "char") LANGUAGE SQL AS
+$$
+    SELECT p.oid::regprocedure,
+           e.extname,
+           d.deptype
+    FROM pg_proc p
+    JOIN pg_depend d ON d.objid = p.oid
+    JOIN pg_extension e ON d.refobjid = e.oid
+    WHERE p.proname ~ mask;
+$$;
+
+CREATE FUNCTION cp_testfunc1(a int) RETURNS int LANGUAGE SQL AS
+$$ SELECT a $$;
+
+CREATE TABLE cp_test (a int, b text);
+
+CREATE PROCEDURE ptest1(x text) LANGUAGE SQL AS
+$$ INSERT INTO cp_test VALUES (1, x); $$;
+
+\df cp_testfunc1
+\df ptest1
+SELECT * FROM get_extension_deps('test');
+
+ALTER FUNCTION cp_testfunc1 DEPENDS ON EXTENSION vector;
+ALTER ROUTINE cp_testfunc1 DEPENDS ON EXTENSION vector;
+SELECT * FROM get_extension_deps('test');
+ALTER PROCEDURE ptest1 DEPENDS ON EXTENSION vector;
+ALTER ROUTINE ptest1 DEPENDS ON EXTENSION vector;
+SELECT * FROM get_extension_deps('test');
+
+ALTER FUNCTION cp_testfunc1 NO DEPENDS ON EXTENSION vector;
+ALTER ROUTINE cp_testfunc1 NO DEPENDS ON EXTENSION vector;
+SELECT * FROM get_extension_deps('test');
+ALTER PROCEDURE ptest1 NO DEPENDS ON EXTENSION vector;
+ALTER ROUTINE ptest1 NO DEPENDS ON EXTENSION vector;
+SELECT * FROM get_extension_deps('test');
+
+DROP ROUTINE cp_testfunc1(int);
+DROP PROCEDURE ptest1;
+DROP TABLE cp_test;
+DROP FUNCTION IF EXISTS get_extension_deps(text);
+
 DROP EXTENSION vector CASCADE;
 \c yugabyte

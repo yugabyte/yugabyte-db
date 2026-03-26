@@ -18,7 +18,8 @@ const (
 	defaultHAConfigListing = "table {{.UUID}}\t{{.ClusterKey}}\t{{.GlobalState}}" +
 		"\t{{.LastFailover}}\t{{.AcceptAnyCertificate}}"
 
-	defaultInstancesListing = "table {{.Address}}\t{{.InstanceState}}\t{{.LastBackup}}\t{{.UUID}}\t{{.IsLeader}}"
+	defaultInstancesListing = "table {{.Address}}\t{{.InstanceState}}\t{{.LastBackup}}" +
+		"\t{{.UUID}}\t{{.IsLeader}}\t{{.IsLocal}}"
 
 	uuidHeader                 = "UUID"
 	clusterKeyHeader           = "Cluster Key"
@@ -69,6 +70,51 @@ func NewInstancesFormat(source string) formatter.Format {
 	default:
 		return formatter.Format(source)
 	}
+}
+
+// WriteInstance renders the context for a single HA instance
+func WriteInstance(ctx formatter.Context, instance interface{}) error {
+	var instanceMap map[string]interface{}
+	switch v := instance.(type) {
+	case map[string]interface{}:
+		instanceMap = v
+	default:
+		instanceBytes, err := json.Marshal(instance)
+		if err != nil {
+			logrus.Errorf("Error marshaling instance: %v\n", err)
+			return err
+		}
+		if err := json.Unmarshal(instanceBytes, &instanceMap); err != nil {
+			logrus.Errorf("Error unmarshaling instance: %v\n", err)
+			return err
+		}
+	}
+
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		var output []byte
+		var err error
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(instanceMap, "", "  ")
+		} else {
+			output, err = json.Marshal(instanceMap)
+		}
+		if err != nil {
+			logrus.Errorf("Error marshaling instance to json: %v\n", err)
+			return err
+		}
+		_, err = ctx.Output.Write(output)
+		return err
+	}
+
+	instancesCtx := formatter.Context{
+		Output:  ctx.Output,
+		Format:  NewInstancesFormat(viper.GetString("output")),
+		Command: ctx.Command,
+	}
+	render := func(format func(subContext formatter.SubContext) error) error {
+		return format(&InstanceContext{instance: instanceMap})
+	}
+	return instancesCtx.Write(NewInstanceContext(), render)
 }
 
 // Write renders the context for HA config

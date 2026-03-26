@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,6 +38,10 @@ class PgGlobalViewRead : public PgMemctx::Registrable {
 
   void ResetScan();
 
+  // Set text-format parameter values for parameterized queries.
+  // A nullptr entry means the corresponding parameter is NULL.
+  void SetParams(int num_params, const char** values);
+
   // Executes the query on the next tserver and returns the serialized
   // PgResultPB as a byte buffer. Advances the tserver index by one.
   // Returns {nullptr, 0, false} when all tservers are exhausted.
@@ -52,6 +57,8 @@ class PgGlobalViewRead : public PgMemctx::Registrable {
   // Holds the serialized PgResultPB between ExecScan and the caller's
   // deserialization.
   std::string serialized_result_;
+
+  std::vector<std::optional<std::string>> params_;
 };
 
 }  // namespace yb::pggate

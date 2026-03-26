@@ -103,6 +103,7 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
   }
 
   // Delete the provider
+  @VisibleForTesting
   @Override
   protected void handleResourceDeletion(
       YBProvider provider, Customer cust, OperatorWorkQueue.ResourceAction action)
@@ -137,8 +138,19 @@ public class YBProviderReconciler extends AbstractReconciler<YBProvider> {
         updateProviderStatus(provider, "Provider is in use by universes. Cannot delete.");
       } else {
         TaskInfo taskInfo = getCurrentTaskInfo(provider);
-        if (taskInfo == null) {
+        if (taskInfo == null || TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           deleteProvider(cust, provider, existingProvider.getUuid());
+        } else if (taskInfo.getTaskType() != TaskType.CloudProviderDelete) {
+          log.warn(
+              "Found provider task {}-{} in progress for provider {}. Cannot start delete.",
+              taskInfo.getTaskType(),
+              taskInfo.getUuid(),
+              existingProvider.getName());
+          updateProviderStatus(
+              provider,
+              String.format("Provider task %s is in progress. Cannot delete.", taskInfo.getUuid()));
+        } else {
+          log.debug("Provider delete task {} in progress", taskInfo.getUuid());
         }
         workqueue.requeue(
             mapKey, OperatorWorkQueue.ResourceAction.DELETE, false /* incrementRetry */);

@@ -9,6 +9,7 @@ interface FaultToleranceTypeFieldProps<T extends FieldValues> {
   name: Path<T>;
   label: string;
   t: TFunction;
+  sx?: React.CSSProperties;
 }
 
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
@@ -32,7 +33,8 @@ const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
 export const FaultToleranceTypeField = <T extends FieldValues>({
   name,
   t,
-  label
+  label,
+  sx = {}
 }: FaultToleranceTypeFieldProps<T>) => {
   const { control } = useFormContext<T>();
   return (
@@ -45,7 +47,8 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
             value={field.value}
             onChange={(e) => field.onChange(e.target.value)}
             sx={{
-              width: '320px'
+              width: '320px',
+              ...sx
             }}
             menuProps={{
               anchorOrigin: {
@@ -55,6 +58,9 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
               transformOrigin: {
                 vertical: 'top',
                 horizontal: 'left'
+              },
+              MenuListProps: {
+                sx: { paddingTop: 0, paddingBottom: 0 }
               }
             }}
             renderValue={(value) => {

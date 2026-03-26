@@ -758,15 +758,27 @@ public class YbcBackupUtil {
       String prevCloudDir,
       Map<String, String> credsMap,
       String configType) {
-    CloudStoreSpec cloudStoreSpec =
+    return buildCloudStoreSpec(bucket, cloudDir, prevCloudDir, credsMap, configType, null);
+  }
+
+  public static CloudStoreSpec buildCloudStoreSpec(
+      String bucket,
+      String cloudDir,
+      String prevCloudDir,
+      Map<String, String> credsMap,
+      String configType,
+      @Nullable List<String> nfsVolumes) {
+    CloudStoreSpec.Builder builder =
         CloudStoreSpec.newBuilder()
             .putAllCreds(credsMap)
             .setBucket(bucket)
             .setCloudDir(cloudDir)
             .setPrevCloudDir(prevCloudDir)
-            .setType(getCloudType(configType))
-            .build();
-    return cloudStoreSpec;
+            .setType(getCloudType(configType));
+    if (CollectionUtils.isNotEmpty(nfsVolumes)) {
+      builder.addAllNfsVolumes(nfsVolumes);
+    }
+    return builder.build();
   }
 
   public double computePercentageComplete(Long completedOps, Long totalOps) {

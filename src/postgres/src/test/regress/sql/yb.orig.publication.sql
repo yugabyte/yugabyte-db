@@ -77,3 +77,18 @@ DELETE FROM yb_pub_rf_t WHERE a = 6 AND c = 'NSW';
 
 DROP PUBLICATION yb_pub_rf;
 DROP TABLE yb_pub_rf_t;
+
+-- #22555: row filter with REPLICA IDENTITY CHANGE should allow UPDATE/DELETE
+-- when the filter only references replica identity (PK) columns.
+CREATE TABLE yb_pub_rf_change(a int, b int, c text, PRIMARY KEY(a,c));
+ALTER TABLE yb_pub_rf_change REPLICA IDENTITY CHANGE;
+SET client_min_messages = 'ERROR';
+CREATE PUBLICATION yb_pub_rf_change FOR TABLE yb_pub_rf_change WHERE (a > 5 AND c = 'NSW');
+RESET client_min_messages;
+
+INSERT INTO yb_pub_rf_change VALUES (6, 106, 'NSW');
+UPDATE yb_pub_rf_change SET b = 999 WHERE a = 6 AND c = 'NSW';
+DELETE FROM yb_pub_rf_change WHERE a = 6 AND c = 'NSW';
+
+DROP PUBLICATION yb_pub_rf_change;
+DROP TABLE yb_pub_rf_change;

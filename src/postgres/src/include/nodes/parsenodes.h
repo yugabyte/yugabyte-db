@@ -2022,7 +2022,9 @@ typedef enum AlterTableType
 	AT_AddIdentity,				/* ADD IDENTITY */
 	AT_SetIdentity,				/* SET identity column options */
 	AT_DropIdentity,			/* DROP IDENTITY */
-	AT_ReAddStatistics			/* internal to commands/tablecmds.c */
+	AT_ReAddStatistics,			/* internal to commands/tablecmds.c */
+	AT_YbAlterIndexAttributeType /* YB: update index pg_attribute entries
+								  * in place for ALTER TYPE, when possible */
 } AlterTableType;
 
 typedef struct ReplicaIdentityStmt
@@ -2051,6 +2053,9 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
 	bool		yb_cascade;		/* to restrict movement of single table in
 								 * colocated tablespace */
+	Oid			yb_old_index_oid; /* OID of old index; used to identify the
+								   * index for in-place pg_attribute update
+								   * during ALTER TYPE */
 } AlterTableCmd;
 
 

@@ -30,6 +30,7 @@ class MisalignedPtr {
   using reference = T;
   using iterator_category = std::random_access_iterator_tag;
 
+  MisalignedPtr() = default;
   explicit MisalignedPtr(RawPtr ptr) : ptr_(ptr) {}
 
   RawPtr raw() const {
@@ -39,6 +40,12 @@ class MisalignedPtr {
   MisalignedPtr& operator++() {
     ptr_ += sizeof(value_type);
     return *this;
+  }
+
+  MisalignedPtr operator++(int) {
+    MisalignedPtr tmp = *this;
+    ++*this;
+    return tmp;
   }
 
   reference operator*() const {
@@ -52,11 +59,16 @@ class MisalignedPtr {
   }
 
  private:
-  RawPtr ptr_;
+  RawPtr ptr_ = nullptr;
 };
 
 template <class T>
-bool operator!=(const MisalignedPtr<T>& lhs, const MisalignedPtr<T>& rhs) {
+bool operator==(MisalignedPtr<T> lhs, MisalignedPtr<T> rhs) {
+  return lhs.raw() == rhs.raw();
+}
+
+template <class T>
+bool operator!=(MisalignedPtr<T> lhs, MisalignedPtr<T> rhs) {
   return lhs.raw() != rhs.raw();
 }
 

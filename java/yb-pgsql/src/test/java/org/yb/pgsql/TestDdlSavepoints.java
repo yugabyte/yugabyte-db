@@ -31,6 +31,7 @@ public class TestDdlSavepoints extends BasePgRegressTest {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
+    builder.numMasters(1);
     builder.enablePgTransactions(true);
     builder.addCommonTServerFlag("ysql_log_statement", "all");
     builder.addCommonTServerFlag("ysql_yb_ddl_transaction_block_enabled", "true");

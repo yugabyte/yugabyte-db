@@ -460,6 +460,10 @@ class TSLocalLockManager::Impl {
         &messenger_base_.messenger()->scheduler(), 1ms * FLAGS_olm_poll_interval_ms);
   }
 
+  void EnableSharedLockState() {
+    object_lock_manager_.EnableSharedLockState();
+  }
+
   void Shutdown() {
     shutdown_ = true;
     poller_.Shutdown();
@@ -642,6 +646,10 @@ Result<docdb::TxnBlockedTableLockRequests> TSLocalLockManager::ReleaseObjectLock
 void TSLocalLockManager::Start(
     docdb::LocalWaitingTxnRegistry* waiting_txn_registry) {
   return impl_->Start(waiting_txn_registry);
+}
+
+void TSLocalLockManager::EnableSharedLockState() {
+  return impl_->EnableSharedLockState();
 }
 
 void TSLocalLockManager::Shutdown() { impl_->Shutdown(); }

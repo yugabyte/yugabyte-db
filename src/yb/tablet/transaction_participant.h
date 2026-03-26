@@ -222,7 +222,7 @@ class TransactionParticipant : public TransactionStatusManager {
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   // Update transaction metadata to change the status tablet for the given transaction.
-  Status UpdateTransactionStatusLocation(
+  Status UpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet);
 
   std::string DumpTransactions() const;

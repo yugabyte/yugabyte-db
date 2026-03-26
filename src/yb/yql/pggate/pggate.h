@@ -38,6 +38,7 @@
 
 #include "yb/tserver/tserver_util_fwd.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -117,6 +118,8 @@ class PgApiImpl {
   };
 
   ~PgApiImpl();
+
+  void SetupPgBackendCgroup(YbcPgOid dboid);
 
   const YbcPgCallbacks* pg_callbacks() const { return &pg_callbacks_; }
 

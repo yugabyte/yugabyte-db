@@ -20,10 +20,11 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/ysql_binary_runner.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "yb/yql/pgwrapper/ysql_binary_runner.h"
 
 using std::string;
 

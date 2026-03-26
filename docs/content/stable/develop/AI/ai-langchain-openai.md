@@ -3,7 +3,6 @@ title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
 headerTitle: Query without SQL using LangChain
 linkTitle: Query without SQL - LangChain
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
-image: /images/tutorials/ai/icons/langchain-icon.svg
 headcontent: Query your database using natural language
 menu:
   stable_develop:

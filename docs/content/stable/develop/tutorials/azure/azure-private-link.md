@@ -3,7 +3,6 @@ title: Develop Secure Applications with Azure Private Link
 headerTitle: Develop secure applications with Azure Private Link
 linkTitle: Azure Private Link
 description: Using a Node.js app to demonstrate, see how YugabyteDB enhances Azure connectivity with Azure Private Service Endpoints.
-image: /images/tutorials/azure/icons/Private-Link-Icon.svg
 headcontent: Secure connections between applications in Azure and YugabyteDB
 menu:
   stable_develop:

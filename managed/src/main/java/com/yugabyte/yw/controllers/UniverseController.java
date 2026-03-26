@@ -2,10 +2,8 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -39,7 +37,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -89,9 +86,7 @@ public class UniverseController extends AuthenticatedController {
         universeRespList.stream()
             .filter(u -> resourceUUIDs.contains(u.universeUUID))
             .collect(Collectors.toList());
-    JsonNode universeRespListJson = Json.toJson(universeRespList);
-    universeRespListJson = RedactingService.applyRegexRedaction(universeRespListJson);
-    return PlatformResults.withData(universeRespListJson);
+    return PlatformResults.withData(universeRespList);
   }
 
   @ApiOperation(
@@ -109,9 +104,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    JsonNode universeResp = Json.toJson(UniverseResp.create(universe, null, configGetter));
-    universeResp = RedactingService.applyRegexRedaction(universeResp);
-    return PlatformResults.withData(universeResp);
+    return PlatformResults.withData(UniverseResp.create(universe, null, configGetter));
   }
 
   @ApiOperation(

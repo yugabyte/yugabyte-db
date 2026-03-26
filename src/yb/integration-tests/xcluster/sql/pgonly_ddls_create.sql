@@ -78,11 +78,11 @@ FOR SELECT
 USING (department = 'HR');
 
 -- Create PROCEDURE
-CREATE PROCEDURE increment_salary(first_name VARCHAR(50), increment NUMERIC)
+CREATE PROCEDURE increment_salary(name VARCHAR(50), increment NUMERIC)
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    UPDATE employees SET salary = salary + increment WHERE first_name = 'sandeep';
+    UPDATE employees SET salary = salary + increment WHERE first_name = name;
 END;
 $$;
 

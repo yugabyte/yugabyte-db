@@ -665,6 +665,9 @@ message SysCDCStreamEntryPB {
   // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
   // catalog tablet for detecting changes to publications.
   optional bool detect_publication_changes_implicitly = 16 [default = false];
+
+  // This field stores the list of tables that were dropped while being part of the CDCSDK stream.
+  repeated bytes dropped_table_id = 17;
 }
 
 

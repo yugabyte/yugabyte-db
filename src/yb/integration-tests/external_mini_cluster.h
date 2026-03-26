@@ -148,6 +148,13 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql_conn_mgr = false;
   bool wait_for_tservers_to_accept_ysql_connections = true;
 
+  bool IsYsqlConnMgrEnabled() const {
+    if (!enable_ysql) return false;
+    if (enable_ysql_conn_mgr) return true;
+    const char* env = getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    return env && strcasecmp(env, "true") == 0;
+  }
+
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
   std::string data_root{};

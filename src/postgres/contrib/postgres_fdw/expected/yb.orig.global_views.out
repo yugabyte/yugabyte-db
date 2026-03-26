@@ -56,7 +56,7 @@ CREATE FOREIGN TABLE "gv$node_metrics" (
 ) SERVER gv_server
 OPTIONS (schema_name 'public', table_name 'local_node_metrics');
 --
--- Basic SELECT: verify data from all 3 nodes (9 rows total)
+-- Basic SELECT: verify data from all 3 nodes (11 rows total)
 --
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
@@ -73,16 +73,18 @@ SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
 SELECT * FROM "gv$node_metrics" ORDER BY node_id, metric_name;
  node_id | metric_name  | metric_value | event_count | total_bytes | ratio  | is_healthy |  tag  |  status  |        created_at        |          updated_at          
 ---------+--------------+--------------+-------------+-------------+--------+------------+-------+----------+--------------------------+------------------------------
+       1 |              |          0.1 |          77 |         100 |  0.001 | t          | EMPTY | active   | Wed Jan 15 12:00:00 2025 | Wed Jan 15 04:00:00 2025 PST
        1 | cpu_usage    |         45.5 |         100 |  5000000000 | 0.4551 | t          | CPU01 | active   | Wed Jan 15 10:30:00 2025 | Wed Jan 15 02:30:00 2025 PST
        1 | disk_io      |          120 |          50 | 12000000000 | 0.6001 | t          | DSK01 | active   | Wed Jan 15 11:30:00 2025 | Wed Jan 15 08:30:00 2025 PST
        1 | memory_usage |         72.5 |         200 |  8500000000 |  0.726 | f          | MEM01 | warning  | Wed Jan 15 11:00:00 2025 | Tue Jan 14 21:30:00 2025 PST
        2 | cpu_usage    |         62.5 |         150 |  6200000000 | 0.6254 | t          | CPU02 | active   | Thu Feb 20 14:00:00 2025 | Thu Feb 20 06:00:00 2025 PST
        2 | disk_io      |         89.5 |          75 |  3500000000 |  0.895 | f          | DSK02 | critical | Thu Feb 20 15:00:00 2025 | Thu Feb 20 15:00:00 2025 PST
        2 | memory_usage |         55.5 |         180 |  9800000000 | 0.5558 | t          | MEM02 | active   | Thu Feb 20 14:30:00 2025 | Wed Feb 19 21:30:00 2025 PST
+       2 |              |          0.1 |          83 |         100 |  0.001 | t          |       | active   | Thu Feb 20 16:00:00 2025 | Thu Feb 20 08:00:00 2025 PST
        3 | cpu_usage    |         38.5 |          90 |  4100000000 | 0.3853 | t          | CPU03 | active   | Mon Mar 10 09:00:00 2025 | Mon Mar 10 02:00:00 2025 PDT
        3 | disk_io      |         67.5 |          60 |  7700000000 |  0.676 | t          | DSK03 | active   | Mon Mar 10 10:00:00 2025 | Mon Mar 10 08:00:00 2025 PDT
        3 | memory_usage |         91.5 |         250 | 11000000000 | 0.9157 | f          | MEM03 | critical | Mon Mar 10 09:30:00 2025 | Sun Mar 09 21:00:00 2025 PDT
-(9 rows)
+(11 rows)
 
 --
 -- WHERE clause tests: one per type
@@ -108,13 +110,14 @@ WHERE node_id IN (1, 3)
 ORDER BY node_id, metric_name;
  node_id | metric_name  
 ---------+--------------
+       1 | 
        1 | cpu_usage
        1 | disk_io
        1 | memory_usage
        3 | cpu_usage
        3 | disk_io
        3 | memory_usage
-(6 rows)
+(7 rows)
 
 -- float4 (real)
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -164,13 +167,15 @@ WHERE status = 'active'
 ORDER BY node_id, metric_name;
  node_id | metric_name  | status 
 ---------+--------------+--------
+       1 |              | active
        1 | cpu_usage    | active
        1 | disk_io      | active
        2 | cpu_usage    | active
        2 | memory_usage | active
+       2 |              | active
        3 | cpu_usage    | active
        3 | disk_io      | active
-(6 rows)
+(8 rows)
 
 -- boolean
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -326,10 +331,11 @@ ORDER BY node_id, metric_name;
        2 | cpu_usage    | Thu Feb 20 14:00:00 2025
        2 | disk_io      | Thu Feb 20 15:00:00 2025
        2 | memory_usage | Thu Feb 20 14:30:00 2025
+       2 |              | Thu Feb 20 16:00:00 2025
        3 | cpu_usage    | Mon Mar 10 09:00:00 2025
        3 | disk_io      | Mon Mar 10 10:00:00 2025
        3 | memory_usage | Mon Mar 10 09:30:00 2025
-(6 rows)
+(7 rows)
 
 -- timestamptz (with TZ)
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -354,8 +360,9 @@ ORDER BY node_id, updated_at;
 ---------+--------------+------------------------------
        1 | memory_usage | Tue Jan 14 21:30:00 2025 PST
        1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST
+       1 |              | Wed Jan 15 04:00:00 2025 PST
        1 | disk_io      | Wed Jan 15 08:30:00 2025 PST
-(3 rows)
+(4 rows)
 
 --
 -- Aggregate queries
@@ -374,7 +381,7 @@ SELECT COUNT(*) FROM "gv$node_metrics";
 SELECT COUNT(*) FROM "gv$node_metrics";
  count 
 -------
-     9
+    11
 (1 row)
 
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -407,10 +414,12 @@ GROUP BY metric_name
 ORDER BY metric_name;
  metric_name  | node_count | total_events | total_bytes_sum 
 --------------+------------+--------------+-----------------
+              |          1 |           77 |             100
  cpu_usage    |          3 |          340 |     15300000000
  disk_io      |          3 |          185 |     23200000000
  memory_usage |          3 |          630 |     29300000000
-(3 rows)
+              |          1 |           83 |             100
+(5 rows)
 
 -- Aggregate on boolean
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -438,7 +447,7 @@ ORDER BY is_healthy;
  is_healthy | cnt 
 ------------+-----
  f          |   3
- t          |   6
+ t          |   8
 (2 rows)
 
 -- Aggregate on timestamp
@@ -491,7 +500,7 @@ HAVING COUNT(*) >= 2
 ORDER BY status;
   status  | cnt 
 ----------+-----
- active   |   6
+ active   |   8
  critical |   2
 (2 rows)
 
@@ -516,10 +525,12 @@ SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
 SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
  metric_name  
 --------------
+ 
  cpu_usage
  disk_io
  memory_usage
-(3 rows)
+ 
+(5 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT DISTINCT status FROM "gv$node_metrics" ORDER BY status;
@@ -615,53 +626,169 @@ ORDER BY event_count ASC LIMIT 5;
        1 | disk_io     |          50
        3 | disk_io     |          60
        2 | disk_io     |          75
-       3 | cpu_usage   |          90
-       1 | cpu_usage   |         100
+       1 |             |          77
+       2 |             |          83
 (5 rows)
 
 --
 -- Subqueries
 --
--- Use a window function to avoid parameterized remote queries: the global
--- views RPC uses simple_query_protocol which does not support $N parameters.
--- Tracked by GHI: #30501
+-- Single parameter: scalar subquery result bound as $1
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT node_id, metric_name, metric_value
-FROM (
-    SELECT *, AVG(metric_value) OVER () AS avg_val
-    FROM "gv$node_metrics"
-) sub
-WHERE metric_value > avg_val
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
 ORDER BY node_id, metric_name;
-                                                                                                                                                                  QUERY PLAN                                                                                                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Sort
-   Output: sub.node_id, sub.metric_name, sub.metric_value
-   Sort Key: sub.node_id, sub.metric_name
-   ->  Subquery Scan on sub
-         Output: sub.node_id, sub.metric_name, sub.metric_value
-         Filter: (sub.metric_value > sub.avg_val)
-         ->  WindowAgg
-               Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, NULL::integer, NULL::bigint, NULL::double precision, NULL::boolean, NULL::character(5), NULL::metric_status, NULL::timestamp without time zone, NULL::timestamp with time zone, avg("gv$node_metrics".metric_value) OVER (?)
-               ->  Foreign Scan on public."gv$node_metrics"
-                     Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value
-                     Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics
-(11 rows)
+   Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+   Sort Key: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name
+   InitPlan 1 (returns $0)
+     ->  Aggregate
+           Output: avg("gv$node_metrics".metric_value)
+           ->  Foreign Scan on public."gv$node_metrics"
+                 Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
+                 Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+         Remote Filter: ("gv$node_metrics_1".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision))
+(13 rows)
 
 SELECT node_id, metric_name, metric_value
-FROM (
-    SELECT *, AVG(metric_value) OVER () AS avg_val
-    FROM "gv$node_metrics"
-) sub
-WHERE metric_value > avg_val
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
 ORDER BY node_id, metric_name;
  node_id | metric_name  | metric_value 
 ---------+--------------+--------------
        1 | disk_io      |          120
        1 | memory_usage |         72.5
+       2 | cpu_usage    |         62.5
        2 | disk_io      |         89.5
+       3 | disk_io      |         67.5
        3 | memory_usage |         91.5
-(4 rows)
+(6 rows)
+
+-- Two parameters: two scalar subquery results bound as $1 and $2
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+   Sort Key: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name
+   InitPlan 1 (returns $0)
+     ->  Aggregate
+           Output: avg("gv$node_metrics".metric_value)
+           ->  Foreign Scan on public."gv$node_metrics"
+                 Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
+                 Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           Output: min("gv$node_metrics_1".event_count)
+           ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                 Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value, "gv$node_metrics_1".event_count, "gv$node_metrics_1".total_bytes, "gv$node_metrics_1".ratio, "gv$node_metrics_1".is_healthy, "gv$node_metrics_1".tag, "gv$node_metrics_1".status, "gv$node_metrics_1".created_at, "gv$node_metrics_1".updated_at
+                 Remote SQL: SELECT event_count FROM public.local_node_metrics
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+         Remote Filter: (("gv$node_metrics_2".metric_value > $0) AND ("gv$node_metrics_2".event_count > $1))
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+(19 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | memory_usage |         72.5
+       2 | cpu_usage    |         62.5
+       2 | disk_io      |         89.5
+       3 | disk_io      |         67.5
+       3 | memory_usage |         91.5
+(5 rows)
+
+-- NULL parameter: subquery over empty result set returns NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+                                                                                                                                                                     QUERY PLAN                                                                                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+   Sort Key: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name
+   InitPlan 1 (returns $0)
+     ->  Aggregate
+           Output: avg("gv$node_metrics".metric_value)
+           ->  Foreign Scan on public."gv$node_metrics"
+                 Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
+                 Remote Filter: ("gv$node_metrics".node_id = 999)
+                 Remote SQL: SELECT metric_value FROM public.local_node_metrics WHERE ((node_id = 999))
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+         Remote Filter: ("gv$node_metrics_1".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision))
+(14 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+ node_id | metric_name | metric_value 
+---------+-------------+--------------
+(0 rows)
+
+-- Mixed NULL and non-NULL parameters: $1 is a real value, $2 is NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+   Sort Key: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name
+   InitPlan 1 (returns $0)
+     ->  Aggregate
+           Output: avg("gv$node_metrics".metric_value)
+           ->  Foreign Scan on public."gv$node_metrics"
+                 Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value, "gv$node_metrics".event_count, "gv$node_metrics".total_bytes, "gv$node_metrics".ratio, "gv$node_metrics".is_healthy, "gv$node_metrics".tag, "gv$node_metrics".status, "gv$node_metrics".created_at, "gv$node_metrics".updated_at
+                 Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           Output: min("gv$node_metrics_1".event_count)
+           ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                 Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value, "gv$node_metrics_1".event_count, "gv$node_metrics_1".total_bytes, "gv$node_metrics_1".ratio, "gv$node_metrics_1".is_healthy, "gv$node_metrics_1".tag, "gv$node_metrics_1".status, "gv$node_metrics_1".created_at, "gv$node_metrics_1".updated_at
+                 Remote Filter: ("gv$node_metrics_1".node_id = 999)
+                 Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((node_id = 999))
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+         Remote Filter: (("gv$node_metrics_2".metric_value > $0) AND ("gv$node_metrics_2".event_count > $1))
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+(20 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+ node_id | metric_name | metric_value 
+---------+-------------+--------------
+(0 rows)
 
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT node_id, metric_name
@@ -702,6 +829,64 @@ ORDER BY node_id, metric_name;
        3 | memory_usage
 (3 rows)
 
+-- Empty string subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+   Sort Key: "gv$node_metrics".node_id
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT*
+           Output: ''::character varying
+   ->  Foreign Scan on public."gv$node_metrics"
+         Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+         Remote Filter: (("gv$node_metrics".metric_name)::text = ($0)::text)
+         Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((metric_name = $1::character varying))
+(10 rows)
+
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+ node_id | metric_name |  tag  
+---------+-------------+-------
+       1 |             | EMPTY
+(1 row)
+
+-- NULL subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
+ORDER BY node_id, metric_name;
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT*
+           Output: NULL::character(5)
+   ->  Foreign Scan on public."gv$node_metrics"
+         Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+         Remote Filter: (NOT ("gv$node_metrics".tag IS DISTINCT FROM $0))
+         Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((NOT (tag IS DISTINCT FROM $1::character(5))))
+(10 rows)
+
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
+ORDER BY node_id, metric_name;
+ node_id | metric_name | tag 
+---------+-------------+-----
+       2 |             | 
+(1 row)
+
 --
 -- JOIN with an inline VALUES list
 --
@@ -735,16 +920,18 @@ JOIN (VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma'))
 ORDER BY ni.node_name, gv.metric_name;
  node_name | metric_name  | event_count 
 -----------+--------------+-------------
+ alpha     |              |          77
  alpha     | cpu_usage    |         100
  alpha     | disk_io      |          50
  alpha     | memory_usage |         200
  beta      | cpu_usage    |         150
  beta      | disk_io      |          75
  beta      | memory_usage |         180
+ beta      |              |          83
  gamma     | cpu_usage    |          90
  gamma     | disk_io      |          60
  gamma     | memory_usage |         250
-(9 rows)
+(11 rows)
 
 --
 -- UNION of filtered results
@@ -876,16 +1063,18 @@ FROM "gv$node_metrics"
 ORDER BY node_id, metric_name;
  node_id | metric_name  | ratio  | ratio_rounded 
 ---------+--------------+--------+---------------
+       1 |              |  0.001 |          0.00
        1 | cpu_usage    | 0.4551 |          0.46
        1 | disk_io      | 0.6001 |          0.60
        1 | memory_usage |  0.726 |          0.73
        2 | cpu_usage    | 0.6254 |          0.63
        2 | disk_io      |  0.895 |          0.90
        2 | memory_usage | 0.5558 |          0.56
+       2 |              |  0.001 |          0.00
        3 | cpu_usage    | 0.3853 |          0.39
        3 | disk_io      |  0.676 |          0.68
        3 | memory_usage | 0.9157 |          0.92
-(9 rows)
+(11 rows)
 
 -- Boolean logic
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -911,16 +1100,18 @@ FROM "gv$node_metrics"
 ORDER BY node_id, metric_name;
  node_id | metric_name  | is_healthy | is_unhealthy 
 ---------+--------------+------------+--------------
+       1 |              | t          | f
        1 | cpu_usage    | t          | f
        1 | disk_io      | t          | f
        1 | memory_usage | f          | t
        2 | cpu_usage    | t          | f
        2 | disk_io      | f          | t
        2 | memory_usage | t          | f
+       2 |              | t          | f
        3 | cpu_usage    | t          | f
        3 | disk_io      | t          | f
        3 | memory_usage | f          | t
-(9 rows)
+(11 rows)
 
 -- Char padding
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -950,10 +1141,12 @@ ORDER BY tag;
        1 | DSK01 |       5
        2 | DSK02 |       5
        3 | DSK03 |       5
+       1 | EMPTY |       5
        1 | MEM01 |       5
        2 | MEM02 |       5
        3 | MEM03 |       5
-(9 rows)
+       2 |       |        
+(11 rows)
 
 -- Timestamp extract
 EXPLAIN (VERBOSE, COSTS OFF)
@@ -1018,7 +1211,7 @@ LIMIT 3;
 ---------+--------------+------------------------------+------------------------------
        1 | memory_usage | Tue Jan 14 21:30:00 2025 PST | Tue Jan 14 22:30:00 2025 PST
        1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST | Wed Jan 15 03:30:00 2025 PST
-       1 | disk_io      | Wed Jan 15 08:30:00 2025 PST | Wed Jan 15 09:30:00 2025 PST
+       1 |              | Wed Jan 15 04:00:00 2025 PST | Wed Jan 15 05:00:00 2025 PST
 (3 rows)
 
 --
@@ -1046,16 +1239,18 @@ WHERE updated_at < NOW()
 ORDER BY node_id, metric_name;
  node_id | metric_name  |          updated_at          
 ---------+--------------+------------------------------
+       1 |              | Wed Jan 15 04:00:00 2025 PST
        1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST
        1 | disk_io      | Wed Jan 15 08:30:00 2025 PST
        1 | memory_usage | Tue Jan 14 21:30:00 2025 PST
        2 | cpu_usage    | Thu Feb 20 06:00:00 2025 PST
        2 | disk_io      | Thu Feb 20 15:00:00 2025 PST
        2 | memory_usage | Wed Feb 19 21:30:00 2025 PST
+       2 |              | Thu Feb 20 08:00:00 2025 PST
        3 | cpu_usage    | Mon Mar 10 02:00:00 2025 PDT
        3 | disk_io      | Mon Mar 10 08:00:00 2025 PDT
        3 | memory_usage | Sun Mar 09 21:00:00 2025 PDT
-(9 rows)
+(11 rows)
 
 -- Immutable built-in function (ABS) in predicate: pushed down because
 -- the function is built-in and immutable.

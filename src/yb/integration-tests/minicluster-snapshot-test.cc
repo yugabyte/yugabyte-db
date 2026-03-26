@@ -1639,6 +1639,24 @@ TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyD
   ASSERT_OK(create_partitioned_table(target_conn));
 }
 
+TEST_F(PgCloneTest, CloneWithSpecialCharsInDbName) {
+  const std::string kInjectionDbName = "a';alter database template0 rename to rdb;--";
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", pgwrapper::PqEscapeIdentifier(kInjectionDbName),
+      kSourceNamespaceName);
+  ASSERT_OK(status);
+
+  // Verify template0 was not renamed by SQL injection.
+  auto template0_count = ASSERT_RESULT(source_conn_->FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_database WHERE datname = 'template0'"));
+  ASSERT_EQ(template0_count, 1);
+
+  // Verify the cloned database is accessible and has the expected schema.
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kInjectionDbName));
+  auto count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, 0);
+}
+
 TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
   const std::string kRenamedNamespaceName = "testdb_renamed";
 

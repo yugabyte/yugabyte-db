@@ -16,6 +16,8 @@ rightNav:
 
 When deploying universes using an on-premises provider, YugabyteDB Anywhere relies on you to manually create the VMs for the database nodes and provide these pre-created VMs to YugabyteDB Anywhere.
 
+Using the `node-agent-provision.sh` script, you can automatically provision a VM, create the on-premises provider, and add the VM to the provider free pool of nodes.
+
 ## Prerequisites
 
 - Provide one, three, five, or more VM(s) with the following installed:

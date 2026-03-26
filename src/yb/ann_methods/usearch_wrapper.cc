@@ -190,7 +190,7 @@ class UsearchIndex :
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2)
         << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
-    if (backend_ == HnswBackend::YB_HNSW) {
+    if (backend_ == HnswBackend::YB_HNSW_USEARCH) {
       return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_);
     }
     try {
@@ -323,7 +323,7 @@ class UsearchIndex :
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
-  HnswBackend backend_;
+  const HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
   MemTrackerPtr mem_tracker_;
@@ -339,7 +339,9 @@ vector_index::VectorIndexIfPtr<Vector, DistanceResult>
     UsearchIndexFactory<Vector, DistanceResult>::Create(
     vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
     const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
-  if (backend == HnswBackend::YB_HNSW && mode == vector_index::FactoryMode::kLoad) {
+  LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
+      "Invalid backed for usearch index: " << HnswBackend_Name(backend);
+  if (backend == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
     return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
   }
   return std::make_shared<UsearchIndex<Vector, DistanceResult>>(

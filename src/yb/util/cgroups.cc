@@ -70,8 +70,8 @@ Result<std::string> ReadConfigFromPath(const std::string& path, size_t max_lengt
   std::string out(max_length + 1, '\0');
   ssize_t bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, out.data(), max_length + 1);
   if (static_cast<size_t>(bytes_read) > max_length) {
-    return STATUS_FROM_ERRNO(Format(
-        "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out), errno);
+    return STATUS_FORMAT(
+        IllegalState, "cgroup config $0 too long, first $1 bytes: $2", path, max_length + 1, out);
   }
 
   if (bytes_read == 0) {
@@ -112,7 +112,8 @@ Result<std::string> CpuRootPath() {
 }
 
 Result<std::string> ReadCpuGroup(
-    int64_t process_or_thread_id, std::optional<CgroupVersion> version = std::nullopt) {
+    int64_t process_or_thread_id, std::optional<CgroupVersion> version,
+    bool check_controllers = true) {
   // Arbitrary length that is definitely long enough.
   constexpr auto kMaxConfigLength = 65535uz;
   std::string cgroups = VERIFY_RESULT(ReadConfigFromPath(
@@ -137,15 +138,17 @@ Result<std::string> ReadCpuGroup(
     // Cgroups v2 format is a single line:
     // 0::/cgroup/path
     auto cgroup = cgroups.substr(3);
-    // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
-    // if CPU controller is available.
-    auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
-        Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
-        kMaxConfigLength)), ' ');
-    if (std::ranges::find(controllers, "cpu") != controllers.end()) {
-      return cgroup;
+    if (check_controllers) {
+      // Since Cgroups v2 has a unified hierarchy for all controllers, we also need to check
+      // if CPU controller is available.
+      auto controllers = StringSplit(VERIFY_RESULT(ReadConfigFromPath(
+          Format("$0$1/cgroup.controllers", VERIFY_RESULT(CpuRootPath()), cgroup),
+          kMaxConfigLength)), ' ');
+      if (std::ranges::find(controllers, "cpu") == controllers.end()) {
+        return STATUS(IllegalState, "CPU controller not delegated");
+      }
     }
-    return STATUS(IllegalState, "CPU controller not delegated");
+    return cgroup;
   }
 }
 
@@ -185,7 +188,8 @@ class CgroupManager {
     RSTATUS_DCHECK(!cpu_cgroup.empty(), IllegalState, "CPU controller not available");
     RSTATUS_DCHECK(cpu_cgroup != "/", IllegalState, "Cannot manage root cgroup");
     process_cpu_cgroup_ = cpu_cgroup;
-    process_cpu_cgroup_path_ = VERIFY_RESULT(CpuRootPath()) + cpu_cgroup;
+    cpu_root_path_ = VERIFY_RESULT(CpuRootPath());
+    process_cpu_cgroup_path_ = cpu_root_path_ + cpu_cgroup;
 
     if (clear) {
       RETURN_NOT_OK(CleanupAllChildCgroups(process_cpu_cgroup_path_));
@@ -203,6 +207,7 @@ class CgroupManager {
   Cgroup* default_thread_group() { return default_group_; }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
+  std::string_view cpu_root_path() { return cpu_root_path_; }
   std::string_view cpu_group_path() { return process_cpu_cgroup_path_; }
 
   bool initialized() { return initialized_; }
@@ -210,6 +215,7 @@ class CgroupManager {
  private:
   CgroupVersion version_;
   std::string process_cpu_cgroup_;
+  std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
   Cgroup* default_group_;
@@ -403,8 +409,56 @@ Status Cgroup::MoveCurrentThreadToGroup() {
   return WriteConfigToDescriptor(fd, AsString(thread_id));
 }
 
+Result<std::vector<int64_t>> Cgroup::ReadThreadIds() {
+  auto path = CgroupConfigPath(
+      name_, cgroup_manager.version() == CgroupVersion::kVersion1 ? "tasks" : "cgroup.threads");
+  VLOG(3) << "Read " << path;
+  int fd = VERIFY_ERRNO_FN_CALL(open, path.c_str(), O_RDONLY);
+  ScopeExit s([fd] { close(fd); });
+
+  constexpr ssize_t kReadSize = 4096;
+  ssize_t bytes_read;
+  std::string contents;
+  do {
+    std::array<char, kReadSize> buffer;
+    bytes_read = VERIFY_ERRNO_FN_CALL(read, fd, buffer.data(), kReadSize);
+    contents += std::string(buffer.data(), bytes_read);
+  } while (bytes_read == kReadSize);
+
+  if (contents.empty()) {
+    return std::vector<int64_t>{};
+  }
+
+  // Last byte is a newline, drop it.
+  contents.resize(contents.size() - 1);
+  std::vector<int64_t> ids;
+  for (const auto& id_str : StringSplit(contents, '\n')) {
+    ids.push_back(VERIFY_RESULT(CheckedStol<int64_t>(Slice(id_str))));
+  }
+  return ids;
+}
+
+Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
+  std::vector<std::string> names;
+  for (int64_t thread_id : VERIFY_RESULT(ReadThreadIds())) {
+    auto result = ReadConfigFromPath(
+        Format("/proc/$0/comm", thread_id), Thread::kMaxThreadNameInPerf + 1);
+    if (!result.ok()) {
+      // This is possible if thread has exited since ReadThreadIds().
+      LOG(WARNING) << "Failed to read /proc/" << thread_id << "/comm: " << result.status();
+      continue;
+    }
+    names.emplace_back(*result);
+  }
+  return names;
+}
+
 std::string Cgroup::full_name() const {
   return std::string(cgroup_manager.cpu_group()) + name_;
+}
+
+std::string Cgroup::path() const {
+  return std::string(cgroup_manager.cpu_root_path()) + full_name();
 }
 
 Cgroup* Cgroup::child(std::string_view name) {
@@ -425,6 +479,10 @@ Status SetupCgroupManagement(ClearChildCgroups clear) {
   return cgroup_manager.Init(clear);
 }
 
+bool CgroupManagementEnabled() {
+  return cgroup_manager.initialized();
+}
+
 Cgroup* RootCgroup() {
   return cgroup_manager.root_group();
 }
@@ -433,20 +491,27 @@ Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
 }
 
-Result<std::string> GetProcessCpuCgroup() {
+Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {
   return ReadCpuGroup(
-      getpid(),
-      cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt);
+      process_id == -1 ? getpid() : process_id,
+      cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt,
+      check_controllers);
 }
 
-Result<std::string> GetProcessCpuCgroupPath() {
-  return VERIFY_RESULT(CpuRootPath()) + VERIFY_RESULT(GetProcessCpuCgroup());
+Result<std::string> GetProcessCpuCgroupPath(int64_t process_id, bool check_controllers) {
+  return VERIFY_RESULT(CpuRootPath()) +
+         VERIFY_RESULT(GetProcessCpuCgroup(process_id, check_controllers));
 }
 
 Result<std::string> GetThreadCpuCgroup(int64_t thread_id) {
   return ReadCpuGroup(
       thread_id == -1 ? Thread::CurrentThreadId() : thread_id,
       cgroup_manager.initialized() ? std::make_optional(cgroup_manager.version()) : std::nullopt);
+}
+
+Status MoveProcessToCgroupPath(std::string_view cgroup_path) {
+  LOG(INFO) << "Move process to cgroup: " << cgroup_path;
+  return WriteConfigToPath(Format("$0/cgroup.procs", cgroup_path), AsString(getpid()));
 }
 
 } // namespace yb

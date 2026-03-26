@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
@@ -1297,8 +1298,14 @@ public enum TaskType {
   UpdateAndPersistKubernetesImmutableYbc(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class),
 
-  TablespaceValidationOnRemove(
-      com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove.class),
+  CheckTabletsMovementAvailable(CheckTabletsMovementAvailable.class),
+
+  CheckTabletsMovementAvailableForNode(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode.class),
+
+  MoveTablesTask(com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask.class),
+
+  DropTablespacesTask(com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask.class),
 
   CheckServiceLiveness(com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness.class),
 

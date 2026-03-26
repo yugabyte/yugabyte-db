@@ -34,18 +34,15 @@ import org.yb.util.Timeouts;
 public class BasePgListenNotifyTest extends BasePgSQLTest {
 
   /**
-   * Adds the {@code TEST_ysql_yb_enable_listen_notify} flag to the given map.
-   * Can be called from any test class's {@code getTServerFlags} or
-   * {@code getMasterFlags} override.
+   * Adds LISTEN/NOTIFY flags to the given map.
    */
   public static void addListenNotifyFlags(Map<String, String> flagMap) {
-    flagMap.put("TEST_ysql_yb_enable_listen_notify", "true");
+    flagMap.put("ysql_yb_enable_listen_notify", "true");
   }
 
   /**
    * Waits for the {@code yb_system} database and the
-   * {@code pg_yb_notifications} table to exist. Callable from any test class
-   * that has access to a default connection and a {@link ConnectionBuilder}.
+   * {@code pg_yb_notifications} table to exist.
    */
   protected static void waitForNotificationsTableReady(
       Connection defaultConn, ConnectionBuilder connBuilder) throws Exception {

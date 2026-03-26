@@ -52,21 +52,6 @@ public class DecommissionNode extends EditUniverseTaskBase {
     runBasicChecks(getUniverse());
   }
 
-  // Check that there is a place to move the tablets and if not, make sure there are no tablets
-  // assigned to this tserver. Otherwise, do not allow the remove node task to succeed.
-  public void performPrecheck(NodeDetails currentNode) {
-    Universe universe = getUniverse();
-    if (!isTabletMovementAvailable(taskParams().nodeName)) {
-      log.debug(
-          "Tablets have nowhere to move off of tserver on node: {}. Checking if there are still"
-              + " tablets assigned to it. A healthy tserver should not be removed.",
-          currentNode.getNodeName());
-      // TODO: Move this into a subtask.
-      checkNoTabletsOnNode(universe, currentNode);
-    }
-    log.debug("Pre-check succeeded");
-  }
-
   @Override
   protected void createPrecheckTasks(Universe universe) {
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
@@ -87,7 +72,7 @@ public class DecommissionNode extends EditUniverseTaskBase {
       boolean alwaysWaitForDataMove =
           confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
       if (alwaysWaitForDataMove) {
-        performPrecheck(currentNode);
+        createCheckTabletsMovementAvailableTask(taskParams().nodeName);
       }
     }
     createComprehensivePrecheckTasks(universe);

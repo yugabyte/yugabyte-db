@@ -49,6 +49,10 @@ void ProcessWrapper::Kill(int signal) {
 
 void ProcessWrapper::Shutdown() { Kill(); }
 
+std::optional<int64_t> ProcessWrapper::ProcessId() {
+  return proc_ ? std::make_optional(proc_->pid()) : std::nullopt;
+}
+
 // ------------------------------------------------------------------------------------------------
 // ProcessWrapper: managing one instance of a child process
 // ------------------------------------------------------------------------------------------------
@@ -228,6 +232,10 @@ Status ProcessSupervisor::Init(YbSubProcessState target_state) {
   }
 
   return Status::OK();
+}
+
+std::optional<int64_t> ProcessSupervisor::ProcessId() {
+  return process_wrapper_->ProcessId();
 }
 
 }  // namespace yb

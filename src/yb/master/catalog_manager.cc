@@ -609,13 +609,16 @@ DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 static constexpr char kHnswlib[] = "hnswlib";
 static constexpr char kUsearch[] = "usearch";
 static constexpr char kYbHnsw[] = "yb_hnsw";
+static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
+static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
-DEFINE_RUNTIME_string(
-    vector_index_backend, kYbHnsw,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"hnswlib\", and \"usearch\".");
+DEFINE_RUNTIME_string(vector_index_backend, kYbHnswUsearch,
+    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
+    "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
+    "\"yb_hnsw_usearch\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw));
+    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
 
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
@@ -640,6 +643,7 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -4533,8 +4537,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       auto backend = FLAGS_vector_index_backend;
       if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (backend == kYbHnsw) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
+      } else if (backend == kYbHnswUsearch || backend == kYbHnsw) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
+      } else if (backend == kYbHnswHnswlib) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
@@ -7261,12 +7267,14 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  // Changing CDCSDK streams' state associated with the deleted tables to DELETING_MATADATA if
-  // streaming of dropped / re-written tables by CDC is disabled.
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
   // the streams associated with the 'deleted_table_ids' are not being dropped.
   if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
-    RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+    } else {
+      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    }
   }
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
@@ -10135,7 +10143,11 @@ Status CatalogManager::DeleteYsqlDBTables(
   for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
   }
-  RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+    RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(table_ids));
+  } else {
+    RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  }
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto& [table, _] : tables_and_locks) {

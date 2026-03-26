@@ -636,10 +636,25 @@ std::string GetVectorIndexStorageName(const PgVectorIdxOptionsPB& options) {
   return kVectorIndexDirPrefix + options.id();
 }
 
+std::string HnswBackendExtension(HnswBackend backend) {
+  switch (backend) {
+    case USEARCH:
+      return "usearch"s;
+    case YB_HNSW_USEARCH: [[fallthrough]];
+    case YB_HNSW_HNSWLIB:
+      // Block based representation does not depend on source index, so could use the same
+      // extension because on disk format is compatible.
+      return "yb_hnsw"s;
+    case HNSWLIB:
+      return "hnswlib"s;
+  }
+  FATAL_INVALID_ENUM_VALUE(HnswBackend, backend);
+}
+
 std::string GetVectorIndexChunkFileExtension(const PgVectorIdxOptionsPB& options) {
   switch (options.idx_type()) {
     case PgVectorIndexType::HNSW:
-      return "." + boost::to_lower_copy(HnswBackend_Name(options.hnsw().backend()));
+      return "." + HnswBackendExtension(options.hnsw().backend());
     case PgVectorIndexType::DEPRECATED_DUMMY: [[fallthrough]];
     case PgVectorIndexType::IVFFLAT: [[fallthrough]];
     case PgVectorIndexType::UNKNOWN_IDX:

@@ -70,12 +70,22 @@ class Cgroup {
 
   Status MoveCurrentThreadToGroup() EXCLUDES(mutex_);
 
+  // These functions have an inherent race condition: the threads they read may change
+  // cgroups or exit immediately after reading, and the thread id may even be reused by
+  // another thread before returning. They should only be used for testing and for
+  // informational purposes like logs and debugging UI.
+  Result<std::vector<int64_t>> ReadThreadIds();
+  Result<std::vector<std::string>> ReadThreadNames();
+
   // The last part of the cgroup name, e.g. name() of /sys/fs/cgroup/a/b/c is "c".
   std::string_view name() const { return name_; }
 
   // The full cgroup name, matching entries in /proc/$PID/cgroup, e.g. name() of
   // /sys/fs/cgroup/a/b/c is "/a/b/c".
   std::string full_name() const;
+
+  // The full cgroup path, e.g. /sys/fs/cgroup/a/b/c.
+  std::string path() const;
 
   Cgroup* parent() const { return parent_; }
 
@@ -136,6 +146,8 @@ class Cgroup {
 // are created in the default thread cgroup.
 Status SetupCgroupManagement(ClearChildCgroups clear);
 
+bool CgroupManagementEnabled();
+
 // Root cgroup that the process is under. No threads should be placed into this cgroup.
 Cgroup* RootCgroup();
 
@@ -151,11 +163,13 @@ Cgroup* RootCgroup();
 // explicitly.
 Cgroup* DefaultThreadCgroup();
 
-Result<std::string> GetProcessCpuCgroup();
+Result<std::string> GetProcessCpuCgroup(int64_t process_id = -1, bool check_controllers = true);
 
-Result<std::string> GetProcessCpuCgroupPath();
+Result<std::string> GetProcessCpuCgroupPath(int64_t process_id = -1, bool check_controllers = true);
 
 Result<std::string> GetThreadCpuCgroup(int64_t thread_id = -1);
+
+Status MoveProcessToCgroupPath(std::string_view cgroup_path);
 
 } // namespace yb
 #endif // __linux__

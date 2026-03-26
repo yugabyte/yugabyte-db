@@ -81,9 +81,13 @@ REGISTER_CALLBACK(qos_max_db_cpu_percent, "qos_max_db_cpu_percent update callbac
 REGISTER_CALLBACK(qos_evaluation_window_us, "qos_evaluation_window update callback",
     [] { flag_update_callbacks.UpdateQosDbCpuLimits(); });
 
+Result<Cgroup&> GetCgroupForDb(PgOid db_oid) {
+  return VERIFY_RESULT_REF(
+      DCHECK_NOTNULL(RootCgroup())->CreateOrLoadChild(Format("db_$0", db_oid)));
+}
+
 Result<Cgroup&> SetupCgroupForDb(PgOid db_oid) {
-  auto& cgroup =
-      VERIFY_RESULT_REF(DCHECK_NOTNULL(RootCgroup())->CreateOrLoadChild(Format("db_$0", db_oid)));
+  auto& cgroup = VERIFY_RESULT_REF(GetCgroupForDb(db_oid));
   RETURN_NOT_OK(cgroup.UpdateCpuLimits(
       FLAGS_qos_max_db_cpu_percent / 100.0, FLAGS_qos_evaluation_window_us));
   return cgroup;
@@ -122,6 +126,21 @@ Status TServerCgroupManager::UpdateDbCpuLimits(double max_cpu, int period) {
     RETURN_NOT_OK(cgroup.UpdateCpuLimits(max_cpu, period));
   }
   return Status::OK();
+}
+
+Status TServerCgroupManager::MovePgBackendToCgroup(PgOid db_oid) {
+  if (!FLAGS_enable_qos) {
+    return Status::OK();
+  }
+
+  // For PG backend, we do a simplified setup where we do not need to create a TServerCgroupManager
+  // object and where we do not set the CPU limits. This lets us ensure that only TServer needs to
+  // know about what limits to set things to.
+  // This does mean that for the brief period of time where a PG backend starts up in a new
+  // database, we have a database cgroup with the wrong limits. But such a backend will communicate
+  // with TServer, so we can load and properly set up the cgroup on the TServer very soon after.
+  auto& cgroup = VERIFY_RESULT_REF(GetCgroupForDb(db_oid));
+  return cgroup.MoveCurrentThreadToGroup();
 }
 
 } // namespace yb::tserver

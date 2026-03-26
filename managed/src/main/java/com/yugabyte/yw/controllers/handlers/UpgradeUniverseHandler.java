@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -96,7 +95,6 @@ public class UpgradeUniverseHandler {
   private final XClusterUniverseService xClusterUniverseService;
   private final TelemetryProviderService telemetryProviderService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
-  private final GFlagsValidation gFlagsValidation;
 
   @Inject
   public UpgradeUniverseHandler(
@@ -109,8 +107,7 @@ public class UpgradeUniverseHandler {
       AutoFlagUtil autoFlagUtil,
       XClusterUniverseService xClusterUniverseService,
       TelemetryProviderService telemetryProviderService,
-      SoftwareUpgradeHelper softwareUpgradeHelper,
-      GFlagsValidation gFlagsValidation) {
+      SoftwareUpgradeHelper softwareUpgradeHelper) {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
@@ -121,7 +118,6 @@ public class UpgradeUniverseHandler {
     this.xClusterUniverseService = xClusterUniverseService;
     this.telemetryProviderService = telemetryProviderService;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
-    this.gFlagsValidation = gFlagsValidation;
   }
 
   public UUID restartUniverse(
@@ -290,59 +286,11 @@ public class UpgradeUniverseHandler {
       userIntent.tserverGFlags = GFlagsUtil.trimFlags(userIntent.tserverGFlags);
       requestParams.masterGFlags = userIntent.masterGFlags;
       requestParams.tserverGFlags = userIntent.tserverGFlags;
-
-      // Merge sensitive gflags in specific gflags if present
-      if (userIntent.specificGFlags != null) {
-        SpecificGFlags existingSpecificGFlags =
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags;
-        userIntent.specificGFlags =
-            GFlagsUtil.mergeSensitiveSpecificGFlags(
-                existingSpecificGFlags,
-                userIntent.specificGFlags,
-                gFlagsValidation,
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-      }
     } else {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       GFlagsUtil.trimFlags(userIntent.specificGFlags);
       requestParams.masterGFlags = GFlagsUtil.trimFlags(requestParams.masterGFlags);
       requestParams.tserverGFlags = GFlagsUtil.trimFlags((requestParams.tserverGFlags));
-
-      // Merge sensitive gflags to preserve actual values when REDACTED is received
-      UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-      if (universeDetails != null && universeDetails.clusters != null) {
-        for (UniverseDefinitionTaskParams.Cluster cluster : universeDetails.clusters) {
-          if (cluster.userIntent != null) {
-            Map<String, String> existingMasterGFlags = cluster.userIntent.masterGFlags;
-            Map<String, String> existingTserverGFlags = cluster.userIntent.tserverGFlags;
-
-            requestParams.masterGFlags =
-                GFlagsUtil.mergeSensitiveGFlags(
-                    existingMasterGFlags,
-                    requestParams.masterGFlags,
-                    gFlagsValidation,
-                    cluster.userIntent.ybSoftwareVersion);
-            requestParams.tserverGFlags =
-                GFlagsUtil.mergeSensitiveGFlags(
-                    existingTserverGFlags,
-                    requestParams.tserverGFlags,
-                    gFlagsValidation,
-                    cluster.userIntent.ybSoftwareVersion);
-
-            // Merge sensitive gflags in specific gflags if present
-            if (requestParams.getPrimaryCluster() != null
-                && requestParams.getPrimaryCluster().userIntent.specificGFlags != null) {
-              SpecificGFlags existingSpecificGFlags = cluster.userIntent.specificGFlags;
-              requestParams.getPrimaryCluster().userIntent.specificGFlags =
-                  GFlagsUtil.mergeSensitiveSpecificGFlags(
-                      existingSpecificGFlags,
-                      requestParams.getPrimaryCluster().userIntent.specificGFlags,
-                      gFlagsValidation,
-                      cluster.userIntent.ybSoftwareVersion);
-            }
-          }
-        }
-      }
     }
 
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.

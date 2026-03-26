@@ -959,6 +959,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean defaultPartition;
     @ApiModelProperty private PlacementInfo placement;
     @ApiModelProperty private int replicationFactor;
+    @ApiModelProperty private String tablespaceName;
   }
 
   /** The user defined intent for the universe. */

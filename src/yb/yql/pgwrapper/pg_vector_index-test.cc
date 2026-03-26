@@ -104,7 +104,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
+YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
 ////////////////////////////////////////////////////////
@@ -133,11 +133,14 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       case VectorIndexEngine::kUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
         break;
-      case VectorIndexEngine::kYbHnsw:
+      case VectorIndexEngine::kYbHnswUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
         break;
       case VectorIndexEngine::kHnswlib:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+        break;
+      case VectorIndexEngine::kYbHnswHnswlib:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
         break;
     }
 
@@ -1203,11 +1206,14 @@ TEST_P(PgVectorIndexTest, Options) {
       switch (Engine()) {
         case VectorIndexEngine::kUsearch:
           break;
-        case VectorIndexEngine::kYbHnsw:
-          expected_options += " backend: YB_HNSW";
+        case VectorIndexEngine::kYbHnswUsearch:
+          expected_options += " backend: YB_HNSW_USEARCH";
           break;
         case VectorIndexEngine::kHnswlib:
           expected_options += " backend: HNSWLIB";
+          break;
+        case VectorIndexEngine::kYbHnswHnswlib:
+          expected_options += " backend: YB_HNSW_HNSWLIB";
           break;
       }
       if (!options.empty()) {

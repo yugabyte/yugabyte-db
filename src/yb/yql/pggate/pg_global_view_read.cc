@@ -21,13 +21,28 @@ PgGlobalViewRead::PgGlobalViewRead(
     : pg_client_(pg_client), query_(query), tserver_uuids_(std::move(tserver_uuids)) {}
 
 void PgGlobalViewRead::ResetScan() {
+  // params_ is not cleared here: postgresReScanForeignScan sets cursor_exists to false,
+  // forcing create_cursor to run again on the next iterate, which refreshes params via
+  // SetParams before the scan begins.
   next_tserver_idx_ = 0;
+}
+
+void PgGlobalViewRead::SetParams(int num_params, const char** values) {
+  DCHECK(values != nullptr);
+  params_.resize(num_params);
+  for (int i = 0; i < num_params; ++i) {
+    if (values[i]) {
+      params_[i] = values[i];
+    } else {
+      params_[i] = std::nullopt;
+    }
+  }
 }
 
 YbcRemotePgExecResult PgGlobalViewRead::ExecScan() {
   YbcRemotePgExecResult result = { nullptr, 0 };
   while (next_tserver_idx_ < tserver_uuids_.size()) {
-    auto res = pg_client_.RemoteExec(query_, tserver_uuids_[next_tserver_idx_++]);
+    auto res = pg_client_.RemoteExec(query_, tserver_uuids_[next_tserver_idx_++], params_);
     if (!res.ok()) {
       LOG(WARNING) << "Failed to execute remote pg query: " << res.status();
       continue;

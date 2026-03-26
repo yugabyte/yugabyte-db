@@ -44,22 +44,22 @@ jobs:
         include:
           - name: "GCC 12, fastdebug, AlmaLinux 8"
             os: ubuntu-24.04
-            yb_build_args: --gcc12 fastdebug --no-linuxbrew
+            yb_build_args: --gcc12 fastdebug
             docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
           - name: "GCC 12, debug, AlmaLinux 9"
             os: ubuntu-24.04
-            yb_build_args: --gcc12 debug --no-linuxbrew
+            yb_build_args: --gcc12 debug
             docker_image: yugabyteci/yb_build_infra_almalinux9_x86_64:latest
 
           - name: "Clang 21, release, AlmaLinux 8"
             os: ubuntu-24.04
-            yb_build_args: --clang21 release --no-linuxbrew
+            yb_build_args: --clang21 release
             docker_image: yugabyteci/yb_build_infra_almalinux8_x86_64:latest
 
           - name: "Clang 21, debug, Ubuntu 22.04"
             os: ubuntu-24.04
-            yb_build_args: --clang21 debug --no-linuxbrew
+            yb_build_args: --clang21 debug
             docker_image: yugabyteci/yb_build_infra_ubuntu2204_x86_64:latest
     if: >
       (github.event_name == 'push' &&
@@ -117,10 +117,12 @@ jobs:
                     echo No base reference: Skipping Lint Step
                   fi
                   echo ::group::Building YugabyteDB
-                  ./yb_build.sh release \
+                  ./yb_build.sh \
                     --download-thirdparty \
                     --ninja \
                     --shellcheck \
+                    --no-java \
+                    --no-linuxbrew \
                     ${{ matrix.yb_build_args }}
                   echo ::endgroup::
                   df -H /

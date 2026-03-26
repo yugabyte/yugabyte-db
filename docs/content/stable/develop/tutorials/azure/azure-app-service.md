@@ -4,7 +4,6 @@ headerTitle: Use Azure App Service with YugabyteDB
 linkTitle: Azure App Service
 description: Build Applications Using Azure App Service and YugabyteDB
 headcontent: Extend scalability and reliability to the data layer
-image: /images/tutorials/azure/icons/App-Service-Icon.svg
 menu:
   stable_develop:
     identifier: tutorials-azure-app-service

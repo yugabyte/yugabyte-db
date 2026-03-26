@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
@@ -157,6 +158,11 @@ public class PlacementInfo {
   @JsonIgnore
   public PlacementAZ findByAZUUID(UUID azUUID) {
     return azStream().filter(az -> Objects.equals(azUUID, az.uuid)).findFirst().orElse(null);
+  }
+
+  @JsonIgnore
+  public PlacementAZ findByAZCode(String azCode) {
+    return azStream().filter(az -> StringUtils.equals(azCode, az.name)).findFirst().orElse(null);
   }
 
   @Override

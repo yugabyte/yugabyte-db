@@ -13,7 +13,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -31,7 +34,9 @@ import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -330,9 +335,34 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (cluster.isGeoPartitioned() && cluster.userIntent.enableYSQL) {
-      // Currently we rely on user to modify partitions correctly after doing edit.
-      // So we don't check tablespace placement, only the existence.
-      createTablespacesTasks(cluster.getPartitions(), true);
+      boolean autoTablespaceUpdate =
+          confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
+      Universe oldUniverse = getUniverse();
+      Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> oldPartitions =
+          oldUniverse.getCluster(cluster.uuid).getPartitions().stream()
+              .collect(Collectors.toMap(p -> p.getUuid(), p -> p));
+      List<UniverseDefinitionTaskParams.PartitionInfo> toMove = new ArrayList<>();
+      List<UniverseDefinitionTaskParams.PartitionInfo> newPartitions = new ArrayList<>();
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        UniverseDefinitionTaskParams.PartitionInfo old = oldPartitions.get(partition.getUuid());
+        if (old == null) {
+          newPartitions.add(partition);
+        } else if (autoTablespaceUpdate) {
+          TableSpaceStructures.TableSpaceInfo tableSpaceInfo =
+              TableSpaceUtil.partitionToTablespace(partition);
+          TableSpaceStructures.TableSpaceInfo oldTableSpaceInfo =
+              TableSpaceUtil.partitionToTablespace(old);
+          if (!tableSpaceInfo.equals(oldTableSpaceInfo)) {
+            toMove.add(partition);
+          }
+        }
+      }
+      if (!newPartitions.isEmpty()) {
+        createTablespacesTasks(newPartitions, false);
+      }
+      if (!toMove.isEmpty()) {
+        createMoveTablesTasks(toMove);
+      }
     }
 
     if (!nodesToBeRemoved.isEmpty()) {

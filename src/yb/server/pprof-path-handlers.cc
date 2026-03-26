@@ -64,15 +64,15 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/server/webserver.h"
-#include "yb/server/html_print_helper.h"
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
+#include "yb/util/html_print_helper.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/spinlock_profiling.h"
-#include "yb/util/status_log.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_util.h"

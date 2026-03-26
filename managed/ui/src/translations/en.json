@@ -2422,6 +2422,7 @@
       "includeYugabyteVersions": "Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog",
       "addLinuxVersion": "Add Linux Version",
       "editLinuxVersion": "Edit Linux Version",
+      "viewLinuxVersion": "View Linux Version", 
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
@@ -2452,6 +2453,7 @@
         "useIMDSv2Info": "This should be turned on if the Image bundle requires Instance Metadata Service v2",
         "menuActions": {
           "edit": "Edit",
+          "view": "View",
           "delete": "Delete",
           "setDefault": "Set as default",
           "alreadyIsDefault": "This version is already set as the default.",
@@ -3474,8 +3476,8 @@
         "general": "General",
         "generalSettings": "General Settings",
         "placement": "Placement",
-        "resilienceAndRegions": "Resilience and Regions",
-        "nodesAndAvailabilityZone": "Nodes and Availability Zones",
+        "resilienceAndRegions": "Regions",
+        "nodesAndAvailabilityZone": "Availability Zones and Nodes",
         "hardware": "Hardware",
         "instanceSettings": "Instance Settings",
         "database": "Database",
@@ -3500,7 +3502,7 @@
         "errMsg": {
           "universeNameRequired": "Universe name is required",
           "cloudProviderRequired": "Cloud provider is required",
-          "universeNameUnique": "Universe with this name already exists",
+          "universeNameUnique": "Universe name \"{{display_name}}\" is already taken. Use a different name.",
           "providerConfigurationRequired": "Provider configuration is required",
           "databaseVersionRequired": "Database version is required"
         }
@@ -3515,7 +3517,7 @@
         },
         "formType": {
           "guidedMode": "Guided Mode",
-          "freeForm": "Free Form"
+          "expertMode": "Expert Mode"
         },
         "singleNode": {
           "availabilityZone": "Availability Zone",
@@ -3525,52 +3527,62 @@
           "cautionMsg": "Single node clusters are not resilient to outages and will be subject to downtime during operations that require a restart."
         },
         "helpText": "Advanced placement options such as  <a>Read Replicas</a>  and  <a>Geo Partitioning</a>  can be configured post cluster creation.",
-        "freeFormHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
-        "freeFormFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+        "expertModeHelpText": "Set the replication factor for your data.  <a>What is this?</a>",
+        "expertModeFaultToleranceMinMsg": "Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
         "regions": "Regions",
         "replicationFactor": "Replication Factor",
+        "availabilityZonesCount": "{{count}} Availability Zone",
         "errMsg": {
           "regions": "Region is required",
           "resilienceFormMode": "Resilience form mode is required",
           "resilienceType": "Resilience type is required",
           "singleAvailabilityZoneRequired": "Availability zone is required for single node clusters",
-          "regionErr": "<b>Invalid region count!</b> You have selected <b>{{selected_regions}}</b> regions. To support the chosen fault tolerance <b>{{required_regions}}</b> regions are required. Update your selection to proceed.",
-          "azErrFew": "<b>Invalid availability zone count!</b> The selected regions provide total of <b>{{availability_zone}} availability zones</b>. To support the chosen fault tolerance <b>{{required_zones}} availability zones</b> are required. Update your selection to proceed.",
-          "azErrMany": "<b>Invalid availability zone count!</b> You have selected <b>{{selected_regions}} regions</b>. Considering 1 availability zone per region, this would exceed the requirement for <b>{{required_zones}} availability zones</b>. Update your selection to proceed.",
-          "nodeErr": "<b>Invalid region count!</b>  You have selected <b>{{selected_regions}} regions</b>. To support the chosen fault tolerance <b>1 region</b> is required. Update your selection to proceed.",
+          "regionErrExceeds": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_regions}} regions</b>. The current configuration exceeds this limit.",
+          "regionErrTooFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_regions}} regions</b>. The current configuration falls below this requirement.",
+          "regionUnavailable": "<b>Regions unavailable:</b> The following region is not available at this time: <b>“{{region_display}}”</b>. Select a different region or try again later.",
+          "azErrFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The selected regions in total provide fewer than <b>{{required_zones}} availability zones</b>.",
+          "azErrMany": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. Selecting more than <b>{{required_zones}} regions</b> automatically exceeds this limit.",
+          "nodeErr": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>1 region</b>. You have selected <b>{{selected_regions}} regions</b>. Update your selection to proceed.",
           "regionFieldRegionsFew": "Must have {{required_regions}} regions to support the selected fault tolerance.",
           "regionFieldAzFew": "Must have {{az_needed}} availability zones. Selected regions provide total of {{available_az}} availability zones.",
           "moreNodesNone": "Fault tolerance <b>None</b> supports only single node deployments."
         },
         "guidedMode": {
-          "instruction": "Set the resilience for your cluster.",
-          "helpText": "What is this?",
-          "faultTolerance": "Fault Tolerance",
+          "helpText": "Select the cluster’s <a>resilience</a> level to guide the setup.",
+          "selectedResilienceRequires": "Selected resilience level requires:",
+          "automaticReplicationFactor": "Replication factor {{replication_factor}} will be applied automatically.",
+          "wordRegion": "region",
+          "wordAvailabilityZone": "availability zone",
+          "wordNode": "node",
+          "requirementTagRegions": "{{count}} {{entity}}",
+          "requirementTagRegionsOnePlus": "1+ {{entity}}",
+          "requirementTagAvailabilityZones": "{{count}} {{entity}}",
+          "requirementTagNodesMinimum": "{{count}} {{entity}} minimum",
+          "requirementTagAzRangeNodeLevel": "1 to {{max}} {{entity}}",
+          "nodesStepTitleOutageResilience": "{{count}} {{entity}} outage resilience requires:",
+          "noneResilienceCautionMsg": "Clusters that are not resilient to outages are subject to downtime during failures and operations that require a restart.",
+          "cautionLabel": "Caution!",
+          "resilienceOutageWord": "outage",
           "REGION_LEVEL": {
-            "title": "Region Level",
+            "title": "Region",
             "subText": "Resilient to region outages.",
             "name": "region"
           },
           "NODE_LEVEL": {
-            "title": "Node Level",
+            "title": "Node",
             "subText": "Resilient to node outages but not availability zone outages.",
             "name": "node"
           },
           "AZ_LEVEL": {
-            "title": "Availability Zone Level",
+            "title": "Availability",
             "subText": "Resilient to availability zone outages.",
             "name": "availability zone"
           },
           "NONE": {
-            "title": "None",
-            "subText": "Not resilient to outages."
+            "title": "None (Not resilient)",
+            "subText": "Not resilient to any outages"
           },
-          "resilientTo": "Resilient to",
-          "outages": " outages",
-          "faultToleranceNone": {
-            "msg": "Clusters with no fault tolerance won't be resilient to outages and are subject to downtime during operations that require a restart.",
-            "caution": "Caution!"
-          }
+          "resilientTo": "Resilient to"
         },
         "infoTooltips": {
           "resilience": {
@@ -3578,13 +3590,11 @@
             "header": "What is Resilience?",
             "msg": "Resiliency is the ability to withstand and recover from various types of failures. A resilient database system has a high fault tolerance. It is designed to maintain data integrity, accessibility, and continuity of operations, even in the face of adverse events.",
             "learnMore": "Learn More"
-          },
-          "guidedMode": "Guided mode uses the selected cluster's fault tolerance to suggest optimal setup requirements for achieving the intended outcome.",
-          "freeForm": "Free form flow is optimal for users who want to create unique cluster setups. <b>(Advanced)</b>"
+          }
         }
       },
       "nodesAndAvailability": {
-        "freeForm": {
+        "expertMode": {
           "nodes": "Nodes",
           "totalNodes": "Total Nodes"
         },
@@ -3595,9 +3605,16 @@
           "totalNodes": "Total Nodes"
         },
         "availabilityZones": {
-          "title": "Availability Zones",
+          "title": "Availability Zones and Nodes",
           "region": "Region {{region_count}}",
           "add_button": "Add Availability Zone",
+          "tooltips": {
+            "regionTag": "You can add or remove regions in the previous step (Regions).",
+            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.",
+            "regionNoMoreAz": "This region has only {{count}} availability zones.",
+            "guidedNodeCount": "To set up a cluster with different node counts per availability zone, switch to <b>Expert Mode</b> in the previous step (Regions).",
+            "learnMore": "Learn more"
+          },
           "errMsg": {
             "selectedAz": "Selected availability zones: <b>{{count}}</b>",
             "requiredAz": "Required availability zones: <b>{{count}}</b>"
@@ -3606,7 +3623,7 @@
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
           "disabledToolip": "you need atleast {{nodeCount}} nodes to enable this option",
-          "title": "Advanced Configuration",
+          "title": "Master Node Placement (Optional)",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
           "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
@@ -3638,10 +3655,7 @@
           "title": "YugabyteDB 101",
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
-          "FtAndRf": "Correlation between Fault Tolerance and Replication Factor",
-          "FtAndRfAns": "To achieve a FT of <highlight>f</highlight> fault domains, the primary cluster has to be configured with a RF of at least <highlight>2f + 1</highlight>.",
-          "tip": "<b>Tip!</b> When using Guided Mode, the required replication factor is automatically configured and applied based on your selected fault tolerance. ",
-          "learn": "<a>Learn more about Replication Factor</a> and <a2>Fault Tolerance.</a2>"
+          "learn": "<a>Learn more about Replication Factor .</a>"
         },
         "prefferedInfoModal": {
           "title": "YugabyteDB 101",
@@ -3651,9 +3665,15 @@
           "note": "<b>Note:</b><br><br> <li>If no zone is set as preferred, client requests are equally distributed across all zones.</li> <li>Certain exceptions, such as <a>follower reads</a>, will diverge read requests.</li><li>You can set or change the preferred availability zone after cluster creation.</li>"
         },
         "errMsg": {
-          "lessNodes": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} nodes</b> are required. Update your selection to proceed. ",
-          "lessNodesDedicated": "<b>Invalid node count!</b>  You have selected <b>{{nodeCount}} T-server nodes</b>. To support the chosen fault tolerance <b>{{faultToleranceNeeded}} T-server nodes</b> are required. Update your selection to proceed. ",
-          "missingPreferredValue": "Preferred rank should be continuous. Missing Rank {{missingValue}}."
+          "azCountTooFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration falls below this requirement.",
+          "azCountTooMany": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration exceeds this requirement.",
+          "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
+          "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
+          "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
+          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires <b>one region</b> with <b>one availability zone</b>. Remove extra zones or regions.",
+          "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
+          "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
+          "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps."
         }
       },
       "instanceSettings": {

@@ -30,7 +30,6 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/server/html_print_helper.h"
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet.h"
@@ -43,6 +42,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 
 #include "yb/util/env.h"
+#include "yb/util/html_print_helper.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/url-coding.h"

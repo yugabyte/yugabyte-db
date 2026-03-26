@@ -58,6 +58,8 @@ const MonoTime& PGPostgresEpoch() {
   return result;
 }
 
+std::string PqEscapeStringConn(const std::string& input);
+
 namespace {
 
 // Converts the given element of the ExecStatusType enum to a string.
@@ -118,19 +120,19 @@ std::string BuildConnectionString(const PGConnSettings& settings, bool mask_pass
   result.reserve(512);
   result += Format("host=$0 port=$1", settings.host, settings.port);
   if (!settings.dbname.empty()) {
-    result += Format(" dbname=$0", PqEscapeLiteral(settings.dbname));
+    result += Format(" dbname=$0", PqEscapeStringConn(settings.dbname));
   }
   if (settings.connect_timeout) {
     result += Format(" connect_timeout=$0", settings.connect_timeout);
   }
   if (!settings.user.empty()) {
-    result += Format(" user=$0", PqEscapeLiteral(settings.user));
+    result += Format(" user=$0", PqEscapeStringConn(settings.user));
   }
   if (!settings.password.empty()) {
     result += Format(" password=$0", mask_password ? "<REDACTED>" : settings.password);
   }
   if (!settings.replication.empty()) {
-    result += Format(" replication=$0", PqEscapeLiteral(settings.replication));
+    result += Format(" replication=$0", PqEscapeStringConn(settings.replication));
   }
   if (settings.yb_auto_analyze) {
     result += Format(" yb_auto_analyze=true");
@@ -683,12 +685,20 @@ bool PGConn::IsBusy() {
   return PQisBusy(impl_.get()) == kIsBusy;
 }
 
-Result<PGResultPtr> PGConn::Fetch(const std::string& command) {
+Result<PGResultPtr> PGConn::Fetch(
+    const std::string& command, std::optional<PGResultFormat> data_format,
+    const std::vector<const char*>& params) {
   VLOG(1) << __func__ << " " << command;
+  if (simple_query_protocol_) {
+    DCHECK(!data_format) << "data_format cannot be specified with simple query protocol";
+    DCHECK(params.empty()) << "Parameters passed but connection uses simple query protocol";
+    return CheckResult(PGResultPtr(PQexec(impl_.get(), command.c_str())), command);
+  }
+  auto format = data_format.value_or(PGResultFormat::kBinary);
   return CheckResult(
-      PGResultPtr(simple_query_protocol_
-          ? PQexec(impl_.get(), command.c_str())
-          : PQexecParams(impl_.get(), command.c_str(), 0, nullptr, nullptr, nullptr, nullptr, 1)),
+      PGResultPtr(PQexecParams(
+          impl_.get(), command.c_str(), static_cast<int>(params.size()), nullptr,
+          params.data(), nullptr, nullptr, static_cast<int>(format))),
       command);
 }
 
@@ -845,24 +855,35 @@ Result<std::string> ToString(const PGresult* result, int row, int column) {
   return Format("Type not supported: $0", type);
 }
 
-// Escape literals in postgres (e.g. to make a libpq connection to a database named
-// `this->'\<-this`, use `dbname='this->\'\\<-this'`).
+// Escape a string for use as a SQL string literal, i.e. a value that appears in a SQL statement
+// like `SELECT * FROM t WHERE name = '<escaped>'`.  Single quotes are doubled and, when the input
+// contains backslashes, E'...' (escape string) syntax is used so that backslash sequences are
+// interpreted correctly regardless of the standard_conforming_strings setting.
+// Examples:
+// - `this->'\<-this` -> `E'this->''\\<-this'`
+// - `this->'<-this` -> `'this->''<-this'`
 //
-// This should behave like `PQescapeLiteral` except that it doesn't need an existing connection
-// passed in.
+// This should behave like `PQescapeLiteral` except that it doesn't need an
+// existing connection passed in.
 std::string PqEscapeLiteral(const std::string& input) {
+  bool has_backslashes = input.find('\\') != std::string::npos;
   std::string output = input;
-  // Escape certain characters.
-  boost::algorithm::replace_all(output, "\\", "\\\\");
-  boost::algorithm::replace_all(output, "'", "\\'");
-  // Quote.
-  output.insert(0, 1, '\'');
+  if (has_backslashes) {
+    boost::algorithm::replace_all(output, "\\", "\\\\");
+    boost::algorithm::replace_all(output, "'", "''");
+    output.insert(0, "E'");
+  } else {
+    boost::algorithm::replace_all(output, "'", "''");
+    output.insert(0, 1, '\'');
+  }
   output.push_back('\'');
   return output;
 }
 
-// Escape identifiers in postgres (e.g. to create a database named `this->"\<-this`, use `CREATE
-// DATABASE "this->""\<-this"`).
+// Escape a string for use as a SQL identifier, i.e. a database, table, column, or role name that
+// appears in a SQL statement like `CREATE DATABASE "<escaped>"`.  Double quotes within the input
+// are doubled; the result is wrapped in double quotes.
+// Example: `this->"\<-this` -> `"this->""\<-this"`
 //
 // This should behave like `PQescapeIdentifier` except that it doesn't need an existing connection
 // passed in.
@@ -873,6 +894,21 @@ std::string PqEscapeIdentifier(const std::string& input) {
   // Quote.
   output.insert(0, 1, '"');
   output.push_back('"');
+  return output;
+}
+
+// Escape a value for use in a libpq connection string (e.g. to make a
+// libpq connection to a database named `this->'\<-this`, use
+// `dbname='this->\'\\<-this'`).
+//
+// This should behave like `PQescapeStringConn` except that it doesn't need an existing connection
+// passed in.
+std::string PqEscapeStringConn(const std::string& input) {
+  std::string output = input;
+  boost::algorithm::replace_all(output, "\\", "\\\\");
+  boost::algorithm::replace_all(output, "'", "\\'");
+  output.insert(0, 1, '\'');
+  output.push_back('\'');
   return output;
 }
 

@@ -32,11 +32,13 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -48,6 +50,7 @@
 #include "yb/rpc/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/alignment.h"
@@ -804,6 +807,18 @@ PgApiImpl::PgApiImpl(
 
 PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
+}
+
+void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
+#ifdef __linux__
+  if (tserver::TServerCgroupManagementEnabled()) {
+    auto status = tserver::TServerCgroupManager::MovePgBackendToCgroup(dboid);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to move postgres backend to cgroup for " << dboid
+                  << ": " << status;
+    }
+  }
+#endif
 }
 
 void PgApiImpl::Interrupt() {

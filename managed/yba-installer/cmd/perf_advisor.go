@@ -16,11 +16,13 @@ import (
 )
 
 type perfAdvisorDirectories struct {
-	SystemdFileLocation string
-	templateFileName    string
-	ConfFileLocation    string
-	PABin               string
-	PALogDir            string
+	SystemdFileLocation         string
+	templateFileName            string
+	ConfFileLocation            string
+	MetricExportConfLocation    string
+	PABin                       string
+	PALogDir                    string
+	DataDir                     string
 }
 
 type PerfAdvisor struct {
@@ -34,10 +36,12 @@ func newPerfAdvisorDirectories(version string) perfAdvisorDirectories {
 	return perfAdvisorDirectories{
 		SystemdFileLocation: common.SystemdDir + "/yb-perf-advisor.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/perf-advisor/conf/overrides.properties",
+		MetricExportConfLocation: common.GetSoftwareRoot() + "/perf-advisor/conf/metrics-export.yml",
 		templateFileName:    "yb-installer-perf-advisor.yml",
 		// GetSoftwareRoot returns /opt/yugabyte/software/
 		PABin:    common.GetSoftwareRoot() + "/perf-advisor/backend/bin",
 		PALogDir: common.GetBaseInstall() + "/data/logs",
+		DataDir:  common.GetBaseInstall() + "/data/perf-advisor",
 	}
 }
 
@@ -180,16 +184,21 @@ func (perf PerfAdvisor) Uninstall(removeData bool) error {
 	}
 
 	if removeData {
-
+		err := common.RemoveAll(perf.DataDir)
+		if err != nil {
+			log.Info(fmt.Sprintf("Error %s removing data dir %s.", err.Error(), perf.DataDir))
+		}
 	}
 	return nil
 }
 
 func (perf PerfAdvisor) createSoftwareDirectories() error {
-	// Build a list of directories to create (here, just yb-platform under the software root)
+	// Build a list of directories to create
+	// (here, just perf-advisor under the software root and data dir)
 	dirs := []string{
 		common.GetSoftwareRoot() + "/perf-advisor",
 		common.GetSoftwareRoot() + "/perf-advisor/config",
+		common.GetBaseInstall() + "/data/perf-advisor",
 	}
 	// Create the directories on disk (if they don't already exist)
 	return common.CreateDirs(dirs)
@@ -197,8 +206,7 @@ func (perf PerfAdvisor) createSoftwareDirectories() error {
 
 func (perf PerfAdvisor) untarAndSetupPerfAdvisorPackages() error {
 	// Get the absolute path to the perf_advisor tarball with version in the filename
-	paTarball := fmt.Sprintf("perf_advisor-%s.tar.gz", perf.version)
-	paPath := common.AbsoluteBundlePath(paTarball)
+	paPath := common.GetPACollectorPackagePath()
 	targetDir := common.GetSoftwareRoot() + "/perf-advisor"
 
 	// Untar pa.tar.gz into perf-advisor
@@ -252,6 +260,11 @@ func (perf PerfAdvisor) Install() error {
 		return err
 	}
 
+	// Explicitly set data dir perms only in initialize because we know it exists
+	if err := perf.SetDataDirPerms(); err != nil {
+		return err
+	}
+
 	// Do root based install or non-root based install
 	// When we do root based install, we want file and folders owned by YB user
 	if common.HasSudoAccess() {
@@ -264,6 +277,15 @@ func (perf PerfAdvisor) Install() error {
 	}
 
 	log.Info("Finishing Perf Advisor install")
+	return nil
+}
+
+// SetDataDirPerms sets the PA Collector data dir's permissions to the service username.
+func (perf PerfAdvisor) SetDataDirPerms() error {
+	userName := viper.GetString("service_username")
+	if err := common.Chown(perf.DataDir, userName, userName, true); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -327,7 +349,7 @@ func ensurePerfAdvisorConfigOwnership() error {
 	if !common.HasSudoAccess() {
 		return nil
 	}
-	dir := common.GetPerfAdvisorBaseDataDir()
+	dir := common.GetPerfAdvisorDataDir()
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			return nil
