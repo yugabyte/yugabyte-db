@@ -3370,8 +3370,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle) {
-  return ToYBCStatus(pgapi->NewGlobalViewRead(query, handle));
+YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(handle));
 }
 
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
@@ -3380,11 +3380,12 @@ void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
 
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
-  handle->SetParams(num_params, param_values);
+  DCHECK(param_values);
+  handle->SetParams(std::span{param_values, param_values + num_params});
 }
 
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {
-  return handle->ExecScan();
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query) {
+  return pgapi->Exec(handle, query);
 }
 
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {

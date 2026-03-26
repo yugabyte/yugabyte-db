@@ -2734,19 +2734,22 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
     return result;
 }
 
-Status PgApiImpl::NewGlobalViewRead(const char* query, PgGlobalViewRead** handle) {
+Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   auto ts_info = VERIFY_RESULT(ListTabletServers());
-
+  auto& t_servers = ts_info.tablet_servers;
   std::vector<std::string> uuids;
-  uuids.reserve(ts_info.tablet_servers.size());
-  for (const auto& ts : ts_info.tablet_servers) {
-    uuids.push_back(ts.server.uuid);
+  uuids.reserve(t_servers.size());
+  for (auto& ts : t_servers) {
+    uuids.emplace_back(std::move(ts.server.uuid));
   }
-
-  auto read = std::make_unique<PgGlobalViewRead>(pg_client_, query, std::move(uuids));
+  auto read = std::make_unique<PgGlobalViewRead>(std::move(uuids));
   *handle = read.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
   return Status::OK();
+}
+
+YbcRemotePgExecResult PgApiImpl::Exec(PgGlobalViewRead* handle, std::string_view query) {
+  return handle->ExecScan(pg_client_, query);
 }
 
 } // namespace yb::pggate

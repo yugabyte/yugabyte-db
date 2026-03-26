@@ -577,7 +577,7 @@ static YbPgFdwServerType yb_get_server_type(const char *server_type);
 static YbPgFdwServerType yb_get_server_type_from_ftrelid(Oid relid);
 static const char *yb_get_tuple_identifier_colname(YbPgFdwServerType server_type);
 static AttrNumber yb_get_min_attr_from_server_type(YbPgFdwServerType server_type);
-static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr);
+static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *query);
 
 
 /*
@@ -1635,7 +1635,7 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* YB: Create and initialize the global view scan. */
 	if (yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
-		HandleYBStatus(YBCPgNewGlobalViewRead(fsstate->query, &fsstate->yb_gvr));
+		HandleYBStatus(YBCPgNewGlobalViewRead(&fsstate->yb_gvr));
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,
@@ -3978,7 +3978,7 @@ fetch_more_data(ForeignScanState *node)
 			fsstate->conn_state->pendingAreq = NULL;
 		}
 		else if (fsstate->yb_gvr)
-			res = YbGlobalViewReadExecScan(fsstate->yb_gvr);
+			res = YbGlobalViewReadExecScan(fsstate->yb_gvr, fsstate->query);
 		else
 		{
 			char		sql[64];
@@ -7978,9 +7978,9 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 }
 
 static PGresult *
-YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr)
+YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *query)
 {
-	YbcRemotePgExecResult yb_result = YBCPgGlobalViewReadExecScan(yb_gvr);
+	YbcRemotePgExecResult yb_result = YBCPgGlobalViewReadExecScan(yb_gvr, query);
 	PGresult *res = YBCPgResultFromPB(yb_result.pgresult, yb_result.pgresult_size);
 	/*
 	 * This makes sure that we continue to query other tservers even if we get error

@@ -893,7 +893,8 @@ class PgApiImpl {
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
-  Status NewGlobalViewRead(const char* query, PgGlobalViewRead** handle);
+  Status NewGlobalViewRead(PgGlobalViewRead** handle);
+  YbcRemotePgExecResult Exec(PgGlobalViewRead* handle, std::string_view query);
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.
