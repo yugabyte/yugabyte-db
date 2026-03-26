@@ -2164,12 +2164,15 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			}
 			continue;
 		/* log_debug */
-		case OD_LLOG_DEBUG:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_debug)) {
+		case OD_LLOG_DEBUG: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_debug = val;
 			continue;
+		}
 		/* log_stdout */
 		case OD_LLOG_TO_STDOUT:
 			if (!od_config_reader_yes_no(reader,
@@ -2178,33 +2181,45 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			}
 			continue;
 		/* log_config */
-		case OD_LLOG_CONFIG:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_config)) {
+		case OD_LLOG_CONFIG: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_config = val;
 			continue;
+		}
 		/* log_session */
-		case OD_LLOG_SESSION:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_session)) {
+		case OD_LLOG_SESSION: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_session = val;
 			continue;
+		}
 		/* log_query */
-		case OD_LLOG_QUERY:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_query)) {
+		case OD_LLOG_QUERY: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_query = val;
 			continue;
+		}
 		/* log_stats */
-		case OD_LLOG_STATS:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_stats)) {
+		case OD_LLOG_STATS: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_stats = val;
 			continue;
+		}
 		/* log_format */
 		case OD_LLOG_FORMAT:
 			if (!od_config_reader_string(reader,

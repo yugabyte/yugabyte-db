@@ -35,15 +35,17 @@ struct od_config {
 	int priority;
 	/* logging */
 	int log_to_stdout;
-	int log_debug;
-	int log_config;
-	int log_session;
-	int log_query;
+	/* YB: Use _Atomic types to support config reload */
+	_Atomic int log_debug;
+	_Atomic int log_config;
+	_Atomic int log_session;
+	_Atomic int log_query;
 	char *log_dir;
 	int log_max_size;
 	int log_rotate_interval;
 	char *log_format;
-	int log_stats;
+	/* YB: Use _Atomic type to support config reload */
+	_Atomic int log_stats;
 	int log_general_stats_prom;
 	int log_route_stats_prom;
 	int log_syslog;
