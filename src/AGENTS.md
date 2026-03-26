@@ -20,7 +20,8 @@ Add these `yb_build.sh` options to reduce build time:
 - Skip YBC build (`--no-ybc`) unless you need it.
 
 Pitfalls when doing incremental build:
-- `initdb` cmake target in conjunction with `yb_build.sh` test options may not build `initdb`, so in that case, do them one by one.
+- The `initdb` cmake target may not be built when specified in the same `yb_build.sh` command as test options.
+  In this case, build `initdb` first in a separate command before running tests.
 - Forgetting the `reinitdb` cmake target after changes to the system catalog since last build may cause failures.
 - Forgetting `--clean` after changes to third-party since last build may cause failures.
 
