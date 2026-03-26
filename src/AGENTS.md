@@ -11,15 +11,18 @@ There may be some exceptions where appropriate such as `collate.icu.utf8.sql` an
 The primary build entry point is `yb_build.sh` at the repository root.
 
 Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
-Use cmake targets `daemons initdb` unless you need more targets.
-Skip java build (`--sj`) unless you have to run java tests.
-Skip pg_parquet build (`--skip-pg-parquet`) unless you need it.
-Skip odyssey build (`--no-odyssey`) unless you need it.
-Skip YBC build (`--no-ybc`) unless you need it.
 
-`initdb` cmake target in conjunction with test flags may not build `initdb`, so in that case, do them one by one.
-Use `reinitdb` cmake target if there are changes to the system catalog since last build.
-Use `--clean` if there are changes to third-party since last build.
+Add these `yb_build.sh` options to reduce build time:
+- Specify only the cmake targets you need (for example, `daemons initdb`).
+- Skip java build (`--sj`) unless you have to run java tests.
+- Skip pg_parquet build (`--skip-pg-parquet`) unless you need it.
+- Skip odyssey build (`--no-odyssey`) unless you need it.
+- Skip YBC build (`--no-ybc`) unless you need it.
+
+Pitfalls when doing incremental build:
+- `initdb` cmake target in conjunction with `yb_build.sh` test options may not build `initdb`, so in that case, do them one by one.
+- Forgetting the `reinitdb` cmake target after changes to the system catalog since last build may cause failures.
+- Forgetting `--clean` after changes to third-party since last build may cause failures.
 
 ```bash
 ./yb_build.sh release initdb
