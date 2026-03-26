@@ -52,30 +52,68 @@ EXPLAIN (ANALYZE, DEBUG, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
 SHOW yb_explain_hide_non_deterministic_fields;
 EXPLAIN (ANALYZE, DEBUG, DIST, COSTS OFF) SELECT * FROM p1 WHERE k = 1;
 
--- Check planner stats fields (#30768 shouldn't be printed twice!)
+
+-- #30768 Check duplicate fields
 SET client_min_messages TO 'warning';
-drop function if exists explain_filter_to_json_text cascade;
-create function explain_filter_to_json_text(text) returns text
-language plpgsql as
-$$
-declare
-    data text := '';
-    ln text;
-begin
-    for ln in execute $1
-    loop
-        -- Replace any numeric word with just '0'
-        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
-        data := data || ln;
-    end loop;
-    return data;
-end;
-$$;
 
 SET yb_explain_hide_non_deterministic_fields = off;
 SET yb_enable_cbo = on;
 
-select explain_filter_to_json_text($$/*+ IndexScan(p1) */EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, FORMAT JSON) SELECT * from p1 where k = 1$$);
+DROP FUNCTION IF EXISTS get_duplicate_json_keys CASCADE;
+CREATE FUNCTION get_duplicate_json_keys(j json)
+RETURNS SETOF text AS $$
+DECLARE
+    v json;
+BEGIN
+    -- 1. If it's an object, check for duplicates at the current level
+    IF json_typeof(j) = 'object' THEN
+        RETURN QUERY
+            SELECT keys
+            FROM json_object_keys(j) AS keys
+            GROUP BY keys
+            HAVING COUNT(*) > 1;
+
+        -- 2. Recurse into all nested values of the object
+        FOR v IN SELECT value FROM json_each(j) LOOP
+            RETURN QUERY SELECT get_duplicate_json_keys(v);
+        END LOOP;
+
+    -- 3. If it's an array, recurse into all array elements
+    ELSIF json_typeof(j) = 'array' THEN
+        FOR v IN SELECT value FROM json_array_elements(j) LOOP
+            RETURN QUERY SELECT get_duplicate_json_keys(v);
+        END LOOP;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+RESET client_min_messages;
+DO $$
+DECLARE
+    explain_json json;
+    dup_key text;
+    found_duplicates boolean := false;
+BEGIN
+    -- Capture the EXPLAIN (FORMAT JSON) output into our json variable.
+    EXECUTE '/*+ IndexScan(p1) */'||
+            'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, FORMAT JSON)'||
+            'SELECT * from p1 where k = 1'
+    INTO explain_json;
+
+    -- Look for duplicates
+    FOR dup_key IN SELECT DISTINCT * FROM get_duplicate_json_keys(explain_json)
+    LOOP
+        found_duplicates := true;
+        RAISE WARNING 'Duplicate key found in EXPLAIN output: "%"', dup_key;
+    END LOOP;
+
+    IF found_duplicates THEN
+        RAISE EXCEPTION 'Test Failed: EXPLAIN output contains duplicated fields.';
+    ELSE
+        RAISE NOTICE 'Test Passed: No duplicated fields detected.';
+    END IF;
+END;
+$$;
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET yb_enable_cbo;

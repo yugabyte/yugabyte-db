@@ -267,70 +267,64 @@ WARNING:  GUC yb_explain_hide_non_deterministic_fields disables EXPLAIN option D
  Storage Flush Requests: 0
 (10 rows)
 
--- Check planner stats fields (#30768 shouldn't be printed twice!)
+-- #30768 Check duplicate fields
 SET client_min_messages TO 'warning';
-drop function if exists explain_filter_to_json_text cascade;
-create function explain_filter_to_json_text(text) returns text
-language plpgsql as
-$$
-declare
-    data text := '';
-    ln text;
-begin
-    for ln in execute $1
-    loop
-        -- Replace any numeric word with just '0'
-        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
-        data := data || ln;
-    end loop;
-    return data;
-end;
-$$;
 SET yb_explain_hide_non_deterministic_fields = off;
 SET yb_enable_cbo = on;
-select explain_filter_to_json_text($$/*+ IndexScan(p1) */EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, FORMAT JSON) SELECT * from p1 where k = 1$$);
-               explain_filter_to_json_text                
-----------------------------------------------------------
- [                                                       +
-   {                                                     +
-     "Plan": {                                           +
-       "Node Type": "Index Scan",                        +
-       "Parallel Aware": false,                          +
-       "Async Capable": false,                           +
-       "Scan Direction": "NoMovement",                   +
-       "Index Name": "p1_pkey",                          +
-       "Relation Name": "p1",                            +
-       "Alias": "p1",                                    +
-       "Actual Startup Time": 0.0,                       +
-       "Actual Total Time": 0.0,                         +
-       "Actual Rows": 0,                                 +
-       "Actual Loops": 0,                                +
-       "Index Cond": "(k = 0)",                          +
-       "Rows Removed by Index Recheck": 0,               +
-       "Storage Table Read Requests": 0,                 +
-       "Storage Table Read Execution Time": 0.0,         +
-       "Storage Table Read Ops": 0,                      +
-       "Storage Table Rows Scanned": 0,                  +
-       "Read Metrics": {                                 +
-         "Metric rocksdb_number_db_seek": 0.0,           +
-         "Metric rocksdb_number_db_next": 0.0,           +
-         "Metric rocksdb_number_db_seek_found": 0.0,     +
-         "Metric rocksdb_number_db_next_found": 0.0,     +
-         "Metric rocksdb_iter_bytes_read": 0.0,          +
-         "Metric docdb_keys_found": 0.0,                 +
-         "Metric ql_read_latency": "sum: 0.0, count: 0.0"+
-       },                                                +
-       "Estimated Seeks": 0,                             +
-       "Estimated Nexts And Prevs": 0,                   +
-       "Estimated Table Roundtrips": 0,                  +
-       "Estimated Index Roundtrips": 0,                  +
-       "Estimated Docdb Result Width": 0                 +
-     },                                                  +
-     "Triggers": [                                       +
-     ]                                                   +
-   }                                                     +
- ]
-(1 row)
+DROP FUNCTION IF EXISTS get_duplicate_json_keys CASCADE;
+CREATE FUNCTION get_duplicate_json_keys(j json)
+RETURNS SETOF text AS $$
+DECLARE
+    v json;
+BEGIN
+    -- 1. If it's an object, check for duplicates at the current level
+    IF json_typeof(j) = 'object' THEN
+        RETURN QUERY
+            SELECT keys
+            FROM json_object_keys(j) AS keys
+            GROUP BY keys
+            HAVING COUNT(*) > 1;
 
+        -- 2. Recurse into all nested values of the object
+        FOR v IN SELECT value FROM json_each(j) LOOP
+            RETURN QUERY SELECT get_duplicate_json_keys(v);
+        END LOOP;
+
+    -- 3. If it's an array, recurse into all array elements
+    ELSIF json_typeof(j) = 'array' THEN
+        FOR v IN SELECT value FROM json_array_elements(j) LOOP
+            RETURN QUERY SELECT get_duplicate_json_keys(v);
+        END LOOP;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+RESET client_min_messages;
+DO $$
+DECLARE
+    explain_json json;
+    dup_key text;
+    found_duplicates boolean := false;
+BEGIN
+    -- Capture the EXPLAIN (FORMAT JSON) output into our json variable.
+    EXECUTE '/*+ IndexScan(p1) */'||
+            'EXPLAIN (ANALYZE, DIST, DEBUG, COSTS OFF, SUMMARY OFF, FORMAT JSON)'||
+            'SELECT * from p1 where k = 1'
+    INTO explain_json;
+
+    -- Look for duplicates
+    FOR dup_key IN SELECT DISTINCT * FROM get_duplicate_json_keys(explain_json)
+    LOOP
+        found_duplicates := true;
+        RAISE WARNING 'Duplicate key found in EXPLAIN output: "%"', dup_key;
+    END LOOP;
+
+    IF found_duplicates THEN
+        RAISE EXCEPTION 'Test Failed: EXPLAIN output contains duplicated fields.';
+    ELSE
+        RAISE NOTICE 'Test Passed: No duplicated fields detected.';
+    END IF;
+END;
+$$;
+NOTICE:  Test Passed: No duplicated fields detected.
 RESET yb_explain_hide_non_deterministic_fields;
 RESET yb_enable_cbo;
