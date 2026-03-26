@@ -5060,11 +5060,15 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 	CommandTag	command_tag;
 
 	if (yb_debug_log_internal_restarts)
-		elog(LOG,
-			 "Error details: edata->message=%s, edata->filename=%s, "
-			 "edata->lineno=%d, edata->sqlerrcode=%s",
-			 edata->message, edata->filename, edata->lineno,
-			 unpack_sql_state(edata->sqlerrcode));
+		ereport(LOG,
+				(errmsg("error details: edata->message=%s, edata->filename=%s, "
+						"edata->lineno=%d, edata->sqlerrcode=%s",
+						edata->message, edata->filename, edata->lineno,
+						unpack_sql_state(edata->sqlerrcode)),
+				 edata->detail ? errdetail("%s", edata->detail) : 0,
+				 edata->detail_log ? errdetail_log("%s", edata->detail_log) : 0,
+				 edata->hint ? errhint("%s", edata->hint) : 0,
+				 edata->context ? errcontext("%s", edata->context) : 0));
 
 	if (!IsYugaByteEnabled())
 	{
