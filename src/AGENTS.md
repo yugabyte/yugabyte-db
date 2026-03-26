@@ -24,11 +24,11 @@ Pitfalls when doing incremental build:
 - Forgetting the `reinitdb` cmake target after changes to the system catalog since last build may cause failures.
 - Forgetting `--clean` after changes to third-party since last build may cause failures.
 
+### Common Build Commands
+
 ```bash
 ./yb_build.sh release initdb
 ```
-
-### Common Build Commands
 
 ```bash
 ./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc
