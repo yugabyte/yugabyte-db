@@ -228,10 +228,13 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
   TableProperties table_properties;
   table_properties.SetTransactional(true);
   client::YBSchemaBuilder schema_builder;
+  // Including all columns in the primary hash allows advisory locks use case to be horizontally
+  // scalable when necessary, given FLAGS_num_advisory_locks_tablets is set to a higher value on
+  // cluster startup accordingly.
   schema_builder.AddColumn("dbid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->HashPrimaryKey();
   schema_builder.SetTableProperties(table_properties);
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
