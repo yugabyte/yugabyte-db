@@ -562,27 +562,26 @@ However, if you could theoretically get bad data in production at a certain poin
 
 Use the following policy when choosing log levels:
 
-* `VLOG` - information too verbose or uninteresting to include normally; when investigating, these can be turned on (going forward) per file using runtime gflags.
+* `VLOG` - information too verbose or uninteresting to include normally; when investigating, these can be turned on (going forward) per file using `--vmodule`, a runtime gflag.
   * `VLOG` level should reflect a trade-off between additional logging volume and usefulness.
-  * it is risky to increase logging volume too much in production so we may only be able to turn on the first couple of levels in many cases.
-  * although we have no global convention about how useful/noisy a given `VLOG` level should be, try and maintain consistency within a file.
-* `DETAIL` - detailed general information
-  * e.g., routine information about individual tablets or compactions
-* `INFO` - centralized general information
-  * we expect some customers will centralize only `INFO` and higher log level messages via tools like DataDog while leaving copies of all log messages locally
-  * accordingly, any information needed for managing large universes including driving alerts and initial triage of problems should be at level `INFO`
-  * these should not be too verbose; that is, avoid logging the same information multiple times per second. Use `YB_LOG_EVERY_N_SECS` or `YB_LOG_EVERY_N` when necessary.
-  * when in doubt, prefer `DETAIL` over `INFO`
+  * It is risky to increase logging volume too much in production so during investigations we may only be able to turn on the first couple of levels.
+  * Although we have no global convention about how useful/noisy a given `VLOG` level should be, try and maintain consistency within a file.
+* `DETAIL` - detailed general information.
+  * For example, routine information about individual tablets or compactions should be at this level.
+* `INFO` - centralized general information.
+  * We expect some customers will centralize only `INFO` and higher log level messages via tools like DataDog while leaving copies of all log messages locally.
+  * Accordingly, any information needed for managing large universes including driving alerts and initial triage of problems should be at level `INFO`.
+  * These should not be too verbose; that is, avoid logging the same information multiple times per second. Use `YB_LOG_EVERY_N_SECS` or `YB_LOG_EVERY_N` when necessary.
+  * When in doubt, prefer `DETAIL` over `INFO`
 * `WARNING` - expected failures. Failures that could occur while service is running. For instance, network disconnect, timeout, and so on.
 * `ERROR` - should NEVER be used.
 * `DFATAL` - unexpected failures that we can tolerate in production.
-  * this is `ERROR` in release mode and `FATAL` in debug mode.
-  * this means that the process will crash in debug mode, helping bring attention in test to the fact that this should not happen.
-  * use `RSTATUS_DCHECK` whenever possible, instead of `DFATAL`.
+  * This is `ERROR` in release mode and `FATAL` in debug mode.
+  * This means that the process will crash in debug mode, helping bring attention in test to the fact that this should not happen.
+  * Use `RSTATUS_DCHECK` whenever possible, instead of `DFATAL`.
 * `FATAL` - unexpected failures that we cannot tolerate in production.
-  * some failures cannot be recovered from except by crashing than restarting the process.
-  * reserve this logging level for those failures.
-  * logging at this level will crash the process with a stack trace.
+  * Some failures cannot be recovered from except by crashing and then restarting the process; reserve this logging level for those failures.
+  * Logging at this level will crash the process with a stack trace.
 
 ### PREDICT_TRUE and PREDICT_FALSE
 
