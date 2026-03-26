@@ -133,7 +133,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     IllegalArgumentException error = assertThrows(IllegalArgumentException.class, task::run);
     assertEquals(
-        "Invalid target IP for connectivity check from "
+        "Invalid target address for connectivity check from "
             + sourceNode.nodeName
             + " to target-node: 10.10.10.2; touch /tmp/pwned",
         error.getMessage());
@@ -335,6 +335,43 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     RuntimeException error = assertThrows(RuntimeException.class, task::run);
     assertTrue(error.getMessage().contains("Port connectivity check failed (reverse)"));
     assertTrue(error.getMessage().contains("10.10.10.1"));
+  }
+
+  @Test
+  public void testSuccessWithHostnameTargetNode() {
+    NodeDetails hostnameTarget = new NodeDetails();
+    hostnameTarget.nodeName = "hostname-target";
+    hostnameTarget.cloudInfo = new CloudSpecificInfo();
+    hostnameTarget.cloudInfo.private_ip = "abc123.itest.yugabyte.com";
+    hostnameTarget.isMaster = true;
+    hostnameTarget.isTserver = true;
+    hostnameTarget.masterRpcPort = 7100;
+    hostnameTarget.tserverRpcPort = 9100;
+
+    // Source also uses a hostname
+    sourceNode.cloudInfo.private_ip = "source-host.itest.yugabyte.com";
+
+    universe.getUniverseDetails().nodeDetailsSet.add(hostnameTarget);
+    universe.setUniverseDetails(universe.getUniverseDetails());
+    universe.save();
+
+    CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = sourceNode.nodeName;
+    params.nodeDetailsSet = new HashSet<>(Arrays.asList(sourceNode, hostnameTarget));
+    params.sourceNode = sourceNode;
+    params.targetNodes = Collections.singletonList(hostnameTarget);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    CheckDbNodePortConnectivity task =
+        AbstractTaskBase.createTask(CheckDbNodePortConnectivity.class);
+    task.initialize(params);
+    task.run();
+
+    // 2 ports forward + 2 ports reverse = 4
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
   }
 
   @Test

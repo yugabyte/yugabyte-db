@@ -7,7 +7,6 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
@@ -15,6 +14,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
@@ -33,6 +33,9 @@ import org.apache.commons.lang3.StringUtils;
 public class CheckDbNodePortConnectivity extends NodeTaskBase {
   private static final long PORT_CHECK_TIMEOUT_SECS = 5;
   private static final String PYTHON3 = "python3";
+
+  /** Matches valid IPv4, IPv6, or DNS hostnames no shell metacharacters allowed. */
+  private static final Pattern VALID_HOST_OR_IP = Pattern.compile("^[a-zA-Z0-9.:_\\-]+$");
 
   public static class Params extends NodeTaskParams {
     /** Node to run the forward check from (source -> target(s)). */
@@ -109,10 +112,10 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
         log.debug("Skipping target {}: no private IP", targetNode.nodeName);
         continue;
       }
-      if (!Util.isIpAddress(targetIp)) {
+      if (!isValidHostOrIp(targetIp)) {
         throw new IllegalArgumentException(
             String.format(
-                "Invalid target IP for connectivity check from %s to %s: %s",
+                "Invalid target address for connectivity check from %s to %s: %s",
                 sourceNode.nodeName, targetNode.nodeName, targetIp));
       }
       String sourceIp = sourceNode.cloudInfo != null ? sourceNode.cloudInfo.private_ip : null;
@@ -151,7 +154,7 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
           targetIp);
 
       // Reverse: from target, connect_ex to source IP:port
-      if (StringUtils.isNotBlank(sourceIp) && Util.isIpAddress(sourceIp)) {
+      if (StringUtils.isNotBlank(sourceIp) && isValidHostOrIp(sourceIp)) {
         List<Integer> sourcePorts = getDbPorts(sourceNode);
         if (!sourcePorts.isEmpty()) {
           for (int port : sourcePorts) {
@@ -178,6 +181,11 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
         }
       }
     }
+  }
+
+  /** Returns true if the string is a valid IP address or hostname (no shell metacharacters). */
+  private static boolean isValidHostOrIp(String address) {
+    return address != null && VALID_HOST_OR_IP.matcher(address).matches();
   }
 
   private static List<Integer> getDbPorts(NodeDetails node) {
