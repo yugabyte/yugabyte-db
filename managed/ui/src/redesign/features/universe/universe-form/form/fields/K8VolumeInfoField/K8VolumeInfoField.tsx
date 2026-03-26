@@ -71,6 +71,7 @@ export const K8VolumeInfoField = ({
       if (fieldValue && deviceInfo && isEditMode) {
         deviceInfo.volumeSize = fieldValue.volumeSize;
         deviceInfo.numVolumes = fieldValue.numVolumes;
+        deviceInfo.storageClass = fieldValue.storageClass;
       }
       setValue(UPDATE_FIELD, deviceInfo);
     };
