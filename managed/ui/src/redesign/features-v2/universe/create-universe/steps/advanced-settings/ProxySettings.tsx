@@ -15,10 +15,9 @@ import {
 import { ProxyAdvancedProps } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/dtos';
 
 export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
-  const [
-    { proxySettings },
-    { moveToNextPage, moveToPreviousPage, saveProxySettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  const [{ proxySettings }, { moveToNextPage, moveToPreviousPage, saveProxySettings }] = useContext(
+    CreateUniverseContext
+  ) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation();
 
@@ -34,10 +33,8 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
         })();
       },
       onPrev: () => {
-        methods.handleSubmit((data) => {
-          saveProxySettings(data);
-          moveToPreviousPage();
-        })();
+        saveProxySettings(methods.getValues());
+        moveToPreviousPage();
       }
     }),
     []

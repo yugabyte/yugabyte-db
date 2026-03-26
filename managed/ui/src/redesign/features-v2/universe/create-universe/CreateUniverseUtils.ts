@@ -43,10 +43,10 @@ export function getCreateUniverseSteps(t: TFunction, resilienceType?: Resilience
         },
         ...(resilienceType === ResilienceType.REGULAR
           ? [
-            {
-              title: t('nodesAndAvailabilityZone')
-            }
-          ]
+              {
+                title: t('nodesAndAvailabilityZone')
+              }
+            ]
           : [])
       ]
     },
@@ -200,7 +200,10 @@ export const assignRegionsAZNodeByReplicationFactor = (
       }
     });
 
-    let selectedAzCount = values(selectedZonesByRegion).reduce((sum, zones) => sum + zones.length, 0);
+    let selectedAzCount = values(selectedZonesByRegion).reduce(
+      (sum, zones) => sum + zones.length,
+      0
+    );
 
     while (selectedAzCount < N) {
       let progressed = false;
@@ -365,26 +368,29 @@ export const mapCreateUniversePayload = (
               ['gflag_groups']: ['ENHANCED_POSTGRES_COMPATIBILITY']
             })
           },
-          instance_tags: otherAdvancedSettings.instanceTags.reduce((acc, tag) => {
-            acc[tag.name] = tag.value;
-            return acc;
-          }, {} as Record<string, string>),
+          instance_tags: otherAdvancedSettings.instanceTags.reduce(
+            (acc, tag) => {
+              acc[tag.name] = tag.value;
+              return acc;
+            },
+            {} as Record<string, string>
+          ),
           networking_spec: {
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
             ...(proxySettings.enableProxyServer
               ? {
-                proxy_config: {
-                  http_proxy:
-                    proxySettings.enableProxyServer && proxySettings.webProxy
-                      ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                  proxy_config: {
+                    http_proxy:
+                      proxySettings.enableProxyServer && proxySettings.webProxy
+                        ? `${proxySettings.webProxyServer}:${proxySettings.webProxyPort}`
+                        : '',
+                    https_proxy: proxySettings.secureWebProxy
+                      ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
                       : '',
-                  https_proxy: proxySettings.secureWebProxy
-                    ? `${proxySettings.secureWebProxyServer}:${proxySettings.secureWebProxyPort}`
-                    : '',
-                  no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                    no_proxy_list: proxySettings.byPassProxyListValues ?? []
+                  }
                 }
-              }
               : {})
           },
           num_nodes:
@@ -590,13 +596,16 @@ const fillNodeSpec = (
       storage_class: deviceInfo.storageClass!,
       volume_size: deviceInfo.numVolumes * deviceInfo.volumeSize!,
       disk_iops: deviceInfo.diskIops!,
-      throughput: deviceInfo.throughput!,
-      // cloud_volume_encryption: {
-      //   enable_volume_encryption: enableEbsVolumeEncryption ?? false,
-      //   kms_config_uuid: enableEbsVolumeEncryption ? ebsKmsConfigUUID ?? '' : ''
-      // }
+      throughput: deviceInfo.throughput!
     }
   };
+
+  if (enableEbsVolumeEncryption && instanceObj.storage_spec) {
+    instanceObj.storage_spec.cloud_volume_encryption = {
+      enable_volume_encryption: enableEbsVolumeEncryption,
+      kms_config_uuid: ebsKmsConfigUUID ?? ''
+    };
+  }
 
   return instanceObj;
 };
@@ -668,14 +677,14 @@ export const computeResilienceTypeFromProvider = (
   [RESILIENCE_FACTOR]: number;
 } => {
   const numOfRegions = provider.regions.length;
-  const numOfAZs = ((provider.regions as unknown) as Region[]).reduce(
+  const numOfAZs = (provider.regions as unknown as Region[]).reduce(
     (acc, region) => acc + region.zones.length,
     0
   );
   if (numOfRegions > 1) {
     return {
       [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
-      [RESILIENCE_FACTOR]:  1
+      [RESILIENCE_FACTOR]: 1
     };
   }
 
@@ -704,13 +713,16 @@ export const getAZCount = (availabilityZones: NodeAvailabilityProps['availabilit
   return values(availabilityZones).reduce((acc, zones) => acc + zones.length, 0);
 };
 
-export const inferResilience = (resilience: ResilienceAndRegionsProps, nodesAndAvailability: NodeAvailabilityProps) => {
+export const inferResilience = (
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability: NodeAvailabilityProps
+) => {
   const { regions } = resilience;
   const { replicationFactor = 1, availabilityZones } = nodesAndAvailability;
 
   const azCount = getAZCount(availabilityZones);
 
-  if (regions.length > (replicationFactor)) {
+  if (regions.length > replicationFactor) {
     return null;
   }
   if (regions.length === replicationFactor) {
@@ -718,5 +730,4 @@ export const inferResilience = (resilience: ResilienceAndRegionsProps, nodesAndA
   }
 
   return azCount === replicationFactor ? 'AZ_LEVEL' : 'NODE_LEVEL';
-
 };

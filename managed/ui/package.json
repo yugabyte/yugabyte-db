@@ -54,7 +54,7 @@
       "react-dom": "17.0.2"
     },
     "@yugabytedb/perf-advisor-ui": {
-      "@yugabyte-ui-library/core": "2.0.18"
+      "@yugabyte-ui-library/core": "2.0.24"
     }
   },
   "prettier": {
