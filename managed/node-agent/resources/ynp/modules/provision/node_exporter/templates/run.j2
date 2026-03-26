@@ -75,7 +75,7 @@ if [ -f "/opt/prometheus/$node_exporter_package" ]; then
     chmod +r /opt/prometheus/$node_exporter_package
 
     # Extract the node_exporter tarball
-    su - {{ prometheus_user }} -c "cd /opt/prometheus && tar zxf $node_exporter_package"
+    su -s /bin/sh {{ prometheus_user }} -c "cd /opt/prometheus && tar zxf $node_exporter_package"
 fi
 
 # Configure Systemd Unit

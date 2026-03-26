@@ -268,6 +268,7 @@ class ProvisionCommand(Command):
                 yb_user = context.get('yb_user')
                 uid = pwd.getpwnam(yb_user).pw_uid
                 gid = grp.getgrnam(yb_user).gr_gid
+                current_user_id = os.getuid()
                 if current_user_id == 0 and current_user_id != uid:
                     # Change ownership only if running as root and yb_user is different
                     # from current user.

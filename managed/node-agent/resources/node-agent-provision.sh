@@ -66,8 +66,13 @@ install_pywheels() {
                 echo "Retrying without --no-build-isolation for $package..."
                 python3 -m pip install --no-index \
                         --find-links="$WHEEL_DIR" "${PACKAGE_FILES[$package]}" || {
-                    echo "Error installing $package" >&2
-                    exit 1
+                    if [[ "$package" == "setuptools" || "$package" == "wheel" ]]; then
+                        echo "Warning: Could not install $package from wheel," \
+                             "using system version." >&2
+                    else
+                        echo "Error installing $package" >&2
+                        exit 1
+                    fi
                 }
             }
         else
