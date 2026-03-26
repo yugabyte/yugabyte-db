@@ -24,6 +24,9 @@ Pitfalls when doing incremental build:
 - Forgetting the `reinitdb` cmake target after changes to the system catalog since last build may cause failures.
 - Forgetting `--clean` after changes to third-party since last build may cause failures.
 
+Further information is in [the docs page build-and-test](../docs/content/stable/contribute/core-database/build-and-test.md).
+Beware it may go stale.
+
 ### Common Build Commands
 
 ```bash
