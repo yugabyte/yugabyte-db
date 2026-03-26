@@ -20,6 +20,7 @@
 
 #include "yb/gutil/strings/strip.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/csv_util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"

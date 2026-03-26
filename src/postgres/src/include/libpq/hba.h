@@ -176,7 +176,7 @@ typedef struct TokenizedAuthLine
 typedef struct Port hbaPort;
 
 extern bool load_hba(void);
-extern bool load_ident(void);
+extern bool load_ident(MemoryContext yb_ident_context);
 extern const char *hba_authname(UserAuth auth_method);
 extern void hba_getauthmethod(hbaPort *port);
 extern int	check_usermap(const char *usermap_name,

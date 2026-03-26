@@ -96,6 +96,9 @@ static const char *const HardcodedHbaLines[] =
  * NOTE: the IdentLine structs can contain pre-compiled regular expressions
  * that live outside the memory context. Before destroying or resetting the
  * memory context, they need to be explicitly free'd.
+ *
+ * YB: Ident mapping is also used in YCQL. When used in YCQL, this lives in the
+ * ycql_jwt_ident_memctx_ memory context.
  */
 static List *parsed_ident_lines = NIL;
 static MemoryContext parsed_ident_context = NULL;
@@ -2875,7 +2878,7 @@ check_usermap(const char *usermap_name,
  * This works the same as load_hba(), but for the user config file.
  */
 bool
-load_ident(void)
+load_ident(MemoryContext yb_ident_context)
 {
 	FILE	   *file;
 	List	   *ident_lines = NIL;
@@ -2902,12 +2905,22 @@ load_ident(void)
 	linecxt = tokenize_auth_file(IdentFileName, file, &ident_lines, LOG);
 	FreeFile(file);
 
-	/* Now parse all the lines */
-	Assert(PostmasterContext);
-	ident_context = AllocSetContextCreate(PostmasterContext,
-										  "ident parser context",
-										  ALLOCSET_SMALL_SIZES);
-	oldcxt = MemoryContextSwitchTo(ident_context);
+	/*
+	 * Now parse all the lines
+	 *
+	 * YB: yb_ident_context is non-null when called from YCQL.
+	 */
+	if (yb_ident_context)
+		oldcxt = MemoryContextSwitchTo(yb_ident_context);
+	else
+	{
+		Assert(PostmasterContext);
+		ident_context = AllocSetContextCreate(PostmasterContext,
+											  "ident parser context",
+											  ALLOCSET_SMALL_SIZES);
+		oldcxt = MemoryContextSwitchTo(ident_context);
+	}
+
 	foreach(line_cell, ident_lines)
 	{
 		TokenizedAuthLine *tok_line = (TokenizedAuthLine *) lfirst(line_cell);
@@ -2952,7 +2965,12 @@ load_ident(void)
 			if (newline->ident_user[0] == '/')
 				pg_regfree(&newline->re);
 		}
-		MemoryContextDelete(ident_context);
+
+		/*
+		 * YB: ident_context is unused when yb_ident_context is passed as param.
+		 */
+		if (!yb_ident_context)
+			MemoryContextDelete(ident_context);
 		return false;
 	}
 
@@ -2969,7 +2987,14 @@ load_ident(void)
 	if (parsed_ident_context != NULL)
 		MemoryContextDelete(parsed_ident_context);
 
-	parsed_ident_context = ident_context;
+	/*
+	 * YB: ident_context is unused when yb_ident_context is passed as param.
+	 * In such cases, the parsed_ident_lines are allocated in the
+	 * yb_ident_context and the responsibility of managing the context is left
+	 * to the caller.
+	 */
+	if (!yb_ident_context)
+		parsed_ident_context = ident_context;
 	parsed_ident_lines = new_parsed_lines;
 
 	return true;

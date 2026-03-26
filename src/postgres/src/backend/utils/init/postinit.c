@@ -252,7 +252,7 @@ PerformAuthentication(Port *port)
 				(errmsg("could not load pg_hba.conf")));
 	}
 
-	if (!load_ident())
+	if (!load_ident(NULL /* yb_ident_context */ ))
 	{
 		/*
 		 * It is ok to continue if we fail to load the IDENT file, although it
