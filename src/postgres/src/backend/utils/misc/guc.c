@@ -4161,6 +4161,32 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications poller"
+						 " process waits before polling again in case the last"
+						 " poll returned notifications."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_notifications_poll_sleep_duration_empty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications poller"
+						 " process waits before polling again in case the last"
+						 " poll returned no notifications."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poll_sleep_duration_empty_ms,
+		100, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_reorderbuffer_max_changes_in_memory", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Maximum number of changes kept in memory per transaction "
 						 "in reorder buffer, which is used in streaming changes via "
