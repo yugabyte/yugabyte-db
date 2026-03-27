@@ -21,6 +21,17 @@ rightNav:
 
 ### 2026
 
+#### March 27, 2026
+
+##### New features
+
+- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/) to [Amazon S3](https://aws.amazon.com/s3/).
+
+##### Database
+
+- Production track updated to 2024.2.7.3.
+- Early Access track updated to 2025.2.2.1.
+
 #### February 25, 2026
 
 ##### New features
