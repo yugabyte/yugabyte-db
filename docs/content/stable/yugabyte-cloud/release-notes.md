@@ -25,7 +25,7 @@ rightNav:
 
 ##### New features
 
-- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/) to [Amazon S3](https://aws.amazon.com/s3/).
+- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/#amazon-s3) to [Amazon S3](https://aws.amazon.com/s3/).
 
 ##### Database
 
