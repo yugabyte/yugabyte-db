@@ -2,7 +2,6 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 
-import { REFETCH_INTERVAL_MS } from '@app/components/ha/hooks/useLoadHAConfiguration';
 import { YBModal, YBModalProps } from '@app/redesign/components';
 import { TaskType } from '@app/redesign/features/tasks/dtos';
 import {
@@ -66,10 +65,7 @@ export const DbUpgradeManagementSidePanel = ({
   };
   const softwareUpgradeTasksQuery = useQuery(
     taskQueryKey.paged(getPagedSoftwareUpgradeTasksRequest),
-    () => api.fetchPagedCustomerTasks(getPagedSoftwareUpgradeTasksRequest),
-    {
-      refetchInterval: REFETCH_INTERVAL_MS
-    }
+    () => api.fetchPagedCustomerTasks(getPagedSoftwareUpgradeTasksRequest)
   );
 
   const latestSoftwareUpgradeTask = softwareUpgradeTasksQuery.data?.entities[0];

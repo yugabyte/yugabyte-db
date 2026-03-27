@@ -54,6 +54,7 @@ export const colors = {
     900: '#9D6C00'
   } as PaletteColor,
   success: {
+    50: '#DCF8EC',
     100: '#CDEFE1',
     300: '#82D2B0',
     500: '#13A868',

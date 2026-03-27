@@ -7,6 +7,7 @@ import { getPrimaryCluster } from '@app/redesign/utils/universeUtils';
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { getPlacementAzMetadataList } from '../utils/formUtils';
 import { AccordionCard, AccordionCardState } from './AccordionCard';
+import { classifyDbUpgradeStages } from './utils';
 
 interface DbUpgradeProgressPanelProps {
   dbUpgradeTask: Task;
@@ -66,20 +67,19 @@ export const DbUpgradeProgressPanel = ({
   );
   const upgradeAzStageCount =
     dbUpgradeTask.canaryUpgradeProgress?.tserverAZUpgradeStatesList.length ?? 0;
+
+  const { preCheckStage, upgradeMasterServersStage, upgradeAzStages, finalizeStage } =
+    classifyDbUpgradeStages(dbUpgradeTask);
   return (
     <div className={clsx(classes.progressPanel, className)}>
       <Typography variant="h5" className={classes.title}>
         {t('title')}
       </Typography>
-      <AccordionCard
-        title={t('preCheckStage.title')}
-        stepNumber={1}
-        state={AccordionCardState.NEUTRAL}
-      />
+      <AccordionCard title={t('preCheckStage.title')} stepNumber={1} state={preCheckStage} />
       <AccordionCard
         title={t('upgradeMasterServersStage.title')}
         stepNumber={2}
-        state={AccordionCardState.NEUTRAL}
+        state={upgradeMasterServersStage}
       />
       {dbUpgradeTask.canaryUpgradeProgress?.tserverAZUpgradeStatesList.map(
         (azUpgradeState, index) => (
@@ -89,14 +89,14 @@ export const DbUpgradeProgressPanel = ({
               azLabel: upgradedAzDisplayNameByUuid[azUpgradeState.azUUID] ?? azUpgradeState.azName
             })}
             stepNumber={TSERVER_AZ_UPGRADE_STAGE_START_INDEX + index}
-            state={AccordionCardState.NEUTRAL}
+            state={upgradeAzStages[azUpgradeState.azUUID] ?? AccordionCardState.NEUTRAL}
           />
         )
       )}
       <AccordionCard
         title={t('finalizeStage.title')}
         stepNumber={TSERVER_AZ_UPGRADE_STAGE_START_INDEX + upgradeAzStageCount}
-        state={AccordionCardState.NEUTRAL}
+        state={finalizeStage}
       />
     </div>
   );

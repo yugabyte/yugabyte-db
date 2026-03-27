@@ -72,9 +72,17 @@ export interface AZUpgradeState {
   status: AZUpgradeStatus;
 }
 
+export const DbUpgradePrecheckStatus = {
+  SUCCESS: 'success',
+  RUNNING: 'running',
+  FAILED: 'failed'
+} as const;
+export type DbUpgradePrecheckStatus =
+  (typeof DbUpgradePrecheckStatus)[keyof typeof DbUpgradePrecheckStatus];
 export interface CanaryUpgradeProgress {
   enabled: boolean;
   pauseState: CanaryPauseState | null;
+  precheckStatus: DbUpgradePrecheckStatus;
   masterAZUpgradeStatesList: AZUpgradeState[];
   tserverAZUpgradeStatesList: AZUpgradeState[];
 }
