@@ -55,6 +55,8 @@ class TabletMemoryManager {
   // The MemTracker associated with the block cache.
   std::shared_ptr<MemTracker> block_based_table_mem_tracker();
 
+  std::shared_ptr<MemTracker> block_based_table_builder_mem_tracker();
+
   std::shared_ptr<MemTracker> read_wal_mem_tracker();
 
   std::shared_ptr<MemTracker> tablets_overhead_mem_tracker();
@@ -97,6 +99,7 @@ class TabletMemoryManager {
 
   std::shared_ptr<MemTracker> server_mem_tracker_;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> block_based_table_builder_mem_tracker_;
   std::shared_ptr<MemTracker> read_wal_mem_tracker_;
   std::shared_ptr<MemTracker> tablets_overhead_mem_tracker_;
 

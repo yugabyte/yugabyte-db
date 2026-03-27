@@ -225,8 +225,9 @@ std::unique_ptr<Compaction> Compaction::Create(
     VersionStorageInfo* vstorage, const MutableCFOptions& _mutable_cf_options,
     std::vector<CompactionInputFiles> inputs, int output_level, uint64_t target_file_size,
     uint64_t max_grandparent_overlap_bytes, uint32_t output_path_id, CompressionType compression,
-    std::vector<FileMetaData*> grandparents, Logger* info_log, bool manual_compaction, double score,
-    bool deletion_compaction, CompactionReason compaction_reason,
+    std::vector<FileMetaData*> grandparents, const yb::MemTrackerPtr& mem_tracker, Logger* info_log,
+    bool manual_compaction, double score, bool deletion_compaction,
+    CompactionReason compaction_reason,
     SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe) {
   bool has_input_files = false;
   for (auto& input : inputs) {
@@ -257,16 +258,18 @@ std::unique_ptr<Compaction> Compaction::Create(
 
   return std::unique_ptr<Compaction>(new Compaction(
       vstorage, _mutable_cf_options, inputs, output_level, target_file_size,
-      max_grandparent_overlap_bytes, output_path_id, compression, grandparents, manual_compaction,
-      score, deletion_compaction, compaction_reason, skip_corrupt_data_blocks_unsafe));
+      max_grandparent_overlap_bytes, output_path_id, compression, grandparents, mem_tracker,
+      manual_compaction, score, deletion_compaction, compaction_reason,
+      skip_corrupt_data_blocks_unsafe));
 }
 
 Compaction::Compaction(
     VersionStorageInfo* vstorage, const MutableCFOptions& _mutable_cf_options,
     std::vector<CompactionInputFiles> _inputs, int _output_level, uint64_t _target_file_size,
     uint64_t _max_grandparent_overlap_bytes, uint32_t _output_path_id, CompressionType _compression,
-    std::vector<FileMetaData*> _grandparents, bool _manual_compaction, double _score,
-    bool _deletion_compaction, CompactionReason _compaction_reason,
+    std::vector<FileMetaData*> _grandparents, const yb::MemTrackerPtr& mem_tracker,
+    bool _manual_compaction, double _score, bool _deletion_compaction,
+    CompactionReason _compaction_reason,
     SkipCorruptDataBlocksUnsafe skip_corrupt_data_blocks_unsafe)
     : start_level_(_inputs[0].level),
       output_level_(_output_level),
@@ -289,6 +292,10 @@ Compaction::Compaction(
       is_manual_compaction_(_manual_compaction),
       compaction_reason_(_compaction_reason),
       skip_corrupt_data_blocks_unsafe_(skip_corrupt_data_blocks_unsafe) {
+  if (mem_tracker) {
+    arena_.SetMemTracker(mem_tracker);
+  }
+
   seen_key_.store(false, std::memory_order_release);
   MarkFilesBeingCompacted(true);
 

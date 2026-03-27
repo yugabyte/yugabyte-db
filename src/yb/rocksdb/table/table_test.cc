@@ -217,7 +217,7 @@ class BlockConstructor: public Constructor {
     block_restart_interval_ = table_options.block_restart_interval;
     key_value_encoding_format_ = table_options.data_block_key_value_encoding_format;
 
-    BlockBuilder builder(block_restart_interval_, key_value_encoding_format_);
+    BlockBuilder builder(block_restart_interval_, key_value_encoding_format_, test_mem_tracker());
 
     for (const auto& kv : kv_map) {
       builder.Add(kv.first, kv.second);
@@ -1122,7 +1122,8 @@ TEST_F(BlockBasedTableTest, BasicBlockBasedTableProperties) {
   ASSERT_EQ("", props.filter_policy_name);  // no filter policy is used
 
   // Verify data size.
-  BlockBuilder block_builder(1, table_options.data_block_key_value_encoding_format);
+  BlockBuilder block_builder(
+      1, table_options.data_block_key_value_encoding_format, test_mem_tracker());
   for (const auto& item : kvmap) {
     block_builder.Add(item.first, item.second);
   }

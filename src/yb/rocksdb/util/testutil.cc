@@ -37,6 +37,12 @@
 using std::unique_ptr;
 
 namespace rocksdb {
+
+const yb::MemTrackerPtr& test_mem_tracker() {
+  static yb::MemTrackerPtr mem_tracker = yb::MemTracker::CreateTracker("test");
+  return mem_tracker;
+}
+
 namespace test {
 
 extern std::string RandomHumanReadableString(Random* rnd, int len) {
