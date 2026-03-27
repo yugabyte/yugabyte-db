@@ -30,7 +30,7 @@ Further information is in [the docs page build-and-test](../docs/content/stable/
 ### Common Build Commands
 
 ```bash
-./yb_build.sh asan reinitdb
+./yb_build.sh release reinitdb
 ```
 
 ```bash
