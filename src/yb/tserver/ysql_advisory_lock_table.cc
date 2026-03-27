@@ -17,6 +17,8 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
@@ -27,6 +29,8 @@
 #include "yb/util/status_format.h"
 
 DECLARE_bool(ysql_yb_enable_advisory_locks);
+
+using namespace std::literals;
 
 namespace yb::tserver {
 namespace {
@@ -54,16 +58,22 @@ class LockIdHelper {
   PgsqlAdvisoryLockPB& lock_id_;
 };
 
-void SetLockId(client::YBPgsqlLockOp& op, uint32_t db_oid) {
-  LockIdHelper(op).PartitionColumn(db_oid);
-}
-
-void SetLockId(client::YBPgsqlLockOp& op, const YsqlAdvisoryLocksTable::LockId& lock_id) {
+void SetLockId(
+    client::YBPgsqlLockOp& op, const YsqlAdvisoryLocksTable::LockId& lock_id,
+    AdvisoryLockTableSchemaVersion schema_version) {
+  if (schema_version == AdvisoryLockTableSchemaVersion::kDbIdHash) {
+    LockIdHelper(op)
+        .PartitionColumn(lock_id.db_oid)
+        .RangeColumn(lock_id.class_oid)
+        .RangeColumn(lock_id.objid)
+        .RangeColumn(lock_id.objsubid);
+    return;
+  }
   LockIdHelper(op)
       .PartitionColumn(lock_id.db_oid)
-      .RangeColumn(lock_id.class_oid)
-      .RangeColumn(lock_id.objid)
-      .RangeColumn(lock_id.objsubid);
+      .PartitionColumn(lock_id.class_oid)
+      .PartitionColumn(lock_id.objid)
+      .PartitionColumn(lock_id.objsubid);
 }
 
 auto MapMode(AdvisoryLockMode mode) {
@@ -81,8 +91,9 @@ auto MapMode(AdvisoryLockMode mode) {
 
 void CommonInit(
     client::YBPgsqlLockOp& op,
-    const YsqlAdvisoryLocksTable::LockId& lock_id, AdvisoryLockMode mode) {
-  SetLockId(op, lock_id);
+    const YsqlAdvisoryLocksTable::LockId& lock_id, AdvisoryLockMode mode,
+    AdvisoryLockTableSchemaVersion schema_version) {
+  SetLockId(op, lock_id, schema_version);
   op.mutable_request()->set_lock_mode(MapMode(mode));
 }
 
@@ -96,6 +107,9 @@ Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
   if (!table_) {
     table_ = VERIFY_RESULT(client_future_.get()->OpenTable(client::YBTableName{
         YQL_DATABASE_CQL, master::kSystemNamespaceName, std::string(kPgAdvisoryLocksTableName)}));
+    schema_version_ = table_->schema().num_hash_key_columns() == 1
+        ? AdvisoryLockTableSchemaVersion::kDbIdHash
+        : AdvisoryLockTableSchemaVersion::kAllColsHash;
   }
   return table_;
 }
@@ -103,7 +117,7 @@ Result<client::YBTablePtr> YsqlAdvisoryLocksTable::GetTable() {
 Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeLockOp(
     const LockId& lock_id, AdvisoryLockMode mode, bool wait) {
   auto lock = client::YBPgsqlLockOp::NewLock(VERIFY_RESULT(GetTable()));
-  CommonInit(*lock, lock_id, mode);
+  CommonInit(*lock, lock_id, mode, schema_version_);
   auto& req = *lock->mutable_request();
   req.set_wait(wait);
   req.set_is_lock(true);
@@ -113,28 +127,38 @@ Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeLockOp(
 Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeUnlockOp(
     const LockId& lock_id, AdvisoryLockMode mode) {
   auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()));
-  CommonInit(*unlock, lock_id, mode);
+  CommonInit(*unlock, lock_id, mode, schema_version_);
   return unlock;
 }
 
-Result<client::YBPgsqlLockOpPtr> YsqlAdvisoryLocksTable::MakeUnlockAllOp(uint32_t db_oid) {
-  auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()));
-  SetLockId(*unlock, db_oid);
-  return unlock;
+Result<std::vector<client::YBOperationPtr>> YsqlAdvisoryLocksTable::MakeUnlockAllOps(
+    uint32_t db_oid) {
+  if (schema_version_ == AdvisoryLockTableSchemaVersion::kDbIdHash) {
+    auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()));
+    LockIdHelper(*unlock).PartitionColumn(db_oid);
+    return std::vector<client::YBOperationPtr>{unlock};
+  }
+  auto tablet_ptrs = VERIFY_RESULT(LookupAllTablets(CoarseMonoClock::Now() + 5s));
+  std::vector<client::YBOperationPtr> ops;
+  ops.reserve(tablet_ptrs.size());
+  for (const auto& remote_tablet : tablet_ptrs) {
+    auto unlock = client::YBPgsqlLockOp::NewUnlock(VERIFY_RESULT(GetTable()));
+    unlock->SetTablet(remote_tablet);
+    ops.push_back(std::move(unlock));
+  }
+  return ops;
 }
 
-Result<std::vector<TabletId>> YsqlAdvisoryLocksTable::LookupAllTablets(CoarseTimePoint deadline) {
+Result<std::vector<client::internal::RemoteTabletPtr>> YsqlAdvisoryLocksTable::LookupAllTablets(
+    CoarseTimePoint deadline) {
   auto table = VERIFY_RESULT(GetTable());
   std::lock_guard<std::mutex> l(mutex_);
-  if (!tablet_ids_.empty()) {
-    return tablet_ids_;
+  if (!tablet_ptrs_.empty()) {
+    return tablet_ptrs_;
   }
-  auto tablet_ptrs = VERIFY_RESULT(
+  tablet_ptrs_ = VERIFY_RESULT(
       client_future_.get()->LookupAllTabletsFuture(table, deadline).get());
-  for (const auto& tablet_ptr : tablet_ptrs) {
-    tablet_ids_.push_back(tablet_ptr->tablet_id());
-  }
-  return tablet_ids_;
+  return tablet_ptrs_;
 }
 
 } // namespace yb::tserver

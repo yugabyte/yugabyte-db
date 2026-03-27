@@ -234,17 +234,25 @@ Result<PgTableRow> AddLock(
   if (is_advisory_lock_tablet) {
     RETURN_NOT_OK(SetColumnValue("database",
         static_cast<PgOid>(std::stoul(lock.hash_cols()[0])), schema, &row));
-
-    const auto& range_cols = lock.range_cols();
-    SCHECK_EQ(range_cols.size(), 3, IllegalState,
-        Format("Expected 3 values for classid, objid, and objsubid for advisory locks, "
-               "but received $0 values", range_cols.size()));
-    RETURN_NOT_OK(TrySetColumnValue(
-        "classid", static_cast<PgOid>(std::stoul(range_cols[0])), schema, &row));
-    RETURN_NOT_OK(TrySetColumnValue(
-        "objid", static_cast<PgOid>(std::stoul(range_cols[1])), schema, &row));
-    RETURN_NOT_OK(TrySetColumnValue(
-        "objsubid", static_cast<int32_t>(std::stoul(range_cols[2])), schema, &row));
+    if (lock.hash_cols().size() == 4) {
+      RETURN_NOT_OK(TrySetColumnValue("classid",
+          static_cast<PgOid>(std::stoul(lock.hash_cols()[1])), schema, &row));
+      RETURN_NOT_OK(TrySetColumnValue("objid",
+          static_cast<PgOid>(std::stoul(lock.hash_cols()[2])), schema, &row));
+      RETURN_NOT_OK(TrySetColumnValue("objsubid",
+          static_cast<int32_t>(std::stoul(lock.hash_cols()[3])), schema, &row));
+    } else {
+      const auto& range_cols = lock.range_cols();
+      SCHECK_EQ(range_cols.size(), 3, IllegalState,
+          Format("Expected 3 values for classid, objid, and objsubid for advisory locks, "
+                "but received $0 values", range_cols.size()));
+      RETURN_NOT_OK(TrySetColumnValue(
+          "classid", static_cast<PgOid>(std::stoul(range_cols[0])), schema, &row));
+      RETURN_NOT_OK(TrySetColumnValue(
+          "objid", static_cast<PgOid>(std::stoul(range_cols[1])), schema, &row));
+      RETURN_NOT_OK(TrySetColumnValue(
+          "objsubid", static_cast<int32_t>(std::stoul(range_cols[2])), schema, &row));
+    }
 
     const auto& modes = lock.modes();
     if (modes.size() == 1 && modes[0] == STRONG_READ) {
