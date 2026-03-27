@@ -7,6 +7,9 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
@@ -94,7 +97,10 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
       updatedTargetNodes.add(targetNodeDetails);
     }
     taskParams().targetNodes = updatedTargetNodes;
-    runMultiTarget(taskParams().sourceNode, universe, taskParams().targetNodes);
+    boolean cloudEnabled =
+        confGetter.getConfForScope(
+            Customer.get(universe.getCustomerId()), CustomerConfKeys.cloudEnabled);
+    runMultiTarget(taskParams().sourceNode, universe, taskParams().targetNodes, cloudEnabled);
   }
 
   /**
@@ -102,14 +108,17 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
    * ports) and reverse (connect_ex from target to source ports when source has IP).
    */
   private void runMultiTarget(
-      NodeDetails sourceNode, Universe universe, List<NodeDetails> targetNodes) {
+      NodeDetails sourceNode,
+      Universe universe,
+      List<NodeDetails> targetNodes,
+      boolean cloudEnabled) {
     for (NodeDetails targetNode : targetNodes) {
       if (sourceNode.nodeName.equals(targetNode.nodeName)) {
         continue;
       }
-      String targetIp = targetNode.cloudInfo != null ? targetNode.cloudInfo.private_ip : null;
+      String targetIp = Util.getIpToUse(universe, targetNode, cloudEnabled);
       if (StringUtils.isBlank(targetIp)) {
-        log.debug("Skipping target {}: no private IP", targetNode.nodeName);
+        log.debug("Skipping target {}: no usable IP", targetNode.nodeName);
         continue;
       }
       if (!isValidHostOrIp(targetIp)) {
@@ -118,7 +127,7 @@ public class CheckDbNodePortConnectivity extends NodeTaskBase {
                 "Invalid target address for connectivity check from %s to %s: %s",
                 sourceNode.nodeName, targetNode.nodeName, targetIp));
       }
-      String sourceIp = sourceNode.cloudInfo != null ? sourceNode.cloudInfo.private_ip : null;
+      String sourceIp = Util.getIpToUse(universe, sourceNode, cloudEnabled);
 
       List<Integer> targetPorts = getDbPorts(targetNode);
       if (targetPorts.isEmpty()) {
