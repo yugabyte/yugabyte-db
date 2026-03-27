@@ -847,10 +847,14 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 }
 
 Status TabletServer::RestartPG() const {
-  if (pg_restarter_) {
-    return pg_restarter_();
+  if (!pg_restarter_) {
+    return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
   }
-  return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+  RETURN_NOT_OK(pg_restarter_());
+  if (!conn_manager_restarter_) {
+    return Status::OK();
+  }
+  return conn_manager_restarter_();
 }
 
 Status TabletServer::KillPg() const {
@@ -2280,6 +2284,10 @@ void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restar
 
 void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
   pg_killer_ = std::move(killer);
+}
+
+void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)> restarter) {
+  conn_manager_restarter_ = std::move(restarter);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {

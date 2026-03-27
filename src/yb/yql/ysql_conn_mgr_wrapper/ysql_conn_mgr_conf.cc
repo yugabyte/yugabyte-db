@@ -18,7 +18,6 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/net/net_util.h"
@@ -190,8 +189,12 @@ void YsqlConnMgrConf::UpdateLogSettings(const std::string& log_settings_str) {
   }
 }
 
-std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
+Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   UpdateLogSettings(FLAGS_ysql_conn_mgr_log_settings);
+
+  if (!conf_) {
+    RETURN_NOT_OK(UpdateConfigFromGFlags());
+  }
 
   // Config map
   std::map<std::string, std::string> ysql_conn_mgr_configs = {
@@ -202,8 +205,8 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%quantiles%}", quantiles_},
     {"{%control_conn_db%}", FLAGS_ysql_conn_mgr_internal_conn_db},
     {"{%postgres_host%}", postgres_address_.host()},
-    {"{%control_connection_pool_size%}", std::to_string(control_connection_pool_size_)},
-    {"{%global_pool_size%}", std::to_string(global_pool_size_)},
+    {"{%control_connection_pool_size%}", std::to_string(conf_->control_connection_pool_size)},
+    {"{%global_pool_size%}", std::to_string(conf_->global_pool_size)},
     {"{%num_resolver_threads%}", std::to_string(num_resolver_threads_)},
     {"{%num_worker_threads%}", get_num_workers(FLAGS_ysql_conn_mgr_num_workers)},
     {"{%pool_ttl%}", std::to_string(FLAGS_ysql_conn_mgr_idle_time)},
@@ -236,7 +239,7 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_deallocate_if_invalid_prep_stmt%}",
       BoolToString(FLAGS_ysql_conn_mgr_deallocate_if_invalid_prep_stmt)},
     {"{%yb_enable_multi_route_pool%}", BoolToString(FLAGS_ysql_conn_mgr_enable_multi_route_pool)},
-    {"{%yb_ysql_max_connections%}", std::to_string(ysql_max_connections_)},
+    {"{%yb_ysql_max_connections%}", std::to_string(conf_->ysql_max_connections)},
     {"{%yb_optimized_session_parameters%}",
       BoolToString(FLAGS_ysql_conn_mgr_optimized_session_parameters)},
     {"{%yb_max_pools%}", std::to_string(FLAGS_ysql_conn_mgr_max_pools)},
@@ -265,11 +268,12 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   return conf_file_path;
 }
 
-int getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) {
+Result<int> getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) {
   std::ifstream ysql_pg_conf_file(ysqlpgconf_path, std::ios_base::in);
   if (!ysql_pg_conf_file.is_open()) {
-    LOG(FATAL) << "Unable to read the ysql pg conf file. File path: "
-               << ysqlpgconf_path << ". Error details: " << std::strerror(errno);
+    return STATUS_FORMAT(
+        IllegalState, "Unable to read the ysql pg conf file. File path: $0. Error details: $1",
+        ysqlpgconf_path, std::strerror(errno));
   }
 
   std::string line;
@@ -305,10 +309,10 @@ int getMaxConnectionsFromYsqlPgConf(const std::string &ysqlpgconf_path) {
   return max;
 }
 
-void YsqlConnMgrConf::UpdateConfigFromGFlags() {
+Status YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // Get the max size of connections which the postgres can support. The postgres
   // instance to which this instance of ysql_conn_mgr is going to get attached.
-  int maxConnections = getMaxConnectionsFromYsqlPgConf(ysql_pgconf_file_);
+  int max_connections = VERIFY_RESULT(getMaxConnectionsFromYsqlPgConf(ysql_pgconf_file_));
 
   // Either it's multi route pooling where yb_ysql_max_connections is relevant or
   // it's non-multi route pooling where control_connection_pool_size and global_pool_size are
@@ -317,24 +321,26 @@ void YsqlConnMgrConf::UpdateConfigFromGFlags() {
   // some connections are reserved for internal operations which will bypass the
   // YSQL Connection Manager.
 
-  CHECK_LE(FLAGS_ysql_conn_mgr_reserve_internal_conns, maxConnections)
+  CHECK_LE(FLAGS_ysql_conn_mgr_reserve_internal_conns, max_connections)
       << "ysql_conn_mgr_reserve_internal_conns must be less than or equal to maxConnections";
 
-  maxConnections = static_cast<int>(maxConnections - FLAGS_ysql_conn_mgr_reserve_internal_conns);
-
+  max_connections = static_cast<int>(max_connections - FLAGS_ysql_conn_mgr_reserve_internal_conns);
+  CachedConf conf;
   // Divide the pool between the global pool and control connection pool.
-  global_pool_size_ = FLAGS_ysql_conn_mgr_max_conns_per_db;
-  if (global_pool_size_ == 0) {
-    global_pool_size_ = maxConnections * 9 / 10;
+  conf.global_pool_size = FLAGS_ysql_conn_mgr_max_conns_per_db;
+  if (conf.global_pool_size == 0) {
+    conf.global_pool_size = max_connections * 9 / 10;
   }
-  control_connection_pool_size_ = FLAGS_ysql_conn_mgr_control_connection_pool_size;
-  if (control_connection_pool_size_ == 0) {
-    control_connection_pool_size_ = (maxConnections) / 10;
+  conf.control_connection_pool_size = FLAGS_ysql_conn_mgr_control_connection_pool_size;
+  if (conf.control_connection_pool_size == 0) {
+    conf.control_connection_pool_size = (max_connections) / 10;
   }
-  ysql_max_connections_ = maxConnections;
+  conf.ysql_max_connections = max_connections;
+  conf_ = conf;
 
   CHECK_OK(postgres_address_.ParseString(
       FLAGS_pgsql_proxy_bind_address, pgwrapper::PgProcessConf().kDefaultPort));
+  return Status::OK();
 }
 
 YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
@@ -342,13 +348,20 @@ YsqlConnMgrConf::YsqlConnMgrConf(const std::string& data_path) {
   pid_file_ = JoinPathSegments(data_path, "yb-data", "tserver", "ysql-conn-mgr.pid");
   ysql_pgconf_file_ = JoinPathSegments(data_path, "pg_data", "ysql_pg.conf");
 
-  UpdateConfigFromGFlags();
-
   // Create the log directory if it is not present.
   // This is to handle the case while running the java tests,
   // in which log directory is not created.
   CHECK_OK(env_util::CreateDirIfMissing(Env::Default(), FLAGS_log_dir.c_str()));
 }
+
+void YsqlConnMgrConf::set_yb_tserver_key(uint64_t tserver_key) {
+  yb_tserver_key_ = tserver_key;
+}
+
+uint64_t YsqlConnMgrConf::yb_tserver_key() {
+  return yb_tserver_key_;
+}
+
 
 }  // namespace ysql_conn_mgr_wrapper
 }  // namespace yb

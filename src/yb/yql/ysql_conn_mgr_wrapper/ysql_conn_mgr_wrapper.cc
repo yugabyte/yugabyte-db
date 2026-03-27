@@ -243,7 +243,7 @@ Status YsqlConnMgrWrapper::Start() {
     LOG(INFO) << "Superuser connections will be made sticky in ysql connection manager";
 
   std::vector<std::string> argv{
-      ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
+      ysql_conn_mgr_executable, VERIFY_RESULT(conf_.CreateYsqlConnMgrConfigAndGetPath())};
   proc_.emplace(ysql_conn_mgr_executable, argv);
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
 
@@ -251,7 +251,7 @@ Status YsqlConnMgrWrapper::Start() {
     proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_username);
   }
 
-  proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", conf_.yb_tserver_key_);
+  proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", UInt64ToString(conf_.yb_tserver_key()));
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
@@ -271,8 +271,9 @@ Status YsqlConnMgrWrapper::Start() {
   if (FLAGS_enable_ysql_conn_mgr_stats) {
     if (stat_shm_key_ <= 0) return STATUS(InternalError, "Invalid stats shared memory key.");
 
-    LOG(INFO) << "Using shared memory segment with key " << stat_shm_key_
-              << "for collecting Ysql Connection Manager stats";
+    LOG(INFO) << Format(
+        "Using shared memory segment with key $0 for collecting Ysql Connection Manager stats",
+        stat_shm_key_);
 
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, std::to_string(stat_shm_key_));
   }
@@ -324,12 +325,12 @@ Status YsqlConnMgrWrapper::ReloadConfig() {
 }
 
 Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
-  conf_.CreateYsqlConnMgrConfigAndGetPath();
+  RETURN_NOT_OK(conf_.CreateYsqlConnMgrConfigAndGetPath());
   return ReloadConfig();
 }
 
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+    : conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
@@ -378,6 +379,14 @@ void YsqlConnMgrSupervisor::DeregisterFlagChangeNotifications() {
 Status YsqlConnMgrSupervisor::PrepareForStart() { return RegisterFlagChangeNotifications(); }
 
 void YsqlConnMgrSupervisor::PrepareForStop() { DeregisterFlagChangeNotifications(); }
+
+Status YsqlConnMgrSupervisor::StartIfNotStarted() {
+  if (started_) {
+    return Status::OK();
+  }
+  started_ = true;
+  return ProcessSupervisor::Restart();
+}
 
 }  // namespace ysql_conn_mgr_wrapper
 }  // namespace yb

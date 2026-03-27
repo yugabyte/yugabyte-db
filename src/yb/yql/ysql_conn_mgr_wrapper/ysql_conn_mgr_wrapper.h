@@ -30,12 +30,13 @@ class TabletServerIf;
 // YsqlConnMgrWrapper: managing one instance of a Ysql Connection Manager child process
 namespace ysql_conn_mgr_wrapper {
 
-class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
+class YsqlConnMgrConf : public ProcessWrapperCommonConfig {
  public:
   explicit YsqlConnMgrConf(const std::string& data_path);
 
-  std::string CreateYsqlConnMgrConfigAndGetPath();
-  std::string yb_tserver_key_;
+  Result<std::string> CreateYsqlConnMgrConfigAndGetPath();
+  void set_yb_tserver_key(uint64_t tserver_key);
+  uint64_t yb_tserver_key();
 
  private:
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";
@@ -44,19 +45,24 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   std::string ysql_pgconf_file_;
   std::string quantiles_ = "0.99,0.95,0.5";
   HostPort postgres_address_;
+  uint64_t yb_tserver_key_;
+  // Configuration set from flags and reading the pg conf file. Lazily initialized when
+  // CreateYsqlConnMgrConfigAndGetPath is called the first time.
+  struct CachedConf {
+    uint16_t global_pool_size = 10;
+    uint16_t control_connection_pool_size;
+    int ysql_max_connections = 0;
+  };
+  std::optional<CachedConf> conf_;
 
-  uint16_t global_pool_size_ = 10;
-  uint16_t control_connection_pool_size_;
   uint num_resolver_threads_ = 1;
-  int ysql_max_connections_ = 0;
-
   bool log_debug_ = false;
   bool log_config_ = false;
   bool log_session_ = false;
   bool log_query_ = false;
   bool log_stats_ = false;
 
-  void UpdateConfigFromGFlags();
+  Status UpdateConfigFromGFlags();
   std::string GetBindAddress();
   void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
   void UpdateLogSettings(const std::string& log_settings_str);
@@ -81,11 +87,13 @@ class YsqlConnMgrWrapper : public yb::ProcessWrapper {
 // and restarting if needed.
 class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
  public:
-  explicit YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key);
+  YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key);
   ~YsqlConnMgrSupervisor() {}
+
 
   std::shared_ptr<ProcessWrapper> CreateProcessWrapper() override;
   void UpdateAndReloadConfig();
+  Status StartIfNotStarted();
 
  private:
   Status RegisterFlagChangeNotifications() REQUIRES(mtx_);
@@ -101,6 +109,7 @@ class YsqlConnMgrSupervisor : public yb::ProcessSupervisor {
   std::string GetProcessName() override {
     return "Ysql Connection Manager";
   }
+  bool started_ = false;
 };
 
 }  // namespace ysql_conn_mgr_wrapper

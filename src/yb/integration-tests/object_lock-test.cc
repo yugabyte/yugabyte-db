@@ -18,7 +18,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/ysql_operation_lease.h"
+// #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
@@ -46,8 +46,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_thread_holder.h"
-#include "yb/util/unique_lock.h"
+// #include "yb/util/test_thread_holder.h"
+// #include "yb/util/unique_lock.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -252,12 +252,13 @@ struct ClusterFlags {
 class ExternalObjectLockTest : public YBMiniClusterTestBase<ExternalMiniCluster> {
  public:
   void SetUp() override;
-  virtual ExternalMiniClusterOptions MakeExternalMiniClusterOptions();
+  ExternalMiniClusterOptions MakeExternalMiniClusterOptions();
   ClusterFlags BaseFlags();
   virtual ClusterFlags FlagOverrides() { return ClusterFlags(); }
   virtual int ReplicationFactor() { return 3; }
   virtual size_t NumberOfTabletServers() { return 3; }
   virtual bool WaitForTServersToAcceptYSQL() { return true; }
+  virtual bool EnableYsqlConnMgr() { return false; }
   ExternalTabletServer* tablet_server(size_t index);
   Status WaitForTServerLeaseToExpire(const std::string& ts_uuid, MonoDelta timeout);
   Status WaitForTServerLease(const std::string& ts_uuid, MonoDelta timeout);
@@ -1911,6 +1912,40 @@ TEST_F(ExternalObjectLockTestLargeTTLDelta, MasterThinksTServerStillHasLease) {
   ASSERT_OK(AcquireLockGlobally(&master_proxy, other_ts->uuid(), kTxn2, kDatabaseID, kRelationId));
 }
 
+class WithYSQLConnectionManagerTest : public ExternalObjectLockTestOneTS {
+  bool EnableYsqlConnMgr() override { return true; }
+};
+
+TEST_F(WithYSQLConnectionManagerTest, YB_DISABLE_TEST_ON_MACOS(RestartPostgres)) {
+  auto ts = tablet_server(0);
+  ASSERT_OK(cluster_->SetFlag(tablet_server(0), kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts->uuid(), 10s));
+  // Sanity check we cannot create a ysql connection.
+  ExternalClusterPGConnectionOptions conn_options;
+  conn_options.timeout_secs = 2;
+  auto conn_result = cluster_->ConnectToDB(std::move(conn_options));
+  ASSERT_FALSE(conn_result.ok());
+  ASSERT_OK(cluster_->SetFlag(tablet_server(0), kTServerYsqlLeaseRefreshFlagName, "true"));
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto result = cluster_->ConnectToDB();
+        return result.ok();
+      },
+      10s, "Wait for tserver to accept new pg sessions"));
+}
+
+TEST_F(WithYSQLConnectionManagerTest, YB_DISABLE_TEST_ON_MACOS(LoseLeaseWhileConnected)) {
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  constexpr std::string_view kTableName{"test_table"};
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 values (1, 1)", kTableName));
+  ASSERT_OK(cluster_->SetFlag(tablet_server(0), kTServerYsqlLeaseRefreshFlagName, "false"));
+  ASSERT_OK(WaitForTServerLeaseToExpire(tablet_server(0)->uuid(), 10s));
+  auto result = conn.FetchRowAsString(Format("SELECT count(*) from $0", kTableName));
+  ASSERT_NOK(result);
+  ASSERT_TRUE(PGSessionKilledStatus(result.status())) << "Expected a PG died session error";
+}
+
 namespace {
 Status BuildLeaseEpochMismatchErrorStatus(
     uint64_t client_lease_epoch, uint64_t server_lease_epoch) {
@@ -1978,6 +2013,7 @@ ExternalMiniClusterOptions ExternalObjectLockTest::MakeExternalMiniClusterOption
   opts.num_tablet_servers = NumberOfTabletServers();
   opts.replication_factor = ReplicationFactor();
   opts.enable_ysql = true;
+  opts.enable_ysql_conn_mgr = EnableYsqlConnMgr();
   opts.wait_for_tservers_to_accept_ysql_connections = WaitForTServersToAcceptYSQL();
   auto base_flags = BaseFlags();
   base_flags.OverrideValues(FlagOverrides());

@@ -394,10 +394,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
-
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
-
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+  void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
 
@@ -672,6 +671,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::vector<CertificateReloader> certificate_reloaders_;
   std::function<Status(void)> pg_restarter_;
   std::function<Status(void)> pg_killer_;
+
+  std::function<Status(void)> conn_manager_restarter_;
 
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;
