@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ScheduleTaskHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -464,11 +465,13 @@ public class ScheduleController extends AuthenticatedController {
     // Check if attempting to modify schedule when universe is locked( not allowed ).
     // Only allow to toggle schedule between Active and Stopped.
     scheduleToggleParams.verifyScheduleToggle(schedule.getStatus());
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    boolean runImmediateBackup =
+        scheduleToggleParams.runImmediateBackupOnResume != null
+            ? scheduleToggleParams.runImmediateBackupOnResume
+            : confGetter.getConfForScope(universe, UniverseConfKeys.runImmediateBackupOnResume);
     Schedule.toggleBackupSchedule(
-        customerUUID,
-        scheduleUUID,
-        scheduleToggleParams.status,
-        scheduleToggleParams.runImmediateBackupOnResume);
+        customerUUID, scheduleUUID, scheduleToggleParams.status, runImmediateBackup);
 
     Audit.ActionType actionType =
         scheduleToggleParams.status == Schedule.State.Stopped
