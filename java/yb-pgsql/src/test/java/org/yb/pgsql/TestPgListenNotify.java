@@ -13,6 +13,7 @@
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
@@ -240,6 +241,64 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
       }
 
       waitForNotification(listenerConn, CHANNEL, PAYLOAD);
+    }
+  }
+
+  /**
+   * Verifies that changing the empty-poll sleep duration at runtime
+   * actually affects notification delivery latency.
+   */
+  @Test
+  public void testNotificationPollSleepDuration() throws Exception {
+    final String channel = "c";
+
+    try {
+      try (Connection listener = getConnectionBuilder().withTServer(0).connect();
+           Statement listenerStmt = listener.createStatement()) {
+        listenerStmt.execute("LISTEN " + channel);
+
+        assertOneRow(listenerStmt, "SHOW yb_notifications_poll_sleep_duration_empty_ms", "100ms");
+        setNotificationsPollSleepDurationEmpty("30000");
+        Thread.sleep(5000);
+
+        try (Connection notifier = getConnectionBuilder().connect();
+             Statement notifierStmt = notifier.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", 'slow'");
+        }
+
+        Thread.sleep(15000);
+
+        listenerStmt.execute("SELECT 1");
+        PGConnection pgConn = listener.unwrap(PGConnection.class);
+        PGNotification[] notifs = pgConn.getNotifications();
+        assertFalse("Notification should not arrive within 15s with 30s poll interval",
+            notifs != null && notifs.length > 0);
+      }
+
+      try (Connection listener = getConnectionBuilder().connect();
+           Statement listenerStmt = listener.createStatement()) {
+        listenerStmt.execute("LISTEN " + channel);
+
+        assertOneRow(listenerStmt, "SHOW yb_notifications_poll_sleep_duration_empty_ms", "30s");
+        setNotificationsPollSleepDurationEmpty("100");
+        Thread.sleep(5000);
+
+        try (Connection notifier = getConnectionBuilder().connect();
+             Statement notifierStmt = notifier.createStatement()) {
+          notifierStmt.execute("NOTIFY " + channel + ", 'restored'");
+        }
+        waitForNotification(listener, channel, "restored");
+      }
+    } finally {
+      setNotificationsPollSleepDurationEmpty("100");
+    }
+  }
+
+  private void setNotificationsPollSleepDurationEmpty(String valueMs) throws Exception {
+    Set<HostAndPort> tservers = miniCluster.getTabletServers().keySet();
+    for (HostAndPort tserver : tservers) {
+      setServerFlag(tserver,
+          "ysql_yb_notifications_poll_sleep_duration_empty_ms", valueMs);
     }
   }
 
