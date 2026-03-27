@@ -620,6 +620,9 @@ DEFINE_RUNTIME_string(vector_index_backend, kYbHnswUsearch,
 DEFINE_validator(vector_index_backend,
     FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
 
+TAG_FLAG(vector_index_backend, hidden);
+TAG_FLAG(vector_index_backend, advanced);
+
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
     "If -1, the number of tablets will follow the value provided in the CreateTable request.");
