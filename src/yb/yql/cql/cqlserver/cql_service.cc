@@ -79,14 +79,14 @@ DEFINE_RUNTIME_int64(cql_dump_statement_metrics_limit, 5000,
 DEFINE_RUNTIME_int32(cql_unprepared_stmts_entries_limit, 500,
             "Limit the number of unprepared statements that are being tracked.");
 
-DEFINE_test_flag(bool, ycql_use_jwt_auth, false, "Use JWT for authentication.");
+DEFINE_NON_RUNTIME_PREVIEW_bool(ycql_use_jwt_auth, false, "Use JWT for authentication.");
 
-DEFINE_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
+DEFINE_NON_RUNTIME_string(ycql_jwt_users_to_skip_csv, "",
     "Users that are authenticated via the local password"
     " check instead of JWT (if ycql_use_jwt_auth=true). This is a comma separated list.");
 TAG_FLAG(ycql_jwt_users_to_skip_csv, sensitive_info);
 
-DEFINE_RUNTIME_string(ycql_jwt_options, "",
+DEFINE_NON_RUNTIME_string(ycql_jwt_options, "",
     "The space-separated list of options to configure JWT authentication. "
     "The format is a list of 'key=value' pairs separated by space. "
     "Valid keys are:\n"
@@ -749,7 +749,7 @@ Status CQLServiceImpl::LoadIdentConf() {
 }
 
 Status CQLServiceImpl::InitJwtAuth() {
-  if (!FLAGS_TEST_ycql_use_jwt_auth) {
+  if (!FLAGS_ycql_use_jwt_auth) {
     return Status::OK();
   }
 
