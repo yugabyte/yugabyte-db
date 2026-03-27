@@ -3699,7 +3699,7 @@
         "instanceType": "Instance Type",
         "ephemeralStorageWarning": "Selected storage type is local (ephemeral). If a node is stopped, rebooted, or fails, the data on its disk is wiped. <1>Learn more</1>",
         "premiumv2StorageHelper": "Selected storage type is not available in all regions. If any of the regions you have selected don't support the storage type, the deployment will fail.",
-        "hyperdiskStorageHelper": "Selected storage type requires specific instance types. Verify compatibility in the official documentation; deployment will fail if an unsupported instance type is selected.",
+        "hyperdiskStorageHelper": "Selected storage type is not supported by all instance types. Using an unsupported combination will cause deployment to fail. <1>Learn more</1>",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
         "useSpotInstance": "Use Spot Instances",

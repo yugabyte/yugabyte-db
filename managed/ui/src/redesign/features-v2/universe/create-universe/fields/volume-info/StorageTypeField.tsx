@@ -213,7 +213,14 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disabled, provider
           {isHyperdisk && (
             <Box mt={1}>
               <YBHelper variant={YBHelperVariants.WARNING}>
-                {t('createUniverseV2.instanceSettings.hyperdiskStorageHelper')}
+                <Trans>
+                  {t('createUniverseV2.instanceSettings.hyperdiskStorageHelper')}
+                  <StyledLink
+                    underline="always"
+                    href="https://docs.yugabyte.com/stable/deploy/checklist/#disks"
+                    target="_blank"
+                  ></StyledLink>
+                </Trans>
               </YBHelper>
             </Box>
           )}
