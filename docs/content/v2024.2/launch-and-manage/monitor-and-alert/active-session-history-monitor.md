@@ -115,7 +115,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 
 | Wait Event | Type |  Description |
 | :--------- | :--- | :---------- |
-| OnCpu_Active| CPU | A YSQL backend is doing CPU work.|
+| OnCpu_Active | CPU | A YSQL backend is doing CPU work.|
 | yb_ash_metadata | LWLock | A YSQL backend is waiting to update ASH metadata for a query. |
 | YBParallelScanEmpty| IPC | A YSQL backend is waiting on an empty queue while fetching parallel range keys. |
 | CopyCommandStreamRead| IO | A YSQL backend is waiting for a read from a file or program during COPY. |
