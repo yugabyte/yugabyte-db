@@ -1807,6 +1807,32 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time to sleep after upgrading tservers in each AZ",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> sleepAfterMasterRestartMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.sleep_after_master_restart_ms",
+          ScopeType.UNIVERSE,
+          "Delay between master restarts in rolling operations",
+          "Default delay (ms) between master restarts in rolling operations (Delay Between"
+              + " Servers). Used when task params do not override.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> sleepAfterTServerRestartMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.sleep_after_tserver_restart_ms",
+          ScopeType.UNIVERSE,
+          "Delay between tserver restarts in rolling operations",
+          "Default delay (ms) between tserver restarts in rolling operations (Delay Between"
+              + " Servers). Used when task params do not override.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
+      new ConfKeyInfo<>(
+          "yb.checks.tablespaces_before_edit.enabled",
+          ScopeType.UNIVERSE,
+          "Check if edit operation will affect existing tablespaces",
+          "Check if edit operation will affect existing tablespaces",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_new_perf_advisor_ui",

@@ -22,7 +22,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -549,7 +548,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           SubTaskGroupType.UpdatingGFlags,
           false,
           true,
-          (x) -> UniverseTaskParams.DEFAULT_SLEEP_AFTER_RESTART_MS);
+          (serverType) ->
+              serverType == ServerType.MASTER
+                  ? confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterMasterRestartMs)
+                  : confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterTServerRestartMs));
     }
   }
 

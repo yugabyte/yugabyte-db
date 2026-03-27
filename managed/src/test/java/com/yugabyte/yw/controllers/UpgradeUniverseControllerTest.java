@@ -1528,6 +1528,31 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   }
 
   @Test
+  public void testCertsRotateByTlsConfigUpdateLeavesSleepAfterRestartUnsetWhenOmitted()
+      throws IOException, NoSuchAlgorithmException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = prepareUniverseForCertsRotate(false);
+    String url =
+        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/update_tls";
+    ObjectNode bodyJson = prepareRequestBodyForCertsRotate(false);
+    bodyJson.put("enableNodeToNodeEncrypt", "true");
+    bodyJson.put("enableClientToNodeEncrypt", "true");
+    bodyJson.put("rootAndClientRootCASame", "false");
+    bodyJson.put("upgradeOption", "Non-Rolling");
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    ArgumentCaptor<CertsRotateParams> argCaptor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.CertsRotate), argCaptor.capture());
+
+    CertsRotateParams taskParams = argCaptor.getValue();
+    assertNull(taskParams.sleepAfterMasterRestartMillis);
+    assertNull(taskParams.sleepAfterTServerRestartMillis);
+    assertEquals(UpgradeOption.NON_ROLLING_UPGRADE, taskParams.upgradeOption);
+  }
+
+  @Test
   public void testCertsRotateWithOnPremUniverse() throws IOException, NoSuchAlgorithmException {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CertsRotate);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);

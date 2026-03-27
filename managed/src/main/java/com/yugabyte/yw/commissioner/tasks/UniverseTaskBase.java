@@ -5928,9 +5928,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
+    Universe universe = getUniverse();
+    if (processType == ServerType.MASTER) {
+      Integer param = taskParams().sleepAfterMasterRestartMillis;
+      if (param == null) {
+        return confGetter.getConfForScope(universe, UniverseConfKeys.sleepAfterMasterRestartMs);
+      }
+      return param;
+    } else {
+      Integer param = taskParams().sleepAfterTServerRestartMillis;
+      if (param == null) {
+        return confGetter.getConfForScope(universe, UniverseConfKeys.sleepAfterTServerRestartMs);
+      }
+      return param;
+    }
   }
 
   protected SubTaskGroup createWaitForClockSyncTasks(

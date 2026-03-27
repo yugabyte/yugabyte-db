@@ -379,7 +379,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
@@ -407,7 +407,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
               .rollMaxBatchSize(getCurrentRollBatchSize(universe))
               .build(),
           ysqlMajorVersionUpgradeState,
@@ -458,7 +458,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             enableYbc,
             ybcSoftwareVersion,
             PodUpgradeParams.builder()
-                .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+                .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
                 .rollMaxBatchSize(getCurrentRollBatchSize(universe))
                 .build(),
             ysqlMajorVersionUpgradeState,
@@ -496,7 +496,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
           rootCAUUID,
