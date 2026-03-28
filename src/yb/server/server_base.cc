@@ -589,14 +589,8 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
     RETURN_NOT_OK_PREPEND(
         AddHostPortPBs(endpoints, reg->mutable_private_rpc_addresses()),
         "Failed to add RPC endpoints to registration");
-    for (const auto &addr : reg->private_rpc_addresses()) {
-      LOG(INFO) << " Using private rpc addresses: ( " << addr.ShortDebugString()
-                << " )";
-    }
   } else {
     HostPortsToPBs(addrs, reg->mutable_private_rpc_addresses());
-    LOG(INFO) << "Using private rpc address "
-              << reg->private_rpc_addresses(0).host();
   }
 
   HostPortsToPBs(options_.broadcast_addresses, reg->mutable_broadcast_addresses());
@@ -612,12 +606,8 @@ Status RpcAndWebServerBase::GetRegistration(ServerRegistrationPB* reg, RpcOnly r
       RETURN_NOT_OK_PREPEND(AddHostPortPBs(
           web_addrs, reg->mutable_http_addresses()),
           "Failed to add HTTP addresses to registration");
-      for (const auto &addr : reg->http_addresses()) {
-        LOG(INFO) << "Using http addresses: ( " << addr.ShortDebugString() << " )";
-      }
     } else {
       HostPortsToPBs({ web_input_hp }, reg->mutable_http_addresses());
-      LOG(INFO) << "Using http address " << reg->http_addresses(0).host();
     }
   }
   reg->mutable_cloud_info()->set_placement_cloud(options_.placement_cloud());
@@ -746,6 +736,15 @@ Status RpcAndWebServerBase::Start() {
   RETURN_NOT_OK(web_server_->Start());
 
   RETURN_NOT_OK(RpcServerBase::Start());
+
+  ServerRegistrationPB reg;
+  RETURN_NOT_OK(GetRegistration(&reg));
+  for (const auto& addr : reg.private_rpc_addresses()) {
+    LOG(INFO) << "Using private rpc address: " << addr.ShortDebugString();
+  }
+  for (const auto& addr : reg.http_addresses()) {
+    LOG(INFO) << "Using http address: " << addr.ShortDebugString();
+  }
 
   return Status::OK();
 }
