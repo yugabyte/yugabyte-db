@@ -109,6 +109,8 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     secureWebProxyServer: '',
     secureWebProxyPort: undefined,
     webProxy: false,
+    webProxyServer: '',
+    webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
   }

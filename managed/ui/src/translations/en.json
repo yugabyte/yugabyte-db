@@ -3791,17 +3791,37 @@
       },
       "proxySettings": {
         "header": "Proxy Configuration",
+        "validation": {
+          "required": "Required",
+          "selectAtLeastOneProxyType": "You must select at least one proxy server type.",
+          "httpsUrlInvalid": "Invalid endpoint. URL must start with  “https://”",
+          "httpUrlInvalid": "Invalid endpoint. URL must start with  “http://”",
+          "bypassRequired": "Required",
+          "bypassInvalidEntries": "Remove invalid entries",
+          "bypassUrlNotAllowed": "Invalid entry",
+          "bypassInvalidEntry": "Invalid entry",
+          "globalNextError": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        },
+        "proxyServerType": {
+          "heading": "Proxy Server Type",
+          "subheading": "Select at least one proxy server type."
+        },
+        "bypassProxySection": {
+          "toggleLabel": "Bypass Proxy List (Optional)",
+          "tooltip": "List of domains/IPs that should bypass the proxy."
+        },
         "enableProxyServer": {
           "toggleLabel": "Enable Proxy Server",
           "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
           "learnMore": "Learn more",
           "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
-          "serverLabel": "Server",
+          "secureWebProxyEndpoint": "Secure Proxy Server Endpoint (HTTPS)",
           "serverPlaceholder": "https://proxy.example.com",
           "webServerPlacehoder": "http://proxy.example.com",
           "portLabel": "Port",
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",
+          "webProxyLabel": "Web Proxy Server Endpoint (HTTP)",
           "byPassProxy": "Bypass Proxy List",
           "byPassListPlaceholder": "example.com:8080",
           "byPassHelper": "Separate multiple values by pressing <b>Enter, Space,</b> or <b>Comma</b>."
