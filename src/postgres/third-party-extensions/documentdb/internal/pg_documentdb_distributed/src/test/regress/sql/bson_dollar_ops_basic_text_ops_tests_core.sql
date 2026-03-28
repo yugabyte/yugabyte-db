@@ -1,17 +1,17 @@
 
-/* Insert documents based off the mongo help example for $regex */
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 1, "sku" : "abc123", "description" : "Single line description."}', NULL);
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 2, "sku" : "abc789", "description" : "First line\nSecond line"}', NULL);
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 3, "sku" : "xyz456", "description" : "Many spaces before     line"}', NULL);
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 4,  "sku" : "xyz789", "description" : "Multiple\nline description" }', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 1, "address" : "sfo0001", "comment" : "This     is a dentist     clinic"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 2, "address" : "sfo0010", "comment" : "Here you can get\nthe most delicious food\nin the world"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 3, "address" : "Sfo0010", "comment" : "[dupe] Here you can get\nthe most delicious food\nin the world"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 4, "address" : "la0001", "comment" : "I never been here"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 5,  "address" : "la7777", "comment" : "The dog in the yard\nalways barks at me" }', NULL);
 
 /* now query regex */
-/* db.products.find( { sku: { $regex: /789$/ } } ) */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "789$" }';
+/* db.queryregexopstest.find( { address: { $regex: /0001$/ } } ) */
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "address": "0001$" }';
 
-/* TODO: passing options: db.products.find( { sku: { $regex: /^ABC/i } } ) */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "^abc" }';
+/* TODO: passing options: db.queryregexopstest.find( { address: { $regex: /^SFO/i } } ) */
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "address": "^sfo" }';
 
 /* Match multiple spaces */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "description": "\\s\\s+" }';
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "comment": "\\s\\s+" }';
 

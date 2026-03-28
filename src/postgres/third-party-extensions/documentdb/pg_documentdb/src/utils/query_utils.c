@@ -36,10 +36,8 @@ static char * ExtensionExecuteQueryViaLibPQ(char *query, char *connStr);
 static char * ExtensionExecuteQueryWithArgsViaLibPQ(char *query, char *connStr, int
 													nParams, Oid *paramTypes, const
 													char **parameterValues);
-static void PGConnFinishConnectionEstablishment(PGconn *conn);
 static void PGConnFinishIO(PGconn *conn);
 static char * PGConnReturnFirstField(PGconn *conn);
-static void PGConnReportError(PGconn *conn, PGresult *result, int elevel);
 static char * GetLocalhostConnStr(const Oid userOid, bool useSerialExecution);
 
 /*
@@ -62,7 +60,8 @@ ExtensionExecuteQueryViaSPI(const char *query, bool readOnly, int expectedSPIOK,
 		ereport(ERROR, (errmsg("could not connect to SPI manager")));
 	}
 
-	ereport(DEBUG1, (errmsg("executing \"%s\" via SPI", query)));
+	ereport(DEBUG1, (errmsg("executing \"%s\" via SPI", query), errhidestmt(true),
+					 errhidecontext(true)));
 
 	int tupleCountLimit = 1;
 	int spiErrorCode = SPI_execute(query, readOnly, tupleCountLimit);
@@ -526,7 +525,7 @@ ExtensionExecuteQueryWithArgsViaLibPQ(char *query, char *connStr, int nParams,
  * PGConnFinishConnectionEstablishment finishes connections establishment
  * asynchronously for given connection if not done so yet.
  */
-static void
+void
 PGConnFinishConnectionEstablishment(PGconn *conn)
 {
 	/*

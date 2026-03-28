@@ -4,7 +4,6 @@ SET documentdb.next_collection_id TO 10400;
 SET documentdb.next_collection_index_id TO 10400;
 -- Set configs to something reasonable for testing.
 set documentdb.indexTermLimitOverride to 50;
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 ---------------------------------------------------------------------
 ---- Nested Array
 ---------------------------------------------------------------------
@@ -199,13 +198,12 @@ NOTICE:  creating collection
 
 -- now we have an index with truncation enabled and 50 chars.
 \d documentdb_data.documents_10400;
-                     Table "documentdb_data.documents_10400"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_10400"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_10400" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_10401" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
@@ -716,13 +714,12 @@ NOTICE:  creating collection
 
 -- now we have an index with truncation enabled and 100 chars.
 \d documentdb_data.documents_10401;
-                     Table "documentdb_data.documents_10401"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_10401"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_10401" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_10403" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='50'))
@@ -1070,7 +1067,6 @@ SELECT document FROM documentdb_api.collection('db', 'index_truncation_tests_nes
 
 -- term generation tests
 set documentdb.indexTermLimitOverride to 100;
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested_objects', '{ "_id": 19, "ikey": [[[[[[[[[[1]]]]]]]]]] }');
 NOTICE:  creating collection
                               insert_one                              
@@ -15716,7 +15712,6 @@ SELECT did, length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM ( 
 (7164 rows)
 
 -- specific tests
-SET documentdb.enableIndexTermTruncationOnNestedObjects to off;
 set documentdb.indexTermLimitOverride to 200;
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests_nested", "indexes": [ { "key": { "$**" : 1 }, "name": "wildcardIndex",  "enableLargeIndexKeys": true  } ] }', true);
 NOTICE:  creating collection
@@ -15731,7 +15726,7 @@ SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'index_truncat
  
 (1 row)
 
--- 1. Failes without nested object truncation support
+-- 1. does not fail.
 SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested','{
     "_id" : 1,
     "data": {
@@ -15792,12 +15787,11 @@ SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested','{
     ],
     "employeeCode": "LBF"
 }');
-                                                                                                                                    insert_one                                                                                                                                     
+                              insert_one                              
 ---------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "29" }, "errmsg" : "Truncation size limit specified 200, but index term with type array was larger 354 - isTruncated 0" } ] }
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 -- 2 a. Terms generated with nested object index term truncation support
 SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(
   '{
@@ -15868,6 +15862,27 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      42 | { "$.0.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
     112 | { "$.0.largePathWithObject.onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "t" : false }
      44 | { "$.0.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
+    339 | { "$" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } }, "t" : false }
+     27 | { "$.attribute" : "1234", "t" : false }
+     15 | { "$.cb" : { "$numberInt" : "12431" }, "t" : false }
+     20 | { "$.dx" : "test", "t" : false }
+     68 | { "$.el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "t" : false }
+     14 | { "$.first" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     20 | { "$.greaterThan" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     26 | { "$.shortPath" : "aas", "t" : false }
+     10 | { "$.i" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+    189 | { "$.largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } }, "t" : false }
+     36 | { "$.largePathWithObject.option1" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     54 | { "$.largePathWithObject.option2" : "small-string1", "t" : false }
+     36 | { "$.largePathWithObject.option3" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     40 | { "$.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
+    110 | { "$.largePathWithObject.onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "t" : false }
+     42 | { "$.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
     273 | { "$.1" : { "attribute" : "xpto", "ccb" : { "$numberInt" : "34354" }, "dx" : { "$numberInt" : "0" }, "el" : null, "first" : null, "greaterThan" : null, "shortPath" : null, "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string2", "option3" : null, "option4" : { "$numberInt" : "122121" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string2", "prior" : { "$numberLong" : "1111111111111111" } } }, "t" : false }
      29 | { "$.1.attribute" : "xpto", "t" : false }
      18 | { "$.1.ccb" : { "$numberInt" : "34354" }, "t" : false }
@@ -15891,27 +15906,6 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      42 | { "$.1.largePathWithObject.option4" : { "$numberInt" : "122121" }, "t" : false }
     113 | { "$.1.largePathWithObject.onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string2", "t" : false }
      44 | { "$.1.largePathWithObject.prior" : { "$numberLong" : "1111111111111111" }, "t" : false }
-    339 | { "$" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } }, "t" : false }
-     27 | { "$.attribute" : "1234", "t" : false }
-     15 | { "$.cb" : { "$numberInt" : "12431" }, "t" : false }
-     20 | { "$.dx" : "test", "t" : false }
-     68 | { "$.el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "t" : false }
-     14 | { "$.first" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     20 | { "$.greaterThan" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     26 | { "$.shortPath" : "aas", "t" : false }
-     10 | { "$.i" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-    189 | { "$.largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } }, "t" : false }
-     36 | { "$.largePathWithObject.option1" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     54 | { "$.largePathWithObject.option2" : "small-string1", "t" : false }
-     36 | { "$.largePathWithObject.option3" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     40 | { "$.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
-    110 | { "$.largePathWithObject.onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "t" : false }
-     42 | { "$.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
     271 | { "$" : { "attribute" : "xpto", "ccb" : { "$numberInt" : "34354" }, "dx" : { "$numberInt" : "0" }, "el" : null, "first" : null, "greaterThan" : null, "shortPath" : null, "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string2", "option3" : null, "option4" : { "$numberInt" : "122121" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string2", "prior" : { "$numberLong" : "1111111111111111" } } }, "t" : false }
      27 | { "$.attribute" : "xpto", "t" : false }
      16 | { "$.ccb" : { "$numberInt" : "34354" }, "t" : false }
@@ -16009,6 +16003,27 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      42 | { "$.0.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
      60 | { "$.0.largePathWithObject.onlyPathWithLargeString" : "a", "t" : true }
      44 | { "$.0.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
+     45 | { "$" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : { "$maxKey" : 1 } }, "t" : true }
+     27 | { "$.attribute" : "1234", "t" : false }
+     15 | { "$.cb" : { "$numberInt" : "12431" }, "t" : false }
+     20 | { "$.dx" : "test", "t" : false }
+     60 | { "$.el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2Jv" }, "t" : true }
+     14 | { "$.first" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     20 | { "$.greaterThan" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     26 | { "$.shortPath" : "aas", "t" : false }
+     10 | { "$.i" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     51 | { "$.largePathWithObject" : { "option1" : null, "option2" : { "$maxKey" : 1 } }, "t" : true }
+     36 | { "$.largePathWithObject.option1" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     54 | { "$.largePathWithObject.option2" : "small-string1", "t" : false }
+     36 | { "$.largePathWithObject.option3" : null, "t" : false }
+      7 | { "" : null, "t" : false }
+     40 | { "$.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
+     60 | { "$.largePathWithObject.onlyPathWithLargeString" : "aas", "t" : true }
+     42 | { "$.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
      44 | { "$.1" : { "attribute" : "xpto", "ccb" : { "$numberInt" : "34354" } }, "t" : true }
      29 | { "$.1.attribute" : "xpto", "t" : false }
      18 | { "$.1.ccb" : { "$numberInt" : "34354" }, "t" : false }
@@ -16032,27 +16047,6 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      42 | { "$.1.largePathWithObject.option4" : { "$numberInt" : "122121" }, "t" : false }
      60 | { "$.1.largePathWithObject.onlyPathWithLargeString" : "a", "t" : true }
      44 | { "$.1.largePathWithObject.prior" : { "$numberLong" : "1111111111111111" }, "t" : false }
-     45 | { "$" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : { "$maxKey" : 1 } }, "t" : true }
-     27 | { "$.attribute" : "1234", "t" : false }
-     15 | { "$.cb" : { "$numberInt" : "12431" }, "t" : false }
-     20 | { "$.dx" : "test", "t" : false }
-     60 | { "$.el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2Jv" }, "t" : true }
-     14 | { "$.first" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     20 | { "$.greaterThan" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     26 | { "$.shortPath" : "aas", "t" : false }
-     10 | { "$.i" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     51 | { "$.largePathWithObject" : { "option1" : null, "option2" : { "$maxKey" : 1 } }, "t" : true }
-     36 | { "$.largePathWithObject.option1" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     54 | { "$.largePathWithObject.option2" : "small-string1", "t" : false }
-     36 | { "$.largePathWithObject.option3" : null, "t" : false }
-      7 | { "" : null, "t" : false }
-     40 | { "$.largePathWithObject.option4" : { "$numberInt" : "123" }, "t" : false }
-     60 | { "$.largePathWithObject.onlyPathWithLargeString" : "aas", "t" : true }
-     42 | { "$.largePathWithObject.prior" : { "$numberLong" : "123123213213" }, "t" : false }
      46 | { "$" : { "attribute" : "xpto", "ccb" : { "$numberInt" : "34354" }, "dx" : { "$maxKey" : 1 } }, "t" : true }
      27 | { "$.attribute" : "xpto", "t" : false }
      16 | { "$.ccb" : { "$numberInt" : "34354" }, "t" : false }
@@ -16084,7 +16078,7 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
 -- 3. Now insert the document with nested object index term truncation support
 SELECT documentdb_api.insert_one('db', 'index_truncation_tests_nested', '
 {
-    "_id" : 1,
+    "_id" : 2,
     "data": {
         "$binary": {
             "base64": "ewogICAgIl9pZCI6ICI2NzY5ZGI2NmExZGIyMDA4NTczOTdiNjAiLAogICAgImluZGV4IjogMCwKICAgICJndWlkIjogIjMzZjk1N2QwLWU0M2MtNDYyNi1iOGJjLTFkODE0ODE3MmZkNyIsCiAgICAiaXNBY3RpdmUiOiB0cnVlLAogICAgImJhbGFuY2UiOiAiJDMsOTMwLjI4IiwKICAgICJwaWN0dXJlIjogImh0dHA6Ly9wbGFjZWhvbGQuaXQvMzJ4MzIiLAogICAgImFnZSI6IDI3LAogICAgImV5ZUNvbG9yIjogImdyZWVuIiwKICAgICJuYW1lIjogIkxpbGEgVmFsZW56dWVsYSIsCiAgICAiZ2VuZGVyIjogImZlbWFsZSIsCiAgICAiY29tcGFueSI6ICJBUFBMSURFQyIsCiAgICAiZW1haWwiOiAibGlsYXZhbGVuenVlbGFAYXBwbGlkZWMuY29tIiwKICAgICJwaG9uZSI6ICIrMSAoODIyKSA1NDItMjQ1MCIsCiAgICAiYWRkcmVzcyI6ICI2NjcgT3hmb3JkIFdhbGssIENhc2h0b3duLCBBcmthbnNhcywgMjYyMyIsCiAgICAiYWJvdXQiOiAiSW4gYWxpcXVpcCBub24gZXN0IHNpdCBlc3QgTG9yZW0gcXVpIG9jY2FlY2F0IGZ1Z2lhdCBleC4gRG9sb3IgbGFib3JlIG1vbGxpdCBjb25zZXF1YXQgaXBzdW0uIFF1aXMgY29uc2VxdWF0IGRlc2VydW50IGVpdXNtb2QgcHJvaWRlbnQgZHVpcyBvY2NhZWNhdCBldSBlbGl0IG5vbiBhZCBleCBkZXNlcnVudCBwcm9pZGVudCBMb3JlbS4gSWQgbW9sbGl0IGNpbGx1bSBpcHN1bSB2b2x1cHRhdGUgYXV0ZSBsYWJvcmlzIGVzc2UgYW5pbS5cclxuIiwKICAgICJyZWdpc3RlcmVkIjogIjIwMjAtMDktMDRUMDM6MDA6MTggKzAzOjAwIiwKICAgICJsYXRpdHVkZSI6IDguMTI4MTI0LAogICAgImxvbmdpdHVkZSI6IC0zNy4zMjY4MDMsCiAgICAidGFncyI6IFsKICAgICAgImV0IiwKICAgICAgInN1bnQiLAogICAgICAibW9sbGl0IiwKICAgICAgImFuaW0iLAogICAgICAibW9sbGl0IiwKICAgICAgImRvIiwKICAgICAgIm5vbiIKICAgIF0sCiAgICAiZnJpZW5kcyI6IFsKICAgICAgewogICAgICAgICJpZCI6IDAsCiAgICAgICAgIm5hbWUiOiAiTGVuYSBIdWZmbWFuIgogICAgICB9LAogICAgICB7CiAgICAgICAgImlkIjogMSwKICAgICAgICAibmFtZSI6ICJWaWNreSBMdWNhcyIKICAgICAgfSwKICAgICAgewogICAgICAgICJpZCI6IDIsCiAgICAgICAgIm5hbWUiOiAiSm9zZXBoIEdhcmRuZXIiCiAgICAgIH0KICAgIF0sCiAgICAiZ3JlZXRpbmciOiAiSGVsbG8sIExpbGEgVmFsZW56dWVsYSEgWW91IGhhdmUgMTAgdW5yZWFkIG1lc3NhZ2VzLiIsCiAgICAiZmF2b3JpdGVGcnVpdCI6ICJiYW5hbmEiCiAgfQ==",
@@ -16176,7 +16170,8 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_te
               document              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" } }
-(1 row)
+ { "_id" : { "$numberInt" : "2" } }
+(2 rows)
 
 -- 5. Index usage explain
 EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData": { "$eq": 
@@ -16203,23 +16198,23 @@ EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT docu
     }
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
-                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
    Task Count: 1
-   Tuple data received from nodes: 14 bytes
+   Tuple data received from nodes: 28 bytes
    Tasks Shown: All
    ->  Task
-         Tuple data received from node: 14 bytes
+         Tuple data received from node: 28 bytes
          Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=1 loops=1)
-               ->  Sort (actual rows=1 loops=1)
-                     Sort Key: object_id
+         ->  Limit (actual rows=2 loops=1)
+               ->  Sort (actual rows=2 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                      Sort Method: quicksort  Memory: 25kB
-                     ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=1 loops=1)
+                     ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=2 loops=1)
                            Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::documentdb_core.bson)
                            Heap Blocks: exact=1
-                           ->  Bitmap Index Scan on "wildcardIndex" (actual rows=1 loops=1)
+                           ->  Bitmap Index Scan on "wildcardIndex" (actual rows=2 loops=1)
                                  Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData" : { "attribute" : "1234", "cb" : { "$numberInt" : "12431" }, "dx" : "test", "el" : { "$code" : "eyAiZXhhbXBsZSI6IDEyMywgInZhbHVlIjogImFib2JvcmEiIH0=" }, "first" : null, "greaterThan" : null, "shortPath" : "aas", "i" : null, "largePathWithObject" : { "option1" : null, "option2" : "small-string1", "option3" : null, "option4" : { "$numberInt" : "123" }, "onlyPathWithLargeString" : "aassadasdasdsdasdasdsadsa-test-data-with-large-string", "prior" : { "$numberLong" : "123123213213" } } } }'::documentdb_core.bson)
 (16 rows)
 
@@ -16231,31 +16226,31 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_te
               document              
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" } }
-(1 row)
+ { "_id" : { "$numberInt" : "2" } }
+(2 rows)
 
 EXPLAIN(ANALYZE ON, COSTS OFF, TIMING OFF, SUMMARY OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "index_truncation_tests_nested", "filter": { "itemData.largePathWithObject.option2": { "$eq": 
 
 "small-string1"
 
 } }, "projection": { "_id": 1 }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
-                                                                              QUERY PLAN                                                                               
+                                                                                   QUERY PLAN                                                                                    
 ---------------------------------------------------------------------
- Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
    Task Count: 1
-   Tuple data received from nodes: 14 bytes
+   Tuple data received from nodes: 28 bytes
    Tasks Shown: All
    ->  Task
-         Tuple data received from node: 14 bytes
+         Tuple data received from node: 28 bytes
          Node: host=localhost port=58070 dbname=regression
-         ->  Limit (actual rows=1 loops=1)
-               ->  Sort (actual rows=1 loops=1)
-                     Sort Key: object_id
+         ->  Limit (actual rows=2 loops=1)
+               ->  Sort (actual rows=2 loops=1)
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                      Sort Method: quicksort  Memory: 25kB
-                     ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=1 loops=1)
+                     ->  Bitmap Heap Scan on documents_10405_1040081 collection (actual rows=2 loops=1)
                            Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::documentdb_core.bson)
                            Heap Blocks: exact=1
-                           ->  Bitmap Index Scan on "wildcardIndex" (actual rows=1 loops=1)
+                           ->  Bitmap Index Scan on "wildcardIndex" (actual rows=2 loops=1)
                                  Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "itemData.largePathWithObject.option2" : "small-string1" }'::documentdb_core.bson)
 (16 rows)
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects to off;

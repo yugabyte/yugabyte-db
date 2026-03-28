@@ -36,24 +36,22 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 
 ANALYZE documentdb_data.documents_10140;
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'selectivity_index_tests') WHERE document @@ '{ "a": 1, "b": { "$in": [ 2, 3, 4, 5 ] }, "a": { "$in": [ 1, 5, 6, 7 ] }, "$or": [ { "c": 3, "d": { "$gt": 500 } }, { "c": { "$gt": 4 } }] }';
-                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10140_1014007 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson))
+         ->  Index Scan using idx_1 on documents_10140_1014007 collection
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson))
                Filter: (((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "d" : { "$numberInt" : "500" } }'::documentdb_core.bson)) OR (document OPERATOR(documentdb_api_catalog.@>) '{ "c" : { "$numberInt" : "4" } }'::documentdb_core.bson))
-               ->  Bitmap Index Scan on idx_1
-                     Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson))
-(10 rows)
+(8 rows)
 
 BEGIN;
 set local documentdb.enableNewSelectivityMode to on;
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'selectivity_index_tests') WHERE document @@ '{ "a": 1, "b": { "$in": [ 2, 3, 4, 5 ] }, "a": { "$in": [ 1, 5, 6, 7 ] }, "$or": [ { "c": 3, "d": { "$gt": 500 } }, { "c": { "$gt": 4 } }] }';
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -70,3 +68,92 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'select
 (12 rows)
 
 ROLLBACK;
+-- test bitmap or pushdown
+SELECT COUNT(documentdb_api.insert_one('seldb', 'bimap_or_selectivity', '{ "plane": "A380", "noticeDate": "2008-01-01", "stoppingDate": "2025-01-01", "productionDate": "2005-01-01" }')) FROM generate_series(1, 40);
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+    40
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('seldb', 'bimap_or_selectivity', '{ "plane": "A350", "noticeDate": "2008-01-01", "stoppingDate": "2025-01-01", "productionDate": "2005-01-01" }')) FROM generate_series(1, 50);
+ count 
+---------------------------------------------------------------------
+    50
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('seldb', 'bimap_or_selectivity', '{ "plane": "A330", "noticeDate": "2008-01-01", "stoppingDate": "2025-01-01", "productionDate": "2005-01-01" }')) FROM generate_series(1, 30);
+ count 
+---------------------------------------------------------------------
+    30
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('seldb', 'bimap_or_selectivity', '{ "plane": "A340", "noticeDate": "2008-01-01", "stoppingDate": "2025-01-01", "productionDate": "2005-01-01" }')) FROM generate_series(1, 30);
+ count 
+---------------------------------------------------------------------
+    30
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('seldb', '{ "createIndexes": "bimap_or_selectivity", "indexes": [ { "key": { "productionDate": 1, "plane": 1 }, "name": "plane_productionDate_index" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('seldb', '{ "createIndexes": "bimap_or_selectivity", "indexes": [ { "key": { "stoppingDate": 1, "plane": 1 }, "name": "plane_stoppingDate_index" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('seldb', '{ "createIndexes": "bimap_or_selectivity", "indexes": [ { "key": { "noticeDate": 1, "plane": 1 }, "name": "plane_noticeDate_index" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE documentdb_data.documents_10142;
+set documentdb.enableNewSelectivityMode to off;
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('seldb', '{ "find" : "bimap_or_selectivity", "filter" : { "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } }, "$and" : [ { "$or" : [ { "productionDate" : { "$exists" : false } }, { "stoppingDate" : { "$exists" : false } }, { "noticeDate" : { "$exists" : false } } ] } ] }, "limit" : { "$numberInt" : "10" } }');
+                                                                                 QUERY PLAN                                                                                 
+---------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Bitmap Heap Scan on documents_10142_1014018 collection (actual rows=0 loops=1)
+         Recheck Cond: (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)
+         Filter: ((document @? '{ "productionDate" : false }'::bson) OR (document @? '{ "stoppingDate" : false }'::bson) OR (document @? '{ "noticeDate" : false }'::bson))
+         Rows Removed by Filter: 150
+         Heap Blocks: exact=4
+         ->  Bitmap Index Scan on "plane_noticeDate_index" (actual rows=150 loops=1)
+               Index Cond: (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)
+(8 rows)
+
+set documentdb.enableNewSelectivityMode to on;
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('seldb', '{ "find" : "bimap_or_selectivity", "filter" : { "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } }, "$and" : [ { "$or" : [ { "productionDate" : { "$exists" : false } }, { "stoppingDate" : { "$exists" : false } }, { "noticeDate" : { "$exists" : false } } ] } ] }, "limit" : { "$numberInt" : "10" } }');
+                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Bitmap Heap Scan on documents_10142_1014018 collection (actual rows=0 loops=1)
+         Recheck Cond: (((document @? '{ "productionDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)) OR ((document @? '{ "stoppingDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)) OR ((document @? '{ "noticeDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)))
+         ->  BitmapOr (actual rows=0 loops=1)
+               ->  Bitmap Index Scan on "plane_productionDate_index" (actual rows=0 loops=1)
+                     Index Cond: ((document @? '{ "productionDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson))
+               ->  Bitmap Index Scan on "plane_stoppingDate_index" (actual rows=0 loops=1)
+                     Index Cond: ((document @? '{ "stoppingDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson))
+               ->  Bitmap Index Scan on "plane_noticeDate_index" (actual rows=0 loops=1)
+                     Index Cond: ((document @? '{ "noticeDate" : false }'::bson) AND (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson))
+(10 rows)
+
+set documentdb.enableNewSelectivityMode to off;
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('seldb', '{ "find" : "bimap_or_selectivity", "filter" : { "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } }, "$and" : [ { "$or" : [ { "productionDate" : { "$exists" : false } }, { "stoppingDate" : { "$exists" : false } }, { "noticeDate" : { "$exists" : false } } ] } ] }, "limit" : { "$numberInt" : "10" } }');
+                                                                                 QUERY PLAN                                                                                 
+---------------------------------------------------------------------
+ Limit (actual rows=0 loops=1)
+   ->  Bitmap Heap Scan on documents_10142_1014018 collection (actual rows=0 loops=1)
+         Recheck Cond: (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)
+         Filter: ((document @? '{ "productionDate" : false }'::bson) OR (document @? '{ "stoppingDate" : false }'::bson) OR (document @? '{ "noticeDate" : false }'::bson))
+         Rows Removed by Filter: 150
+         Heap Blocks: exact=4
+         ->  Bitmap Index Scan on "plane_noticeDate_index" (actual rows=150 loops=1)
+               Index Cond: (document @~ '{ "plane" : { "$regularExpression" : { "pattern" : "A.+", "options" : "i" } } }'::bson)
+(8 rows)
+

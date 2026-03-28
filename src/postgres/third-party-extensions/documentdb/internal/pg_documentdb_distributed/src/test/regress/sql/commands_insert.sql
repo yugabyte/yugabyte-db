@@ -139,3 +139,10 @@ rollback;
 
 select documentdb_api.drop_collection('db','into');
 select documentdb_api.drop_collection('db','intonew1');
+
+-- Server contract - never attempt to deduplicate inserting documents, the clients may deduplicate them based on the handling of JSON/BSON data type.
+select documentdb_api.insert_one('db', 'duplicatetests', '{"_id": "duplicate1", "a": {"$numberInt": "1"}}');
+select documentdb_api.insert_one('db', 'duplicatetests', '{"_id": "duplicate2", "a": {"$numberInt": "1"}, "a": {"$numberInt": "2"}}');
+select documentdb_api.insert_one('db', 'duplicatetests', '{"_id": "duplicate3", "a": {"$numberInt": "1"}, "b": {"$numberInt": "2"}}');
+-- storage size of duplicate2 and duplicate3 should be same.
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "duplicatetests", "pipeline": [{"$project": { "storageSize": {"$bsonSize": "$$ROOT"} } }] }');

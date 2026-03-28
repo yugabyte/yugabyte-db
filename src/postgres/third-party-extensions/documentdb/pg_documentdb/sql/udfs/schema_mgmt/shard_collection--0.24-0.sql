@@ -1,5 +1,5 @@
 
-/* mongo wire protocol command to shard or reshard a collection */
+/* Wire protocol command to shard or reshard a collection */
 DROP FUNCTION IF EXISTS __API_SCHEMA_V2__.shard_collection CASCADE;
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.shard_collection(
     p_database_name text,

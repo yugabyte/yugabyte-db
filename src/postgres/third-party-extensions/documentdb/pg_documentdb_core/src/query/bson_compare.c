@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_compare.c
+ * src/query/bson_compare.c
  *
  * Implementation of the BSON type comparisons.
  *
@@ -196,11 +196,10 @@ bson_in_range_interval(PG_FUNCTION_ARGS)
 									  valElement.bsonValue.value_type;
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429513),
 						errmsg(
-							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
-							"Expected the sortBy field to be a Date, but it was %s",
+							"Aggregation PlanExecutor encountered an - Invalid range - error: The specified sortBy field should be of type Date, but a different type (%s) was provided.",
 							BsonTypeName(conflictingType)),
 						errdetail_log(
-							"Invalid range for sortBy: field should be a Date, but it was %s",
+							"Aggregation PlanExecutor encountered an - Invalid range - error: The specified sortBy field should be of type Date, but a different type (%s) was provided.",
 							BsonTypeName(conflictingType))));
 	}
 
@@ -250,11 +249,11 @@ bson_in_range_numeric(PG_FUNCTION_ARGS)
 									  valElement.bsonValue.value_type;
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5429414),
 						errmsg(
-							"PlanExecutor error during aggregation :: caused by :: Invalid range: "
-							"Expected the sortBy field to be a number, but it was %s",
+							"SortBy range is invalid: "
+							"expected a Number type field, but received %s instead",
 							BsonTypeName(conflictingType)),
 						errdetail_log(
-							"Invalid range for bson_in_range_numeric: sortBy field to be a number, but it was %s",
+							"Illegal range passed to bson_in_range_numeric: The sortBy field must contain a numeric value, but received %s instead.",
 							BsonTypeName(conflictingType))));
 	}
 
@@ -347,8 +346,6 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 		bool leftNext = bson_iter_next(leftIter);
 		bool rightNext = bson_iter_next(rightIter);
 		int32_t cmp;
-		pgbsonelement leftElement;
-		pgbsonelement rightElement;
 
 		if (!leftNext && !rightNext)
 		{
@@ -363,16 +360,20 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 			return leftNext ? 1 : -1;
 		}
 
-		BsonIterToPgbsonElement(leftIter, &leftElement);
-		BsonIterToPgbsonElement(rightIter, &rightElement);
+		StringView leftKey = bson_iter_key_string_view(leftIter);
+		StringView rightKey = bson_iter_key_string_view(rightIter);
+
+		const bson_value_t *leftValue = bson_iter_value(leftIter);
+		const bson_value_t *rightValue = bson_iter_value(rightIter);
+
 		if (!compareFields)
 		{
-			leftElement.pathLength = 0;
-			rightElement.pathLength = 0;
+			leftKey.length = 0;
+			rightKey.length = 0;
 		}
 
 		/* they both have values compare typeCode. */
-		cmp = CompareBsonSortOrderType(&leftElement.bsonValue, &rightElement.bsonValue);
+		cmp = CompareBsonSortOrderType(leftValue, rightValue);
 		if (cmp != 0)
 		{
 			return cmp;
@@ -380,15 +381,16 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 
 		/* next compare field name. */
 		const char *collationStringIgnore = NULL;
-		cmp = CompareStrings(leftElement.path, leftElement.pathLength, rightElement.path,
-							 rightElement.pathLength, collationStringIgnore);
+		cmp = CompareStrings(leftKey.string, leftKey.length,
+							 rightKey.string, rightKey.length,
+							 collationStringIgnore);
 		if (cmp != 0)
 		{
 			return cmp;
 		}
 
 		bool ignoreIsComparisonValid;
-		cmp = CompareBsonValue(&leftElement.bsonValue, &rightElement.bsonValue,
+		cmp = CompareBsonValue(leftValue, rightValue,
 							   &ignoreIsComparisonValid, collationString);
 		if (cmp != 0)
 		{
@@ -416,7 +418,7 @@ BsonValueEqualsWithCollation(const bson_value_t *left, const bson_value_t *right
 
 /*
  * checks if two bson values are equal.
- * types are compared using mongo semantics, so comparing 1 to 1.0 will return true.
+ * types are compared using semantics, so comparing 1 to 1.0 will return true.
  */
 bool
 BsonValueEquals(const bson_value_t *left, const bson_value_t *right)
@@ -478,7 +480,7 @@ BsonValueEqualsStrictWithCollation(const bson_value_t *left,
 
 
 /*
- * Compares two bson values by mongo semantics.
+ * Compares two bson values by semantics.
  * Returns 0 if the two values are equal
  * Returns 1 if left > right
  * Returns -1 if left < right.
@@ -502,7 +504,7 @@ CompareBsonValueAndType(const bson_value_t *left, const bson_value_t *right,
 
 
 /*
- * Compares two bson values by mongo semantics.
+ * Compares two bson values by semantics.
  * Returns 0 if the two values are equal
  * Returns 1 if left > right
  * Returns -1 if left < right.
@@ -574,7 +576,7 @@ BsonValueAsInt64WithRoundingMode(const bson_value_t *value,
 		if (!BsonValueIsNumber(value))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16004), errmsg(
-								"can't convert from BSON type %s to long",
+								"Unable to convert from BSON type %s into a long value",
 								BsonTypeName(value->value_type))));
 		}
 
@@ -582,7 +584,7 @@ BsonValueAsInt64WithRoundingMode(const bson_value_t *value,
 		if (!IsBsonValue64BitInteger(value, checkFixedInteger))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31109), errmsg(
-								"Can't coerce out of range value %s to long",
+								"Unable to convert out-of-range value %s into a long type",
 								BsonValueToJsonForLogging(value))));
 		}
 	}
@@ -636,7 +638,7 @@ BsonValueAsInt64WithRoundingMode(const bson_value_t *value,
 
 /*
  * Converts Numeric bson value to 32 bit integer
- * This method throws `MongoConversionFailure` if bson_value_type is v_decimal128 and :
+ * This method throws `ERRCODE_DOCUMENTDB_CONVERSIONFAILURE` if bson_value_type is v_decimal128 and :
  *    - NaN is attempted in conversion
  *    - converted result overflows the int32 range
  */
@@ -649,7 +651,7 @@ BsonValueAsInt32(const bson_value_t *value)
 
 /*
  * Converts Numeric bson value to 32 bit integer with the specified rounding mode
- * This method throws `MongoConversionFailure` if bson_value_type is v_decimal128 and :
+ * This method throws `ERRCODE_DOCUMENTDB_CONVERSIONFAILURE` if bson_value_type is v_decimal128 and :
  *    - NaN is attempted in conversion
  *    - converted result overflows the int32 range
  */
@@ -773,6 +775,11 @@ BsonValueAsDateTime(const bson_value_t *value)
 
 		default:
 		{
+			/*
+			 * Compatibility Notice: The text in this error string is copied verbatim from MongoDB output
+			 * to maintain compatibility with existing tools and scripts that rely on specific error message formats.
+			 * Modifying this text may cause unexpected behavior in dependent systems.
+			 */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16006), errmsg(
 								"can't convert from BSON type %s to Date",
 								BsonTypeName(value->value_type))));
@@ -1139,7 +1146,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 
 		case BSON_TYPE_TIMESTAMP:
 		{
-			/* compare the time value first */
+			/* First, compare the time value */
 			int64_t leftVal = left->value.v_timestamp.timestamp;
 			int64_t rightVal = right->value.v_timestamp.timestamp;
 			if (leftVal != rightVal)
@@ -1462,7 +1469,9 @@ CompareStrings(const char *left, uint32_t leftLength, const char *right, uint32_
 
 	int32_t cmp;
 
-	if (collationString == NULL)
+	/* simple collation also uses binary comparison */
+	if (!IsCollationApplicable(collationString) ||
+		IsSimpleCollation(collationString))
 	{
 		cmp = memcmp(left, right, minLength);
 	}

@@ -42,3 +42,7 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 -- fails
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_view1_1" }') ORDER BY 1;
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_non_existent" }') ORDER BY 1;
+
+-- test with add distributed metadata when there's a view
+SELECT COUNT(*) FROM ( SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1, "addDistributedMetadata": true }')) i;
+SELECT COUNT(*) FROM ( SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_collections_cursor_first_page('list_metadata_db2', '{ "listCollections": 1, "addDistributedMetadata": true }')) i;

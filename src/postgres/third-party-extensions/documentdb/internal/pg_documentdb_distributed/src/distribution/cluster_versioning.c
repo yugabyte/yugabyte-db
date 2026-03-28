@@ -42,10 +42,6 @@ invalidate_cluster_version(PG_FUNCTION_ARGS)
 Datum
 get_current_cached_cluster_version(PG_FUNCTION_ARGS)
 {
-	ExtensionVersion version = RefreshCurrentVersion();
-	StringInfo s = makeStringInfo();
-	appendStringInfo(s, "Major = %d, Minor = %d, Patch = %d",
-					 version.Major, version.Minor, version.Patch);
-
-	PG_RETURN_DATUM(CStringGetTextDatum(s->data));
+	const char *versionString = GetCurrentVersionForLogging();
+	PG_RETURN_DATUM(CStringGetTextDatum(versionString));
 }

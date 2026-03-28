@@ -40,18 +40,51 @@ int TTLPurgerLockTimeout = DEFAULT_TTL_PURGER_LOCK_TIMEOUT;
 #define DEFAULT_SINGLE_TTL_TASK_TIME_BUDGET 20000
 int SingleTTLTaskTimeBudget = DEFAULT_SINGLE_TTL_TASK_TIME_BUDGET;
 
-#define DEFAULT_ENABLE_BG_WORKER false
+#define DEFAULT_TTL_TASK_MAX_RUNTIME_IN_MS 60000
+int TTLTaskMaxRunTimeInMS = DEFAULT_TTL_TASK_MAX_RUNTIME_IN_MS;
+
+#define DEFAULT_TTL_DELETE_SATURATION_RATIO_THRESHOLD 0.9
+double TTLDeleteSaturationThreshold = DEFAULT_TTL_DELETE_SATURATION_RATIO_THRESHOLD;
+
+#define DEFAULT_SLOW_TTL_BATCH_DELETE_THRESHOLD_IN_MS 10000
+int TTLSlowBatchDeleteThresholdInMS = DEFAULT_SLOW_TTL_BATCH_DELETE_THRESHOLD_IN_MS;
+
+/* Enable by default on 1.109 */
+#define DEFAULT_REPEAT_PURGE_INDEXES_FOR_TTL_TASK false
+bool RepeatPurgeIndexesForTTLTask = DEFAULT_REPEAT_PURGE_INDEXES_FOR_TTL_TASK;
+
+#define DEFAULT_ENABLE_TTL_DESC_SORT false
+bool EnableTTLDescSort = DEFAULT_ENABLE_TTL_DESC_SORT;
+
+#define DEFAULT_ENABLE_BG_WORKER true
 bool EnableBackgroundWorker = DEFAULT_ENABLE_BG_WORKER;
+
+#define DEFAULT_ENABLE_BG_WORKER_JOBS true
+bool EnableBackgroundWorkerJobs = DEFAULT_ENABLE_BG_WORKER_JOBS;
+
+#define DEFAULT_BG_WORKER_JOB_TIMEOUT_THRESHOLD_SEC 300
+int BackgroundWorkerJobTimeoutThresholdSec = DEFAULT_BG_WORKER_JOB_TIMEOUT_THRESHOLD_SEC;
 
 #define DEFAULT_BG_DATABASE_NAME "postgres"
 char *BackgroundWorkerDatabaseName = DEFAULT_BG_DATABASE_NAME;
 
-#define DEFAULT_BG_LATCH_TIMEOUT_SEC 10
+#define DEFAULT_BG_LATCH_TIMEOUT_SEC 1
 int LatchTimeOutSec = DEFAULT_BG_LATCH_TIMEOUT_SEC;
 
 #define DEFAULT_LOG_TTL_PROGRESS_ACTIVITY false
 bool LogTTLProgressActivity = DEFAULT_LOG_TTL_PROGRESS_ACTIVITY;
 
+#define DEFAULT_ENABLE_SELECTIVE_TTL_LOGGING true
+bool EnableSelectiveTTLLogging = DEFAULT_ENABLE_SELECTIVE_TTL_LOGGING;
+
+#define DEFAULT_ENABLE_TTL_BATCH_OBSERVABILITY true
+bool EnableTTLBatchObservability = DEFAULT_ENABLE_TTL_BATCH_OBSERVABILITY;
+
+#define DEFAULT_FORCE_INDEX_SCAN_TTL_TASK true
+bool ForceIndexScanForTTLTask = DEFAULT_FORCE_INDEX_SCAN_TTL_TASK;
+
+#define DEFAULT_USE_INDEX_HINTS_TTL_TASK true
+bool UseIndexHintsForTTLTask = DEFAULT_USE_INDEX_HINTS_TTL_TASK;
 
 void
 InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPrefix)
@@ -74,6 +107,34 @@ InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPref
 		NULL, &LogTTLProgressActivity, DEFAULT_LOG_TTL_PROGRESS_ACTIVITY,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
+	DefineCustomBoolVariable(
+		psprintf("%s.enableSelectiveTTLLogging", prefix),
+		gettext_noop(
+			"Whether to log highly saturated or slow ttl batches. It's turned off by default to reduce noise."),
+		NULL, &EnableSelectiveTTLLogging, DEFAULT_ENABLE_SELECTIVE_TTL_LOGGING,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableTTLBatchObservability", prefix),
+		gettext_noop(
+			"Whether to calculate and emit feature counters ttl_saturated_batches and ttl_slow_batches."),
+		NULL, &EnableTTLBatchObservability, DEFAULT_ENABLE_TTL_BATCH_OBSERVABILITY,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceIndexScanForTTLTask", prefix),
+		gettext_noop(
+			"Whether to force Index Scan for TTL task by locally disabling Sequential Scan and Bitmap Index Scan"),
+		NULL, &ForceIndexScanForTTLTask, DEFAULT_FORCE_INDEX_SCAN_TTL_TASK,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.useIndexHintsForTTLTask", prefix),
+		gettext_noop(
+			"Whether to force ordered Index Scan via Index Hints for TTL task"),
+		NULL, &UseIndexHintsForTTLTask, DEFAULT_USE_INDEX_HINTS_TTL_TASK,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
 	DefineCustomIntVariable(
 		psprintf("%s.TTLPurgerStatementTimeout", prefix),
 		gettext_noop(
@@ -86,9 +147,54 @@ InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPref
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		psprintf("%s.SingleTTLTaskTimeBudget", prefix),
+		psprintf("%s.TTLTaskMaxRunTimeInMS", newGucPrefix),
 		gettext_noop(
 			"Time budget assigned in milliseconds for single invocation of ttl task."),
+		NULL,
+		&TTLTaskMaxRunTimeInMS,
+		DEFAULT_TTL_TASK_MAX_RUNTIME_IN_MS, 1, INT_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+
+	DefineCustomBoolVariable(
+		psprintf("%s.repeatPurgeIndexesForTTLTask", newGucPrefix),
+		gettext_noop(
+			"Whether to keep deleting documents in batches until `TTLTaskMaxRunTimeInMS` is reach per TTL task invocation."),
+		NULL,
+		&RepeatPurgeIndexesForTTLTask,
+		DEFAULT_REPEAT_PURGE_INDEXES_FOR_TTL_TASK,
+		PGC_SUSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomRealVariable(
+		psprintf("%s.TTLDeleteSaturationThreshold", prefix),
+		gettext_noop(
+			"Logging threshold for ttl delete saturation ratio defined as total rows deleted in an invocation divided by the batch size."),
+		NULL,
+		&TTLDeleteSaturationThreshold,
+		DEFAULT_TTL_DELETE_SATURATION_RATIO_THRESHOLD, 0.0, 1.0,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.TTLSlowBatchDeleteThresholdInMS", prefix),
+		gettext_noop(
+			"Threshold for considering a single batch of ttl deletes to be slow."),
+		NULL,
+		&TTLSlowBatchDeleteThresholdInMS,
+		DEFAULT_SLOW_TTL_BATCH_DELETE_THRESHOLD_IN_MS, 0, INT_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.SingleTTLTaskTimeBudget", prefix),
+		gettext_noop(
+			"Time budget assigned in milliseconds for TTL task to purge one batch of documents from each eligible TTL indexes once."),
 		NULL,
 		&SingleTTLTaskTimeBudget,
 		DEFAULT_SINGLE_TTL_TASK_TIME_BUDGET, 1, INT_MAX,
@@ -103,6 +209,17 @@ InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPref
 		NULL,
 		&TTLPurgerLockTimeout,
 		DEFAULT_TTL_PURGER_LOCK_TIMEOUT, 1, INT_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableTTLDescSort", newGucPrefix),
+		gettext_noop(
+			"Whether or not to enable TTL descending sort on field."),
+		NULL,
+		&EnableTTLDescSort,
+		DEFAULT_ENABLE_TTL_DESC_SORT,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);
@@ -149,15 +266,31 @@ InitializeBackgroundJobConfigurations(const char *prefix, const char *newGucPref
 		psprintf("%s.enableBackgroundWorker", newGucPrefix),
 		gettext_noop("Enable the extension Background worker."),
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
-		PGC_SUSET, 0, NULL, NULL, NULL);
+		PGC_POSTMASTER, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableBackgroundWorkerJobs", newGucPrefix),
+		gettext_noop("Enable the execution of the pre-defined background worker jobs."),
+		NULL, &EnableBackgroundWorkerJobs, DEFAULT_ENABLE_BG_WORKER_JOBS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.backgroundWorkerJobTimeoutThresholdSec", newGucPrefix),
+		gettext_noop(
+			"Maximum allowed value in seconds for a background worker job timeout."),
+		NULL, &BackgroundWorkerJobTimeoutThresholdSec,
+		DEFAULT_BG_WORKER_JOB_TIMEOUT_THRESHOLD_SEC, 1, INT_MAX,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
 }
 
 
 void
-InitDocumentDBBackgroundWorkerGucs(const char *prefix)
+InitDocumentDBBackgroundWorkerConfigurations(const char *prefix)
 {
 	DefineCustomStringVariable(
-		psprintf("%s_bg_worker_database_name", prefix),
+		psprintf("%s.bg_worker_database_name", prefix),
 		gettext_noop("Database to which background worker will connect."),
 		NULL,
 		&BackgroundWorkerDatabaseName,

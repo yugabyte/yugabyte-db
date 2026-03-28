@@ -29,8 +29,10 @@ API_DISTRIBUTED_SCHEMA_NAME=documentdb_api_distributed
 API_DATA_SCHEMA_NAME=documentdb_data
 API_ADMIN_ROLE=documentdb_admin_role
 API_READONLY_ROLE=documentdb_readonly_role
+API_BG_WORKER_ROLE=documentdb_bg_worker_role
 EXTENSION_OBJECT_PREFIX=documentdb
 API_GUC_PREFIX=documentdb
+API_GUC_PREFIX_V2=documentdb
 
 # TODO: Need to remove this with PG16 and expose only valid exports
 ALLOW_DEFAULT_VISIBILITY=yes
@@ -58,6 +60,18 @@ clean-sql:
 
 check:
 	$(MAKE) -C src/test all
+
+installcheck:
+	$(MAKE) -C src/test installcheck
+
+installcheck-minimal:
+	$(MAKE) -C src/test installcheck-minimal $@
+
+check-valgrind:
+	$(OSS_SRC_DIR)/scripts/start_oss_server.sh -c -x -v -p 58070 -f $(CURDIR)/src/test/regress/regression_opts.conf
+	@sleep 5
+	DOCDB_ENABLE_VALGRIND=true $(MAKE) INSTALL_PG_PORT=58070 -C src/test installcheck || :
+	$(OSS_SRC_DIR)/scripts/start_oss_server.sh -s -v
 
 check-dist-minimal:
 	$(MAKE) -C src/test $@

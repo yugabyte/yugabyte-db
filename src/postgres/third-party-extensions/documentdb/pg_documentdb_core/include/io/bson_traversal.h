@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bsonvalue_utils.h
+ * include/io/bsonvalue_utils.h
  *
  * Core helper function declarations for bsonValues.
  *
@@ -61,15 +61,32 @@ typedef struct TraverseBsonExecutionFuncs
 	/*
 	 * Given an intermediate array in the path, queries whether or not to continue processing the array
 	 * with the specified value.
+	 * isArrayIndexSearch is set to true if the traversal is done via the array index path i.e.
+	 * it'll be true if we were traversing a.b.0 and '0' is treated as an array index.
+	 * This will be false if the traversal is done via a.b.c where 'a' or 'b' are arrays and 'c' is
+	 * arrived via being a document in the array.
 	 * Returns true if comparison execution should continue.
 	 */
-	bool (*ContinueProcessIntermediateArray)(void *state, const bson_value_t *value);
+	bool (*ContinueProcessIntermediateArray)(void *state, const bson_value_t *value, bool
+											 isArrayIndexSearch);
 
 	/*
 	 * An optional function: On an intermediate array visit, marks the array index that is currently
 	 * being traversed.
 	 */
 	void (*SetIntermediateArrayIndex)(void *state, int32_t arrayIndex);
+
+	/*
+	 * An optional function: On an intermediate array visit, notifies that the current array index cannot
+	 * be traversed to get to the dotted path requested.
+	 */
+	void (*HandleIntermediateArrayPathNotFound)(void *state, int32_t arrayIndex, const
+												StringView *remainingPath);
+
+	/*
+	 * An optional function: On an intermediate array visit, sets the start/end of the array
+	 */
+	void (*SetIntermediateArrayStartEnd)(void *state, bool isStart);
 } TraverseBsonExecutionFuncs;
 
 void TraverseBson(bson_iter_t *documentIterator, const char *traversePath,

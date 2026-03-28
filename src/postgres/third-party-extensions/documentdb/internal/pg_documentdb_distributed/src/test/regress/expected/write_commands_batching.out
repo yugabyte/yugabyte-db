@@ -65,13 +65,13 @@ ROLLBACK;
 -- try an extremely large batch (maxBatchSize + 1 ) fails
 BEGIN;
 SELECT bulk_write.do_bulk_insert(25001, false);
-ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
+ERROR:  Write batch size must fall within the range of 1 to 25000, but 25001 operations were provided.
 CONTEXT:  SQL statement "SELECT p_result                   FROM documentdb_api.insert('db', v_insertSpec)"
 PL/pgSQL function bulk_write.do_bulk_insert(integer,boolean) line 11 at SQL statement
 ROLLBACK;
 BEGIN;
 SELECT bulk_write.do_bulk_insert(25001, true);
-ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
+ERROR:  Write batch size must fall within the range of 1 to 25000, but 25001 operations were provided.
 CONTEXT:  SQL statement "SELECT p_result                   FROM documentdb_api.insert('db', v_insertSpec)"
 PL/pgSQL function bulk_write.do_bulk_insert(integer,boolean) line 11 at SQL statement
 ROLLBACK;
@@ -217,9 +217,9 @@ SELECT COUNT(*) FROM documentdb_api.collection('db', 'write_batching') WHERE doc
 (1 row)
 
 SELECT bulk_write.do_bulk_update(10, false);
-                                                 do_bulk_update                                                 
+                                                do_bulk_update                                                
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10" }, "n" : { "$numberLong" : "10" } }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } }
 (1 row)
 
 SELECT COUNT(*) FROM documentdb_api.collection('db', 'write_batching') WHERE document->'_id' = document->'a';
@@ -231,16 +231,16 @@ SELECT COUNT(*) FROM documentdb_api.collection('db', 'write_batching') WHERE doc
 ROLLBACK;
 BEGIN;
 SELECT bulk_write.do_bulk_update(10, true);
-                                                 do_bulk_update                                                 
+                                                do_bulk_update                                                
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10" }, "n" : { "$numberLong" : "10" } }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10" }, "n" : { "$numberInt" : "10" } }
 (1 row)
 
 ROLLBACK;
 BEGIN;
 -- do a large number (fail)
 SELECT bulk_write.do_bulk_update(25001, false);
-ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
+ERROR:  Batch sizes should always fall between 1 and 25000. Got 25001 operations.
 CONTEXT:  SQL statement " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6620 WHERE shard_key_value = 6620"
 SQL statement "SELECT p_result                   FROM documentdb_api.update('db', v_updateSpec)"
 PL/pgSQL function bulk_write.do_bulk_update(integer,boolean) line 11 at SQL statement
@@ -248,7 +248,7 @@ ROLLBACK;
 BEGIN;
 -- do a large number (fail)
 SELECT bulk_write.do_bulk_update(25001, true);
-ERROR:  Write batch sizes must be between 1 and 25000. Got 25001 operations.
+ERROR:  Batch sizes should always fall between 1 and 25000. Got 25001 operations.
 CONTEXT:  SQL statement " SELECT documentdb_api_internal.update_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6620 WHERE shard_key_value = 6620"
 SQL statement "SELECT p_result                   FROM documentdb_api.update('db', v_updateSpec)"
 PL/pgSQL function bulk_write.do_bulk_update(integer,boolean) line 11 at SQL statement
@@ -256,25 +256,25 @@ ROLLBACK;
 BEGIN;
 -- do a large number
 SELECT bulk_write.do_bulk_update(10000, false);
-                                                    do_bulk_update                                                    
+                                                   do_bulk_update                                                   
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "10000" }, "n" : { "$numberLong" : "10000" } }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "10000" }, "n" : { "$numberInt" : "10000" } }
 (1 row)
 
 ROLLBACK;
 -- introduce an error in one document
 BEGIN;
 SELECT documentdb_api.update('db', '{ "update": "write_batching", "updates": [{ "q": { "_id": 5 }, "u": { "$set": { "a": "this is a string" } } }] }');
-                                                                update                                                                
+                                                               update                                                               
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1"" }, ""n"" : { ""$numberLong"" : ""1"" } }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
 (1 row)
 
 set local documentdb.batchWriteSubTransactionCount TO 40;
 SELECT bulk_write.do_bulk_update(50, false);
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            do_bulk_update                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           do_bulk_update                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
- { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberLong" : "45" }, "n" : { "$numberLong" : "45" }, "writeErrors" : [ { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "13" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "23" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "33" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" }, { "index" : { "$numberInt" : "43" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string" } ] }
+ { "ok" : { "$numberDouble" : "1.0" }, "nModified" : { "$numberInt" : "45" }, "n" : { "$numberInt" : "45" }, "writeErrors" : [ { "index" : { "$numberInt" : "3" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string." }, { "index" : { "$numberInt" : "13" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string." }, { "index" : { "$numberInt" : "23" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string." }, { "index" : { "$numberInt" : "33" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string." }, { "index" : { "$numberInt" : "43" }, "code" : { "$numberInt" : "67108893" }, "errmsg" : "Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string." } ] }
 (1 row)
 
 ROLLBACK;

@@ -18,6 +18,18 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 
 sed -i -e "s/!MAJOR_VERSION!/${pg_version}/g" $targetFile
 
+if (( $pg_version >= 16 )); then
+    sed -i -e "s/!PG16_OR_HIGHER!/_pg16/g" $targetFile
+else
+    sed -i -e "s/!PG16_OR_HIGHER!//g" $targetFile
+fi
+
+if (( $pg_version >= 17 )); then
+    sed -i -e "s/!PG17_OR_HIGHER!/_pg17/g" $targetFile
+else
+    sed -i -e "s/!PG17_OR_HIGHER!//g" $targetFile
+fi
+
 
 function ProcessMutateFile()
 {
@@ -34,3 +46,13 @@ function ProcessMutateFile()
 
 ProcessMutateFile "./test_mutate_${pg_version}"
 ProcessMutateFile "$scriptDir/test_mutate_${pg_version}"
+
+if [ "${DOCDB_ENABLE_ASAN:-}" == "true" ]; then
+    ProcessMutateFile "./test_mutate_asan"
+    ProcessMutateFile "$scriptDir/test_mutate_asan"
+fi
+
+if [ "${DOCDB_ENABLE_VALGRIND:-}" == "true" ]; then
+    ProcessMutateFile "./test_mutate_valgrind"
+    ProcessMutateFile "$scriptDir/test_mutate_valgrind"
+fi

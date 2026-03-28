@@ -9,54 +9,54 @@ ERROR:  dbName cannot be NULL
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}');
 ERROR:  BSON field 'createIndexes.unknown_field' is an unknown field
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}');
-ERROR:  collection name has invalid type null
+ERROR:  Collection name contains an invalid data type null
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}');
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'null'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 5}');
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'int'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": []}');
-ERROR:  Must specify at least one index to create
+ERROR:  You must provide at least one index in order to proceed with creation
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1"}');
-ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+ERROR:  The BSON field 'createIndexes.indexes' is required but was not provided
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{}');
-ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+ERROR:  The BSON field 'createIndexes.indexes' is required but was not provided
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": 1}');
-ERROR:  collection name has invalid type int
+ERROR:  Collection name contains an invalid data type int
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 1}');
-ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+ERROR:  The BSON field 'createIndexes.indexes' has an incorrect type 'int'; it should be of type 'array'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [1,2]}');
-ERROR:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
+ERROR:  The BSON field 'createIndexes.indexes.0' has an incorrect type 'int'; it should be of type 'object'.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": 1}]}');
-ERROR:  Error in specification { "key" : 1 } :: caused by :: The field 'key' must be an object, but got int
+ERROR:  Error in specification { "key" : 1 }:The field 'key' is required to be an object type, however, it received a int instead.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": 1}]}');
-ERROR:  Error in specification { "name" : 1 } :: caused by :: The field 'name' must be an string, but got int
+ERROR:  Error in specification { "name" : 1 }:The field 'name' is required to be an string type, however, it received a int instead.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unique": "1"}]}');
-ERROR:  Error in specification { "unique" : "1" } :: caused by :: The field 'unique' has value unique: "1", which is not convertible to bool
+ERROR:  Error in specification { "unique" : "1" }:The field 'unique' has value unique: "1", which is not convertible to bool
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}}]}');
-ERROR:  Error in specification { "key" : { "a" : 1 } } :: caused by :: The 'name' field is a required property of an index specification
+ERROR:  Error in specification { "key" : { "a" : 1 } }:The 'name' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}');
-ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+ERROR:  Error in specification { "name" : "my_idx" }:The 'key' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unknown_field": "111"}]}');
-ERROR:  Error in specification { "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "unknown_field" : "111" }
+ERROR:  Error in specification { "unknown_field" : "111" }:The field 'unknown_field' cannot be used in an index specification. Provided specification: { "unknown_field" : "111" }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "_name_", "unknown_field": "111"}]}');
-ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "name" : "_name_", "unknown_field" : "111" }
+ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" }:The field 'unknown_field' cannot be used in an index specification. Provided specification: { "name" : "_name_", "unknown_field" : "111" }
 ---- createIndexes - indexes.key - parse error ----
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"": 1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 1, "b": -1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" }:wildcard indexes do not allow compounding
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".$**": 1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": "bad"}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" } :: caused by :: Unknown index plugin "bad"
+ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" }:Unknown plugin index specified: "bad"
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 0}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be 0.
+ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" }:Index key pattern values are not allowed to be zero.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": ""}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be empty strings
+ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" }:Index key pattern values must not contain empty strings
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": {"a": 1}}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" } :: caused by :: Values in v:2 index key pattern cannot be of type object. Only numbers > 0, numbers < 0, and strings are allowed.
+ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" }:Values in v:2 index key pattern must not be of type object; acceptable types include numbers greater than zero, numbers less than zero, and strings.
 -- note that those are valid ..
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**foo": 1}, "name": "my_idx_1"}]}');
 NOTICE:  creating collection
@@ -110,11 +110,11 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- invalid sparse indexes
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": true}]}',true);
-ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true } :: caused by :: Index type 'wildcard' does not support the sparse option
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true }:Index type 'wildcard' does not support the sparse option
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": "true"}]}',true);
-ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" } :: caused by :: The field 'sparse' has value sparse: "true", which is not convertible to bool
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" }:The field 'sparse' has value sparse: "true", which is not convertible to bool
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.a": 1}, "name": "my_sparse_with_pfe_idx", "sparse": true, "partialFilterExpression": { "rating": { "$gt": 5 } }}]}',true);
-ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } } :: caused by :: cannot mix "partialFilterExpression" and "sparse" options
+ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } }:cannot mix "partialFilterExpression" and "sparse" options
 -- sparse can create index for same key with different sparse options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_sparse_a_b_idx", "sparse": true}]}',true);
                                                                                                     create_indexes_non_concurrently                                                                                                    
@@ -161,13 +161,13 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 
 -- invalid hash indexes
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}',true);
-ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
+ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" }:Index type 'hashed' does not support the unique option.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": "hashed" }, "name": "invalid_hashed"}]}',true);
-ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" }:A maximum of one index field is allowed to be hashed but found 2
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": 1, "d": "hashed" }, "name": "invalid_hashed"}]}',true);
-ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" }:A maximum of one index field is allowed to be hashed but found 2
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b.$**": "hashed" }, "name": "invalid_hashed"}]}',true);
-ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" }:Index key has an invalid field name because it begins with an operators symbol.
 -- can't create index on same key with same sparse options
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx1"}]}',true);
 ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
@@ -177,9 +177,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIn
 ERROR:  Index already exists with a different name: my_sparse_a_b_idx
 -- invalid index names
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "*"}]}');
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" } :: caused by :: The index name '*' is not valid
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" }:The index name '*' is not valid
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "name\u0000field"}]}');
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" } :: caused by :: The index name cannot contain embedded nulls
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" }:The index name must not include any embedded null characters
 -- For the next test, show the commands that we internally execute to build
 -- & clean-up the collection indexes.
 SET client_min_messages TO DEBUG1;
@@ -203,13 +203,13 @@ DEBUG:  executing "SELECT index_id, index_spec, documentdb_api_internal.index_bu
 DEBUG:  executing "SELECT index_id, index_spec, documentdb_api_internal.index_build_is_in_progress(index_id)FROM documentdb_api_catalog.collection_indexes WHERE collection_id = $1 AND documentdb_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
 DEBUG:  executing "SELECT COUNT(*) FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
 DEBUG:  executing "INSERT INTO documentdb_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6016 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='x.y.z',tl=2699)) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6016 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_internal.bson_rum_composite_path_ops(pathspec='[ "x.y.z" ]',tl=2691)) " via SPI
 DEBUG:  building index "documents_rum_index_6016" on table "documents_6000" serially
 DEBUG:  executing "INSERT INTO documentdb_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6017 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='c.d.e',tl=2699)) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6017 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_internal.bson_rum_composite_path_ops(pathspec='[ "c.d.e" ]',tl=2691)) " via SPI
 DEBUG:  building index "documents_rum_index_6017" on table "documents_6000" serially
 DEBUG:  executing "INSERT INTO documentdb_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
-DEBUG:  executing "CREATE INDEX  documents_rum_index_6018 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_catalog.bson_rum_single_path_ops(path='x.y',tl=2699)) " via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6018 ON documentdb_data.documents_6000 USING documentdb_rum ( document documentdb_api_internal.bson_rum_composite_path_ops(pathspec='[ "x.y" ]',tl=2691)) " via SPI
 DEBUG:  building index "documents_rum_index_6018" on table "documents_6000" serially
 DEBUG:  executing "SELECT COUNT(*) FROM documentdb_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR documentdb_api_internal.index_build_is_in_progress(index_id))" via SPI
                                                                                                     create_indexes_non_concurrently                                                                                                     
@@ -220,27 +220,27 @@ DEBUG:  executing "SELECT COUNT(*) FROM documentdb_api_catalog.collection_indexe
 RESET client_min_messages;
 -- show that we didn't leave any invalid collection indexes behind
 SELECT * FROM documentdb_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
- collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
----------------+----------+---------------------------------------------------------------------------------------------------------------------------------------------+----------------
-          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
-          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
-          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
-          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
-          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
-          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
-          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
-          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
-          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
-          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
-          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
-          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
-          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
-          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
-          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
-          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
-          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
-          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
-          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
+ collection_id | index_id |                                                                                       index_spec_as_bson                                                                                       | index_is_valid 
+---------------+----------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                                                  | t
+          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "storageEngine" : { "enableOrderedIndex" : true } }                                       | t
+          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3", "storageEngine" : { "enableOrderedIndex" : true } }                                          | t
+          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }                | t
+          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }        | t
+          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }   | t
+          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } } | t
+          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }           | t
+          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }                                                      | t
+          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }          | t
+          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }     | t
+          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                                                                         | t
+          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }                                                                  | t
+          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }                                                             | t
+          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                                                                               | t
+          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                                                                               | t
+          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1", "storageEngine" : { "enableOrderedIndex" : true } }                                    | t
+          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5", "storageEngine" : { "enableOrderedIndex" : true } }                                         | t
+          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2", "storageEngine" : { "enableOrderedIndex" : true } }                                      | t
 (19 rows)
 
 -- also show that we didn't leave any invalid pg indexes behind
@@ -272,56 +272,56 @@ ORDER BY indexrelid;
 
 -- Test invalid indexes are not left behind
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**foo": 1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" }:Index key includes an invalid or prohibited field name
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**.foo": 1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" }:Index key includes an invalid or prohibited field name
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": -1, "a.$**": 1}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" }:wildcard indexes do not allow compounding
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {}, "name": "my_idx"}]}');
-ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" }:Index keys are not allowed to be completely empty fields.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}');
-ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+ERROR:  Error in specification { "name" : "my_idx" }:The 'key' field is mandatory and must be included as part of an index specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**foo": 1}, "name": "my_idx_13"}]}');
-ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"..": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.$**": 1}, "name": "my_idx_10"}]}');
-ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.foo": 1}, "name": "my_idx_11"}]}');
-ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$a": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b.$**": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" }:Index key has an invalid field name because it begins with an operators symbol.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.": 1}, "name": "my_idx_12"}]}');
-ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" }:Index keys are not allowed to include any fields that are empty.
 -- show that we didn't leave any invalid collection indexes behind
 SELECT * FROM documentdb_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
- collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
----------------+----------+---------------------------------------------------------------------------------------------------------------------------------------------+----------------
-          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
-          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
-          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
-          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
-          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
-          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
-          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
-          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
-          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
-          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
-          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
-          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                      | t
-          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }               | t
-          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }          | t
-          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                            | t
-          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                            | t
-          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
-          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
-          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
+ collection_id | index_id |                                                                                       index_spec_as_bson                                                                                       | index_is_valid 
+---------------+----------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                                                                                  | t
+          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1", "storageEngine" : { "enableOrderedIndex" : true } }                                       | t
+          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3", "storageEngine" : { "enableOrderedIndex" : true } }                                          | t
+          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }                | t
+          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }        | t
+          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }   | t
+          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } } | t
+          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }           | t
+          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }                                                      | t
+          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true, "storageEngine" : { "enableOrderedIndex" : true } }          | t
+          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false, "storageEngine" : { "enableOrderedIndex" : true } }     | t
+          6000 |     6011 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed" }, "name" : "my_idx_hashed" }                                                                                                         | t
+          6000 |     6012 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : "hashed", "b" : { "$numberInt" : "1" } }, "name" : "my_idx_hashed_compound" }                                                                  | t
+          6000 |     6013 | { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" }, "b" : "hashed" }, "name" : "my_idx_hashed_compound_hash" }                                                             | t
+          6000 |     6014 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : "hashed" }, "name" : "my_idx_dollar_name_1" }                                                                                               | t
+          6000 |     6015 | { "v" : { "$numberInt" : "2" }, "key" : { "a.c$" : "hashed" }, "name" : "my_idx_dollar_name_2" }                                                                                               | t
+          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1", "storageEngine" : { "enableOrderedIndex" : true } }                                    | t
+          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5", "storageEngine" : { "enableOrderedIndex" : true } }                                         | t
+          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2", "storageEngine" : { "enableOrderedIndex" : true } }                                      | t
 (19 rows)
 
 -- also show that we didn't leave any invalid pg indexes behind
@@ -365,7 +365,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
      ]
    }'
 );
-ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed when 'key' is {"$**": ±1}
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } }:The field 'wildcardProjection' is only allowed when 'key' is {"$**": ±1}
 -- cannot specify wildcardProjection for a non-wildcard index
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'wp_test',
@@ -379,7 +379,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
      ]
    }'
 );
-ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed in an 'wildcard' index
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } }:The field 'wildcardProjection' is only allowed in an 'wildcard' index
 CREATE FUNCTION create_index_arg_using_wp(p_wp text)
 RETURNS documentdb_core.bson
 AS $$
@@ -400,40 +400,40 @@ END;
 $$ LANGUAGE plpgsql;
 -- all fields specified in wildcardProjection must be included or excluded, except _id field
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": 0}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b in inclusion projection.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : 0 } }:Failed to parse: wildcardProjection :: caused by :: exclusion cannot be applied to field b within the inclusion projection.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b.c": 0}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b.c" : 0 } }:Failed to parse: wildcardProjection :: caused by :: exclusion cannot be applied to field b.c within the inclusion projection.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"b.c": 1, "a": 0}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "b.c" : 1, "a" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field a in inclusion projection.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "b.c" : 1, "a" : 0 } }:Failed to parse: wildcardProjection :: caused by :: exclusion cannot be applied to field a within the inclusion projection.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y.t": 0}, "b.c": 0}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y.t" : 0 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field y.t in inclusion projection.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y.t" : 0 }, "b.c" : 0 } }:Failed to parse: wildcardProjection :: caused by :: exclusion cannot be applied to field y.t within the inclusion projection.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y": 1}, "b.c": 0}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y" : 1 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y" : 1 }, "b.c" : 0 } }:Failed to parse: wildcardProjection :: caused by :: exclusion cannot be applied to field b.c within the inclusion projection.
 -- wildcardProjection cannot be empty
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : {  } } :: caused by :: The 'wildcardProjection' field can't be an empty object
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : {  } }:The 'wildcardProjection' field must not contain an empty object
 -- wildcardProjection must be document
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('5'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : 5 } :: caused by :: The field 'wildcardProjection' must be a non-empty object, but got int
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : 5 }:The field 'wildcardProjection' must be a non-empty object, but got int
 -- wildcardProjection cannot contain an empty document as an inner-level specification
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": {}, "e": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : {  }, "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: An empty sub-projection is not a valid value. Found empty object at path
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : {  }, "e" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: An empty sub-projection is not a valid value. Found empty object at path
 -- and inner-level specification must be a document or a path string
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": [], "e": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : [  ], "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : [  ], "e" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Projection specification is invalid; using computed fields is not supported in kBanComputedFields parsing mode
 -- show that we throw an error for invalid paths used in wildcardProjection document
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a..b": 1}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a..b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a..b" : 1 } }:Failed to parse: wildcardProjection :: caused by :: FieldPath field names cannot be completely empty strings.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a..b": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a..b" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a..b" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: FieldPath field names cannot be completely empty strings.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a.b.": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a.b." : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath must not end with a '.'.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a.b." : 1 } } }:Failed to parse: wildcardProjection :: caused by :: The FieldPath cannot terminate with a '.' character.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath cannot be constructed with empty string.
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: A FieldPath object cannot be created when the provided string is empty.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"$aa": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "$aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "$aa" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Projection specification is invalid; using computed fields is not supported in kBanComputedFields parsing mode
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"$a": -1, "b": {"aa": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "$a" : -1, "b" : { "aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "$a" : -1, "b" : { "aa" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 -- idx_1: for _id field, we will take the last inclusion specification into the account
 -- idx_2: not specifying inclusion for _id field would result in excluding _id field by default
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
@@ -452,7 +452,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     TRUE
 );
-ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "idx_2", "wildcardProjection" : { "a" : { "x" : 10.5, "y" : true, "z.a.b" : -100 }, "b.c" : 1, "k" : { "z.a.b" : -100 } } } :: caused by :: A numeric value in a $** index key pattern must be positive.
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "idx_2", "wildcardProjection" : { "a" : { "x" : 10.5, "y" : true, "z.a.b" : -100 }, "b.c" : 1, "k" : { "z.a.b" : -100 } } }:A numeric value in a $** index key pattern must be positive.
 SELECT documentdb_test_helpers.documentdb_index_get_pg_def('wp_test', 'ok_test_1', 'idx_1');
  documentdb_index_get_pg_def 
 -----------------------------
@@ -570,22 +570,22 @@ BEGIN;
 (4 rows)
 
   -- cannot use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                             QUERY PLAN                             
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                        run_explain_and_trim                        
 --------------------------------------------------------------------
  Seq Scan on documents_6003 collection
    Filter: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
-                                 QUERY PLAN                                 
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }') $cmd$);
+                            run_explain_and_trim                            
 ----------------------------------------------------------------------------
  Seq Scan on documents_6003 collection
    Filter: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                            QUERY PLAN                            
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                       run_explain_and_trim                       
 ------------------------------------------------------------------
  Seq Scan on documents_6003 collection
    Filter: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
@@ -625,37 +625,37 @@ SELECT documentdb_test_helpers.get_collection_indexes('wp_test','ok_test_4');
 BEGIN;
   set local enable_seqscan TO OFF;
   -- cannot use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                             QUERY PLAN                             
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                        run_explain_and_trim                        
 --------------------------------------------------------------------
  Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                            QUERY PLAN                            
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                       run_explain_and_trim                       
 ------------------------------------------------------------------
  Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
-                                 QUERY PLAN                                 
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }') $cmd$);
+                            run_explain_and_trim                            
 ----------------------------------------------------------------------------
  Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
-                                  QUERY PLAN                                  
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                             run_explain_and_trim                             
 ------------------------------------------------------------------------------
  Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   -- can use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                  QUERY PLAN                                  
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                             run_explain_and_trim                             
 ------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
@@ -663,8 +663,8 @@ BEGIN;
          Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (4 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
-                                      QUERY PLAN                                      
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }') $cmd$);
+                                 run_explain_and_trim                                 
 --------------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
@@ -672,8 +672,8 @@ BEGIN;
          Index Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
 (4 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                 QUERY PLAN                                 
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                            run_explain_and_trim                            
 ----------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
@@ -681,8 +681,8 @@ BEGIN;
          Index Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
 (4 rows)
 
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }');
-                                  QUERY PLAN                                  
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+                             run_explain_and_trim                             
 ------------------------------------------------------------------------------
  Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
@@ -755,8 +755,8 @@ BEGIN;
 (4 rows)
 
   -- cannot use idx_1 due to filter on "a.z.r" in "$or"
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }');
-                                                                                                 QUERY PLAN                                                                                                  
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }') $cmd$);
+                                                                                            run_explain_and_trim                                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Seq Scan on documents_6004 collection
    Filter: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::bson))
@@ -839,25 +839,25 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
 
 -- test path collision
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "a.b": 1}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "a.b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b remaining portion b
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "a.b" : 1 } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path a.b remaining portion b
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": 1, "a": 1}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : 1, "a" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : 1, "a" : 1 } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path a
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a.b.c": 1}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a.b.c" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b.c
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a.b.c" : 1 } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path a.b.c
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path b.c
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c.d.e": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c.d.e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c.d.e remaining portion c.d.e
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c.d.e" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path b.c.d.e remaining portion c.d.e
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": {"d.e": 1}}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : { "d.e" : 1 } } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at d.e remaining portion e
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : { "d.e" : 1 } } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path d.e remaining portion e
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b.c": 1, "a.b": {"c.d": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b.c" : 1, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b.c" : 1, "a.b" : { "c.d" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path c.d remaining portion d
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": 1}, "a.b": {"c.d": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : 1 }, "a.b" : { "c.d" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path c.d remaining portion d
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c.d.e": 1}, "a.b": {"c.d": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c.d.e" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c.d.e" : 1 }, "a.b" : { "c.d" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path c.d
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": {"d.e": 1}}, "a.b": {"c.d": 1}}'));
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : { "d.e" : 1 } }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : { "d.e" : 1 } }, "a.b" : { "c.d" : 1 } } }:Failed to parse: wildcardProjection :: caused by :: Collision detected in specified path c.d
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     '{
         "createIndexes": "no_path_collision_1",

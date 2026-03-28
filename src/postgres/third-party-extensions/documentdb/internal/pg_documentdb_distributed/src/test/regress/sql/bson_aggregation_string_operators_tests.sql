@@ -770,7 +770,7 @@ select bson_dollar_project('{"_id":"1"}', '{"result" : { "$substrCP" : ["This is
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"", "regex" : "" }} }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"a", "regex" : "a" }} }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"a", "regex" : "b" }} }');
-select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"vcore", "regex" : "Ru-Based" }} }');
+select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"v_core", "regex" : "Ru-Based" }} }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"apple", "regex" : "apple" }} }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"apple is a fruit", "regex" : "is" }} }');
 select bson_dollar_project('{"_id":"1"}', '{"result" : { "$regexMatch" : {"input":"apple is a fruit", "regex" : "fruit" }} }');

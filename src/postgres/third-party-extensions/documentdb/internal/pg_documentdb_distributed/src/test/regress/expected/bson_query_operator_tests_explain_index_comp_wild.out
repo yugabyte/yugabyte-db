@@ -1,0 +1,1945 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 1100000;
+SET documentdb.next_collection_id TO 1100;
+SET documentdb.next_collection_index_id TO 1100;
+set documentdb.enableExtendedExplainPlans to on;
+set documentdb.enableCompositeWildcardIndex to on;
+SELECT documentdb_api.drop_collection('db', 'queryoperator') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'queryoperator');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'queryoperatorIn') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'queryoperatorIn');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'nullfield') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'nullfield');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'singlepathindexexists') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'singlepathindexexists');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- create a composite index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryoperator", "indexes": [ { "key": { "a.$**": 1 }, "enableCompositeTerm": true, "name": "queryoperator_a" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryoperator", "indexes": [ { "key": { "b.$**": 1 }, "enableCompositeTerm": true, "name": "queryoperator_b" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryoperator", "indexes": [ { "key": { "c.$**": 1 }, "enableCompositeTerm": true, "name": "queryoperator_c" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "nullfield", "indexes": [ { "key": { "$**": 1 }, "enableCompositeTerm": true, "name": "nullfield_root" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "queryoperatorIn", "indexes": [ { "key": { "$**": 1 }, "enableCompositeTerm": true, "name": "queryoperatorin_root" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create single path index
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "singlepathindexexists", "indexes": [ { "key": { "a": 1 }, "enableCompositeTerm": true, "name": "a_index" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- show the indexes
+\d documentdb_data.documents_1100
+          Table "documentdb_data.documents_1100"
+     Column      |  Type  | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_1100" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_1104" documentdb_rum (document bson_rum_composite_path_ops (pathspec='[ "a" ]', tl='2691', wki='0', wkl='200'))
+    "documents_rum_index_1105" documentdb_rum (document bson_rum_composite_path_ops (pathspec='[ "b" ]', tl='2691', wki='0', wkl='200'))
+    "documents_rum_index_1106" documentdb_rum (document bson_rum_composite_path_ops (pathspec='[ "c" ]', tl='2691', wki='0', wkl='200'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '1100'::bigint)
+
+BEGIN;
+SET LOCAL citus.enable_local_execution TO OFF;
+set local documentdb.useLocalExecutionShardQueries to off;
+set local documentdb.enableCompositeWildcardIndex to on;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan TO off;
+set local documentdb.forceUseIndexIfAvailable to on;
+set local documentdb.enableExtendedExplainPlans to on;
+set local documentdb.forceRumIndexScanToBitmapHeapScan to off;
+\i sql/bson_query_operator_tests_explain_core.sql
+\i sql/bson_query_operator_tests_insert.sql
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 4, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 5, "a" : { "b" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": "ab_undefined", "a" : { "b" : {"$undefined": true }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": "ab_null", "a" : { "b" : null }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* Insert elements to a root path for single path index $exists */
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": 1, "a" : 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": 4, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "b", "b" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "a", "a": {"$undefined": true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "a_null", "a" : null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert some documents with a.{some other paths} */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 6, "a" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 7, "a" : true}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 8, "a" : [0, 1, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 9, "a" : { "c": 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert paths with nested objects arrays */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 1, "a" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 2, "a" : {"$numberDecimal": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 3, "a" : {"$numberDouble": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 4, "a" : {"$numberLong": "1"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 5, "a" : {"$numberDecimal": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 6, "a" : {"$numberDouble": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 7, "a" : {"$numberDecimal": "1.000000000000000000000000000000001"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 8, "a" : {"$numberDouble": "1.000000000000001"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 9, "a" : {"$binary": { "base64": "ww==", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 10, "a" : {"$binary": { "base64": "ww==", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 11, "a" : {"$binary": { "base64": "zg==", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 12, "a" : {"$binary": { "base64": "zg==", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 13, "a" : {"$timestamp" : { "t": 1670981326, "i": 1 }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 14, "a" : {"$date": "2019-01-30T07:30:10.136Z"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 15, "a" : {"$oid": "639926cee6bda3127f153bf1"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 18, "a" : {"$maxKey" : 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 19, "a" : {"$minKey" : 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 20, "a" : { "$undefined" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 21, "a" : null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 22, "a" : {"b":1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 23, "a" : {"b":2}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 24, "a" : [1,2,3,4,5]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 25, "a" : [1,2,3,4,5,6]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 26, "a" : "Lets Optimize dollar In"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 27, "a" : "Lets Optimize dollar In again"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 28, "a" : NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 29, "a" : [1,2,3,NaN,4]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 30, "a" : Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 31, "a" : [1,2,3,Infinity,4]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 32, "a" : {"$numberDouble": "0.0000"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 33, "a" : {"$numberDecimal": "0.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 34, "a" : {"$numberLong": "0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 35, "a" : 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 36, "a" : {"$numberLong": "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 37, "a" : {"$numberLong": "9223372036854775806"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 38, "a" : {"$numberInt": "2147483647"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 39, "a" : {"$numberInt": "2147483646"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 40, "a" : {"$numberInt": "2147483645"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 41, "a" : ["abc", "xyz1"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 1, "a" : 1, "b": 1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 2, "a" : 2, "b": null}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 3, "a" : 3}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 4, "a" : 10, "b": 1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 5, "a" : 20, "b": null}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 6, "a" : 30}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- $all with $elemMatch queries
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 16, "a" : [{ "b" : {} }, { "b" : 0 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 17, "a" : []}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 18, "a" : [{ "b" : "S", "c": 10, "d" : "X"}, { "b" : "M", "c": 100, "d" : "X"}, { "b" : "L", "c": 100, "d" : "Y"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 19, "a" : [{ "b" : "1", "c": 100, "d" : "Y"}, { "b" : "2", "c": 50, "d" : "X"}, { "b" : "3", "c": 100, "d" : "Z"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 20, "a" : [{ "b" : "M", "c": 100, "d" : "Y"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 21, "a": [{ "b": [ { "c" : 10 }, { "c" : 15 }, {"c" : 18 } ], "d" : [ { "e" : 10 }, { "e" : 15 }, {"e" : 18 } ]}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 22, "a": [{ "b": [ { "c" : 11 } ], "d" : [ { "e" : 20 }, { "e" : 25 } ]}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert NaN and Infinity */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 23, "a" : NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 24, "a" : Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 25, "a" : -Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 26, "a" : [NaN, Infinity]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* validate explain */
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
+                                                                   QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 328 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 328 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=4 loops=1)
+               indexName: queryoperator_a
+               indexKey: {"a.$**": 1}
+               isMultiKey: true
+               indexBounds: ["a.b": [ { "$.b": 1 } ,  { "$.b": 1 } ]]
+               innerScanLoops: 4 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 4)]
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=4 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperator_a (actual rows=4 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=23 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1526 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1526 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=23 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+               Rows Removed by Filter: 4
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$gt" : 1 }}';
+                                                                   QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 332 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 332 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=4 loops=1)
+               indexName: queryoperator_a
+               indexKey: {"a.$**": 1}
+               isMultiKey: true
+               indexBounds: ["a.b": ( { "$.b": 1 } ,  { "$.b": Infinity } ]]
+               innerScanLoops: 4 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 5)]
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=4 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperator_a (actual rows=4 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=5 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 372 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 372 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=5 loops=1)
+               indexName: queryoperator_a
+               indexKey: {"a.$**": 1}
+               isMultiKey: true
+               indexBounds: ["a.b": [ { "$.b": 1 } ,  { "$.b": Infinity } ]]
+               innerScanLoops: 5 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 9)]
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=5 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperator_a (actual rows=5 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$lt" : 1 }}';
+                                                                   QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=5 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 392 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 392 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=5 loops=1)
+               indexName: queryoperator_a
+               indexKey: {"a.$**": 1}
+               isMultiKey: true
+               indexBounds: ["a.b": [ { "$.b": -Infinity } ,  { "$.b": 1 } )]
+               innerScanLoops: 5 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 6)]
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=5 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperator_a (actual rows=5 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$lte" : 1 }}';
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=6 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 432 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 432 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=6 loops=1)
+               indexName: queryoperator_a
+               indexKey: {"a.$**": 1}
+               isMultiKey: true
+               indexBounds: ["a.b": [ { "$.b": -Infinity } ,  { "$.b": 1 } ]]
+               innerScanLoops: 6 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 10)]
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=6 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperator_a (actual rows=6 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+/* validate explain for single path index */
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'singlepathindexexists') WHERE document @@ '{ "a": { "$lte" : 1 }}';
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 32 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 32 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+               indexName: a_index
+               indexKey: {"a": 1}
+               isMultiKey: false
+               indexBounds: ["a": [-Infinity, 1]]
+               innerScanLoops: 1 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 1)]
+               ->  Bitmap Heap Scan on documents_1103_1100055 collection (actual rows=1 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on a_index (actual rows=1 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'singlepathindexexists') WHERE document @@ '{ "a": { "$exists" : 1 }}';
+                                                                QUERY PLAN                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 157 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 157 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=4 loops=1)
+               indexName: a_index
+               indexKey: {"a": 1}
+               isMultiKey: false
+               indexBounds: ["a": [MinKey, MaxKey]]
+               innerScanLoops: 4 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 4)]
+               ->  Bitmap Heap Scan on documents_1103_1100055 collection (actual rows=4 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "$minKey" : 1 } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on a_index (actual rows=4 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "$minKey" : 1 } }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'singlepathindexexists') WHERE document @@ '{ "a": { "$exists" : 0 }}';
+                                                                  QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 36 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 36 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+               indexName: a_index
+               indexKey: {"a": 1}
+               isMultiKey: false
+               indexBounds: ["a": (MinKey, null]]
+               innerScanLoops: 1 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 1)]
+               ->  Bitmap Heap Scan on documents_1103_1100055 collection (actual rows=1 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on a_index (actual rows=1 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@?) '{ "a" : { "$numberInt" : "0" } }'::documentdb_core.bson)
+(20 rows)
+
+/* validate explain for the individual items as well */
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gt" : { "b": 1 } }}';
+                                                               QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=15 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1349 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1349 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=15 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 12
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gt" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 37 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 37 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 26
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gt" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                           QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=3 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 417 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 417 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=3 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Rows Removed by Filter: 24
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gte" : { "b": 1 } }}';
+                                                                QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=16 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1389 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1389 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=16 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 11
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gte" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 37 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 37 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 26
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$gte" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                            QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=3 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 417 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 417 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=3 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Rows Removed by Filter: 24
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lt" : { "b": 1 } }}';
+                                                               QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=5 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 300 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 300 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=5 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 22
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lt" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=18 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1506 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1506 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=18 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 9
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lt" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                           QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=9 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 762 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 762 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=9 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Rows Removed by Filter: 18
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lte" : { "b": 1 } }}';
+                                                                QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=6 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 340 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 340 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=6 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 21
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lte" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=18 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1506 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1506 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=18 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 9
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$lte" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                            QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=9 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 762 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 762 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=9 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Rows Removed by Filter: 18
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$eq" : { "b": 1 } }}';
+                                                               QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 122 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 122 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=2 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 25
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$eq" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Rows Removed by Filter: 27
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$eq" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                           QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Rows Removed by Filter: 27
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$ne" : { "b": 1 } }}';
+                                                                QUERY PLAN                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=25 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1732 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1732 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=25 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+               Rows Removed by Filter: 2
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(14 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$ne" : { "b": [ true, false ] } }}';
+                                                            QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=27 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1854 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1854 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=27 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::documentdb_core.bson)
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a": { "$ne" : [ { "b": [ 2, 3, 4 ] } ] }}';
+                                                                                            QUERY PLAN                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=27 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1854 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1854 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=27 loops=1)
+               Recheck Cond: (shard_key_value = '1100'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::documentdb_core.bson)
+               Heap Blocks: exact=1
+               ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                     Index Cond: (shard_key_value = '1100'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$eq" : 2 }}' ORDER BY object_id;
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$eq" : 2, "$ne" : null }}' ORDER BY object_id;
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "_id" : null }'::documentdb_core.bson)
+(10 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$eq" : 2, "$in": [ 1, 2 ] }}' ORDER BY object_id;
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+(10 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$eq" : 2, "$gt": 20, "$lt": 40 }}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=0 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "20" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : { "$numberInt" : "40" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$all": [ 2 ], "$in": [ 1, 2 ] } }' ORDER BY object_id;
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+(10 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$all": [ 2 ], "$ne": 40 }}' ORDER BY object_id;
+                                                                             QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "_id" : { "$numberInt" : "40" } }'::documentdb_core.bson)
+(10 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$eq" : 2, "$all" : [ 1, 2 ] }}' ORDER BY object_id;
+                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=0 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "_id"  : { "$gt" : 1, "$lte" : 5 }}' ORDER BY object_id;
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=4 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 172 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 172 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=4 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [{"_id":1},{"_id":1}]}' ORDER BY object_id;
+                                                                                                                               QUERY PLAN                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [{"_id":1},{"_id":2}]}' ORDER BY object_id;
+                                                                                                                               QUERY PLAN                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=0 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "2" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or"  : [{"_id":1},{"_id":2}]}' ORDER BY object_id;
+                                                                                                             QUERY PLAN                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 80 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 80 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=2 loops=1)
+                     Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) ANY ('{"{ \"\" : { \"$numberInt\" : \"1\" } }","{ \"\" : { \"$numberInt\" : \"2\" } }"}'::documentdb_core.bson[])))
+(12 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or"  : [{"_id": { "$gt": 1, "$lte" : 5 }}, {"_id":1}]}' ORDER BY object_id;
+                                                                                                                                                                              QUERY PLAN                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=5 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 212 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 212 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=5 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=5 loops=1)
+                     Recheck Cond: (shard_key_value = '1100'::bigint)
+                     Filter: (((document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<=) '{ "_id" : { "$numberInt" : "5" } }'::documentdb_core.bson)) OR (document OPERATOR(documentdb_api_catalog.@=) '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson))
+                     Rows Removed by Filter: 22
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                           Index Cond: (shard_key_value = '1100'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [{"_id":1}, {"_id": { "$gte": 1, "$lte" : 5 }}]}' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 40 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 40 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on documents_1100_1100001 collection (actual rows=1 loops=1)
+               Index Cond: ((shard_key_value = '1100'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(9 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [{"$elemMatch" : {"b" : "M", "c" : {"$gt" : 50} } }, {"$elemMatch" : {"c" : 100, "d" : "Y" } }]}}' ORDER BY object_id;
+                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 198 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 198 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a.b": [ { "$.b": "M" } ,  { "$.b": "M" } ]], ["a.c": [ { "$.c": 100 } ,  { "$.c": 100 } ]]
+                     innerScanLoops: 3 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 2), (isInequality: false, estimatedEntryCount: 3)]
+                     ->  Index Scan using queryoperator_a on documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Index Cond: ((document OPERATOR(documentdb_api_catalog.@<>) '{ "a.b" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : "M", "isTopLevel" : false } ] } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<>) '{ "a.c" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "100" }, "isTopLevel" : false } ] } }'::documentdb_core.bson))
+                           Filter: ((document OPERATOR(documentdb_api_catalog.@#?) '{ "a" : { "b" : "M", "c" : { "$gt" : { "$numberInt" : "50" } } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@#?) '{ "a" : { "c" : { "$numberInt" : "100" }, "d" : "Y" } }'::documentdb_core.bson))
+(21 rows)
+
+-- $or gets converted to $in for simple expressions.
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": 3 }, { "b": 4 } ] }' ORDER BY object_id;
+                                                                                                                          QUERY PLAN                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     indexName: queryoperator_b
+                     indexKey: {"b.$**": 1}
+                     isMultiKey: false
+                     indexBounds: ["b": [ { "$": 4 } ,  { "$": 4 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson) OR (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "4" } }'::documentdb_core.bson))
+                           ->  BitmapOr (actual rows=0 loops=1)
+                                 ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                                 ->  Bitmap Index Scan on queryoperator_b (actual rows=0 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(32 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": 3 }, { "a": { "$gte": 4 } } ] }' ORDER BY object_id;
+                                                                                                                          QUERY PLAN                                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 91 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 91 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 4 } ,  { "$": Infinity } ]]
+                     innerScanLoops: 2 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 2)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson) OR (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson))
+                           Heap Blocks: exact=1
+                           ->  BitmapOr (actual rows=0 loops=1)
+                                 ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                                 ->  Bitmap Index Scan on queryoperator_a (actual rows=2 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+(33 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": 3 }, { "a": 5 } ] }' ORDER BY object_id;
+                                                                                    QUERY PLAN                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]], ["a": [ { "$": 5 } ,  { "$": 5 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0), (isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson)
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson)
+(22 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": 3 }, { "$and": [ { "a": 5 } ] } ] }' ORDER BY object_id;
+                                                                                    QUERY PLAN                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]], ["a": [ { "$": 5 } ,  { "$": 5 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0), (isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson)
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson)
+(22 rows)
+
+-- $and/$or with a single element gets elided
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": { "$gt": 3 } } ] }' ORDER BY object_id;
+                                                                                                                                              QUERY PLAN                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 91 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 91 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": ( { "$": 3 } ,  { "$": Infinity } ]]
+                     innerScanLoops: 2 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 2)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Heap Blocks: exact=1
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=2 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [ { "a": { "$gt": 3 } } ] }' ORDER BY object_id;
+                                                                                                                                              QUERY PLAN                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 91 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 91 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": ( { "$": 3 } ,  { "$": Infinity } ]]
+                     innerScanLoops: 2 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 2)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Heap Blocks: exact=1
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=2 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+-- $or of $exists false/$eq: null simplifies
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [ { "a": 3 }, { "$or": [ { "b": null }, { "b": { "$exists": false }} ] } ] }' ORDER BY object_id;
+                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "b" : null }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "b" : null }'::documentdb_core.bson)
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [ { "a": 3 }, { "$or": [ { "b": null }, { "b": { "$exists": true }} ] } ] }' ORDER BY object_id;
+                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND ((document OPERATOR(documentdb_api_catalog.#=) '{ "b" : null }'::documentdb_core.bsonquery) OR (document OPERATOR(documentdb_api_catalog.#>=) '{ "b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Filter: ((collection.document OPERATOR(documentdb_api_catalog.@=) '{ "b" : null }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$minKey" : 1 } }'::documentdb_core.bson))
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [ { "a": 3 }, { "$or": [ { "b": null }, { "c": { "$exists": false }} ] } ] }' ORDER BY object_id;
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND ((document OPERATOR(documentdb_api_catalog.#=) '{ "b" : null }'::documentdb_core.bsonquery) OR documentdb_api_catalog.bson_dollar_exists(document, '{ "c" : false }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Filter: ((collection.document OPERATOR(documentdb_api_catalog.@=) '{ "b" : null }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@?) '{ "c" : false }'::documentdb_core.bson))
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, VERBOSE ON) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$and" : [ { "a": 3 }, { "$or": [ { "b": null }, { "c": null }, { "c": { "$exists": false }} ] } ] }' ORDER BY object_id;
+                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Output: remote_scan.object_id, remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT object_id, document FROM documentdb_data.documents_1100_1100001 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bsonquery) AND ((document OPERATOR(documentdb_api_catalog.#=) '{ "b" : null }'::documentdb_core.bsonquery) OR (document OPERATOR(documentdb_api_catalog.#=) '{ "c" : null }'::documentdb_core.bsonquery) OR documentdb_api_catalog.bson_dollar_exists(document, '{ "c" : false }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '1100'::bigint)) ORDER BY object_id
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Output: object_id, document
+               Sort Key: collection.object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     Output: object_id, document
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documentdb_data.documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Output: object_id, document
+                           Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+                           Filter: ((collection.document OPERATOR(documentdb_api_catalog.@=) '{ "b" : null }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "c" : null }'::documentdb_core.bson) OR (collection.document OPERATOR(documentdb_api_catalog.@?) '{ "c" : false }'::documentdb_core.bson))
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "3" } }'::documentdb_core.bson)
+(28 rows)
+
+-- $in with 1 element gets converted to $eq
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in": [ 1 ]} }' ORDER BY object_id;
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 86 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 86 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 1 } ,  { "$": 1 } ]]
+                     innerScanLoops: 2 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 2)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                           Heap Blocks: exact=1
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=2 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+(23 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in": [ ]} }' ORDER BY object_id;
+                        QUERY PLAN                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Result (actual rows=0 loops=1)
+                     One-Time Filter: false
+(12 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in": [ 1, 2 ]} }' ORDER BY object_id;
+                                                                                    QUERY PLAN                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 86 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 86 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=2 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 1 } ,  { "$": 1 } ]], ["a": [ { "$": 2 } ,  { "$": 2 } ]]
+                     innerScanLoops: 2 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 2), (isInequality: false, estimatedEntryCount: 1)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=2 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+                           Heap Blocks: exact=1
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=2 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+(23 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin": [ 1 ]} }' ORDER BY object_id;
+                                                              QUERY PLAN                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=25 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1768 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1768 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=25 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 27kB
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=25 loops=1)
+                     Recheck Cond: (shard_key_value = '1100'::bigint)
+                     Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : { "$numberInt" : "1" } }'::documentdb_core.bson)
+                     Rows Removed by Filter: 2
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                           Index Cond: (shard_key_value = '1100'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin": [ ]} }' ORDER BY object_id;
+                                            QUERY PLAN                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=27 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1854 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1854 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=27 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 27kB
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=27 loops=1)
+                     Recheck Cond: (shard_key_value = '1100'::bigint)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                           Index Cond: (shard_key_value = '1100'::bigint)
+(15 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin": [ 1, 2 ]} }' ORDER BY object_id;
+                                                                            QUERY PLAN                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=25 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 1768 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 1768 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=25 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 27kB
+               ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=25 loops=1)
+                     Recheck Cond: (shard_key_value = '1100'::bigint)
+                     Filter: (document OPERATOR(documentdb_api_catalog.@!*=) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }'::documentdb_core.bson)
+                     Rows Removed by Filter: 2
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on _id_ (actual rows=27 loops=1)
+                           Index Cond: (shard_key_value = '1100'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "$or" : [ { "a": 3 }, { "a": { "$in": [ 4 ] }} ] }' ORDER BY object_id;
+                                                                                    QUERY PLAN                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Sort (actual rows=0 loops=1)
+               Sort Key: object_id
+               Sort Method: quicksort  Memory: 25kB
+               ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+                     indexName: queryoperator_a
+                     indexKey: {"a.$**": 1}
+                     isMultiKey: true
+                     indexBounds: ["a": [ { "$": 3 } ,  { "$": 3 } ]], ["a": [ { "$": 4 } ,  { "$": 4 } ]]
+                     innerScanLoops: 0 loops
+                     scanType: regular
+                     scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0), (isInequality: false, estimatedEntryCount: 0)]
+                     ->  Bitmap Heap Scan on documents_1100_1100001 collection (actual rows=0 loops=1)
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson)
+                           ->  Bitmap Index Scan on queryoperator_a (actual rows=0 loops=1)
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }'::documentdb_core.bson)
+(22 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM documentdb_api.collection('db', 'queryoperatorIn') WHERE document @@ '{ "a" : { "$in" : [ NaN, 1000 ] } }';
+                                                                                     QUERY PLAN                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 86 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 86 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+               indexName: queryoperatorin_root
+               indexKey: {"$**": 1}
+               isMultiKey: true
+               indexBounds: ["a": [ { "a": NaN } ,  { "a": NaN } ]], ["a": [ { "a": 1000 } ,  { "a": 1000 } ]]
+               innerScanLoops: 2 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 2), (isInequality: false, estimatedEntryCount: 0)]
+               ->  Bitmap Heap Scan on documents_1101_1100022 collection (actual rows=2 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "NaN" }, { "$numberInt" : "1000" } ] }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperatorin_root (actual rows=2 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "NaN" }, { "$numberInt" : "1000" } ] }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM documentdb_api.collection('db', 'queryoperatorIn') WHERE document @@ '{ "a" : { "$in" : [ Infinity, 1000  ] } }';
+                                                                                       QUERY PLAN                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=2 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 86 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 86 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=2 loops=1)
+               indexName: queryoperatorin_root
+               indexKey: {"$**": 1}
+               isMultiKey: true
+               indexBounds: ["a": [ { "a": Infinity } ,  { "a": Infinity } ]], ["a": [ { "a": 1000 } ,  { "a": 1000 } ]]
+               innerScanLoops: 2 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 2), (isInequality: false, estimatedEntryCount: 0)]
+               ->  Bitmap Heap Scan on documents_1101_1100022 collection (actual rows=2 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "Infinity" }, { "$numberInt" : "1000" } ] }'::documentdb_core.bson)
+                     Heap Blocks: exact=1
+                     ->  Bitmap Index Scan on queryoperatorin_root (actual rows=2 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "Infinity" }, { "$numberInt" : "1000" } ] }'::documentdb_core.bson)
+(20 rows)
+
+EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT document FROM documentdb_api.collection('db', 'queryoperatorIn') WHERE document @@ '{ "a" : { "$in" : [ 1.01, 10 ] } }';
+                                                                                             QUERY PLAN                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=0 loops=1)
+   Task Count: 1
+   Tuple data received from nodes: 0 bytes
+   Tasks Shown: All
+   ->  Task
+         Tuple data received from node: 0 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+               indexName: queryoperatorin_root
+               indexKey: {"$**": 1}
+               isMultiKey: true
+               indexBounds: ["a": [ { "a": 1.01 } ,  { "a": 1.01 } ]], ["a": [ { "a": 10 } ,  { "a": 10 } ]]
+               innerScanLoops: 0 loops
+               scanType: regular
+               scanKeyDetails: key 1: [(isInequality: false, estimatedEntryCount: 0), (isInequality: false, estimatedEntryCount: 0)]
+               ->  Bitmap Heap Scan on documents_1101_1100022 collection (actual rows=0 loops=1)
+                     Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "1.0100000000000000089" }, { "$numberInt" : "10" } ] }'::documentdb_core.bson)
+                     ->  Bitmap Index Scan on queryoperatorin_root (actual rows=0 loops=1)
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberDouble" : "1.0100000000000000089" }, { "$numberInt" : "10" } ] }'::documentdb_core.bson)
+(19 rows)
+
+COMMIT;

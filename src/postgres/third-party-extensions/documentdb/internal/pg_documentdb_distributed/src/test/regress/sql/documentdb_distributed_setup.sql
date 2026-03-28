@@ -95,3 +95,7 @@ SELECT documentdb_api_distributed.initialize_cluster();
 -- Call initialize again (just to ensure idempotence)
 SELECT documentdb_api_distributed.initialize_cluster();
 GRANT documentdb_admin_role TO current_user;
+
+-- install documentdb_extended_rum
+CREATE EXTENSION documentdb_extended_rum;
+GRANT USAGE ON SCHEMA documentdb_extended_rum_catalog TO documentdb_admin_role;

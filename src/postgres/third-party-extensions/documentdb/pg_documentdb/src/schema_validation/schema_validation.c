@@ -114,7 +114,7 @@ ValidateSchemaOnDocumentInsert(ExprEvalState *evalState, const bson_value_t *doc
 	bool matched = EvalBooleanExpressionAgainstBson(evalState, document);
 	if (!matched)
 	{
-		/* native mongo return additional information about the cause of the failure */
+		/* todo: additional information about the cause of the failure */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOCUMENTFAILEDVALIDATION),
 						errmsg("%s", errMsg)));
 	}

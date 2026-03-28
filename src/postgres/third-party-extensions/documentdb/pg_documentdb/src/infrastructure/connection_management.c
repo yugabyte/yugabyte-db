@@ -18,10 +18,6 @@
 static PGconn *ActiveConnection = NULL;
 
 
-static bool PGConnXactIsActive(PGconn *conn);
-static bool PGConnTryCancel(PGconn *conn);
-
-
 /*
  * ConnMgrTryCancelActiveConnection tries cancelling the active libpq
  * connection if it exists and is active, and resets ActiveConnection.
@@ -57,7 +53,7 @@ ConnMgrTryCancelActiveConnection(void)
  * PGConnXactIsActive returns true if remote transaction associated with
  * given connection is still active.
  */
-static bool
+bool
 PGConnXactIsActive(PGconn *conn)
 {
 	return PQstatus(conn) == CONNECTION_OK &&
@@ -69,7 +65,7 @@ PGConnXactIsActive(PGconn *conn)
  * PGConnTryCancel tries to cancel given connection and returns true on
  * success. On failure, emits a warning and returns false.
  */
-static bool
+bool
 PGConnTryCancel(PGconn *conn)
 {
 	PGcancel *cancelObject = PQgetCancel(conn);

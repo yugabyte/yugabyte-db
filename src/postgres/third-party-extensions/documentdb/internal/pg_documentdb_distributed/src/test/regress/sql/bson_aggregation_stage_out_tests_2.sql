@@ -7,12 +7,12 @@ SET documentdb.next_collection_index_id TO 9830;
 
 -- simplest test case working with db database
 SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
-   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
-   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
-   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
-   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
-   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
-   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+   { "_id" : 1, "movie": "Iron Man 3", "Budget": 180000000, "year": 2011 },
+   { "_id" : 2, "movie": "Captain America the winter soldier", "Budget": 170000000, "year": 2011 },
+   { "_id" : 3, "movie": "Aveneger Endgame", "Budget": 160000000, "year": 2012 },
+   { "_id" : 4, "movie": "Spider Man", "Budget": 150000000, "year": 2012 },
+   { "_id" : 5, "movie": "Iron Man 2", "Budget": 140000000, "year": 2013 },
+   { "_id" : 6, "movie": "Iron Man 1", "Budget": 130000000, "year": 2013 }
 ]}');
 
 
@@ -27,12 +27,12 @@ SELECT documentdb_api.drop_collection('db','target2');
 
 -- simplest test case working
 SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[
-   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
-   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
-   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
-   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
-   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
-   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+   { "_id" : 1, "movie": "Iron Man 3", "Budget": 180000000, "year": 2011 },
+   { "_id" : 2, "movie": "Captain America the winter soldier", "Budget": 170000000, "year": 2011 },
+   { "_id" : 3, "movie": "Aveneger Endgame", "Budget": 160000000, "year": 2012 },
+   { "_id" : 4, "movie": "Spider Man", "Budget": 150000000, "year": 2012 },
+   { "_id" : 5, "movie": "Iron Man 2", "Budget": 140000000, "year": 2013 },
+   { "_id" : 6, "movie": "Iron Man 1", "Budget": 130000000, "year": 2013 }
 ]}');
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : "target"} ], "cursor": { "batchSize": 1 } }', 4294967294);
@@ -94,12 +94,14 @@ SELECT documentdb_api.drop_collection('newdb','src');
 SELECT documentdb_api.drop_collection('newdb','tar');
 
 -- complex query with last stage $out:
-SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
-SELECT documentdb_api.insert_one('newdb','source','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "company": "Company A", "products": ["product1", "product2"], "amount": 100 , "services": ["service1", "service2"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source','{ "_id": 2, "company": "Company B", "products": ["product3", "product4"], "amount": 120, "services": ["service3"]}', NULL);
 
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 1, "item": "product1", "company_name": "Company A"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 2, "item": "product3", "company_name": "Company B", "extra": "value1"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 3, "item": "product3", "company_name": "Company B", "extra": "value2"}', NULL);
+
+
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target", 
   "pipeline": 
@@ -109,13 +111,13 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target",
          { 
             "from": "source", 
             "pipeline": [ { "$match": { "quantity": { "$gt": 110 } }}], 
-            "as": "matched_docs", 
-            "localField": "restaurant_name", 
-            "foreignField": "name" 
+            "as": "joined_docs", 
+            "localField": "company_name", 
+            "foreignField": "company" 
          }
       },
       {"$sort"  : {"_id" :  -1}} ,
-      {"$group" :{"_id" :  "$restaurant_name"}},
+      {"$group" :{"_id" :  "$company_name"}},
       {"$project" : {"matched_docs" : 0}}
    ], "cursor": { "batchSize": 1 } }', 4294967294);
 
@@ -194,8 +196,12 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 
 -- simplest test case working with db database
 SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
-   { "_id" : 11, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 }
+   { "_id" : 11, "movie": "Thor", "Budget": 123456, "year": 1987 }
 ]}');
 
 --validate empty collection check
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : ""} ], "cursor": { "batchSize": 1 } }', 4294967294);
+
+-- out should fail when query has mutable function, if query non existent collection or query has $sample stage
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "nonImmutable", "pipeline": [ {"$lookup": {"from": "bar", "as": "x", "localField": "f_id", "foreignField": "_id"}}, {"$out" :  "bar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "nonImmutable", "pipeline": [ { "$sample": { "size": 1000000 } }, {"$out" :  "bar" } ], "cursor": { "batchSize": 1 } }', 4294967294);

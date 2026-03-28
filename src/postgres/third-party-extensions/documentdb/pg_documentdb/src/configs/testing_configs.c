@@ -42,6 +42,9 @@ int DefaultUniqueIndexKeyhashOverride = DEFAULT_UNIQUE_INDEX_KEYHASH_OVERIDE;
 #define DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES true
 bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 
+#define DEFAULT_FORCE_LOCAL_EXECUTION_SHARD_QUERIES false
+bool ForceLocalExecutionShardQueries = DEFAULT_FORCE_LOCAL_EXECUTION_SHARD_QUERIES;
+
 #define DEFAULT_FORCE_INDEX_TERM_TRUNCATION false
 bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
 
@@ -54,7 +57,46 @@ bool EnableNativeColocation = DEFAULT_ENABLE_NATIVE_COLOCATION;
 #define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
 extern int32 PEC_InternalQueryMaxAllowedDensifyDocs;
 
+#define DEFAULT_FORCE_WILDCARD_REDUCED_TERM false
+bool ForceWildcardReducedTerm = DEFAULT_FORCE_WILDCARD_REDUCED_TERM;
+
 extern int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes;
+
+#define DEFAULT_FORCE_DISABLE_SEQ_SCAN false
+bool ForceDisableSeqScan = DEFAULT_FORCE_DISABLE_SEQ_SCAN;
+
+#define DEFAULT_CURRENTOP_ADD_SQL_COMMAND false
+bool CurrentOpAddSqlCommand = DEFAULT_CURRENTOP_ADD_SQL_COMMAND;
+
+#define DEFAULT_ALTERNATE_INDEX_HANDLER ""
+char *AlternateIndexHandler = DEFAULT_ALTERNATE_INDEX_HANDLER;
+
+#define DEFAULT_LOG_RELATION_INDEXES_ORDER false
+bool EnableLogRelationIndexesOrder = DEFAULT_LOG_RELATION_INDEXES_ORDER;
+
+#define DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS true
+bool DefaultEnableLargeUniqueIndexKeys = DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS;
+
+#define DEFAULT_ENABLE_DEBUG_QUERY_TEXT false
+bool EnableDebugQueryText = DEFAULT_ENABLE_DEBUG_QUERY_TEXT;
+
+#define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
+bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
+
+#define DEFAULT_FORCE_UPDATE_INDEX_INLINE false
+bool ForceUpdateIndexInline = DEFAULT_FORCE_UPDATE_INDEX_INLINE;
+
+#define DEFAULT_FORCE_RUN_DIAGNOSTIC_COMMAND_INLINE false
+bool ForceRunDiagnosticCommandInline = DEFAULT_FORCE_RUN_DIAGNOSTIC_COMMAND_INLINE;
+
+#define DEFAULT_FORCE_INDEX_ONLY_SCAN_IF_AVAILABLE false
+bool ForceIndexOnlyScanIfAvailable = DEFAULT_FORCE_INDEX_ONLY_SCAN_IF_AVAILABLE;
+
+#define DEFAULT_FORCE_PARALLEL_SCAN_IF_AVAILABLE false
+bool ForceParallelScanIfAvailable = DEFAULT_FORCE_PARALLEL_SCAN_IF_AVAILABLE;
+
+#define DEFAULT_DISABLE_EXTENDED_RUM_EXPLAIN_PLANS false
+bool DisableExtendedRumExplainPlans = DEFAULT_DISABLE_EXTENDED_RUM_EXPLAIN_PLANS;
 
 void
 InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
@@ -134,6 +176,13 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 		NULL, &ForceIndexTermTruncation, DEFAULT_FORCE_INDEX_TERM_TRUNCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
+	DefineCustomBoolVariable(
+		psprintf("%s.forceWildcardReducedTerm", prefix),
+		gettext_noop(
+			"Whether to force the feature for the wildcard reduced term generation"),
+		NULL, &ForceWildcardReducedTerm, DEFAULT_FORCE_WILDCARD_REDUCED_TERM,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
 	DefineCustomIntVariable(
 		psprintf("%s.indexTermLimitOverride", prefix),
 		gettext_noop(
@@ -151,6 +200,14 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 		NULL, &UseLocalExecutionShardQueries, DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
+	DefineCustomBoolVariable(
+		psprintf("%s.forceLocalExecutionShardQueries", newGucPrefix),
+		gettext_noop(
+			"Determines whether or not to force all shard queries to be executed locally on the shard."),
+		NULL, &ForceLocalExecutionShardQueries,
+		DEFAULT_FORCE_LOCAL_EXECUTION_SHARD_QUERIES,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
 	DefineCustomIntVariable(
 		psprintf("%s.defaultUniqueIndexKeyhashOverride", newGucPrefix),
 		gettext_noop(
@@ -164,7 +221,7 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 	DefineCustomBoolVariable(
 		psprintf("%s.enableNativeColocation", prefix),
 		gettext_noop(
-			"Determines whether to turn on colocation of tables in a given mongo database (and disabled outside the database)"),
+			"Determines whether to turn on colocation of tables in a given collection database (and disabled outside the database)"),
 		NULL, &EnableNativeColocation, DEFAULT_ENABLE_NATIVE_COLOCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
@@ -191,4 +248,95 @@ InitializeTestConfigurations(const char *prefix, const char *newGucPrefix)
 		PGC_USERSET,
 		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceDisableSeqScan", newGucPrefix),
+		gettext_noop(
+			"Whether to force disable sequential type scans on the collection."),
+		NULL, &ForceDisableSeqScan, DEFAULT_FORCE_DISABLE_SEQ_SCAN,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.currentOpAddSqlCommand", newGucPrefix),
+		gettext_noop(
+			"Whether to add the SQL command to the current operation view."),
+		NULL, &CurrentOpAddSqlCommand, DEFAULT_CURRENTOP_ADD_SQL_COMMAND,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomStringVariable(
+		psprintf("%s.alternate_index_handler_name", prefix),
+		gettext_noop(
+			"The name of the index handler to use as opposed to rum (currently for testing only)."),
+		NULL, &AlternateIndexHandler, DEFAULT_ALTERNATE_INDEX_HANDLER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.logRelationIndexesOrder", newGucPrefix),
+		gettext_noop(
+			"Whether to log the order of indexes in the relation."),
+		NULL, &EnableLogRelationIndexesOrder, DEFAULT_LOG_RELATION_INDEXES_ORDER,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enable_large_unique_index_keys", newGucPrefix),
+		gettext_noop("Whether or not to enable large index keys on unique indexes."),
+		NULL, &DefaultEnableLargeUniqueIndexKeys, DEFAULT_ENABLE_LARGE_UNIQUE_INDEX_KEYS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableDebugQueryText", newGucPrefix),
+		gettext_noop(
+			"Whether to enable query source text while planning aggregate/find queries for debugging, starts deparsing the query tree and degrades performance."),
+		NULL, &EnableDebugQueryText, DEFAULT_ENABLE_DEBUG_QUERY_TEXT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableMultiIndexRumJoin", newGucPrefix),
+		gettext_noop(
+			"Whether or not to add the cursors on aggregation style queries."),
+		NULL,
+		&EnableMultiIndexRumJoin,
+		DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceUpdateIndexInline", newGucPrefix),
+		gettext_noop(
+			"Whether or not to force update index inline in the current node or go through the worker route."),
+		NULL, &ForceUpdateIndexInline, DEFAULT_FORCE_UPDATE_INDEX_INLINE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceRunDiagnosticCommandInline", newGucPrefix),
+		gettext_noop(
+			"Whether or not to force running diagnostic commands in inline mode."),
+		NULL, &ForceRunDiagnosticCommandInline,
+		DEFAULT_FORCE_RUN_DIAGNOSTIC_COMMAND_INLINE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceIndexOnlyScanIfAvailable", newGucPrefix),
+		gettext_noop(
+			"If an indexonlyscan is available, force use it in the plan."),
+		NULL, &ForceIndexOnlyScanIfAvailable,
+		DEFAULT_FORCE_INDEX_ONLY_SCAN_IF_AVAILABLE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceParallelScanIfAvailable", newGucPrefix),
+		gettext_noop(
+			"If a parallel plan is available, force use it in the plan."),
+		NULL, &ForceParallelScanIfAvailable,
+		DEFAULT_FORCE_PARALLEL_SCAN_IF_AVAILABLE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.disableExtendedRumExplainPlans", newGucPrefix),
+		gettext_noop(
+			"Disable extended rum explain plan overrides. Used to match default rum explains"),
+		NULL, &DisableExtendedRumExplainPlans,
+		DEFAULT_DISABLE_EXTENDED_RUM_EXPLAIN_PLANS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 }

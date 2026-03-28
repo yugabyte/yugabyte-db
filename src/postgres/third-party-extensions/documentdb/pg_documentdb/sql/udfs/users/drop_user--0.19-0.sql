@@ -1,5 +1,5 @@
 /*
- * __API_SCHEMA_V2__.drop_user processes a Mongo wire protocol dropUser command.
+ * __API_SCHEMA_V2__.drop_user processes a wire protocol dropUser command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.drop_user(
     p_spec __CORE_SCHEMA_V2__.bson)

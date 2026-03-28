@@ -147,7 +147,7 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 -- not the same index since this specifies partialFilterExpression
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"start_path": 1}, "name": "my_idx_14", "partialFilterExpression": {"a": 1}}]}', true);
 
--- valid mongo index type in specification, which are not supported yet
+-- valid index type in the reference implementation, which are not supported yet
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "2d"}, "name": "my_idx_2d"}]}', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "2dsphere"}, "name": "my_idx_2dsphere"}]}', true);
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "text"}, "name": "my_idx_text"}]}', true);

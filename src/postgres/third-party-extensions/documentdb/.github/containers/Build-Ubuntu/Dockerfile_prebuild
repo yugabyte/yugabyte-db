@@ -1,11 +1,58 @@
-FROM mcr.microsoft.com/cosmosdb/ubuntu/documentdb-oss:base
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+ARG DEBIAN_FRONTEND=noninteractive
 
-WORKDIR /home/documentdb/code  
+ARG POSTGRES_VERSION=16
+ARG DEB_PACKAGE_REL_PATH=packages/postgresql-16-documentdb-1_1.0.0_amd64.deb
 
-COPY . /home/documentdb/code  
+RUN apt-get update
 
-RUN git config --global --add safe.directory /home/DocumentDB/code
-RUN make  && sudo make install
-  
-# Set the entry point to run the new script at container startup  
-CMD ["bash", "-c", "/home/documentdb/code/scripts/start_oss_server.sh & tail -f /dev/null"]
+RUN apt-get install -y --no-install-recommends \
+    wget \
+    gnupg2 \
+    lsb-release \
+    ca-certificates \
+    locales \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
+    locale-gen en_US.UTF-8
+
+ENV LC_ALL=en_US.UTF-8
+ENV LANGUAGE=en_US
+ENV LC_COLLATE=en_US.UTF-8
+ENV LC_CTYPE=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+
+RUN echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main ${POSTGRES_VERSION}" > /etc/apt/sources.list.d/pgdg.list && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+    && rm -rf /var/lib/apt/lists/*
+
+# actual dependencies of the package
+RUN apt-get update && apt-get install -y \
+    postgresql-${POSTGRES_VERSION} \
+    postgresql-${POSTGRES_VERSION}-cron \
+    postgresql-${POSTGRES_VERSION}-pgvector \
+    postgresql-${POSTGRES_VERSION}-postgis-3 \
+    postgresql-${POSTGRES_VERSION}-rum \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /scripts
+
+COPY scripts/start_oss_server.sh /scripts/
+COPY scripts/utils.sh /scripts/
+COPY scripts/setup_psqlrc.sh /scripts/
+
+RUN mkdir -p /tmp/install_setup
+COPY ${DEB_PACKAGE_REL_PATH} /tmp/install_setup/
+RUN dpkg -i /tmp/install_setup/$(basename "$DEB_PACKAGE_REL_PATH")
+
+# Create documentdb user
+RUN useradd -ms /bin/bash documentdb -G sudo
+RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask
+
+USER documentdb
+ENV PG_VERSION_USED=${POSTGRES_VERSION} 
+
+ENTRYPOINT ["/bin/bash", "-c", "/scripts/start_oss_server.sh \"$@\" & tail -f /dev/null", "--"]
