@@ -17,7 +17,7 @@ scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 echo "scriptDir: $scriptDir"
 
 . $scriptDir/setup_versions.sh
-MONGO_DRIVER_VERSION=$(GetLibbsonVersion)
+DRIVER_VERSION=$(GetLibbsonVersion)
 
 if [ "${INSTALLDESTDIR:-""}" == "" ]; then
     INSTALLDESTDIR="/usr";
@@ -28,14 +28,14 @@ if [ "${MAKE_PROGRAM:-""}" == "" ]; then
 fi
 
 pushd $INSTALL_DEPENDENCIES_ROOT
-curl -s -L https://github.com/mongodb/mongo-c-driver/releases/download/$MONGO_DRIVER_VERSION/mongo-c-driver-$MONGO_DRIVER_VERSION.tar.gz -o ./mongo-c-driver-$MONGO_DRIVER_VERSION.tar.gz
-tar -xzvf ./mongo-c-driver-$MONGO_DRIVER_VERSION.tar.gz -C $INSTALL_DEPENDENCIES_ROOT --transform="s|mongo-c-driver-$MONGO_DRIVER_VERSION|mongo-c-driver|"
+curl -s -L https://github.com/mongodb/mongo-c-driver/releases/download/$DRIVER_VERSION/mongo-c-driver-$DRIVER_VERSION.tar.gz -o ./mongo-c-driver-$DRIVER_VERSION.tar.gz
+tar -xzvf ./mongo-c-driver-$DRIVER_VERSION.tar.gz -C $INSTALL_DEPENDENCIES_ROOT --transform="s|mongo-c-driver-$DRIVER_VERSION|mongo-c-driver|"
 
 # remove the tar file
-rm -rf ./mongo-c-driver-$MONGO_DRIVER_VERSION.tar.gz
+rm -rf ./mongo-c-driver-$DRIVER_VERSION.tar.gz
 
 cd $INSTALL_DEPENDENCIES_ROOT/mongo-c-driver/build
-$MAKE_PROGRAM -DENABLE_MONGOC=ON -DMONGOC_ENABLE_ICU=OFF -DENABLE_ICU=OFF -DCMAKE_C_FLAGS=-fPIC -DCMAKE_INSTALL_PREFIX=$INSTALLDESTDIR ..
+$MAKE_PROGRAM -DENABLE_MONGOC=ON -DMONGOC_ENABLE_ICU=OFF -DENABLE_ICU=OFF -DCMAKE_C_FLAGS="-fPIC -g" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$INSTALLDESTDIR ..
 make clean && make -sj$(cat /proc/cpuinfo | grep -c "processor") install
 popd
 

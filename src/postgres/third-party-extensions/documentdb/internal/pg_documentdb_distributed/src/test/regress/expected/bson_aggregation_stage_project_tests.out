@@ -190,14 +190,14 @@ SELECT bson_dollar_project(document, '{ "a" : { "b": { "1" : 1 } } }') FROM docu
 
 -- path collsion due to conflicting paths
 SELECT bson_dollar_project(document, '{ "a.b.1": 1, "a.b": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT bson_dollar_project(document, '{ "a.b.1": 1, "a.b": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 -- path collsion due to conflicting paths
 SELECT bson_dollar_project(document, '{ "a.b": 1, "a.b.1": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b.1 remaining portion b.1
+ERROR:  Collision detected in specified path a.b.1 remaining portion b.1
 SELECT bson_dollar_project(document, '{ "a.b": 1, "a.b.1": 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b.1 remaining portion b.1
+ERROR:  Collision detected in specified path a.b.1 remaining portion b.1
 -- basic a.b, and a.c query with id excluded and included - should be both a.b and a.c
 SELECT bson_dollar_project(document, '{ "a.b": 1, "a.c": 1, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
                                                                                                                                bson_dollar_project                                                                                                                               
@@ -316,9 +316,9 @@ SELECT bson_dollar_project(document, '{ "a.b" : 0 }') FROM documentdb_api.collec
 
 -- basic a.b and a.c with mixed inclusion (error path) query with id excluded and included
 SELECT bson_dollar_project(document, '{ "a.b" : 1, "a.c": 0, "_id": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Cannot do exclusion on field a.c in inclusion projection.
+ERROR:  exclusion cannot be applied to field a.c within the inclusion projection.
 SELECT bson_dollar_project(document, '{ "a.b" : 1, "a.c": 0 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Cannot do exclusion on field a.c in inclusion projection.
+ERROR:  exclusion cannot be applied to field a.c within the inclusion projection.
 -- special case projections
 SELECT bson_dollar_project(document, '{ "_id" : 1 }') FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
  bson_dollar_project 
@@ -799,28 +799,28 @@ SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": "1"}}}')  FROM docum
 
 -- path collision tests
 SELECT bson_dollar_project(document, '{"a.b": 1, "a.b.c": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b.c remaining portion b.c
+ERROR:  Collision detected in specified path a.b.c remaining portion b.c
 SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "1"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at b
+ERROR:  Collision detected in specified path b
 SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "$_id"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at b
+ERROR:  Collision detected in specified path b
 SELECT bson_dollar_project(document, '{"a.b": 1, "a" : { "b" : { "c": "$_id"}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at b
+ERROR:  Collision detected in specified path b
 SELECT bson_dollar_project(document, '{"a.b": {"c" : 1.0}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 SELECT bson_dollar_project(document, '{"a.b": {"c" : "$a.b"}, "a" : { "b" : { "c": { "d": "$_id"}}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 SELECT bson_dollar_project(document, '{"a.b.c": "$_id", "a.b": "1.0"}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT bson_dollar_project(document, '{"a" : { "b" : { "c": { "d": "$_id"}}}, "a.b": {"c" : 1.0}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Path collision at c
+ERROR:  Collision detected in specified path c
 -- Invalid key format tests
 SELECT bson_dollar_project(document, '{"$a.b": 1, "a.b.c": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 SELECT bson_dollar_project(document, '{"$isArray": 1}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 SELECT bson_dollar_project(document, '{"$keyName": "newVal"}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 SELECT documentdb_api.insert_one('db','projectops','{"_id":"10", "a" : { "b" : { "c" : "abc" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
@@ -919,7 +919,7 @@ SELECT documentdb_api.insert_one('db','projectops','{"_id":"12", "a" : { "_id" :
 (1 row)
 
 SELECT bson_dollar_project(document, '{"_id" : 1, "a" : {"_id" : 1}, "a.b" : { "c" : {"_id" : 0}}}')  FROM documentdb_api.collection('db', 'projectops') ORDER BY object_id;
-ERROR:  Cannot do exclusion on field _id in inclusion projection.
+ERROR:  exclusion cannot be applied to field _id within the inclusion projection.
 -- Test nested array projections 
 SELECT bson_dollar_project('{"_id":"1", "a" : [1, {"d":1}, [3, 4], "x"] }', '{"a" : { "c" : { "d": "1"}}}');
                                                                     bson_dollar_project                                                                     

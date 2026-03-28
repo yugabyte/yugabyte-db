@@ -13,14 +13,45 @@
         "vscode": {
             "extensions": [
                 "ms-vscode.cpptools",
-                "ms-vscode.cpptools-extension-pack"
-            ]
+                "ms-vscode.cpptools-extension-pack",
+                "rust-lang.rust-analyzer"
+            ],
+            "settings": {
+                "rust-analyzer.linkedProjects": [
+                    "pg_documentdb_gw/Cargo.toml",
+                    "pg_documentdb_gw_host/Cargo.toml"
+                ],
+                "rust-analyzer.testExplorer": true,
+                // Performance: use a separate Cargo target directory for rust-analyzer and ad-hoc commands.
+                // This minimizes filesystem locking when executing cargo commands in parallel to VS Code.
+                "rust-analyzer.cargo.targetDir": true,
+                // Code style: use `crate` instead of `super` for rust-analyzer generated imports.
+                "rust-analyzer.imports.prefix": "crate",
+                // Rust-analyzer default behavior skips checking/building some parts of the Rust codebase.
+                // This makes it check and build everything, which can help discover issues sooner, instead of
+                // only in the pull request validation build. It does make the checking/building slower, though.
+                "rust-analyzer.cargo.allTargets": true,
+                "rust-analyzer.check.allTargets": true,
+                // Code style: automatically format Rust code on save to save manual labor.
+                "[rust]": {
+                    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+                    "editor.formatOnSave": true
+                }
+            }
         }
     },
-    "forwardPorts": [9712],
-        "portsAttributes": {
+    "forwardPorts": [
+        9712,
+        10260
+    ],
+    "portsAttributes": {
         "9712": {
             "label": "PostgresPort",
+            "onAutoForward": "notify",
+            "requireLocalPort": false
+        },
+        "10260": {
+            "label": "GatewayPort",
             "onAutoForward": "notify",
             "requireLocalPort": false
         }

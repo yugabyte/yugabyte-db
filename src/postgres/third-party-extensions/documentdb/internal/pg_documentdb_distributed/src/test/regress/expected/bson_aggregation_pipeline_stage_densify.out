@@ -53,61 +53,61 @@ SELECT insert_one('db','densify','{ "_id": 14, "a": "def", "cost": 9, "quantity"
 
 -- Validations of $densify stage and negative test cases
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": "Not an object" }]}');
-ERROR:  The $densify stage specification must be an object, found string
+ERROR:  The $densify stage specification must be provided as an object, but encountered string instead
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { } }]}');
-ERROR:  BSON field '$densify.field' is missing but a required field
+ERROR:  The BSON field '$densify.field' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": [ ] }]}');
-ERROR:  The $densify stage specification must be an object, found array
+ERROR:  The $densify stage specification must be provided as an object, but encountered array instead
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": 1 } }]}');
-ERROR:  BSON field '$densify.field' is the wrong type 'int', expected type 'string'
+ERROR:  The BSON field '$densify.field' has an incorrect type 'int'; it should be of type 'string'.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a" } }]}');
-ERROR:  BSON field '$densify.range' is missing but a required field
+ERROR:  The BSON field '$densify.range' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": "A" } }]}');
-ERROR:  BSON field '$densify.range' is the wrong type 'string', expected type 'object'
+ERROR:  The BSON field '$densify.range' has an incorrect type 'string'; it should be of type 'object'.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { } } }]}');
-ERROR:  BSON field '$densify.range.bounds' is missing but a required field
+ERROR:  The BSON field '$densify.range.bounds' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : 1 } } }]}');
-ERROR:  the bounds in a range statement must be the string 'full', 'partition', or an ascending array of two numbers or two dates
+ERROR:  Range bounds must be 'full', 'partition', or an ascending array of two numbers or two dates.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "na" } } }]}');
-ERROR:  Bounds string must either be 'full' or 'partition'
+ERROR:  The bounds string value should be either 'full' or 'partition'
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "full" } } }]}');
-ERROR:  BSON field '$densify.range.step' is missing but a required field
+ERROR:  The BSON field '$densify.range.step' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "partition" } } }]}');
-ERROR:  BSON field '$densify.range.step' is missing but a required field
+ERROR:  The BSON field '$densify.range.step' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1] } } }]}');
-ERROR:  a bounding array in a range statement must have exactly two elements
+ERROR:  A boundary array used within a range statement is required to contain exactly two elements.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2, 3] } } }]}');
-ERROR:  a bounding array in a range statement must have exactly two elements
+ERROR:  A boundary array used within a range statement is required to contain exactly two elements.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, { "$date": { "$numberLong": "1718841600000" } }] } } }]}');
-ERROR:  BSON field '$densify.range.step' is missing but a required field
+ERROR:  The BSON field '$densify.range.step' is required but was not provided
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "full", "step": "Hello" } } }]}');
-ERROR:  BSON field '$densify.range.step' is the wrong type 'string', expected types '[int, decimal, double, long']
+ERROR:  The BSON field '$densify.range.step' has an incorrect type 'string'; it should be one of the following valid types: [int, decimal, double, long]
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "partition", "step": "Hello" } } }]}');
-ERROR:  BSON field '$densify.range.step' is the wrong type 'string', expected types '[int, decimal, double, long']
+ERROR:  The BSON field '$densify.range.step' has an incorrect type 'string'; it should be one of the following valid types: [int, decimal, double, long]
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, {"$numberDouble": 2}], "step": 1 } } }]}');
 ERROR:  invalid input syntax JSON for BSON: Code: '2', Message 'Unexpected integer 2 in type "double"'
 LINE 1: ...ECT document FROM bson_aggregation_pipeline('db', '{ "aggreg...
                                                              ^
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": {"$numberDecimal": "1"} } } }]}');
-ERROR:  Upper bound, lower bound, and step must all have the same type
+ERROR:  Upper bound, lower bound, and step values must each be of identical type
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 1, "unit": "sec" } } }]}');
-ERROR:  unknown time unit value: sec
+ERROR:  Unrecognized value for time unit: sec
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 1, "unit": "Hour" } } }]}');
-ERROR:  unknown time unit value: Hour
+ERROR:  Unrecognized value for time unit: Hour
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": -1 } } }]}');
-ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+ERROR:  The step argument within a range expression should always be a strictly positive numerical value
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 0 } } }]}');
-ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+ERROR:  The step argument within a range expression should always be a strictly positive numerical value
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": {"$numberDecimal": "-1e1000"} } } }]}');
-ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+ERROR:  The step argument within a range expression should always be a strictly positive numerical value
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [2, 1], "step": 1 } } }]}');
-ERROR:  the bounds in a range statement must be the string 'full', 'partition', or an ascending array of two numbers or two dates
+ERROR:  Range bounds must be 'full', 'partition', or an ascending array of two numbers or two dates.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "partitionByFields": "a", "range": { "bounds" : "full", "step": 1 } } }]}');
-ERROR:  BSON field '$densify.partitionByFields' is the wrong type 'string', expected type 'array'
+ERROR:  The BSON field '$densify.partitionByFields' has an incorrect type 'string'; it should be of type 'array'.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "partitionByFields": ["$a"], "range": { "bounds" : "full", "step": 1 } } }]}');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+ERROR:  FieldPath field names are not allowed to begin with the operators symbol '$'; consider using $getField or $setField instead.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "$a", "partitionByFields": ["a"], "range": { "bounds" : "full", "step": 1 } } }]}');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+ERROR:  FieldPath field names are not allowed to begin with the operators symbol '$'; consider using $getField or $setField instead.
 -- Valid cases that works
 -- Check an empty table returns value when used with range based partition
 SELECT document FROM bson_aggregation_pipeline('db',
@@ -147,7 +147,7 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1.2 } } }]}');
-ERROR:  Upper bound, lower bound, and step must all have the same type
+ERROR:  Upper bound, lower bound, and step values must each be of identical type
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [-10, -5], "step": 1 } } }]}');
                                                                                        document                                                                                        
@@ -491,7 +491,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -596,9 +596,17 @@ SELECT document FROM bson_aggregation_pipeline('db',
 (13 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db',
-    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }, {"$sort": { "a": 1, "cost": 1}}]}');
                                                                                        document                                                                                        
 ---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
  { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
  { "a" : "def", "cost" : { "$numberInt" : "-4" } }
  { "a" : "def", "cost" : { "$numberInt" : "-3" } }
@@ -621,14 +629,6 @@ SELECT document FROM bson_aggregation_pipeline('db',
  { "a" : "def", "cost" : { "$numberInt" : "14" } }
  { "a" : "def", "cost" : { "$numberInt" : "15" } }
  { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
- { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
- { "a" : "abc", "cost" : { "$numberInt" : "4" } }
- { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
- { "a" : "abc", "cost" : { "$numberInt" : "6" } }
- { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
- { "a" : "abc", "cost" : { "$numberInt" : "8" } }
- { "a" : "abc", "cost" : { "$numberInt" : "9" } }
- { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
 (30 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db',
@@ -687,7 +687,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 54_1
+   ->  Distributed Subplan 53_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
@@ -697,24 +697,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Node: host=localhost port=58070 dbname=regression
                      ->  Seq Scan on documentdb_data.documents_4770_477016 collection
                            Output: document
-   ->  Distributed Subplan 54_2
+   ->  Distributed Subplan 53_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 1
                Tasks Shown: All
                ->  Task
-                     Query: SELECT intermediate_result.document FROM read_intermediate_result('54_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson) UNION ALL SELECT NULL::documentdb_core.bson AS document
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('53_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson) UNION ALL SELECT NULL::documentdb_core.bson AS document
                      Node: host=localhost port=58070 dbname=regression
                      ->  Append
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: intermediate_result.document
-                                 Function Call: read_intermediate_result('54_1'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('53_1'::text, 'binary'::citus_copy_format)
                            ->  Result
                                  Output: NULL::documentdb_core.bson
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT documentdb_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (PARTITION BY (documentdb_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::documentdb_core.bson)) ORDER BY (documentdb_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('54_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0_1) agg_stage_0
+         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT documentdb_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (PARTITION BY (documentdb_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a" ] }'::documentdb_core.bson)) ORDER BY (documentdb_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('53_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0_1) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: documentdb_api_catalog.bson_lookup_unwind((documentdb_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (?)), '_'::text)
@@ -725,7 +725,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                            Sort Key: (documentdb_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: documentdb_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson), documentdb_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a" ] }'::documentdb_core.bson), intermediate_result.document
-                                 Function Call: read_intermediate_result('54_2'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('53_2'::text, 'binary'::citus_copy_format)
 (41 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
@@ -756,7 +756,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 59_1
+   ->  Distributed Subplan 57_1
          ->  WindowAgg
                Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
                ->  Sort
@@ -774,13 +774,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('59_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0
+         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('57_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: documentdb_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document
-                     Function Call: read_intermediate_result('59_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('57_1'::text, 'binary'::citus_copy_format)
 (27 rows)
 
 -- Reshard multikey
@@ -834,17 +834,17 @@ SELECT document FROM bson_aggregation_pipeline('db',
 (37 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db',
-    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }]}');
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }, {"$sort": { "a": 1, "quantity": 1, "cost": 1}}]}');
                                                                                        document                                                                                        
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
- { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
- { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
- { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
- { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
- { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
- { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
  { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
 (8 rows)
 
 SELECT document FROM bson_aggregation_pipeline('db',
@@ -1035,7 +1035,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 80_1
+   ->  Distributed Subplan 78_1
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 8
@@ -1045,24 +1045,24 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                      Node: host=localhost port=58070 dbname=regression
                      ->  Seq Scan on documentdb_data.documents_4770_477024 collection
                            Output: document
-   ->  Distributed Subplan 80_2
+   ->  Distributed Subplan 78_2
          ->  Custom Scan (Citus Adaptive)
                Output: remote_scan.document
                Task Count: 1
                Tasks Shown: All
                ->  Task
-                     Query: SELECT intermediate_result.document FROM read_intermediate_result('80_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson) UNION ALL SELECT NULL::documentdb_core.bson AS document
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('78_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson) UNION ALL SELECT NULL::documentdb_core.bson AS document
                      Node: host=localhost port=58070 dbname=regression
                      ->  Append
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: intermediate_result.document
-                                 Function Call: read_intermediate_result('80_1'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('78_1'::text, 'binary'::citus_copy_format)
                            ->  Result
                                  Output: NULL::documentdb_core.bson
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT documentdb_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (PARTITION BY (documentdb_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a", "quantity" ] }'::documentdb_core.bson)) ORDER BY (documentdb_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('80_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0_1) agg_stage_0
+         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT documentdb_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (PARTITION BY (documentdb_api_internal.bson_expression_partition_by_fields_get(agg_stage_0_1.document, '{ "" : [ "a", "quantity" ] }'::documentdb_core.bson)) ORDER BY (documentdb_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('78_2'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0_1) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: documentdb_api_catalog.bson_lookup_unwind((documentdb_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::documentdb_core.bson) OVER (?)), '_'::text)
@@ -1073,7 +1073,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                            Sort Key: (documentdb_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::documentdb_core.bson)), (documentdb_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                            ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                                  Output: documentdb_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1" } }'::documentdb_core.bson), documentdb_api_internal.bson_expression_partition_by_fields_get(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::documentdb_core.bson), intermediate_result.document
-                                 Function Call: read_intermediate_result('80_2'::text, 'binary'::citus_copy_format)
+                                 Function Call: read_intermediate_result('78_2'::text, 'binary'::citus_copy_format)
 (41 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
@@ -1104,7 +1104,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
-   ->  Distributed Subplan 84_1
+   ->  Distributed Subplan 82_1
          ->  WindowAgg
                Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
                ->  Sort
@@ -1122,13 +1122,13 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('84_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0
+         Query: SELECT documentdb_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('82_1'::text, 'binary'::citus_copy_format) intermediate_result(document documentdb_core.bson)) agg_stage_0
          Node: host=localhost port=58070 dbname=regression
          ->  ProjectSet
                Output: documentdb_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
                ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
                      Output: intermediate_result.document
-                     Function Call: read_intermediate_result('84_1'::text, 'binary'::citus_copy_format)
+                     Function Call: read_intermediate_result('82_1'::text, 'binary'::citus_copy_format)
 (27 rows)
 
 -- Test that internal number of documents generated limits are working
@@ -1136,10 +1136,10 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 10;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 11], "step": 1 } } }]}');
-ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+ERROR:  $densify stage produced 11 documents which is greater that the allowed limit of 10
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 45], "step": 4 } } }]}');  
-ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+ERROR:  $densify stage produced 11 documents which is greater that the allowed limit of 10
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 10], "step": 4 } } }]}'); -- should pass
               document               
@@ -1164,7 +1164,7 @@ SELECT insert_one('db','densify_limit','{ "_id": 2, "a": "abc", "cost": 12, "qua
 
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
-ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+ERROR:  $densify stage produced 11 documents which is greater that the allowed limit of 10
 SELECT insert_one('db','densify_limit','{ "_id": 3, "a": "def", "cost": 0, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
@@ -1181,7 +1181,7 @@ SELECT insert_one('db','densify_limit','{ "_id": 4, "a": "def", "cost": 12, "qua
 SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 20;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
-ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 21 documents in $densify, which is over the limit of 20. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+ERROR:  $densify stage produced 21 documents which is greater that the allowed limit of 20
 -- Verify existing documents don't count towards the limit
 SELECT insert_one('db','densify_limit','{ "_id": 5, "a": "abc", "cost": 5, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
                               insert_one                              
@@ -1250,13 +1250,13 @@ SELECT insert_one('db','densify_limit','{ "_id": 2, "a": "abc", "cost": 12, "qua
 SET documentdb.test.internalQueryMaxAllowedDensifyDocs TO 5;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 , "unit": "second"} } }]}');
-ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 6 documents in $densify, which is over the limit of 5. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+ERROR:  $densify stage produced 6 documents which is greater that the allowed limit of 5
 RESET documentdb.test.internalQueryMaxAllowedDensifyDocs;
 -- Test memory limit too
 SET documentdb.test.internaldocumentsourcedensifymaxmemorybytes TO 100;
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 40], "step": 1 } } }]}');
-ERROR:  PlanExecutor error during aggregation :: caused by :: $densify exceeded memory limit of 100
+ERROR:  PlanExecutor error during aggregation :: caused by :: $densify ran out of memory limit: 100
 RESET documentdb.test.internalDocumentSourceDensifyMaxmemoryBytes;
 SHOW documentdb.test.internalQueryMaxAllowedDensifyDocs;
  documentdb.test.internalQueryMaxAllowedDensifyDocs 

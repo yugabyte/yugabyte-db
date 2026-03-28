@@ -27,7 +27,7 @@ BEGIN;
 set local enable_seqscan TO off;
 set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -41,7 +41,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -55,7 +55,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                       QUERY PLAN                                                                                                        
+                                                                                                                          QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -63,12 +63,12 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_1700_170000 collection
-               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$maxKey" : 1 } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                     QUERY PLAN                                                                      
+                                                                                                                          QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -76,9 +76,8 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_1700_170000 collection
-               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
-               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson)
-(8 rows)
+               Index Cond: ((shard_key_value = '1700'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$maxKey" : 1 } }'::documentdb_core.bson))
+(7 rows)
 
 ROLLBACK;
 -- shard the collection
@@ -93,7 +92,7 @@ BEGIN;
 set local enable_seqscan TO off;
 set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }}';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -107,7 +106,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }}';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -121,7 +120,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                          QUERY PLAN                                                                                                           
+                                                                                                                    QUERY PLAN                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -138,7 +137,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "_id": { "$gt": { "$minKey": 1 } }}';
-                                                         QUERY PLAN                                                         
+                                                              QUERY PLAN                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -152,7 +151,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$eq" : 1 }, "c": 2 }';
-                                                                                      QUERY PLAN                                                                                      
+                                                                                           QUERY PLAN                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -170,7 +169,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2 }';
-                                                                                      QUERY PLAN                                                                                       
+                                                                                           QUERY PLAN                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -188,7 +187,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "a.b": { "$ne" : 1 }, "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                                            QUERY PLAN                                                                                                                             
+                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -197,7 +196,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
          Node: host=localhost port=58070 dbname=regression
          ->  Bitmap Heap Scan on documents_1700_170017 collection
                Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (shard_key_value = '-1389566185330078543'::bigint))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$maxKey" : 1 } }'::documentdb_core.bson) AND (shard_key_value = '-1389566185330078543'::bigint))
                ->  BitmapAnd
                      ->  Bitmap Index Scan on a_b_1
                            Index Cond: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
@@ -206,7 +205,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'shardkeyopt') WHERE document @@ '{ "c": 2, "_id": { "$gt": { "$minKey": 1 } }}';
-                                                                                                      QUERY PLAN                                                                                                      
+                                                                                                                                  QUERY PLAN                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -214,8 +213,8 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_1700_170017 collection
-               Index Cond: ((shard_key_value = '-1389566185330078543'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$minKey" : 1 } }'::documentdb_core.bson))
+               Index Cond: ((shard_key_value = '-1389566185330078543'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$minKey" : 1 } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$maxKey" : 1 } }'::documentdb_core.bson))
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "2" } }'::documentdb_core.bson)
 (8 rows)
 
 ROLLBACK;

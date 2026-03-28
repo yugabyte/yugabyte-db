@@ -333,10 +333,10 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"$geoNear parameter 'key' must be of type string but found type: %s",
+								"Expected 'string' type for $geoNear 'key' but found '%s' type",
 								BsonTypeName(value->value_type)),
 							errdetail_log(
-								"$geoNear parameter 'key' must be of type string but found type: %s",
+								"Expected 'string' type for $geoNear 'key' but found '%s' type",
 								BsonTypeName(value->value_type))));
 			}
 
@@ -345,7 +345,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 							errmsg(
-								"$geoNear parameter 'key' cannot be the empty string")));
+								"'key' parameter for $geoNear is empty")));
 			}
 
 			request->key = value->value.v_utf8.str;
@@ -357,7 +357,8 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"$geoNear requires that 'includeLocs' option is a String")));
+								"Expected 'string' type for $geoNear 'includeLocs' but found '%s' type",
+								BsonTypeName(value->value_type))));
 			}
 
 			request->includeLocs = value->value.v_utf8.str;
@@ -369,7 +370,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"$geoNear requires that 'distanceField' option as a String")));
+								"Expected 'string' type for $geoNear 'distanceField'.")));
 			}
 
 			request->distanceField = value->value.v_utf8.str;
@@ -380,7 +381,8 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 			{
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-							errmsg("distanceMultiplier must be a number")));
+							errmsg(
+								"The value of distanceMultiplier must be a numeric type")));
 			}
 
 			request->distanceMultiplier = BsonValueAsDoubleQuiet(value);
@@ -388,7 +390,7 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 			if (request->distanceMultiplier < 0.0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("distanceMultiplier must be nonnegative")));
+								errmsg("distanceMultiplier must not be negative")));
 			}
 		}
 		else if (strcmp(key, "maxDistance") == 0)
@@ -413,7 +415,8 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 							errmsg(
-								"$geoNear requires near argument to be a GeoJSON object or a legacy point(array)")));
+								"Expected 'document' or 'array' type for $geoNear 'near' field but found '%s' type",
+								BsonTypeName(value->value_type))));
 			}
 
 			bson_iter_t valueIter, pointsIter;
@@ -450,12 +453,13 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 				{
 					ereport(ERROR, (
 								errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("invalid argument in geo near query: %s",
+								errmsg("Invalid parameter detected in geo near query: %s",
 									   (request->isGeoJsonPoint ? "coordinates" :
 										lastkey)),
-								errdetail_log("invalid argument in geo near query: %s",
-											  (request->isGeoJsonPoint ? "coordinates" :
-											   lastkey))));
+								errdetail_log(
+									"Invalid parameter detected in geo near query: %s",
+									(request->isGeoJsonPoint ? "coordinates" :
+									 lastkey))));
 				}
 
 				if (index == 0)
@@ -479,18 +483,20 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 			if (index == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-								errmsg("$geometry is required for geo near query")));
+								errmsg(
+									"A geo near query requires the $geometry to be specified.")));
 			}
 
 			if (index == 1)
 			{
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-							errmsg("invalid argument in geo near query: %s",
+							errmsg("Invalid parameter detected in geo near query: %s",
 								   (request->isGeoJsonPoint ? "coordinates" : lastkey)),
-							errdetail_log("invalid argument in geo near query: %s",
-										  (request->isGeoJsonPoint ? "coordinates" :
-										   lastkey))));
+							errdetail_log(
+								"Invalid parameter detected in geo near query: %s",
+								(request->isGeoJsonPoint ? "coordinates" :
+								 lastkey))));
 			}
 		}
 		else if (strcmp(key, "query") == 0)
@@ -507,7 +513,8 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 	{
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-					errmsg("$geoNear requires a 'distanceField' option as a String")));
+					errmsg(
+						"$geoNear needs a 'distanceField' option specified as a String value")));
 	}
 
 	if (request->spherical && (request->referencePoint.x < -180.0 ||
@@ -519,12 +526,13 @@ ParseGeonearRequest(const pgbson *geoNearQuery)
 		{
 			ereport(ERROR, (
 						errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("invalid argument in geo near query: coordinates")));
+						errmsg("Invalid parameter found in geo-near query coordinates")));
 		}
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("Legacy point is out of bounds for spherical query")));
+							errmsg(
+								"The legacy point lies outside the valid range for a spherical query.")));
 		}
 	}
 
@@ -566,7 +574,8 @@ ValidateQueryOperatorsForGeoNear(Node *node, void *state)
 	{
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-					errmsg("text and geoNear not allowed in same query")));
+					errmsg(
+						"Using text and geoNear together in a single query is not permitted")));
 	}
 
 	return expression_tree_walker(node, ValidateQueryOperatorsForGeoNear, state);
@@ -607,7 +616,8 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 		if (!bson_iter_next(&valueIter))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("$geometry is required for geo near query")));
+							errmsg(
+								"A geo near query requires the $geometry to be specified.")));
 		}
 
 		/* Write the array as is it to be parsed later, and extract min and max distance from iterator. */
@@ -630,7 +640,8 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 			else
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("invalid argument in geo near query: %s", op)));
+								errmsg("Invalid parameter detected in geo near query: %s",
+									   op)));
 			}
 		}
 	}
@@ -643,17 +654,18 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 
 			if (iterValue->value_type == BSON_TYPE_DOCUMENT)
 			{
-				/* Query looks like {$near: {$geometry: {coordinates: [0, 0]}}} */
+				/* Query appears similar to {$near: {$geometry: {coordinates: [0, 0]}}} */
 				bson_iter_t geoJsonIter;
 				bson_iter_recurse(&valueIter, &geoJsonIter);
 
 				if (!bson_iter_find(&geoJsonIter, "coordinates"))
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-									errmsg("$near requires geojson point, given %s",
-										   BsonValueToJsonForLogging(iterValue)),
+									errmsg(
+										"The parameter $near expects a GeoJSON point, but received %s instead",
+										BsonValueToJsonForLogging(iterValue)),
 									errdetail_log(
-										"$near requires geojson point, given %s",
+										"The parameter $near expects a GeoJSON point, but received %s instead",
 										BsonValueToJsonForLogging(iterValue))));
 				}
 
@@ -671,7 +683,8 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 						if (IsBsonValueInfinity(distValue))
 						{
 							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-											errmsg("minDistance must be non-negative")));
+											errmsg(
+												"The value of minDistance must always be zero or greater")));
 						}
 
 						PgbsonWriterAppendValue(&writer, "minDistance", 11, distValue);
@@ -683,7 +696,8 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 						if (IsBsonValueInfinity(distValue))
 						{
 							ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-											errmsg("maxDistance must be non-negative")));
+											errmsg(
+												"maxDistance value must be zero or greater")));
 						}
 
 						PgbsonWriterAppendValue(&writer, "maxDistance", 11, distValue);
@@ -692,9 +706,12 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								 errmsg("invalid argument in geo near query: %s", op),
-								 errdetail_log("invalid argument in geo near query: %s",
-											   op)));
+								 errmsg(
+									 "Invalid parameter detected in geo near query: %s",
+									 op),
+								 errdetail_log(
+									 "Invalid parameter detected in geo near query: %s",
+									 op)));
 					}
 				}
 			}
@@ -705,18 +722,22 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							 errmsg("invalid argument in geo near query: %s", op),
-							 errdetail_log("invalid argument in geo near query: %s",
-										   op)));
+							 errmsg("Invalid parameter detected in geo near query: %s",
+									op),
+							 errdetail_log(
+								 "Invalid parameter detected in geo near query: %s",
+								 op)));
 				}
 
 				if (!BsonValueIsNumber(bson_iter_value(&valueIter)))
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							 errmsg("invalid argument in geo near query: %s", op),
-							 errdetail_log("invalid argument in geo near query: %s",
-										   op)));
+							 errmsg("Invalid parameter detected in geo near query: %s",
+									op),
+							 errdetail_log(
+								 "Invalid parameter detected in geo near query: %s",
+								 op)));
 				}
 
 				PgbsonWriterAppendValue(&writer, "near", 4, value);
@@ -729,9 +750,11 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							 errmsg("invalid argument in geo near query: %s", op),
-							 errdetail_log("invalid argument in geo near query: %s",
-										   op)));
+							 errmsg("Invalid parameter detected in geo near query: %s",
+									op),
+							 errdetail_log(
+								 "Invalid parameter detected in geo near query: %s",
+								 op)));
 				}
 
 				isGeoJsonPoint = true;
@@ -741,7 +764,8 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("$geometry is required for geo near query")));
+							errmsg(
+								"A geo near query requires the $geometry to be specified.")));
 		}
 	}
 	else
@@ -771,8 +795,10 @@ GetGeonearSpecFromNearQuery(bson_iter_t *operatorDocIterator, const char *path,
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-							errmsg("invalid argument in geo near query: %s", op),
-							errdetail_log("invalid argument in geo near query: %s", op)));
+							errmsg("Invalid parameter detected in geo near query: %s",
+								   op),
+							errdetail_log(
+								"Invalid parameter detected in geo near query: %s", op)));
 		}
 	}
 
@@ -865,7 +891,7 @@ CreateExprForGeonearAndNearSphere(const pgbson *queryDoc, Expr *docExpr,
 								 (Expr *) queryConst,
 								 InvalidOid, InvalidOid);
 
-	/* Update the resno later */
+	/* Postpone updating the resno value */
 	TargetEntry *tle = makeTargetEntry(opExpr, 0, "distance", true);
 	*targetEntry = tle;
 
@@ -1025,26 +1051,27 @@ EvaluateGeoNearConstExpression(const bson_value_t *geoNearSpecValue, Expr *varia
 			}
 			else
 			{
-				/* not const, error */
+				/* Value is not constant, compilation error */
 				if (StringViewEqualsCString(&key, "near"))
 				{
 					ereport(ERROR, (
 								errcode(ERRCODE_DOCUMENTDB_LOCATION5860402),
-								errmsg("$geoNear requires a constant near argument")));
+								errmsg(
+									"The $geoNear operator must be provided with a fixed and constant near argument")));
 				}
 				else if (StringViewEqualsCString(&key, "minDistance"))
 				{
 					ereport(ERROR, (
 								errcode(ERRCODE_DOCUMENTDB_LOCATION7555701),
 								errmsg(
-									"$geoNear requires $minDistance to evaluate to a constant number")));
+									"The $geoNear needs the $minDistance to resolve to a fixed numerical value")));
 				}
 				else
 				{
 					ereport(ERROR, (
 								errcode(ERRCODE_DOCUMENTDB_LOCATION7555702),
 								errmsg(
-									"$geoNear requires $maxDistance to evaluate to a constant number")));
+									"The $geoNear operator needs the $maxDistance operator to resolve to a constant numeric value.")));
 				}
 			}
 		}
@@ -1264,22 +1291,23 @@ GetDoubleValueForDistance(const bson_value_t *value, const char *opName)
 	{
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-					errmsg("%s must be a number", opName),
-					errdetail_log("%s must be a number", opName)));
+					errmsg("The value for %s must be a valid numeric type", opName),
+					errdetail_log("The value for %s must be a valid numeric type",
+								  opName)));
 	}
 
 	double distValue = BsonValueAsDouble(value);
 	if (isnan(distValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("%s must be non-negative", opName),
-						errdetail_log("%s must be non-negative", opName)));
+						errmsg("%s must be positive or zero", opName),
+						errdetail_log("%s must be positive or zero", opName)));
 	}
 	else if (distValue < 0.0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("%s must be nonnegative", opName),
-						errdetail_log("%s must be nonnegative", opName)));
+						errmsg("%s value must be zero or greater", opName),
+						errdetail_log("%s value must be zero or greater", opName)));
 	}
 
 	return distValue;
@@ -1295,7 +1323,7 @@ ValidateGeoNearWithIndexBounds(const Bson2dGeometryPathOptions *options,
 		referencePoint.y < options->minBound || referencePoint.y > options->maxBound)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION16433),
-						errmsg("point not in interval of [ %g, %g ]",
+						errmsg("Point lies outside the specified interval range [%g, %g]",
 							   options->minBound, options->maxBound)));
 	}
 }

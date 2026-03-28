@@ -51,7 +51,7 @@ set local enable_seqscan TO OFF;
 set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- When x is non-array
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : ".*Yc", "$options": "i"}]}}';
-                                                                                QUERY PLAN                                                                                
+                                                                                     QUERY PLAN                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -64,7 +64,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- When x's value is array and regex matches one of the array elements, specifically the first element (3rd record).
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : "^.*cd", "$options": ""}]}}';
-                                                                                QUERY PLAN                                                                                
+                                                                                     QUERY PLAN                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -77,7 +77,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- When x'z value is array and regex matches second element of 2nd record and 3rd element in the 4th record.
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : "x.+1", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}';
-                                                                                                                    QUERY PLAN                                                                                                                    
+                                                                                                                         QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -90,7 +90,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Without any regex
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": ["acd", "first regular expression"]}}';
-                                                               QUERY PLAN                                                                
+                                                                    QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -103,7 +103,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Mix of Regex and text
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [  "second expression", {"$regex" : "xy.1", "$options": ""}  ]  }}';
-                                                                                          QUERY PLAN                                                                                          
+                                                                                               QUERY PLAN                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -116,7 +116,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Test for hasNull (10 filler records and 3 actual records to match)
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [  "second expression", null, {"$regex" : "xy.1", "$options": ""}  ]  }}';
-                                                                                             QUERY PLAN                                                                                             
+                                                                                                  QUERY PLAN                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -129,7 +129,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Test for $all
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db','regex5') WHERE document @@ '{"x": {"$all": [{"$regex" : "expression", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}';
-                                                                                                                       QUERY PLAN                                                                                                                       
+                                                                                                                                                                    QUERY PLAN                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -137,7 +137,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db','regex5') WHERE documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using index_wc on documents_101000_1010007 collection
-               Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "x" : [ { "$regularExpression" : { "pattern" : "expression", "options" : "" } }, { "$regularExpression" : { "pattern" : "value .+ x", "options" : "" } } ] }'::documentdb_core.bson)
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@~) '{ "x" : { "$regularExpression" : { "pattern" : "expression", "options" : "" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "x" : { "$regularExpression" : { "pattern" : "value .+ x", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 ROLLBACK;
@@ -146,7 +146,7 @@ ROLLBACK;
 --
 -- When x is non-array
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : ".*yc", "$options": ""}]}}';
-                                                                             QUERY PLAN                                                                              
+                                                                                  QUERY PLAN                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -159,7 +159,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- When x's value is array and regex matches one of the array elements, specifically the first element (3rd record).
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : "^.*cd", "$options": ""}]}}';
-                                                                              QUERY PLAN                                                                              
+                                                                                   QUERY PLAN                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -172,7 +172,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- When x'z value is array and regex matches second element of 2nd record and 3rd element in the 4th record.
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [{"$regex" : "x.+1", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}';
-                                                                                                                  QUERY PLAN                                                                                                                  
+                                                                                                                       QUERY PLAN                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -185,7 +185,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Without any regex
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": ["acd", "first regular expression"]}}';
-                                                             QUERY PLAN                                                              
+                                                                  QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -198,7 +198,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Mix of Regex and text
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [  "second expression", {"$regex" : "xy.1", "$options": ""}  ]  }}';
-                                                                                        QUERY PLAN                                                                                        
+                                                                                             QUERY PLAN                                                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -211,7 +211,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Test for hasNull (10 filler records and 3 actual records to match)
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE document @@ '{"x": {"$in": [  "second expression", null, {"$regex" : "xy.1", "$options": ""}  ]  }}';
-                                                                                           QUERY PLAN                                                                                           
+                                                                                                QUERY PLAN                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -224,7 +224,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db', 'regex5') WHERE docume
 
 -- Test for $all
 EXPLAIN (COSTS OFF) SELECT document FROM collection('db','regex5') WHERE document @@ '{"x": {"$all": [{"$regex" : "expression", "$options": ""}, {"$regex" : "value .+ x", "$options": ""}]}}';
-                                                                                                                     QUERY PLAN                                                                                                                     
+                                                                                                                                                                  QUERY PLAN                                                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -232,7 +232,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM collection('db','regex5') WHERE documen
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documents_101000_1010007 collection
-               Filter: (document OPERATOR(documentdb_api_catalog.@&=) '{ "x" : [ { "$regularExpression" : { "pattern" : "expression", "options" : "" } }, { "$regularExpression" : { "pattern" : "value .+ x", "options" : "" } } ] }'::documentdb_core.bson)
+               Filter: ((document OPERATOR(documentdb_api_catalog.@~) '{ "x" : { "$regularExpression" : { "pattern" : "expression", "options" : "" } } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@~) '{ "x" : { "$regularExpression" : { "pattern" : "value .+ x", "options" : "" } } }'::documentdb_core.bson))
 (7 rows)
 
 SELECT drop_collection('db','regex5');

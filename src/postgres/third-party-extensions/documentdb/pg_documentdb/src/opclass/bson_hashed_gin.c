@@ -50,7 +50,8 @@ static bool HashIndexVisitArrayField(pgbsonelement *element, const StringView *f
 									 int
 									 arrayIndex, void *state);
 static bool HashIndexContinueProcessIntermediateArray(void *state, const
-													  bson_value_t *value);
+													  bson_value_t *value,
+													  bool isArrayIndexSearch);
 
 /*
  * Extension functions for handling hash index execution when traversing bson documents.
@@ -61,6 +62,8 @@ static const TraverseBsonExecutionFuncs HashIndexExecutionFuncs = {
 	.VisitArrayField = HashIndexVisitArrayField,
 	.VisitTopLevelField = HashIndexVisitTopLevelField,
 	.SetIntermediateArrayIndex = NULL,
+	.HandleIntermediateArrayPathNotFound = NULL,
+	.SetIntermediateArrayStartEnd = NULL,
 };
 
 /* --------------------------------------------------------- */
@@ -241,7 +244,7 @@ gin_bson_hashed_options(PG_FUNCTION_ARGS)
  * the check array which is the result of the comparison of two hashes (index term and query term)
  * because there can be collisions when calculating hashes, so we always need to
  * recheck the query at runtime. For null values we force the recheck even if the result
- * it false, because we need to consider the mongo scenario of a missing path == null.
+ * it false, because we need to consider the scenario of a missing path == null.
  * For more details see documentation on the 'consistent' method in the GIN extensibility.
  */
 Datum
@@ -336,7 +339,7 @@ GenerateTermsForDollarIn(pgbsonelement *queryElement, int *nentries)
 	if (queryElement->bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"$in expects an array")));
+							"$in operator requires an array")));
 	}
 
 	bson_iter_t queryInIterator;
@@ -345,7 +348,7 @@ GenerateTermsForDollarIn(pgbsonelement *queryElement, int *nentries)
 								  queryElement->bsonValue.value.v_doc.data_len))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-						errmsg("Unable to read array for $in")));
+						errmsg("Failed to read array for operators $in")));
 	}
 
 	bool arrayHasNull = false;
@@ -408,7 +411,7 @@ ThrowErrorArraysNotSupported(const char * path, int pathLength)
 	errorPath = (char *) palloc0(sizeof(char) * (pathLength + 1));
 	memcpy(errorPath, path, pathLength);
 	ereport(ERROR, errcode(ERRCODE_DOCUMENTDB_HASHEDINDEXDONOTSUPPORTARRAYVALUES), errmsg(
-				"hashed indexes do not currently support array values. Found array at path: %s",
+				"Index type 'hashed' does not support array values. Array was detected at path: %s",
 				errorPath));
 }
 
@@ -445,7 +448,8 @@ HashIndexVisitArrayField(pgbsonelement *element, const StringView *filterPath, i
 
 /* This function throws errors on encountering an array path during has indexing */
 static bool
-HashIndexContinueProcessIntermediateArray(void *state, const bson_value_t *value)
+HashIndexContinueProcessIntermediateArray(void *state, const bson_value_t *value,
+										  bool isArrayIndexSearch)
 {
 	HashIndexTraverseState *hashState = (HashIndexTraverseState *) state;
 	ThrowErrorArraysNotSupported(hashState->indexPath, -1);
@@ -466,7 +470,7 @@ ValidateHashedPathSpec(const char *prefix)
 	if (stringLength == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"Hashed index path must not be empty")));
+							"The hashed index path cannot be left empty")));
 	}
 
 	if (prefix[stringLength - 1] == '.')

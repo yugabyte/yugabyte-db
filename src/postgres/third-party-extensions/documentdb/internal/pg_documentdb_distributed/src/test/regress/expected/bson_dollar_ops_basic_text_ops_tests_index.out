@@ -5,53 +5,58 @@ SET documentdb.next_collection_index_id TO 4500;
 BEGIN;
 set local enable_seqscan = off;
 \i sql/bson_dollar_ops_basic_text_ops_tests_core.sql
-/* Insert documents based off the mongo help example for $regex */
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 1, "sku" : "abc123", "description" : "Single line description."}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 1, "address" : "sfo0001", "comment" : "This     is a dentist     clinic"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 2, "sku" : "abc789", "description" : "First line\nSecond line"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 2, "address" : "sfo0010", "comment" : "Here you can get\nthe most delicious food\nin the world"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 3, "sku" : "xyz456", "description" : "Many spaces before     line"}', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 3, "address" : "Sfo0010", "comment" : "[dupe] Here you can get\nthe most delicious food\nin the world"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 4,  "sku" : "xyz789", "description" : "Multiple\nline description" }', NULL);
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 4, "address" : "la0001", "comment" : "I never been here"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryregexopstest', '{"_id": 5,  "address" : "la7777", "comment" : "The dog in the yard\nalways barks at me" }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 /* now query regex */
-/* db.products.find( { sku: { $regex: /789$/ } } ) */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "789$" }';
-            object_id            |                                              document                                              
+/* db.queryregexopstest.find( { address: { $regex: /0001$/ } } ) */
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "address": "0001$" }';
+            object_id            |                                                 document                                                  
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "sku" : "abc789", "description" : "First line\nSecond line" }
- { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" }, "sku" : "xyz789", "description" : "Multiple\nline description" }
+ { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "address" : "sfo0001", "comment" : "This     is a dentist     clinic" }
+ { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" }, "address" : "la0001", "comment" : "I never been here" }
 (2 rows)
 
-/* TODO: passing options: db.products.find( { sku: { $regex: /^ABC/i } } ) */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "^abc" }';
-            object_id            |                                             document                                             
+/* TODO: passing options: db.queryregexopstest.find( { address: { $regex: /^SFO/i } } ) */
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "address": "^sfo" }';
+            object_id            |                                                             document                                                             
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "sku" : "abc123", "description" : "Single line description." }
- { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "sku" : "abc789", "description" : "First line\nSecond line" }
+ { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "address" : "sfo0001", "comment" : "This     is a dentist     clinic" }
+ { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "address" : "sfo0010", "comment" : "Here you can get\nthe most delicious food\nin the world" }
 (2 rows)
 
 /* Match multiple spaces */
-SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "description": "\\s\\s+" }';
-            object_id            |                                              document                                               
+SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "comment": "\\s\\s+" }';
+            object_id            |                                                 document                                                  
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "3" } } | { "_id" : { "$numberInt" : "3" }, "sku" : "xyz456", "description" : "Many spaces before     line" }
+ { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "address" : "sfo0001", "comment" : "This     is a dentist     clinic" }
 (1 row)
 
 ROLLBACK;

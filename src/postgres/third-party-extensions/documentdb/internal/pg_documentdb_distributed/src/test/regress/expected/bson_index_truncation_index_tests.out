@@ -2,7 +2,6 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documen
 SET citus.next_shard_id TO 640000;
 SET documentdb.next_collection_id TO 6400;
 SET documentdb.next_collection_index_id TO 6400;
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 -- Set configs to something reasonable for testing.
 set documentdb.indexTermLimitOverride to 100;
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_tests", "indexes": [ { "key": { "ikey": 1 }, "name": "ikey_1", "enableLargeIndexKeys": true } ] }');
@@ -14,13 +13,12 @@ NOTICE:  creating collection
 
 -- now we have an index with truncation enabled and 100 chars.
 \d documentdb_data.documents_6400;
-                      Table "documentdb_data.documents_6400"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6400"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6400" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6401" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='100'))
@@ -825,13 +823,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_6401
-                      Table "documentdb_data.documents_6401"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6401"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6401" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6403" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='60'))
@@ -2573,13 +2570,12 @@ SELECT documentdb_api.shard_collection('db', 'index_truncation_tests', '{ "_id":
 (1 row)
 
 \d documentdb_data.documents_6401
-                      Table "documentdb_data.documents_6401"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6401"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6401" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6404" documentdb_rum (document bson_rum_single_path_ops (path=_id, tl='60'))
@@ -2598,13 +2594,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_6402
-                      Table "documentdb_data.documents_6402"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6402"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6402" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6407" documentdb_rum (document bson_rum_single_path_ops (path='', iswildcard='true', tl='100', wkl='50'))
@@ -2640,7 +2635,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests') WHERE document @@ '{ "ikey1": { "$gt": "this is a" } }';
-                                                                                                                   QUERY PLAN                                                                                                                    
+                                                                                                                           QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2663,7 +2658,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests') WHERE document @@ '{ "ikey2": { "$gt": "this is a" } }';
-                                                                                                                   QUERY PLAN                                                                                                                    
+                                                                                                                           QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2690,13 +2685,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_6403
-                      Table "documentdb_data.documents_6403"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6403"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6403" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6409" documentdb_rum (document bson_rum_single_path_ops (path='a.b', iswildcard='true', tl='60'))
@@ -2729,14 +2723,14 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      14 | { "_id" : { "$numberInt" : "3" } }
      45 | { "a.b.c" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" } ] }
      18 | { "a.b.c.0" : { "$numberInt" : "2345" } }
-     18 | { "a.b.c.1" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.2" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.3" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.4" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "2345" } }
+     18 | { "a.b.c.1" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.2" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.3" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.4" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
       8 | { "" : true }
       7 | { "" : { "$maxKey" : 1 } }
@@ -2749,18 +2743,18 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      14 | { "_id" : { "$numberInt" : "3" } }
      45 | { "a.b.c" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" } ] }
      18 | { "a.b.c.0" : { "$numberInt" : "2345" } }
-     18 | { "a.b.c.1" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.2" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.3" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.4" : { "$numberInt" : "1234" } }
-     18 | { "a.b.c.5" : { "$numberInt" : "76" } }
-     18 | { "a.b.c.6" : { "$numberInt" : "85" } }
      16 | { "a.b.c" : { "$numberInt" : "2345" } }
+     18 | { "a.b.c.1" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.2" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.3" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.4" : { "$numberInt" : "1234" } }
      16 | { "a.b.c" : { "$numberInt" : "1234" } }
+     18 | { "a.b.c.5" : { "$numberInt" : "76" } }
      16 | { "a.b.c" : { "$numberInt" : "76" } }
+     18 | { "a.b.c.6" : { "$numberInt" : "85" } }
      16 | { "a.b.c" : { "$numberInt" : "85" } }
       8 | { "" : true }
       7 | { "" : { "$maxKey" : 1 } }
@@ -2826,13 +2820,13 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      18 | { "a.0.b.c" : { "$numberInt" : "1" } }
      18 | { "a.0.b.d" : { "$numberInt" : "2" } }
      20 | { "a.0.b.e" : "1" }
-     23 | { "a.1" : { "oi" : { "$numberInt" : "2" } } }
-     17 | { "a.1.oi" : { "$numberInt" : "2" } }
      44 | { "a" : { "b" : { "c" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "2" }, "e" : "1" } } }
      38 | { "a.b" : { "c" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "2" }, "e" : "1" } }
      16 | { "a.b.c" : { "$numberInt" : "1" } }
      16 | { "a.b.d" : { "$numberInt" : "2" } }
      18 | { "a.b.e" : "1" }
+     23 | { "a.1" : { "oi" : { "$numberInt" : "2" } } }
+     17 | { "a.1.oi" : { "$numberInt" : "2" } }
      21 | { "a" : { "oi" : { "$numberInt" : "2" } } }
      15 | { "a.oi" : { "$numberInt" : "2" } }
       8 | { "" : true }
@@ -2847,7 +2841,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.b.c": { "$gt": "this is a" } }';
-                                                                                                                   QUERY PLAN                                                                                                                    
+                                                                                                                           QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2870,7 +2864,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.d.c": { "$gt": "this is a" } }';
-                                                                                                                   QUERY PLAN                                                                                                                    
+                                                                                                                           QUERY PLAN                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2894,7 +2888,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.b.c": { "$gte": [ 2345, 1234, 1234, 1234, 1230 ] , "$lte": [ 2345, 1234, 1234, 1234, 1240 ] } }';
-                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2903,12 +2897,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
    ->  Task
          Query: SELECT document FROM documentdb_data.documents_6403_640061 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b.c" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#<=) '{ "a.b.c" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ] }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6403'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documentdb_data.documents_6403_640061 collection
+         ->  Index Scan using wkey_2 on documentdb_data.documents_6403_640061 collection
                Output: document
-               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a.b.c" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
-               ->  Bitmap Index Scan on wkey_2
-                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a.b.c" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
-(12 rows)
+               Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a.b.c" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
+(10 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.b.c": 1 }';
                                                                   document                                                                  
@@ -2917,7 +2909,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.b.c": 1 }';
-                                                                                                                         QUERY PLAN                                                                                                                         
+                                                                                                                                QUERY PLAN                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2940,7 +2932,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_single_field') WHERE document @@ '{ "a.b.c": { "$elemMatch": { "$eq": 2345 } } }';
-                                                                                                                                  QUERY PLAN                                                                                                                                   
+                                                                                                                                          QUERY PLAN                                                                                                                                          
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -2978,13 +2970,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_6404
-                      Table "documentdb_data.documents_6404"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_6404"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_6404" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_6411" documentdb_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='60', wkl='50', pathspec='[ "a", "b" ]', isexclusion='false'))
@@ -3023,7 +3014,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "a": { "$gt": "this is a" } }';
-                                                                                                                 QUERY PLAN                                                                                                                  
+                                                                                                                         QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3047,7 +3038,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (2 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "b": { "$gt": "this is a" } }';
-                                                                                                                 QUERY PLAN                                                                                                                  
+                                                                                                                         QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3070,7 +3061,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "a": { "$gte": [ 2345, 1234, 1234, 1234, 1230 ] , "$lte": [ 2345, 1234, 1234, 1234, 1240 ] } }';
-                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3079,12 +3070,10 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
    ->  Task
          Query: SELECT document FROM documentdb_data.documents_6404_640074 collection WHERE ((document OPERATOR(documentdb_api_catalog.#>=) '{ "a" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ] }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#<=) '{ "a" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ] }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '6404'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documentdb_data.documents_6404_640074 collection
+         ->  Index Scan using wkey_3 on documentdb_data.documents_6404_640074 collection
                Output: document
-               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
-               ->  Bitmap Index Scan on wkey_3
-                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
-(12 rows)
+               Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@<>) '{ "a" : { "min" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1230" } ], "max" : [ { "$numberInt" : "2345" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1234" }, { "$numberInt" : "1240" } ], "minInclusive" : true, "maxInclusive" : true } }'::documentdb_core.bson)
+(10 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "a.l.j": 1 }';
                                                       document                                                      
@@ -3093,7 +3082,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "a.l.j": 1 }';
-                                                                                                                         QUERY PLAN                                                                                                                         
+                                                                                                                                QUERY PLAN                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3116,7 +3105,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "a": { "$elemMatch": { "$eq": 2345 } } }';
-                                                                                                                                QUERY PLAN                                                                                                                                 
+                                                                                                                                        QUERY PLAN                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3139,7 +3128,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (0 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "c": 1 }';
-                                                                                                                       QUERY PLAN                                                                                                                       
+                                                                                                                              QUERY PLAN                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3163,7 +3152,7 @@ SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'wildcard_index_truncation_tests_wildcard_projection') WHERE document @@ '{ "d": 2 }';
-                                                                                                                       QUERY PLAN                                                                                                                       
+                                                                                                                              QUERY PLAN                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -3360,52 +3349,52 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
 ---------------------------------------------------------------------
     486 | { "visits" : [ "1", { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$maxKey" : 1 } } ], "t" : true }
      21 | { "visits.0" : "1", "t" : false }
+     19 | { "visits" : "1", "t" : false }
     143 | { "visits.1" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      46 | { "visits.1.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      48 | { "visits.1.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      50 | { "visits.1.visitId" : "someVisitIdValueString", "t" : false }
      35 | { "visits.1.visitDocuments" : {  }, "t" : false }
+    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
+     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
+     33 | { "visits.visitDocuments" : {  }, "t" : false }
     143 | { "visits.2" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      46 | { "visits.2.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      48 | { "visits.2.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      50 | { "visits.2.visitId" : "someVisitIdValueString", "t" : false }
      35 | { "visits.2.visitDocuments" : {  }, "t" : false }
+    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
+     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
+     33 | { "visits.visitDocuments" : {  }, "t" : false }
     143 | { "visits.3" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      46 | { "visits.3.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      48 | { "visits.3.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      50 | { "visits.3.visitId" : "someVisitIdValueString", "t" : false }
      35 | { "visits.3.visitDocuments" : {  }, "t" : false }
+    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
+     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
+     33 | { "visits.visitDocuments" : {  }, "t" : false }
     143 | { "visits.4" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      46 | { "visits.4.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      48 | { "visits.4.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      50 | { "visits.4.visitId" : "someVisitIdValueString", "t" : false }
      35 | { "visits.4.visitDocuments" : {  }, "t" : false }
+    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
+     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
+     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
+     33 | { "visits.visitDocuments" : {  }, "t" : false }
     143 | { "visits.5" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      46 | { "visits.5.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      48 | { "visits.5.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      50 | { "visits.5.visitId" : "someVisitIdValueString", "t" : false }
      35 | { "visits.5.visitDocuments" : {  }, "t" : false }
-     19 | { "visits" : "1", "t" : false }
-    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
-     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
-     33 | { "visits.visitDocuments" : {  }, "t" : false }
-    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
-     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
-     33 | { "visits.visitDocuments" : {  }, "t" : false }
-    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
-     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
-     33 | { "visits.visitDocuments" : {  }, "t" : false }
-    141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
-     44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
-     48 | { "visits.visitId" : "someVisitIdValueString", "t" : false }
-     33 | { "visits.visitDocuments" : {  }, "t" : false }
     141 | { "visits" : { "estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "visitId" : "someVisitIdValueString", "visitDocuments" : {  } }, "t" : false }
      44 | { "visits.estimatedTimeOfArrival" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
      46 | { "visits.estimatedTimeOfDeparture" : { "$date" : { "$numberLong" : "101010" } }, "t" : false }
@@ -3416,4 +3405,3 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
      12 | { "" : [  ], "t" : false }
 (56 rows)
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects to off;

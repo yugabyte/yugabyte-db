@@ -63,7 +63,7 @@ SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_fin
 (1 row)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }}');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -72,7 +72,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- same point read on non-colocated table - uses slow path
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_find_point_read_noncoll", "filter": { "_id": "2" }}');
-                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0) (actual rows=1 loops=1)
    Output: remote_scan.document
@@ -91,7 +91,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 -- now test point reads with various find features for fast path
 -- limit
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 0 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -99,7 +99,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 1 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -107,7 +107,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 2 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -115,7 +115,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "limit": 3 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -124,7 +124,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- skip
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -132,7 +132,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 1 }');
-                                                              QUERY PLAN                                                               
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
    Output: document
@@ -142,7 +142,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (5 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 2 }');
-                                                              QUERY PLAN                                                               
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
    Output: document
@@ -152,7 +152,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (5 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 3 }');
-                                                              QUERY PLAN                                                               
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
    Output: document
@@ -163,7 +163,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- skip + limit
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0, "limit": 0 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -171,7 +171,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 0, "limit": 1 }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -179,7 +179,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 1, "limit": 1 }');
-                                                              QUERY PLAN                                                               
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
    Output: document
@@ -189,7 +189,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (5 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "skip": 2, "limit": 2 }');
-                                                              QUERY PLAN                                                               
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Limit  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
    Output: document
@@ -200,7 +200,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- sort
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "_id": 1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -208,7 +208,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "_id": -1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -216,7 +216,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": -1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -224,7 +224,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (3 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": 1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -233,16 +233,16 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- projection
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "projection": { "a.b": 1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                                        QUERY PLAN                                                                                        
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
-   Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : "2" }'::bson)
+   Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : "2" }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
 (3 rows)
 
 -- filter
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "a": { "$exists": true } }, "sort": { "a": 1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -251,7 +251,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (4 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "a": { "$exists": false } }, "sort": { "a": 1 } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
    Output: document
@@ -261,83 +261,75 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 (5 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 1 } }, "sort": { "a": 1 } }');
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------
- Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
-   Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
-   Sort Key: (bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
-   Sort Method: quicksort  Memory: 25kB
-   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
-         Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
-         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "1" } }'::bson)
-         Rows Removed by Filter: 1
-(9 rows)
-
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 2 } }, "sort": { "a": 1 } }');
-                                                              QUERY PLAN                                                               
----------------------------------------------------------------------
- Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
-   Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
-   Sort Key: (bson_orderby(collection.document, '{ "a" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
-   Sort Method: quicksort  Memory: 25kB
-   ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
-         Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
-         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "2" } }'::bson)
-         Rows Removed by Filter: 1
-(9 rows)
-
--- filter with special operators
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "$text": { "$search": "abc" } }, "sort": { "$meta": 1 } }');
-                                                                                                                      QUERY PLAN                                                                                                                       
----------------------------------------------------------------------
- Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
-   Output: document, (bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson))
-   Sort Key: (bson_orderby(collection.document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
-   Sort Method: quicksort  Memory: 25kB
-   ->  Custom Scan (DocumentDBApiQueryScan)  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
-         Output: document, bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)
-         ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=0 loops=1)
-               Output: document
-               Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-               Filter: bson_text_meta_qual(collection.document, '''abc'''::tsquery, '\x0400000000000000ffffffff000000000000000001000000000000002800000000000000000000000000803f000000000000803f000000000000803f000000000000803f00000000'::bytea, true)
-               Rows Removed by Filter: 1
-(11 rows)
-
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "g": { "$nearSphere": { "$geometry": { "type" : "Point", "coordinates": [0, 0] } }} }, "sort": { "a": 1 } }');
-ERROR:  planner returned error :: caused by :: unable to find index for $geoNear query
--- filters with and/nested and - today doesn't use the fast-path but needs to be handled.
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "_id": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"_id": { "$gt": "0" } } ] } ] } }');
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------
- Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
-   Output: document
-   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
-(4 rows)
-
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": { "$gt": "1" }, "_id": "2", "_id": { "$gt": "0" } } }');
-                                                           QUERY PLAN                                                            
----------------------------------------------------------------------
- Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=32) (actual rows=1 loops=1)
-   Output: document
-   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-   Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (collection.document @> '{ "_id" : "0" }'::bson))
-(4 rows)
-
-EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "a": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"a": { "$gt": "0" } } ] } ] } }');
-                                                                                     QUERY PLAN                                                                                      
+                                                                                                                QUERY PLAN                                                                                                                 
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
    Output: document
    Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND ((collection.document #= '{ "_id" : "2" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery)))
+   Filter: ((collection.document #> '{ "_id" : { "$numberInt" : "1" } }'::bsonquery) AND (collection.object_id > '{ "" : { "$numberInt" : "1" } }'::bson) AND (collection.object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+   Rows Removed by Filter: 1
+(5 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 2 } }, "sort": { "a": 1 } }');
+                                                                                                                QUERY PLAN                                                                                                                 
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "_id" : { "$numberInt" : "2" } }'::bsonquery) AND (collection.object_id > '{ "" : { "$numberInt" : "2" } }'::bson) AND (collection.object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+   Rows Removed by Filter: 1
+(5 rows)
+
+-- filter with special operators
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "$text": { "$search": "abc" } }, "sort": { "$meta": 1 } }');
+                                                                                                                                                                           QUERY PLAN                                                                                                                                                                           
+---------------------------------------------------------------------
+ Sort  (cost=25000004.03..25000004.04 rows=1 width=64) (actual rows=0 loops=1)
+   Output: document, (bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   Sort Method: quicksort  Memory: 25kB
+   ->  Custom Scan (DocumentDBApiQueryScan)  (cost=0.00..25000004.02 rows=1 width=64) (actual rows=0 loops=1)
+         Output: document, bson_orderby(document, '{ "$meta" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Heap Scan on documentdb_data.documents_4232_423018 collection  (cost=0.00..25000004.02 rows=1 width=32) (actual rows=0 loops=1)
+               Output: document
+               Filter: ((collection.document @= '{ "_id" : "2" }'::bson) AND (collection.object_id = '{ "" : "2" }'::bson) AND bson_text_meta_qual(collection.document, '''abc'''::tsquery, '\x0400000000000000ffffffff000000000000000001000000000000002800000000000000000000000000803f000000000000803f000000000000803f000000000000803f00000000'::bytea, true))
+               ->  Bitmap Index Scan on my_txt  (cost=0.00..0.00 rows=1 width=0) (actual rows=0 loops=1)
+                     Index Cond: (collection.document @#% '''abc'''::tsquery)
+(11 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "g": { "$nearSphere": { "$geometry": { "type" : "Point", "coordinates": [0, 0] } }} }, "sort": { "a": 1 } }');
+ERROR:  unable to find index for $geoNear query
+-- filters with and/nested and.
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "_id": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"_id": { "$gt": "0" } } ] } ] } }');
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "_id" : "1" }'::bsonquery) AND (collection.document #> '{ "_id" : "0" }'::bsonquery) AND (collection.object_id > '{ "" : "1" }'::bson) AND (collection.object_id < '{ "" : {  } }'::bson) AND (collection.object_id > '{ "" : "0" }'::bson) AND (collection.object_id < '{ "" : {  } }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": { "$gt": "1" }, "_id": "2", "_id": { "$gt": "0" } } }');
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "_id" : "1" }'::bsonquery) AND (collection.document #> '{ "_id" : "0" }'::bsonquery) AND (collection.object_id > '{ "" : "1" }'::bson) AND (collection.object_id < '{ "" : {  } }'::bson) AND (collection.object_id > '{ "" : "0" }'::bson) AND (collection.object_id < '{ "" : {  } }'::bson))
+(4 rows)
+
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "a": { "$gt": "1" } }, { "$and": [ {"_id": "2" }, {"a": { "$gt": "0" } } ] } ] } }');
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: ((collection.document #> '{ "a" : "1" }'::bsonquery) AND (collection.document #> '{ "a" : "0" }'::bsonquery))
    Rows Removed by Filter: 1
 (5 rows)
 
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "a": { "$gt": "1" }, "_id": "2", "a": { "$gt": "0" } } }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=0 loops=1)
    Output: document
@@ -348,7 +340,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- singleBatch
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2" }, "sort": { "a": 1 }, "singleBatch": true }');
-                                                                QUERY PLAN                                                                 
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
    Output: document
@@ -357,7 +349,7 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
 
 -- batchSize
 EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "_id": "2", "_id": { "$gt": 2 } }, "sort": { "a": 1 }, "batchSize": 0 }');
-                                                              QUERY PLAN                                                               
+                                                                                                                                 QUERY PLAN                                                                                                                                 
 ---------------------------------------------------------------------
  Sort  (cost=0.01..0.02 rows=1 width=64) (actual rows=0 loops=1)
    Output: document, (bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson))
@@ -365,8 +357,16 @@ EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF)
    Sort Method: quicksort  Memory: 25kB
    ->  Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=0.00..0.00 rows=1 width=64) (actual rows=0 loops=1)
          Output: document, bson_orderby(document, '{ "a" : { "$numberInt" : "1" } }'::bson)
-         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
-         Filter: (collection.document @> '{ "_id" : { "$numberInt" : "2" } }'::bson)
-         Rows Removed by Filter: 1
-(9 rows)
+         Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson) AND (collection.object_id > '{ "" : { "$numberInt" : "2" } }'::bson) AND (collection.object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+(7 rows)
+
+-- multiple _id
+EXPLAIN (ANALYZE ON, VERBOSE ON, COSTS ON, BUFFERS OFF, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_find('agg_db', '{ "find": "aggregation_find_point_read", "filter": { "$and": [ { "_id": "2" }, { "_id": { "$regex": "^\\d+" } } ] } }');
+                                                                   QUERY PLAN                                                                   
+---------------------------------------------------------------------
+ Index Scan using _id_ on documentdb_data.documents_4232_423018 collection  (cost=123123.00..1231230.00 rows=1 width=0) (actual rows=1 loops=1)
+   Output: document
+   Index Cond: ((collection.shard_key_value = '4232'::bigint) AND (collection.object_id = '{ "" : "2" }'::bson))
+   Filter: bson_dollar_regex(collection.document, '{ "_id" : { "$regularExpression" : { "pattern" : "^\\d+", "options" : "" } } }'::bson)
+(4 rows)
 

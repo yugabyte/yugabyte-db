@@ -120,7 +120,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2
 
 --Input type is array with postive number fields
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0,0]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0,2]} }',NULL);
                                                                                                  bson_dollar_project_find                                                                                                 
 ---------------------------------------------------------------------
@@ -177,7 +177,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : 
 
 --Input type is array with negative number fields
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-0,0]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3,4,5], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [-1,2]} }',NULL);
                                                                                      bson_dollar_project_find                                                                                     
 ---------------------------------------------------------------------
@@ -264,7 +264,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2
 (1 row)
 
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, { "$numberDecimal" : "NaN"}]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value, but is of type: decimal
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, { "$numberDecimal" : "Infinity"}]} }',NULL);
                                                                                                              bson_dollar_project_find                                                                                                             
 ---------------------------------------------------------------------
@@ -272,7 +272,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2
 (1 row)
 
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "Infinity"}, { "$numberDecimal" : "NaN"}]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value, but is of type: decimal
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "Infinity"}, { "$numberDecimal" : "Infinity"}]} }',NULL);
                                                                           bson_dollar_project_find                                                                          
 ---------------------------------------------------------------------
@@ -292,7 +292,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2
 (1 row)
 
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [0, { "$numberDecimal" : "NaN"}]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value, but is of type: decimal
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : [{ "$numberDecimal" : "NaN"}, 1]} }',NULL);
                                                                                      bson_dollar_project_find                                                                                     
 ---------------------------------------------------------------------
@@ -312,7 +312,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice"
 (1 row)
 
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1, { "$numberDecimal" : "-Infinity"}]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: decimal
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value, but is of type: decimal
 --large values $slice
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : { "$numberDecimal" : "999999999999999999999999999999"}} }',NULL);
                                                                                                              bson_dollar_project_find                                                                                                             
@@ -370,7 +370,7 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2
 (1 row)
 
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : 1}, "c": 1, "d" : 0 }',NULL);
-ERROR:  Cannot do exclusion on field d in inclusion projection.
+ERROR:  exclusion cannot be applied to field d within the inclusion projection.
 --Nested array inside document & array
 select bson_dollar_project_find('{"_id":"1", "a" : {"x": [1,2,3], "y":5 }, "b":10}', '{"a.x" : { "$slice" : 1}, "b" :0 }',NULL);
                                  bson_dollar_project_find                                  
@@ -508,9 +508,9 @@ select bson_dollar_project_find('{"_id":"1", "a" : {"b": {"c":[1,2,3], "d":10},"
 
 --Path Collision 
 select bson_dollar_project_find('{"_id":"1", "a" : [{"x":1, "y":2}]}', '{"a" : { "$slice" : 1}, "a.x":0 }',NULL);
-ERROR:  Path collision at a.x remaining portion x
+ERROR:  Collision detected in specified path a.x remaining portion x
 select bson_dollar_project_find('{"_id":"1", "a" : [{"x":1, "y":2}]}', '{"a" : { "$slice" : 1}, "a.x":1 }',NULL);
-ERROR:  Path collision at a.x remaining portion x
+ERROR:  Collision detected in specified path a.x remaining portion x
 --array of array
 select bson_dollar_project_find('{"_id":"1", "a" : [[{"b": [1,2,3]}]]}', '{"a.b" : { "$slice" : 2}}',NULL);
                                               bson_dollar_project_find                                               
@@ -581,20 +581,20 @@ select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice"
 
 --Invalid Input Negative cases find slice projection
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : "str"} }',NULL);
-ERROR:  First argument to $slice must be an number, but is of type: string
+ERROR:  Expected numeric value for first parameter of $slice but found 'string' type
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : ["str"]} }',NULL);
 ERROR:  $slice takes 2 arguments, but 1 were passed in.
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,2,3]} }',NULL);
 ERROR:  $slice takes 2 arguments, but 3 were passed in.
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,"str"]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number, but is of type: string
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value, but is of type: string
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,-1]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1,0]} }',NULL);
-ERROR:  Second argument to $slice must be a positive number
+ERROR:  The second parameter provided to the $slice operator must always be a positive numeric value
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : [1]} }',NULL);
 ERROR:  $slice takes 2 arguments, but 1 were passed in.
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : null} }',NULL);
-ERROR:  First argument to $slice must be an number, but is of type: null
+ERROR:  Expected numeric value for first parameter of $slice but found 'null' type
 select bson_dollar_project_find('{"_id":"1", "a" : [1,2,3]}', '{"a" : { "$slice" : { "$undefined" : true }} }',NULL);
-ERROR:  First argument to $slice must be an number, but is of type: undefined
+ERROR:  Expected numeric value for first parameter of $slice but found 'undefined' type

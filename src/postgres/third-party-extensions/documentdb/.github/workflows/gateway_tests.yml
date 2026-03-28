@@ -1,0 +1,94 @@
+name: DocumentDB gateway tests
+run-name: ${{ github.event.pull_request.title || '' }}
+concurrency:
+  group: gateway-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "pg_documentdb_gw/**"
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths-ignore:
+      - "docs/**"
+      - ".devcontainer/**"
+      - "*.md"
+
+jobs:
+  Gateway-unit-tests:
+    runs-on: ${{ matrix.runner }}
+    name: Gateway tests on ${{ matrix.arch }} with PG${{ matrix.pg_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pg_version: 15
+            arch: amd64
+            runner: ubuntu-22.04
+          - pg_version: 16
+            arch: arm64
+            runner: ubuntu-22.04-arm
+          - pg_version: 17
+            arch: amd64
+            runner: ubuntu-22.04
+          - pg_version: 18
+            arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and Install DocumentDB
+        run: |
+          chmod +x ./scripts/build_documentdb_with_scripts.sh
+          ./scripts/build_documentdb_with_scripts.sh --pg-version ${{ matrix.pg_version }} --citus-version 12
+
+      - name: Export pg_config PATH
+        run: |
+          echo "/usr/lib/postgresql/${{ matrix.pg_version }}/bin" >> $GITHUB_PATH
+
+      - name: Install Rust
+        run: |
+          export CARGO_HOME=$HOME/.cargo
+          export RUSTUP_HOME=$HOME/.rustup
+          ./scripts/install_rustup.sh --install-toolchain
+          rustc --version && cargo --version
+
+      - name: Build and Install Gateway host
+        run: ./scripts/build_and_install_with_pgrx.sh -v ${{ matrix.pg_version }} -d ./pg_documentdb_gw_host
+
+      - name: Check Gateway formatting and lints
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets --all-features -- -D warnings
+        working-directory: pg_documentdb_gw
+
+      - name: Check Gateway host formatting and lints
+        run: |
+          cargo fmt --all --check
+          cargo clippy --all-targets --no-default-features --features "pg${{ matrix.pg_version }}" -- -D warnings
+        working-directory: pg_documentdb_gw_host
+
+      - name: Start DocumentDB service
+        run: |
+          export PG_VERSION_USED=${{ matrix.pg_version }}
+          mkdir -p $RUNNER_TEMP/pgdata
+          ./scripts/start_oss_server.sh -d $RUNNER_TEMP/pgdata -c -r
+          cat $RUNNER_TEMP/pgdata/pglog.log
+
+      - name: Run Gateway Tests
+        run: |
+          cargo test -- --test-threads=1
+        working-directory: pg_documentdb_gw
+
+      - name: Upload Log Files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs_${{ matrix.arch }}_PG${{ matrix.pg_version }}
+          overwrite: true
+          path: "**/*.log"

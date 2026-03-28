@@ -50,7 +50,7 @@ SELECT bson_dollar_set(document, '{ "newField" : "3", "a": "$_id"}') FROM docume
 
 -- Add integer field (note that, {"field" : 1} is treated as inclusion for $project but add for $set)
 SELECT bson_dollar_set(document, '{ "int" : 1, "doble": 2.0, "bool": false, "a.b": false, "a.b.c": 2.0, "a": "$_id"}') FROM documentdb_api.collection('db', 'setOps');
-ERROR:  Path collision at a.b.c remaining portion b.c
+ERROR:  Collision detected in specified path a.b.c remaining portion b.c
 -- $set array duplication
 -- Expected value of the field "a" of dco(id=1), after the following $set: { "a.b.c": "_"} is:
 -- "a": {"b" : ["c" : "-", "c" : "-","c" : "-","c" : "-",]}

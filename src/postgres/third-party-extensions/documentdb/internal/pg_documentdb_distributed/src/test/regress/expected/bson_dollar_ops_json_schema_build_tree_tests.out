@@ -21,19 +21,89 @@ SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "properti
  t
 (1 row)
 
+------------------------ required ---------------------------------------------
+-- Must be an array
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": "name" } }');
+ERROR:  Expected an array for 'required' in $jsonSchema, but got string
+-- duplicated fields
+SELECT bson_dollar_json_schema('{ "name":"pazu", "name":"tst" }','{ "$jsonSchema": { "required": ["name", "age" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Must be unique
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": [ "name", "name" ] } }');
+ERROR:  Duplicate field name in $jsonSchema 'required' array
+-- Each element must be a string
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": [ 1 ] } }');
+ERROR:  All elements in 'required' array must be strings, but encountered int
+SELECT bson_dollar_json_schema('{ "name":"pazu", "age":10 }','{ "$jsonSchema": { "required": [ "name",1,"age" ] } }');
+ERROR:  All elements in 'required' array must be strings, but encountered int
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": ["name", ["a","b","c"], "age" ] } }');
+ERROR:  All elements in 'required' array must be strings, but encountered array
+-- Valid Schema
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": [ "name" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "name":"pazu", "age":10 }','{ "$jsonSchema": { "required": [ "name" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "name":"pazu" }','{ "$jsonSchema": { "required": [ "name","age" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "name":"pazu", "age":10 }','{ "$jsonSchema": { "required": [ "name","age" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "":1 }','{ "$jsonSchema": { "required": [ "" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "a":1 }','{ "$jsonSchema": { "required": [ "" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "":1, "name":"pazu","age":10 }','{ "$jsonSchema": { "required": [ "","name","age" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{ "":1, "age":10 }','{ "$jsonSchema": { "required": [ "","name","age" ] } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
 ---------------------------------------------------------------------
 --                          Common Validators                                --
 ---------------------------------------------------------------------
 ------------------------ type -------------------------------------------------
 -- Must be a string or array
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "type": 1 } } } }');
-ERROR:  $jsonSchema keyword 'type' must be either a string or an array of strings
+ERROR:  The 'type' property in $jsonSchema must be defined as either a single string or an array containing multiple strings
 -- Must be a valid json type
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "type": "hello" } } } }');
-ERROR:  Unknown type name alias: hello
--- Json type "integer" not supported (MongoDB limitation)
+ERROR:  Unrecognized data type alias: hello
+-- Json type "integer" not supported 
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "type": "integer" } } } }');
-ERROR:  $jsonSchema type 'integer' is not currently supported.
+ERROR:  The 'integer' type in $jsonSchema is not supported at this time.
 -- Array must not be empty
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "type": [ ] } } } }');
 ERROR:  $jsonSchema keyword 'type' must name at least one type
@@ -63,10 +133,10 @@ SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "propert
 ERROR:  $jsonSchema keyword 'bsonType' must be either a string or an array of strings
 -- Must be a valid json type
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "bsonType": "hello" } } } }');
-ERROR:   Unknown type name alias: hello
--- Bson type "integer" not supported (MongoDB limitation). "int" is supported
+ERROR:   Unrecognized data type alias: hello
+-- Bson type "integer" not supported. "int" is supported
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "bsonType": "integer" } } } }');
-ERROR:  $jsonSchema type 'integer' is not currently supported.
+ERROR:  The 'integer' type in $jsonSchema is not supported at this time.
 -- Array must not be empty
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "bsonType": [ ] } } } }');
 ERROR:  $jsonSchema keyword 'bsonType' must name at least one type
@@ -104,22 +174,22 @@ SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" 
 ERROR:  $jsonSchema keyword 'multipleOf' must have a positive value
 -- Must not be NaN
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDecimal" : "NaN"} } } } }');
-ERROR:  divisor cannot be NaN
+ERROR:  A divisor value must not be NaN
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDecimal" : "-NaN"} } } } }');
-ERROR:  divisor cannot be NaN
+ERROR:  A divisor value must not be NaN
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDouble" : "NaN"} } } } }');
-ERROR:  divisor cannot be NaN
+ERROR:  A divisor value must not be NaN
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDouble" : "-NaN"} } } } }');
-ERROR:  divisor cannot be NaN
+ERROR:  A divisor value must not be NaN
 -- Must not be INF
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDecimal" : "INF"} } } } }');
-ERROR:  divisor cannot be infinite
+ERROR:  Division by an infinite value is not allowed
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDecimal" : "-INF"} } } } }');
-ERROR:  divisor cannot be infinite
+ERROR:  Division by an infinite value is not allowed
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDouble" : "INF"} } } } }');
-ERROR:  divisor cannot be infinite
+ERROR:  Division by an infinite value is not allowed
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberDouble" : "-INF"} } } } }');
-ERROR:  divisor cannot be infinite
+ERROR:  Division by an infinite value is not allowed
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" : { "age" : { "multipleOf": {"$numberInt": "1"} } } } }');
  bson_dollar_json_schema 
@@ -197,24 +267,24 @@ SELECT bson_dollar_json_schema('{ "age": 6 }', '{ "$jsonSchema": { "properties" 
 ------------------------ maxLength --------------------------------------------
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": "hello" } } } }');
-ERROR:  Expected a number in: maxLength: "hello"
+ERROR:  A numeric value was expected in maxLength, but instead "hello" was encountered
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": null } } } }');
-ERROR:  Expected a number in: maxLength: null
+ERROR:  A numeric value was expected in maxLength, but instead null was encountered
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "9223372036854775809"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxLength: 9.22337E+18
+ERROR:  Unable to store value as a 64-bit integer: maxLength: 9.22337E+18
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "NaN"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxLength: NaN
+ERROR:  Unable to store value as a 64-bit integer: maxLength: NaN
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxLength: Infinity
+ERROR:  Unable to store value as a 64-bit integer: maxLength: Infinity
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDecimal": "-INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxLength: -Infinity
+ERROR:  Unable to store value as a 64-bit integer: maxLength: -Infinity
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "10.3"} } } } }');
-ERROR:  Expected an integer: maxLength: 10.3
+ERROR:  Expected value of integer type: maxLength: 10.3
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "-10"} } } } }');
-ERROR:  Expected a positive number in: maxLength: -10
+ERROR:  Value for maxLength cannot be zero or negative. Got -10
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "maxLength": {"$numberDouble": "10"} } } } }');
  bson_dollar_json_schema 
@@ -225,24 +295,24 @@ SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "propert
 ------------------------ minLength --------------------------------------------
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": "hello" } } } }');
-ERROR:  Expected a number in: minLength: "hello"
+ERROR:  A numeric value was expected in minLength, but instead "hello" was encountered
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": null } } } }');
-ERROR:  Expected a number in: minLength: null
+ERROR:  A numeric value was expected in minLength, but instead null was encountered
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "9223372036854775809"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minLength: 9.22337E+18
+ERROR:  Unable to store value as a 64-bit integer: minLength: 9.22337E+18
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "NaN"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minLength: NaN
+ERROR:  Unable to store value as a 64-bit integer: minLength: NaN
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minLength: Infinity
+ERROR:  Unable to store value as a 64-bit integer: minLength: Infinity
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDecimal": "-INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minLength: -Infinity
+ERROR:  Unable to store value as a 64-bit integer: minLength: -Infinity
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "1.3"} } } } }');
-ERROR:  Expected an integer: minLength: 1.3
+ERROR:  Expected value of integer type: minLength: 1.3
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "-1"} } } } }');
-ERROR:  Expected a positive number in: minLength: -1
+ERROR:  Value for minLength cannot be zero or negative. Got -1
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "minLength": {"$numberDouble": "1"} } } } }');
  bson_dollar_json_schema 
@@ -258,7 +328,7 @@ SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "propert
 ERROR:  $jsonSchema keyword 'pattern' must be a string
 -- Must be a valid regex
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "pattern": "\\" } } } }');
-ERROR:  Regular expression is invalid: \ at end of pattern
+ERROR:  The provided regular expression format is invalid: \ at end of pattern
 -- Valid Schemas
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "pattern": "" } } } }');
  bson_dollar_json_schema 
@@ -326,22 +396,22 @@ SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }'
 ------------------------ maxItems ---------------------------------------------
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": "hello" } } } }');
-ERROR:  Expected a number in: maxItems: "hello"
+ERROR:  A numeric value was expected in maxItems, but instead "hello" was encountered
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": null } } } }');
-ERROR:  Expected a number in: maxItems: null
+ERROR:  A numeric value was expected in maxItems, but instead null was encountered
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "9223372036854775809"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxItems: 9.22337E+18
+ERROR:  Unable to store value as a 64-bit integer: maxItems: 9.22337E+18
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxItems: Infinity
+ERROR:  Unable to store value as a 64-bit integer: maxItems: Infinity
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "NaN"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: maxItems: NaN
+ERROR:  Unable to store value as a 64-bit integer: maxItems: NaN
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "10.3"} } } } }');
-ERROR:  Expected an integer: maxItems: 10.3
+ERROR:  Expected value of integer type: maxItems: 10.3
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "-10"} } } } }');
-ERROR:  Expected a positive number in: maxItems: -10
+ERROR:  Value for maxItems cannot be zero or negative. Got -10
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "maxItems": {"$numberDouble": "10"} } } } }');
  bson_dollar_json_schema 
@@ -352,22 +422,22 @@ SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }'
 ------------------------ minItems ---------------------------------------------
 -- Must be a number
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": "hello" } } } }');
-ERROR:  Expected a number in: minItems: "hello"
+ERROR:  A numeric value was expected in minItems, but instead "hello" was encountered
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": null } } } }');
-ERROR:  Expected a number in: minItems: null
+ERROR:  A numeric value was expected in minItems, but instead null was encountered
 -- Must be representable in 64 bits integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "9223372036854775809"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minItems: 9.22337E+18
+ERROR:  Unable to store value as a 64-bit integer: minItems: 9.22337E+18
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "INF"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minItems: Infinity
+ERROR:  Unable to store value as a 64-bit integer: minItems: Infinity
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "NaN"} } } } }');
-ERROR:  Cannot represent as a 64-bit integer: minItems: NaN
+ERROR:  Unable to store value as a 64-bit integer: minItems: NaN
 -- Must be integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "1.3"} } } } }');
-ERROR:  Expected an integer: minItems: 1.3
+ERROR:  Expected value of integer type: minItems: 1.3
 -- Must be positive integer
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "-1"} } } } }');
-ERROR:  Expected a positive number in: minItems: -1
+ERROR:  Value for minItems cannot be zero or negative. Got -1
 -- Valid Schema
 SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }', '{ "$jsonSchema": { "properties" : { "hobbies" : { "minItems": {"$numberDouble": "1"} } } } }');
  bson_dollar_json_schema 
@@ -392,17 +462,17 @@ SELECT bson_dollar_json_schema('{ "hobbies" : ["run", 1, {"eat" : "treats"} ] }'
 --                          Unsupported Keywords                             --
 ---------------------------------------------------------------------
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "$ref" : "hello", "$id" : 2 } }');
-ERROR:  $jsonSchema keyword '$ref' is not currently supported
+ERROR:  The '$ref' keyword in $jsonSchema is not supported at this time
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "$schema" : "hello" } }');
-ERROR:  $jsonSchema keyword '$schema' is not currently supported
+ERROR:  The '$schema' keyword in $jsonSchema is not supported at this time
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "default" : "hello" } }');
-ERROR:  $jsonSchema keyword 'default' is not currently supported
+ERROR:  The 'default' keyword in $jsonSchema is not supported at this time
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "definitions" : "hello" } }');
-ERROR:  $jsonSchema keyword 'definitions' is not currently supported
+ERROR:  The 'definitions' keyword in $jsonSchema is not supported at this time
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "format" : "hello" } }');
-ERROR:  $jsonSchema keyword 'format' is not currently supported
+ERROR:  The 'format' keyword in $jsonSchema is not supported at this time
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "id" : "hello" } }');
-ERROR:  $jsonSchema keyword 'id' is not currently supported
+ERROR:  The 'id' keyword in $jsonSchema is not supported at this time
 ---------------------------------------------------------------------
 --                          Unknown Keywords                                 --
 ---------------------------------------------------------------------

@@ -88,7 +88,6 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 -- EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_code_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$code" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n" }, { "$code" : "MTIzNDUxMjM0NQ==" }] } }';
 
 -- insert $code BSON data in nested documents/arrays with different leaf types
-SET documentdb.enableIndexTermTruncationOnNestedObjects to ON;
 SET documentdb.indexTermLimitOverride to 100;
 
 /* create index on key 'ikey2' */

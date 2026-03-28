@@ -286,3 +286,17 @@ SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 ,"$db" : "test" }');
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "batchSize":1, "$db" : "test" }');
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "limit":1, "$db" : "test" }');
+
+-- Test $limit for large docs, even when batch size is enough to fit all limited docs, the response size should enforce persisted cursors for $limit
+SELECT 1 FROM drop_collection('db','get_aggregation_cursor_test');
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is ~16MB
+FOR i IN 1..5 LOOP
+PERFORM documentdb_api.insert_one('db', 'get_aggregation_cursor_test', FORMAT('{ "_id": %s, "a": "%s" }',  i, repeat('a', 16777000))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+
+SELECT * FROM aggregation_cursor_test.drain_find_query(loopCount => 5, pageSize => 10, limitVal => 5);

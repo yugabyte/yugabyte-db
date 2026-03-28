@@ -71,7 +71,7 @@ Datum RunQueryWithSequentialModification(const char *query, int expectedSPIOK,
  * is run).
  * the documents table name and the substring where the collectionId was found is provided as an input.
  */
-bool IsShardTableForMongoTable(const char *relName, const char *numEndPointer);
+bool IsShardTableForDocumentDbTable(const char *relName, const char *numEndPointer);
 
 
 /* Section: Create Table Extension points */
@@ -93,6 +93,39 @@ const char * DistributePostgresTable(const char *postgresTable, const
  * For a base RTE (table)
  */
 List * ModifyTableColumnNames(List *tableColumns);
+
+/*
+ * Create users with external identity provider
+ */
+bool CreateUserWithExternalIdentityProvider(const char *userName, char *pgRole,
+											bson_value_t customData);
+
+/*
+ * Drop users with external identity provider
+ */
+bool DropUserWithExternalIdentityProvider(const char *userName);
+
+/*
+ * Verify if the user is external
+ */
+bool IsUserExternal(const char *userName);
+
+/*
+ * Get user info from external identity provider
+ */
+const pgbson * GetUserInfoFromExternalIdentityProvider(const char *userName);
+
+/*
+ * Default password validation implementation
+ * Returns true if password is valid, false otherwise
+ */
+bool IsPasswordValid(const char *username, const char *password);
+
+/*
+ * Default username validation implementation
+ * Returns true if username is valid, false otherwise
+ */
+bool IsUsernameValid(const char *username);
 
 /*
  * Hook for handling colocation of tables
@@ -157,17 +190,6 @@ void PostSetupClusterHook(bool isInitialize, bool (shouldUpgradeFunc(void *, int
 
 
 /*
- * Get current IndexAmRoutine for the index handler.
- */
-IndexAmRoutine *GetDocumentDBIndexAmRoutine(PG_FUNCTION_ARGS);
-
-/*
- * Gets the multi and bitmap function for multi index join implemented on a specific index handler.
- */
-void * GetMultiAndBitmapIndexFunc(bool missingOk);
-
-
-/*
  * Hook for customizing the validation of vector query spec.
  */
 typedef struct VectorSearchOptions VectorSearchOptions;
@@ -175,19 +197,46 @@ void TryCustomParseAndValidateVectorQuerySpec(const char *key,
 											  const bson_value_t *value,
 											  VectorSearchOptions *vectorSearchOptions);
 
-struct RelOptInfo;
-struct PlannerInfo;
-struct BitmapHeapPath;
-struct Path * TryOptimizePathForBitmapAnd(struct PlannerInfo *root, struct
-										  RelOptInfo *rel,
-										  RangeTblEntry *rte, struct
-										  BitmapHeapPath *heapPath);
 
 char * TryGetExtendedVersionRefreshQuery(void);
 
 
+void AllowNestedDistributionInCurrentTransaction(void);
+
 void GetShardIdsAndNamesForCollection(Oid relationOid, const char *tableName,
 									  Datum **shardOidArray, Datum **shardNameArray,
 									  int32_t *shardCount);
+
+
+const char * GetPidForIndexBuild(void);
+
+
+const char * TryGetIndexBuildJobOpIdQuery(void);
+
+
+char * TryGetCancelIndexBuildQuery(int32_t indexId, char cmdType);
+
+
+bool ShouldScheduleIndexBuildJobs(void);
+
+List * GetShardIndexOids(uint64_t collectionId, int indexId, bool ignoreMissing);
+
+void UpdatePostgresIndexWithOverride(uint64_t collectionId, int indexId, int operation,
+									 bool value,
+									 void (*default_update)(uint64_t, int, int, bool));
+
+const char * GetOperationCancellationQuery(int64 shardId, StringView *opIdStringView,
+										   int *nargs, Oid **argTypes, Datum **argValues,
+										   char **argNulls,
+										   const char *(*default_get_query)(int64,
+																			StringView *,
+																			int *nargs,
+																			Oid **argTypes,
+																			Datum **
+																			argValues,
+																			char **
+																			argNulls));
+
+bool ShouldUseCompositeOpClassByDefault(void);
 
 #endif

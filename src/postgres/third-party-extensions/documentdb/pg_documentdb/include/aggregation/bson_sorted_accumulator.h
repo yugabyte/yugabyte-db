@@ -31,7 +31,7 @@ typedef struct BsonOrderAggValue
 	/* An array of bsons of size numSortKeys computed
 	 * by applying the sort spec on an input document. These
 	 * bsons are value from the sort keys for ordering documents.
-	 * Mongo allow a maximum of 32 sort keys.
+	 * A maximum of 32 sort keys is allowed.
 	 */
 	Datum sortKeyValues[32];
 } BsonOrderAggValue;
@@ -66,9 +66,7 @@ typedef struct BsonOrderAggState
 } BsonOrderAggState;
 
 /* Handles serialization of state */
-bytea * SerializeOrderState(MemoryContext aggregateContext,
-							BsonOrderAggState *state,
-							bytea *bytes);
+bytea * SerializeOrderState(BsonOrderAggState *state);
 void DeserializeOrderState(bytea *bytes,
 						   BsonOrderAggState *state);
 
@@ -82,7 +80,7 @@ Datum BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 						  storeInputExpression);
 Datum BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle);
 Datum BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort);
-Datum BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle);
+Datum BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle, bool invert);
 Datum BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle);
 
 #endif

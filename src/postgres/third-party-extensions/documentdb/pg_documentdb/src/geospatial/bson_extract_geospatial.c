@@ -99,7 +99,7 @@ bson_extract_geometry_runtime(PG_FUNCTION_ARGS)
  * 2- Use with geospatial operators
  * ================================
  * This function is also used in geospatial query operators to match the index predicate.
- * e.g. $geoWithin mongo operator is converted like this in our planner
+ * e.g. $geoWithin query operator is converted like this in our planner
  * query => {a: {$geoWithin: {$box: [[10, 10], [20, 20]]}}}
  * planner => bson_validate_geometry(document, 'a') @|-| {a: {$box: [[10, 10], [20, 20]]}}
  *
@@ -116,7 +116,7 @@ bson_validate_geometry(PG_FUNCTION_ARGS)
 	StringView pathView = CreateStringViewFromText(path);
 
 	/*
-	 * There are couple of interesting cases with mongo
+	 * There are couple of interesting cases:
 	 * e.g.
 	 * doc -> { a: [[10, 10], ["invalid"], [20, 20]] }
 	 * query -> {a: {$geoWithin: {$box: [[10, 10], [15, 15]]}}}

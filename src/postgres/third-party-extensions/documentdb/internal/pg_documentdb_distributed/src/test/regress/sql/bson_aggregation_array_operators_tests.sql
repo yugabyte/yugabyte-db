@@ -411,12 +411,12 @@ SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input":
 SELECT * FROM bson_dollar_project('{"a": {"$undefined": true}}', '{"result": {"$filter": {"input": "$a", "cond": {"$lt": ["$$this", 4]}}} }');
 SELECT * FROM bson_dollar_project('{"a": null}', '{"result": {"$filter": {"input": "$a", "cond": {"$lt": ["$$this", 4]}}} }');
 SELECT * FROM bson_dollar_project('{"a": null}', '{"result": {"$filter": {"input": "$undefinedPath", "cond": {"$lt": ["$$this", 4]}}} }');
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}}} }');
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$name", null]}, "as": "name"}}}');
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}}} }');
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$dummy", null]}, "as": "dummy"}}}');
 
 -- $filter reference variable with dotted expression
-SELECT * FROM bson_dollar_project('{"a": [{"first": "john", "middle": "eric"}, {"first": "robert", "middle": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this.middle", null]}}} }');
-SELECT * FROM bson_dollar_project('{"a": [{"first": "john", "middle": "eric"}, {"first": "robert", "middle": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$person.middle", null]}, "as": "person"}}}');
+SELECT * FROM bson_dollar_project('{"a": [{"first": "foo", "second": "bar"}, {"first": "baz", "second": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this.second", null]}}} }');
+SELECT * FROM bson_dollar_project('{"a": [{"first": "foo", "second": "bar"}, {"first": "baz", "second": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$dummy.second", null]}, "as": "dummy"}}}');
 
 -- $filter with limit
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": 1}} }');
@@ -426,7 +426,7 @@ SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"inp
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": null}} }');
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": "$undefinedPath"}} }');
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": 5}} }');
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}, "limit": 4}} }');
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}, "limit": 4}} }');
 
 -- $filter with nested filter and clashing variable names
 SELECT * FROM bson_dollar_project('{"a": [[-100, 10, 20, 30, 40, 8000]]}', '{"result": {"$filter": {"input": "$a", "limit": 2, "cond": {"$filter": {"input": "$$this", "limit": 3, "cond": {"$gt": [{"$add": [0, "$$this"]}, 3]}}}}}}');
@@ -840,16 +840,16 @@ SELECT * FROM bson_dollar_project('{"a": 1, "b": 2, "c": 3 }', '{"result": {"$av
 select *from bson_dollar_project('{"a": [1, 2, 3]}', '{"result": {"$map": {"input": "$a", "as": "x", "in": { "$add": ["$$x", 1] } } } }');
 select *from bson_dollar_project('{"str": ["a", "b", "c"]}', '{"result": {"$map": {"input": "$str", "as": "y", "in": { "$concat": ["$$y", "ddd"] } } } }');
 select *from bson_dollar_project('{"bools": [true, true, false, true] }', '{"allTrue": { "$map": { "input": "$bools", "as": "x", "in": { "$and": ["$$x", false] }   } } }');
-select *from bson_dollar_project('{ "Precinto": ["Hello", "", "big", "World", "!"] }', '{"Precinto": { "$map": { "input": "$Precinto", "as": "x", "in": { "$concat": [{ "$trim": { "input" : "$$x" }}, {"$cond": {"if": { "$eq": [ "$$x", "" ] }, "then": "*", "else": "#" } }, { "$trim": { "input" : "$$x" } } ] } } } }');
-select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"uniqueSet": {"$map": {"input": "$a","as": "x","in": { "$setUnion": ["$$x", [1,2]] }}}}');
-select *from bson_dollar_project('{"outerArray": [{"innerArray": [1, 2, 3]},{"innerArray": [4, 5, 6]}]}', '{"result": {"$map": {"input": "$outerArray","as": "outerElement","in": {"$map": {"input": "$$outerElement.innerArray","as": "innerElement","in": { "$multiply": ["$$innerElement", 2] }}}}}}');
+select *from bson_dollar_project('{ "a": ["Hello", "", "big", "World", "!"] }', '{"a": { "$map": { "input": "$a", "as": "x", "in": { "$concat": [{ "$trim": { "input" : "$$x" }}, {"$cond": {"if": { "$eq": [ "$$x", "" ] }, "then": "1", "else": "2" } }, { "$trim": { "input" : "$$x" } } ] } } } }');
+select *from bson_dollar_project('{"a": [["a", "b"], ["b", "c"], ["c", "d"], ["e", "a"], ["y", "z"]] }', '{"result": {"$map": {"input": "$a","as": "x","in": { "$setUnion": ["$$x", ["a","b"]] }}}}');
+select *from bson_dollar_project('{"a": [{"b": [1, 2, 3]},{"b": [4, 5, 6]}]}', '{"result": {"$map": {"input": "$a","as": "outer","in": {"$map": {"input": "$$outer.b","as": "inner","in": { "$multiply": ["$$inner", 2] }}}}}}');
 
 -- $map in $addfield stage
-SELECT documentdb_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "map_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$map": { "input": "$a", "as": "author", "in": {"name_country": { "$concat": ["$$author.name", " from ", "$$author.country"] }} } } } } ], "cursor": {} }');
+SELECT documentdb_api.insert_one('db','addFieldMap','{"_id":"1", "a": [{ "fieldA": "Hello World", "fieldB": "FOO" },{ "fieldA": "Goodbye everyone", "fieldB": "BAza" }]}', NULL);
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "addFieldMap", "pipeline": [ { "$addFields": {"newField": { "$map": { "input": "$a", "as": "dummy", "in": {"fieldA_fieldB": { "$concat": ["$$dummy.fieldA", " -- ", "$$dummy.fieldB"] }} } } } } ], "cursor": {} }');
 
 -- $map, nested case
-select *from bson_dollar_project('{"items":[{"name":"a","quantity":10,"sizes":[{"name":"ab", "quantity":2}, {"name":"ac","quantity":3}]},{"name":"k","quantity":3,"sizes":[{"name":"kb", "quantity":3}, {"name":"kc", "quantity":5}]}]}', '{"items":{"$map":{"input":"$items","as":"item","in":{"name":"$$item.name","quantity":"$$item.quantity","sizes":{"$map":{"input":"$$item.sizes","as":"size","in":{"name":"$$size.name","quantity":{"$multiply":["$$size.quantity",2]}}}}}}}}');
+select *from bson_dollar_project('{"a":[{"fieldA":"abc","fieldB":2,"fieldC":[{"number":45, "foo":"ab"}, {"foo":"ac","number":1}]},{"fieldA":"def","fieldB":6,"fieldC":[{"foo":"kb", "number":10}]}]}', '{"result":{"$map":{"input":"$a","as":"dummy","in":{"fieldA":"$$dummy.fieldA","fieldB":"$$dummy.fieldB","fieldC":{"$map":{"input":"$$dummy.fieldC","as":"fieldC","in":{"foo":"$$fieldC.foo","number":{"$add":["$$fieldC.number",100]}}}}}}}}');
 
 -- $map, negative cases
 select *from bson_dollar_project('{"a": 1}', '{"result": {"$map": {"input": "$a", "as": "x", "in": { "$add": ["$$x", 1] } } } }');
@@ -859,18 +859,18 @@ select *from bson_dollar_project('{"a": [1, 2, 3]}', '{"result": {"$map": {"inpu
 select *from bson_dollar_project('{"a": ["a", "b", "c"]}', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }');
 select *from bson_dollar_project('{"a": [ 1, 2, 3, 4 ]}', '{"result": { "$reduce": { "input": "$a", "initialValue": { "sum": 5, "product": 2 }, "in": { "sum": { "$add" : ["$$value.sum", "$$this"] }, "product": { "$multiply": [ "$$value.product", "$$this" ] }  } } } }');
 select *from bson_dollar_project('{"a": [ [ 3, 4 ], [ 5, 6 ] ] }', '{"result": { "$reduce": { "input": "$a", "initialValue": [ 1, 2 ], "in": { "$concatArrays" : ["$$value", "$$this"] } } } }');
-select *from bson_dollar_project('{"matrix": [[1, 2], [3, 4], [5, 6]] }', '{"sumOfMatrix": { "$reduce": { "input": "$matrix", "initialValue": 0, "in": { "$add" : ["$$value", {"$reduce": {"input": "$$this","initialValue": 0, "in": { "$add": ["$$value", "$$this"] }}}] } } } }');
-select *from bson_dollar_project('{ "Precinto": ["Hello", "", "big", "World", "!"] }', '{"Precinto": { "$reduce": { "input": "$Precinto", "initialValue": "", "in": { "$concat": [{ "$trim": { "input" : "$$value" }}, {"$cond": {"if": { "$eq": [ "$$value", "" ] }, "then": "*", "else": "#" } }, { "$trim": { "input" : "$$this" } } ] } } } }');
+select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }', '{"result": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add" : ["$$value", {"$reduce": {"input": "$$this","initialValue": 0, "in": { "$add": ["$$value", "$$this"] }}}] } } } }');
+select *from bson_dollar_project('{ "a": ["Hello", "", "big", "World", "!"] }', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": [{ "$trim": { "input" : "$$value" }}, {"$cond": {"if": { "$eq": [ "$$value", "" ] }, "then": "1", "else": "2" } }, { "$trim": { "input" : "$$this" } } ] } } } }');
 select *from bson_dollar_project('{"a": [2, 3, 5, 8, 13, 21,7,1]}','{"result": {"$reduce": { "input": "$a", "initialValue": 0, "in": { "$cond": [{ "$gt": ["$$this", 5] }, { "$add": ["$$value", 1] }, "$$value"] } } } }');
-select *from bson_dollar_project('{"bools": [true, true, false, true] }', '{"allTrue": { "$reduce": { "input": "$bools", "initialValue": true, "in": { "$and": ["$$value", "$$this"] }   } } }');
-select *from bson_dollar_project('{"a": [1, null, 3, null, 5] }', '{"total": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add": ["$$value", { "$ifNull": ["$$this", 0] }] }  } } }');
-select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"uniqueSet": {"$reduce": {"input": "$a","initialValue": [],"in": { "$setUnion": ["$$value", "$$this"] }}}}');
-select *from bson_dollar_project('{"a": [{ "a": 1 }, { "b": 2 }, { "a": 2 }, { "b": 3 },{ "c": 3 }, { "c": 4 }] }','{"uniqueSet":{"$reduce": {"input": "$a","initialValue": {},"in":{ "$mergeObjects": ["$$value", "$$this"] }}}}');
-select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"uniqueSet":{"$reduce": {"input": "$a","initialValue": 0,"in":{ "$sum": ["$$value",{ "$avg": "$$this" }] }}}}');
+select *from bson_dollar_project('{"a": [true, true, false, true] }', '{"result": { "$reduce": { "input": "$bools", "initialValue": true, "in": { "$and": ["$$value", "$$this"] }   } } }');
+select *from bson_dollar_project('{"a": [1, null, 3, null, 5] }', '{"result": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add": ["$$value", { "$ifNull": ["$$this", 0] }] }  } } }');
+select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"result": {"$reduce": {"input": "$a","initialValue": [],"in": { "$setUnion": ["$$value", "$$this"] }}}}');
+select *from bson_dollar_project('{"a": [{ "a": 1 }, { "b": 2 }, { "a": 2 }, { "b": 3 },{ "c": 3 }, { "c": 4 }] }','{"result":{"$reduce": {"input": "$a","initialValue": {},"in":{ "$mergeObjects": ["$$value", "$$this"] }}}}');
+select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"result":{"$reduce": {"input": "$a","initialValue": 0,"in":{ "$sum": ["$$value",{ "$avg": "$$this" }] }}}}');
 
 -- $reduce in $addfield stage
-SELECT documentdb_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "reduce_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } } } ], "cursor": {} }');
+SELECT documentdb_api.insert_one('db','addFieldReduce','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "addFieldReduce", "pipeline": [ { "$addFields": {"newField": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } } } ], "cursor": {} }');
 
 -- $reduce, negative cases
 select *from bson_dollar_project('{"a": 1}', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }');
@@ -937,20 +937,21 @@ SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" }, 1, 3, -2
 SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" }, 1, 3, -2, null, [3, {"numberDouble": "NaN"}], {"$numberDecimal": "Infinity" }]}', '{"result": { "$minN": {"input": "$d1", "n": 7 } } }');
 
 -- $sortArray
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": -1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": ["apple", "banana", "orange", "pear"], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": ["apple", "banana", "orange", "pear"], "sortBy": -1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [42], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [20, 4, { "a": "Free" }, 6, 21, 5, "Gratis", { "a": null }, { "a": { "sale": true, "price": 19 } }, {"$numberDecimal": "10.23"}, { "a": "On sale" }], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [[6,2,3],[4,8,6], 4, 1, 6, 12, 5], "sortBy": 1 } } }');
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "NaN"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": 1 } } } }');
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": -1 } } } }');
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "address.city": 1 } } } }');
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "address.city": -1 } } } }');
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "age": -1, "name": 1} } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[9,7,4,6,8],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[9,7,4,6,8],"sortBy":-1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":["alpha","delta","charlie","bravo"],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":["alpha","delta","charlie","bravo"],"sortBy":-1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[17],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[13,2,{"a":"itemA"},4,25,3,"itemB",{"a":null},{"a":{"type":"x","flag":true}},{"$numberDecimal":"6.78"},{"a":"itemC"}],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[[1,9,2],[8,3,5],9,2,7,10,6],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[{"$numberDecimal":"NaN"},3,8,2,10,7,null," "],"sortBy":1}}}');
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"a":1}}}}');
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"a":-1}}}}');
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"c.e":1}}}}');
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"c.e":-1}}}}');
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"b":-1,"a":1}}}}');
+
 
 -- $sortArray, negative cases
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": null } }');

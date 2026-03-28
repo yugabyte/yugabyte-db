@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bsonvalue_hash.h
+ * include/io/bsonvalue_hash.h
  *
  * Declaration of hashing of the BSON type.
  *

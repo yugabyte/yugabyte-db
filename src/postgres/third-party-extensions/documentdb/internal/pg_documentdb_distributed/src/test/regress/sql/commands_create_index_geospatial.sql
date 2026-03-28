@@ -143,9 +143,9 @@ SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [
 SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, "point"] ] } }', NULL);
 SELECT documentdb_api.insert_one('db','2dindextest','{"b" : { "c": [ [10, 10], [20, { "$undefined": true }] ] } }', NULL);
 SELECT documentdb_api.insert_one('db','2dindextest','{"b" : [ { "c": [10, 20] }, { "c": { "long": "100", "lat": "100" } }, [ 30, "text"] ] }', NULL);
-SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [{"type": "Point", "coordinates": [10, 20]}, {"type": "Point", "coordinates": [10, 20]}] }', NULL); -- This is not supported in mongo as multi key
-SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [[10, 20], [20, 20]] }', NULL); -- -- This is not supported in mongo as multi key legacy
-SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [ { "x" : 1, "y" : 1 }, { "x" : 2, "y" : 2 }, { "x" : 3, "y" : 3 } ] }', NULL); -- -- This is not supported in mongo as multi key legacy
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [{"type": "Point", "coordinates": [10, 20]}, {"type": "Point", "coordinates": [10, 20]}] }', NULL); -- This is not supported as multi key
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [[10, 20], [20, 20]] }', NULL); -- This is not supported as multi key legacy
+SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "a" : [ { "x" : 1, "y" : 1 }, { "x" : 2, "y" : 2 }, { "x" : 3, "y" : 3 } ] }', NULL); -- This is not supported as multi key legacy
 SELECT documentdb_api.insert_one('db','2dsphereindextest','{"_id": 1, "b" : [ {"c" : {"type": "Point", "coordinates": [10, 20]} }, {"c" : {"type": "Point", "coordinates": ["Text", 20]} } ] }', NULL);
 
 -- Some case which are valid where the field is either empty object/document or not of type object/document

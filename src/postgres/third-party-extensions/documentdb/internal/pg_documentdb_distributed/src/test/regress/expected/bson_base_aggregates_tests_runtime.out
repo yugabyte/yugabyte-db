@@ -237,7 +237,7 @@ SELECT bson_repath_and_build('max'::text, 'max2', BSONMAX(document-> 'i32'), 'su
 ERROR:  argument list must have an even number of elements
 DETAIL:  The arguments of bson_repath_and_build() must consist of alternating keys and values.
 SELECT bson_repath_and_build(BSONMAX(document-> 'i32'), 'max'::text, 'sum'::text, BSONSUM(document-> 'i32'), 'average'::text, BSONAVERAGE(document-> 'i32')) FROM documentdb_api.collection('db', 'testAggregates');
-ERROR:  argument 0 must be a text
+ERROR:  Invalid type: expected a text type field, but received bson instead
 -- Shard the collection
 SELECT documentdb_api.shard_collection('db', 'testAggregates', '{"_id":"hashed"}', false);
  shard_collection 
@@ -331,7 +331,7 @@ SELECT bson_repath_and_build('e.f'::text, BSONSUM(bson_expression_get(document, 
 (2 rows)
 
 SELECT bson_repath_and_build('$e'::text, BSONSUM(bson_expression_get(document, '{ "": "$_id.b" }'))) FROM documentdb_api.collection('db', 'testAggregates') GROUP BY bson_expression_get(document, '{ "": "$_id.a" }');
-ERROR:  The field name $e cannot be an operator name
+ERROR:  Cannot use $e as a field name. Dollar prefixed paths are not allowed.
 SELECT documentdb_api.insert_one('db', 'testAggregatesWithIndex', '{ "_id": 1, "a": 1 }');
 NOTICE:  creating collection
                               insert_one                              
@@ -374,6 +374,11 @@ SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregates
  { "" : { "$numberInt" : "5" } }
 (1 row)
 
+ROLLBACK;
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
                                 QUERY PLAN                                
 ---------------------------------------------------------------------
@@ -408,6 +413,11 @@ SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregates
  { "" : { "$numberInt" : "5" } }
 (1 row)
 
+ROLLBACK;
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------
@@ -440,6 +450,11 @@ SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregates
  { "" : { "$numberInt" : "5" } }
 (1 row)
 
+ROLLBACK;
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
                                         QUERY PLAN                                         
 ---------------------------------------------------------------------

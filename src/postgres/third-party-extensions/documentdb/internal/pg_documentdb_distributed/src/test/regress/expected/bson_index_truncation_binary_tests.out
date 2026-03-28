@@ -12,13 +12,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_11500
-                   Table "documentdb_data.documents_11500"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_11500"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_11500" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11501" documentdb_rum (document bson_rum_single_path_ops (path=ikey, tl='20'))
@@ -746,21 +745,19 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('db', 'index_truncation_binary_tests') WHERE document @@ '{ "ikey": { "$all": [{ "$binary" : { "base64": "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } }, { "$binary" : { "base64": "MTIzNDUxMjM0NQ==", "subType" : "07" } }] } }';
-                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                  
+                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_11500_1150003 collection WHERE (documentdb_api_catalog.bson_dollar_all(document, '{ "ikey" : [ { "$binary" : { "base64" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } }, { "$binary" : { "base64" : "MTIzNDUxMjM0NQ==", "subType" : "07" } } ] }'::documentdb_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '11500'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_11500_1150003 collection WHERE ((document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$binary" : { "base64" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "ikey" : { "$binary" : { "base64" : "MTIzNDUxMjM0NQ==", "subType" : "07" } } }'::documentdb_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '11500'::bigint))
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documentdb_data.documents_11500_1150003 collection
+         ->  Index Scan using ikey_1 on documentdb_data.documents_11500_1150003 collection
                Output: document
-               Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@&=) '{ "ikey" : [ { "$binary" : { "base64" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } }, { "$binary" : { "base64" : "MTIzNDUxMjM0NQ==", "subType" : "07" } } ] }'::documentdb_core.bson)
-               ->  Bitmap Index Scan on ikey_1
-                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@&=) '{ "ikey" : [ { "$binary" : { "base64" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } }, { "$binary" : { "base64" : "MTIzNDUxMjM0NQ==", "subType" : "07" } } ] }'::documentdb_core.bson)
-(12 rows)
+               Index Cond: ((collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$binary" : { "base64" : "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "ikey" : { "$binary" : { "base64" : "MTIzNDUxMjM0NQ==", "subType" : "07" } } }'::documentdb_core.bson))
+(10 rows)
 
 /* $bitsAllClear (all terms truncated) */
 SELECT document FROM documentdb_api.collection('db', 'index_truncation_binary_tests') WHERE document @@ '{ "ikey": { "$bitsAllClear": { "$binary" : { "base64": "dGhpcyBpcyBhIHRlc3Qgc3RyaW5n", "subType" : "01" } } } }';
@@ -1275,7 +1272,6 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api.collection('
 (12 rows)
 
 -- insert binary BSON data in nested documents/arrays with different leaf types
-SET documentdb.enableIndexTermTruncationOnNestedObjects to ON;
 SET documentdb.indexTermLimitOverride to 100;
 /* create index on key 'ikey2' */
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "index_truncation_binary_tests_2", "indexes": [ { "key": { "ikey2" : 1 }, "name": "ikey_2", "enableLargeIndexKeys": true } ] }');
@@ -1286,13 +1282,12 @@ NOTICE:  creating collection
 (1 row)
 
 \d documentdb_data.documents_11501
-                   Table "documentdb_data.documents_11501"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_11501"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_11501" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_11503" documentdb_rum (document bson_rum_single_path_ops (path=ikey2, tl='100'))

@@ -114,7 +114,12 @@ TryCreatePointReadPlan(Query *query)
 	if (indexScan->indexid == InvalidOid)
 	{
 		/* Load the index */
+#if PG_VERSION_NUM >= 180000
+		bool deferrableOk = false;
+		indexScan->indexid = RelationGetPrimaryKeyIndex(relation, deferrableOk);
+#else
 		indexScan->indexid = RelationGetPrimaryKeyIndex(relation);
+#endif
 	}
 
 	RelationClose(relation);
@@ -133,6 +138,12 @@ TryCreatePointReadPlan(Query *query)
 	/* Finally, filter and set the projections if successful */
 	indexScan->scan.plan.targetlist = FormatProjections(query->targetList);
 	stmt->planTree = (Plan *) indexScan;
+
+#if (PG_VERSION_NUM >= 160000)
+
+	/* Add the permsInfo on the planned statement */
+	stmt->permInfos = query->rteperminfos;
+#endif
 
 	return stmt;
 }
@@ -164,6 +175,158 @@ FormatProjections(List *targetEntries)
 }
 
 
+static bool
+TraverseQualsAndExtract(List *quals, List **queryRuntimeClauses,
+						Expr **objectIdExp, Expr **objectIdOrigExp,
+						Expr **shardKeyExp, Expr **shardKeyOrigExp)
+{
+	ListCell *cell;
+	foreach(cell, quals)
+	{
+		Expr *expr = (Expr *) lfirst(cell);
+		switch (expr->type)
+		{
+			case T_OpExpr:
+			{
+				OpExpr *opExpr = (OpExpr *) expr;
+
+				if (opExpr->opfuncid == 0)
+				{
+					/* Set the opFuncId for runtime execution */
+					opExpr->opfuncid = get_opcode(opExpr->opno);
+				}
+				if (list_length(opExpr->args) != 2)
+				{
+					/* Unable to push data into the specified index */
+					*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+					continue;
+				}
+
+				Expr *firstArg = linitial(opExpr->args);
+				if (!IsA(firstArg, Var))
+				{
+					*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+					continue;
+				}
+
+				Var *firstVar = (Var *) firstArg;
+				if (firstVar->varattno == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
+					opExpr->opno == BsonEqualOperatorId())
+				{
+					if (*objectIdExp != NULL)
+					{
+						return false;
+					}
+
+					OpExpr *newOpExpr = copyObject(opExpr);
+					Var *indexVar = makeVar(INDEX_VAR, 2, BsonTypeId(), -1,
+											InvalidOid, 0);
+					newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
+					*objectIdExp = (Expr *) newOpExpr;
+					*objectIdOrigExp = (Expr *) opExpr;
+				}
+				else if (firstVar->varattno ==
+						 DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
+						 opExpr->opno == BigintEqualOperatorId())
+				{
+					if (*shardKeyExp != NULL)
+					{
+						return false;
+					}
+
+					OpExpr *newOpExpr = copyObject(opExpr);
+					Var *indexVar = makeVar(INDEX_VAR, 1, BsonTypeId(), -1,
+											InvalidOid, 0);
+					newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
+					*shardKeyExp = (Expr *) newOpExpr;
+					*shardKeyOrigExp = (Expr *) opExpr;
+				}
+				else
+				{
+					if (opExpr->opfuncid == BsonEqualMatchRuntimeFunctionId())
+					{
+						Expr *secondArg = lsecond(opExpr->args);
+						pgbsonelement secondElement;
+						if (IsA(secondArg, Const) &&
+							TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
+																	((Const *)
+																	 secondArg)->
+																	constvalue),
+																&secondElement) &&
+							strcmp(secondElement.path, "_id") == 0)
+						{
+							/* Skip the _id runtime filter: We know we will have
+							 * an _id filter by ensuring it below.
+							 */
+							continue;
+						}
+					}
+					else if (opExpr->opfuncid == BsonTextFunctionId())
+					{
+						/* Text search does not qualify here */
+						return false;
+					}
+
+					*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+				}
+
+				continue;
+			}
+
+			case T_FuncExpr:
+			{
+				FuncExpr *funcExpr = (FuncExpr *) expr;
+				if (funcExpr->funcid == BsonTextFunctionId())
+				{
+					/* Text search does not qualify here */
+					return false;
+				}
+				else if (funcExpr->funcid == BsonIndexHintFunctionOid())
+				{
+					return false;
+				}
+				else if (funcExpr->funcid == BsonFullScanFunctionOid())
+				{
+					/* Strip full scan */
+					continue;
+				}
+
+				*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+				continue;
+			}
+
+			case T_BoolExpr:
+			{
+				BoolExpr *boolExpr = (BoolExpr *) expr;
+				if (boolExpr->boolop == AND_EXPR)
+				{
+					if (!TraverseQualsAndExtract(boolExpr->args, queryRuntimeClauses,
+												 objectIdExp, objectIdOrigExp,
+												 shardKeyExp, shardKeyOrigExp))
+					{
+						return false;
+					}
+				}
+				else
+				{
+					*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+				}
+
+				continue;
+			}
+
+			default:
+			{
+				*queryRuntimeClauses = lappend(*queryRuntimeClauses, expr);
+				continue;
+			}
+		}
+	}
+
+	return true;
+}
+
+
 /*
  * Scan quals and ensure that there's a point read in there.
  * returns false if it couldn't form a point read plan.
@@ -174,119 +337,18 @@ SetPointReadQualsOnIndexScan(IndexScan *indexScan, Expr *queryQuals)
 	List *runtimeClauses = NIL;
 	List *quals = make_ands_implicit(queryQuals);
 
-	ListCell *cell;
 	Expr *objectIdExpr = NULL;
 	Expr *objectIdOriginalExpr = NULL;
 	Expr *shardKeyExpr = NULL;
 	Expr *shardKeyOriginalExpr = NULL;
-	foreach(cell, quals)
+
+	if (!TraverseQualsAndExtract(quals, &runtimeClauses, &objectIdExpr,
+								 &objectIdOriginalExpr, &shardKeyExpr,
+								 &shardKeyOriginalExpr))
 	{
-		Expr *expr = (Expr *) lfirst(cell);
-		if (IsA(expr, OpExpr))
-		{
-			OpExpr *opExpr = (OpExpr *) expr;
-
-			if (opExpr->opfuncid == 0)
-			{
-				/* Set the opFuncId for runtime execution */
-				opExpr->opfuncid = get_opcode(opExpr->opno);
-			}
-			if (list_length(opExpr->args) == 2)
-			{
-				Expr *firstArg = linitial(opExpr->args);
-				if (!IsA(firstArg, Var))
-				{
-					runtimeClauses = lappend(runtimeClauses, expr);
-				}
-				else
-				{
-					Var *firstVar = (Var *) firstArg;
-					if (firstVar->varattno ==
-						DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
-						opExpr->opno == BsonEqualOperatorId())
-					{
-						if (objectIdExpr != NULL)
-						{
-							return NULL;
-						}
-
-						OpExpr *newOpExpr = copyObject(opExpr);
-						Var *indexVar = makeVar(INDEX_VAR, 2, BsonTypeId(), -1,
-												InvalidOid, 0);
-						newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
-						objectIdExpr = (Expr *) newOpExpr;
-						objectIdOriginalExpr = (Expr *) opExpr;
-					}
-					else if (firstVar->varattno ==
-							 DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
-							 opExpr->opno == BigintEqualOperatorId())
-					{
-						if (shardKeyExpr != NULL)
-						{
-							return NULL;
-						}
-
-						OpExpr *newOpExpr = copyObject(opExpr);
-						Var *indexVar = makeVar(INDEX_VAR, 1, BsonTypeId(), -1,
-												InvalidOid, 0);
-						newOpExpr->args = list_make2(indexVar, lsecond(opExpr->args));
-						shardKeyExpr = (Expr *) newOpExpr;
-						shardKeyOriginalExpr = (Expr *) opExpr;
-					}
-					else
-					{
-						if (opExpr->opfuncid == BsonEqualMatchRuntimeFunctionId())
-						{
-							Expr *secondArg = lsecond(opExpr->args);
-							pgbsonelement secondElement;
-							if (IsA(secondArg, Const) &&
-								TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-																		((Const *)
-																		 secondArg)->
-																		constvalue),
-																	&secondElement) &&
-								strcmp(secondElement.path, "_id") == 0)
-							{
-								/* Skip the _id runtime filter: We know we will have
-								 * an _id filter by ensuring it below.
-								 */
-								continue;
-							}
-						}
-						else if (opExpr->opfuncid == BsonTextFunctionId())
-						{
-							/* Text search does not qualify here */
-							return NULL;
-						}
-
-						runtimeClauses = lappend(runtimeClauses, expr);
-					}
-				}
-			}
-			else
-			{
-				/* Cannot push to index */
-				runtimeClauses = lappend(runtimeClauses, expr);
-			}
-		}
-		else
-		{
-			/* Cannot push to index */
-			if (IsA(expr, FuncExpr))
-			{
-				FuncExpr *funcExpr = (FuncExpr *) expr;
-				if (funcExpr->funcid == BsonTextFunctionId())
-				{
-					/* Text search does not qualify here */
-					return false;
-				}
-			}
-
-			runtimeClauses = lappend(runtimeClauses, expr);
-		}
+		return false;
 	}
 
-	/* Not a point read */
 	/* Not a point read */
 	if (objectIdExpr == NULL || shardKeyExpr == NULL)
 	{

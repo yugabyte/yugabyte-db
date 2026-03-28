@@ -30,7 +30,7 @@ SELECT documentdb_api.shard_collection('qst', 'comp_shard', '{ "a": "hashed", "b
 
 -- cross shard queries
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "e": 1 } } ] }');
-                                                     QUERY PLAN                                                      
+                                                          QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -42,7 +42,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "e": 1 } } ] }');
-                                                     QUERY PLAN                                                      
+                                                          QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -55,7 +55,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- single shard queries
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "e": 1, "a": 4 } } ] }');
-                                                                                                       QUERY PLAN                                                                                                        
+                                                                                                                 QUERY PLAN                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -70,7 +70,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "e": 1, "a": 4, "b": 2, "c": 6 } } ] }');
-                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -83,7 +83,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- single shard with and
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$and": [ { "e": 1 }, { "a": 4 } ] } } ] }');
-                                                                                                       QUERY PLAN                                                                                                        
+                                                                                                                 QUERY PLAN                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -98,7 +98,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "e": 1 }, { "a": 4 }, { "b": 2 }, { "c": 6 } ] } } ] }');
-                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -110,7 +110,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "e": 1, "a": 4 }, { "b": 2, "c": 6 } ] } } ] }');
-                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -123,7 +123,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- all components speciied but not equals, cross-shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$and": [ { "e": 1 }, { "a": { "$ne": 4 } } ] } } ] }');
-                                                                                                        QUERY PLAN                                                                                                        
+                                                                                                                  QUERY PLAN                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -135,7 +135,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "e": 1, "a": 4 }, { "b": 2, "c": { "$gt": 6 } } ] } } ] }');
-                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                          
+                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                              
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -148,7 +148,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- $or with a single branch - single shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$or": [ { "a": 4 } ] } } ] }');
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -163,7 +163,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$or": [ { "e": 1, "a": 4, "b": 2, "c": 6 } ] } } ] }');
-                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -174,9 +174,21 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
                Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (shard_key_value = '4112493706261607605'::bigint))
 (7 rows)
 
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "b": 2, "$or": [ { "e": 1, "a": 4, "c": 6 } ] } } ] }');
+                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_7392_739014 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (shard_key_value = '4112493706261607605'::bigint))
+(7 rows)
+
 -- top level $or - N shard query but not all branches have shard key: cross-shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$or": [ { "e": 1 }, { "a": 4 } ] } } ] }');
-                                                                                                       QUERY PLAN                                                                                                       
+                                                                                                                 QUERY PLAN                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -188,7 +200,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$or": [ { "e": 1, "a": 4, "b": 2, "c": 6 }, { "a": 4, "b": 5 } ] } } ] }');
-                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -201,7 +213,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- top level $or - all branches have shard key - N shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$or": [ { "e": 1, "a": 5 }, { "a": 4 } ] } } ] }');
-                                                                                                                                                         QUERY PLAN                                                                                                                                                         
+                                                                                                                                                                        QUERY PLAN                                                                                                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 2
@@ -219,7 +231,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$or": [ { "e": 1, "a": 4, "b": 2, "c": 6 }, { "a": 4, "b": 5, "c": 9 } ] } } ] }');
-                                                                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 2
@@ -232,7 +244,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- $and  and $or with $and having shard key and $or having shard key - single shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$and": [ { "a": 15}, { "$or": [ { "e": 1, "a": 5 }, { "a": 4 } ] } ] } } ] }');
-                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                       
+                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -244,7 +256,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "a": 15, "b": 3, "c": 7, "g": 5 }, { "$or": [ { "e": 1, "a": 4, "b": 2, "c": 6 }, { "a": 4, "b": 5, "c": 9 } ] } ] } } ] }');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -260,7 +272,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- $and and $or with $or having shard key - N shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$and": [ { "g": 15}, { "$or": [ { "e": 1, "a": 5 }, { "a": 4 } ] } ] } } ] }');
-                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                            
+                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 2
@@ -278,7 +290,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (13 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "g": 5 }, { "$or": [ { "e": 1, "a": 4, "b": 2, "c": 6 }, { "a": 4, "b": 5, "c": 9 } ] } ] } } ] }');
-                                                                                                                                                                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                      
+                                                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 2
@@ -291,7 +303,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 
 -- $and and $or with $or not having shard key - cross-shard
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "$and": [ { "g": 15}, { "$or": [ { "e": 1}, { "a": 4 } ] } ] } } ] }');
-                                                                                                                                                         QUERY PLAN                                                                                                                                                          
+                                                                                                                                                                        QUERY PLAN                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -303,7 +315,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "$and": [ { "g": 5 }, { "$or": [ { "e": 1, "a": 4, "c": 6 }, { "a": 4, "b": 5, "c": 9 } ] } ] } } ] }');
-                                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
@@ -312,5 +324,131 @@ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "ag
          Node: host=localhost port=58070 dbname=regression
          ->  Seq Scan on documents_7392_739014 collection
                Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "g" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (((document OPERATOR(documentdb_api_catalog.@=) '{ "e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "6" } }'::documentdb_core.bson)) OR ((document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "9" } }'::documentdb_core.bson))))
+(7 rows)
+
+-- test all the same above but with $in instead of $or
+-- $in with a single branch - single shard
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4 ] } } } ] }');
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_7391_739006 collection
+               Recheck Cond: (shard_key_value = '4004935074940511305'::bigint)
+               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '4004935074940511305'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4 ] }, "b": { "$in": [ 2 ] }, "c": { "$in": [ 6 ] } } } ] }');
+                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_7392_739014 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "4" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$numberInt" : "2" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "6" } }'::documentdb_core.bson) AND (shard_key_value = '4112493706261607605'::bigint))
+(7 rows)
+
+-- $in with multiple branches - cross shard but limited subset of shards
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "single_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4, 5 ] } } } ] }');
+                                                                         QUERY PLAN                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 2
+   Tasks Shown: One of 2
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_7391_739006 collection
+               Recheck Cond: ((shard_key_value = '4004935074940511305'::bigint) OR (shard_key_value = '1786987034919379147'::bigint))
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson)
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '4004935074940511305'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '1786987034919379147'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4, 5 ] }, "b": { "$in": [ 2, 3 ] }, "c": { "$in": [ 6, 7 ] } } } ] }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 5
+   Tasks Shown: One of 5
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_7392_739014 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "c" : [ { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson) AND ((shard_key_value = '4112493706261607605'::bigint) OR (shard_key_value = '7192756992769259220'::bigint) OR (shard_key_value = '7379984039362792367'::bigint) OR (shard_key_value = '6204020176564357320'::bigint) OR (shard_key_value = '7901297655174785112'::bigint) OR (shard_key_value = '8549209525301393538'::bigint) OR (shard_key_value = '-3894726655378290049'::bigint) OR (shard_key_value = '-4310157402589750110'::bigint)))
+(7 rows)
+
+-- $in with mixed equality $in
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$eq": 5 }, "b": { "$in": [ 2, 3 ] }, "c": { "$in": [ 6, 6 ] } } } ] }');
+                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 2
+   Tasks Shown: One of 2
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_7392_739017 collection
+               Recheck Cond: ((shard_key_value = '7192756992769259220'::bigint) OR (shard_key_value = '6204020176564357320'::bigint) OR (shard_key_value = '7192756992769259220'::bigint) OR (shard_key_value = '6204020176564357320'::bigint))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "c" : [ { "$numberInt" : "6" }, { "$numberInt" : "6" } ] }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '7192756992769259220'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '6204020176564357320'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '7192756992769259220'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '6204020176564357320'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$eq": 5 }, "b": { "$in": [ 2, 3 ] }, "c": { "$eq": 6 } } } ] }');
+                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 2
+   Tasks Shown: One of 2
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_7392_739017 collection
+               Recheck Cond: ((shard_key_value = '7192756992769259220'::bigint) OR (shard_key_value = '6204020176564357320'::bigint))
+               Filter: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "c" : { "$numberInt" : "6" } }'::documentdb_core.bson))
+               ->  BitmapOr
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '7192756992769259220'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '6204020176564357320'::bigint)
+(13 rows)
+
+-- $in but not all are specified - full cross-shard
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4, 5 ] }, "c": { "$in": [ 6, 6 ] } } } ] }');
+                                                                                                                                              QUERY PLAN                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_7392_739014 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "c" : [ { "$numberInt" : "6" }, { "$numberInt" : "6" } ] }'::documentdb_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_pipeline('qst', '{ "aggregate": "comp_shard", "pipeline": [ { "$match": { "a": { "$in": [ 4, 5 ] }, "b": { "$gte": 3 }, "c": { "$in": [ 6, 7 ] } } } ] }');
+                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_7392_739014 collection
+               Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@>=) '{ "b" : { "$numberInt" : "3" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "c" : [ { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }'::documentdb_core.bson))
 (7 rows)
 
