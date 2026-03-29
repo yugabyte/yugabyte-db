@@ -1,0 +1,6 @@
+{
+  "name": "YugabyteDB Build",
+  "build": {
+    "dockerfile": "../docker/agent-build/Dockerfile"
+  }
+}
