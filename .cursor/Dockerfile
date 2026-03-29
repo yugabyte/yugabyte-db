@@ -1,1 +1,1 @@
-../docker/agent/Dockerfile
+../docker/agent-build/Dockerfile
