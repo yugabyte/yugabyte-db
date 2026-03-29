@@ -226,27 +226,22 @@ RefreshCurrentVersion(void)
 	bool readOnly = true;
 	bool isNull = false;
 
-	char *versionString = ExtensionExecuteQueryOnLocalhostViaLibPQ(
-		GetVersionRefreshQuery());
+	/*
+	 * Use SPI to query the version directly instead of opening a separate
+	 * libpq connection to localhost. The libpq approach fails when the
+	 * server is not reachable via TCP on localhost (e.g. in Docker
+	 * containers or when listen_addresses does not include localhost).
+	 * Since the version refresh query returns int4[] directly, SPI gives
+	 * us the Datum we need without an extra round-trip.
+	 */
+	Datum versionDatum = ExtensionExecuteQueryViaSPI(
+		GetVersionRefreshQuery(), readOnly, SPI_OK_SELECT, &isNull);
 
-	if (strcmp(versionString, "") == 0)
+	if (isNull)
 	{
 		RollbackGUCChange(savedGUCLevel);
 		return currentVersion;
 	}
-
-	int nargs = 1;
-	Oid argTypes[1] = { TEXTOID };
-	Datum argValues[1] = { CStringGetTextDatum(versionString) };
-	char *argNulls = NULL;
-
-	/* LibPQ returns an array as a string in the form of {Major,Minor,Hotfix}, so instead
-	 * of parsing the string directly, let's use postgres to cast it to an array as a datum
-	 * and just use the deconstructed array to get the values out of it. */
-	Datum versionDatum = ExtensionExecuteQueryWithArgsViaSPI("SELECT $1::int4[]",
-															 nargs, argTypes, argValues,
-															 argNulls, readOnly,
-															 SPI_OK_SELECT, &isNull);
 
 	ArrayType *arrayValue = DatumGetArrayTypeP(versionDatum);
 	RollbackGUCChange(savedGUCLevel);

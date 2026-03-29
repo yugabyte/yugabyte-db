@@ -116,4 +116,45 @@ TEST_F(DocumentDBTest, SimpleCollection) {
   ASSERT_EQ(get_document_count(), 4);
 }
 
+TEST_F(DocumentDBTest, DropCollectionAndDatabase) {
+  const auto db_name = "testdropdb";
+  const auto collection_name = "dropcoll";
+
+  // Insert a document to create the collection.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "key": "value1" }]}');
+  )",
+      db_name, collection_name));
+
+  // Verify the collection has 1 document.
+  auto count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM documentdb_api.collection('$0','$1')", db_name, collection_name)));
+  ASSERT_EQ(count, 1);
+
+  // Drop the collection.
+  auto drop_result = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      "SELECT documentdb_api.drop_collection('$0', '$1')", db_name, collection_name)));
+  ASSERT_TRUE(drop_result);
+
+  // Insert documents into two collections for drop_database test.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"coll_a", "documents":[
+    { "a": 1 }]}');
+  )",
+      db_name));
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"coll_b", "documents":[
+    { "b": 2 }]}');
+  )",
+      db_name));
+
+  // Drop the entire database.
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT documentdb_api.drop_database('$0')", db_name));
+}
+
 }  // namespace yb
