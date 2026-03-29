@@ -861,6 +861,8 @@ typedef struct RelOptInfo
 	List	   *ybHintsOrigIndexlist;
 
 	PlannerInfo *ybRoot;
+
+	char	   *ybRelationName;
 } RelOptInfo;
 
 /*
@@ -982,6 +984,7 @@ struct IndexOptInfo
 	bool		yb_amiscopartitioned;	/* is AM for YB a copartitioned index? */
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
+	char	   *ybIndexName;
 };
 
 /*

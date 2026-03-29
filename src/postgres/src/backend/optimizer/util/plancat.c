@@ -187,6 +187,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	else
 		hasindex = relation->rd_rel->relhasindex;
 
+	if (IsYugaByteEnabled())
+		rel->ybRelationName = pstrdup(RelationGetRelationName(relation));
+
 	if (hasindex)
 	{
 		List	   *indexoidlist;
@@ -474,6 +477,9 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				/* For other index types, just set it to "unknown" for now */
 				info->tree_height = -1;
 			}
+
+			if (IsYugaByteEnabled())
+				info->ybIndexName = pstrdup(RelationGetRelationName(indexRelation));
 
 			index_close(indexRelation, NoLock);
 

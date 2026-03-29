@@ -343,6 +343,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 	WRITE_INT_FIELD(yb_num_referenced_relations);
+	WRITE_UINT64_FIELD(ybPlanId);
 }
 
 /*
@@ -382,6 +383,9 @@ _outScanInfo(StringInfo str, const Scan *node)
 	_outPlanInfo(str, (const Plan *) node);
 
 	WRITE_UINT_FIELD(scanrelid);
+
+	/* YB */
+	WRITE_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -1069,6 +1073,9 @@ _outHash(StringInfo str, const Hash *node)
 	WRITE_INT_FIELD(skewColumn);
 	WRITE_BOOL_FIELD(skewInherit);
 	WRITE_FLOAT_FIELD(rows_total, "%.0f");
+
+	/* YB */
+	WRITE_STRING_FIELD(ybSkewTableName);
 }
 
 static void

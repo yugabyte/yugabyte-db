@@ -1179,6 +1179,10 @@ typedef struct RangeTblEntry
 								 * query */
 	/* unique identifer (across all blocks) for a base rel - starting at '1' */
 	uint32		ybUniqueBaseId;
+
+	char	   *ybScannedObjectName;
+
+	char	   *ybSchemaName;
 } RangeTblEntry;
 
 /*

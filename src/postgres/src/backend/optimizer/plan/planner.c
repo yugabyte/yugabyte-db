@@ -66,8 +66,11 @@
 #include "utils/syscache.h"
 
 /* YB includes */
+#include "catalog/namespace.h"
 #include "pg_yb_utils.h"
 #include "utils/varlena.h"
+#include "utils/yb_jumblefuncs.h"
+#include "yb_qpm.h"
 
 /* GUC parameters */
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
@@ -270,7 +273,10 @@ static bool ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan,
 									 List **scanList, List **subPlanHintStrings,
 									 int *maxBlockScanCnt, int numWorkers);
 static int	ybCmpHintAliases(const ListCell *lc1, const ListCell *lc2);
-
+static void ybPlanIdWalker(YbJumbleState *jstate, Plan *plan, bool isRoot);
+static void ybCalculatePlanId(PlannedStmt *plannedStmt);
+static int ybCmpRangeTblEntry(const ListCell *lc1, const ListCell *lc2);
+static int *ybBuildRtIndexMap(List *rtable, List *sortedRtable);
 
 /*****************************************************************************
  *
@@ -378,7 +384,8 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 				else
 				{
 					/* Get the relation's name. */
-					hintAlias = get_rel_name(targetRte->relid);
+					hintAlias = targetRte->ybScannedObjectName;
+					Assert (hintAlias != NULL);
 				}
 
 				/*
@@ -612,6 +619,7 @@ standard_planner(Query *parse, const char *query_string, int cursorOptions,
 	result->stmt_location = parse->stmt_location;
 	result->stmt_len = parse->stmt_len;
 	result->yb_num_referenced_relations = root->yb_num_referenced_relations;
+	result->ybPlanId = 0;
 
 	result->jitFlags = PGJIT_NONE;
 	if (jit_enabled && jit_above_cost >= 0 &&
@@ -8277,12 +8285,8 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 							ybAppendHintNameDisplayText(ybHintAlias, leadingBuf);
 							*scanList = lappend(*scanList, ybHintAlias);
 
-							char	   *indexName = get_rel_name(indexscan->indexid);
-
-							if (indexName == NULL)
-							{
-								elog(ERROR, "cache lookup failed for index %u", indexscan->indexid);
-							}
+							char *indexName = indexscan->scan.ybScannedObjectName;
+							Assert(indexName != NULL);
 
 							if (methodBuf->len != 0)
 							{
@@ -8319,12 +8323,8 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 							ybAppendHintNameDisplayText(ybHintAlias, leadingBuf);
 							*scanList = lappend(*scanList, ybHintAlias);
 
-							char	   *indexName = get_rel_name(indexonlyscan->indexid);
-
-							if (indexName == NULL)
-							{
-								elog(ERROR, "cache lookup failed for index %u", indexonlyscan->indexid);
-							}
+							char *indexName = indexonlyscan->scan.ybScannedObjectName;
+							Assert(indexName != NULL);
 
 							if (methodBuf->len != 0)
 							{
@@ -8362,12 +8362,8 @@ ybGenerateHintStringNode(PlannedStmt *plannedStmt, Plan *plan, StringInfoData *l
 							ybAppendHintNameDisplayText(ybHintAlias, leadingBuf);
 							*scanList = lappend(*scanList, ybHintAlias);
 
-							char	   *indexName = get_rel_name(bitmapindexscan->indexid);
-
-							if (indexName == NULL)
-							{
-								elog(ERROR, "cache lookup failed for index %u", bitmapindexscan->indexid);
-							}
+							char	   *indexName = bitmapindexscan->scan.ybScannedObjectName;
+							Assert(indexName != NULL);
 
 							if (methodBuf->len != 0)
 							{
@@ -8810,21 +8806,13 @@ ybComparePlanShapesAndMethods(PlannedStmt *plannedStmt1, Plan *plan1, PlannedStm
 										{
 											IndexScan  *indexscan1 = (IndexScan *) plan1;
 
-											char	   *indexName1 = get_rel_name(indexscan1->indexid);
-
-											if (indexName1 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", indexscan1->indexid);
-											}
+											char	   *indexName1 = indexscan1->scan.ybScannedObjectName;
+											Assert(indexName1 != NULL);
 
 											IndexScan  *indexscan2 = (IndexScan *) plan2;
 
-											char	   *indexName2 = get_rel_name(indexscan2->indexid);
-
-											if (indexName1 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", indexscan2->indexid);
-											}
+											char	   *indexName2 = indexscan2->scan.ybScannedObjectName;
+											Assert(indexName2 != NULL);
 
 											plansAreEqual = (strcmp(indexName1, indexName2) == 0);
 
@@ -8842,21 +8830,13 @@ ybComparePlanShapesAndMethods(PlannedStmt *plannedStmt1, Plan *plan1, PlannedStm
 										{
 											IndexOnlyScan *indexonlyscan1 = (IndexOnlyScan *) plan1;
 
-											char	   *indexName1 = get_rel_name(indexonlyscan1->indexid);
-
-											if (indexName1 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", indexonlyscan1->indexid);
-											}
+											char	   *indexName1 = indexonlyscan1->scan.ybScannedObjectName;
+											Assert(indexName1 != NULL);
 
 											IndexOnlyScan *indexonlyscan2 = (IndexOnlyScan *) plan2;
 
-											char	   *indexName2 = get_rel_name(indexonlyscan2->indexid);
-
-											if (indexName2 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", indexonlyscan2->indexid);
-											}
+											char	   *indexName2 = indexonlyscan2->scan.ybScannedObjectName;
+											Assert(indexName2 != NULL);
 
 											plansAreEqual = (strcmp(indexName1, indexName2) == 0);
 
@@ -8875,21 +8855,13 @@ ybComparePlanShapesAndMethods(PlannedStmt *plannedStmt1, Plan *plan1, PlannedStm
 										{
 											BitmapIndexScan *bitmapindexscan1 = (BitmapIndexScan *) plan1;
 
-											char	   *indexName1 = get_rel_name(bitmapindexscan1->indexid);
-
-											if (indexName1 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", bitmapindexscan1->indexid);
-											}
+											char	   *indexName1 = bitmapindexscan1->scan.ybScannedObjectName;
+											Assert(indexName1 != NULL);
 
 											BitmapIndexScan *bitmapindexscan2 = (BitmapIndexScan *) plan2;
 
-											char	   *indexName2 = get_rel_name(bitmapindexscan2->indexid);
-
-											if (indexName2 == NULL)
-											{
-												elog(ERROR, "cache lookup failed for index %u", bitmapindexscan1->indexid);
-											}
+											char	   *indexName2 = bitmapindexscan2->scan.ybScannedObjectName;
+											Assert(indexName2 != NULL);
 
 											plansAreEqual = (strcmp(indexName1, indexName2) == 0);
 
@@ -9173,3 +9145,480 @@ ybIsHintedUid(PlannerGlobal *glob, uint32 uid)
 
 	return isHintedUid;
 }
+
+/*
+ * Walk the plan and produce plan id. 'isRoot' is true if 'plan'
+ * is the top-most node.
+ */
+static void
+ybPlanIdWalker(YbJumbleState *jstate, Plan *plan, bool isRoot)
+{
+	ListCell   *l;
+
+	if (plan == NULL)
+		return;
+
+	/*
+	 * Plan-type-specific walks
+	 */
+	switch (nodeTag(plan))
+	{
+		case T_SubqueryScan:
+			{
+				SubqueryScan *sscan = (SubqueryScan *) plan;
+
+				ybPlanIdWalker(jstate, sscan->subplan, isRoot);
+			}
+			break;
+		case T_CustomScan:
+			{
+				CustomScan *cscan = (CustomScan *) plan;
+
+				foreach(l, cscan->custom_plans)
+				{
+					ybPlanIdWalker(jstate, (Plan *) lfirst(l), isRoot);
+				}
+			}
+			break;
+		case T_Append:
+			{
+				Append	   *aplan = (Append *) plan;
+
+				foreach(l, aplan->appendplans)
+				{
+					ybPlanIdWalker(jstate, (Plan *) lfirst(l), isRoot);
+				}
+			}
+			break;
+		case T_MergeAppend:
+			{
+				MergeAppend *mplan = (MergeAppend *) plan;
+
+				foreach(l, mplan->mergeplans)
+				{
+					ybPlanIdWalker(jstate, (Plan *) lfirst(l), isRoot);
+				}
+			}
+			break;
+		case T_BitmapAnd:
+			{
+				BitmapAnd  *splan = (BitmapAnd *) plan;
+
+				foreach(l, splan->bitmapplans)
+				{
+					ybPlanIdWalker(jstate, (Plan *) lfirst(l), isRoot);
+				}
+			}
+			break;
+		case T_BitmapOr:
+			{
+				BitmapOr   *splan = (BitmapOr *) plan;
+
+				foreach(l, splan->bitmapplans)
+				{
+					ybPlanIdWalker(jstate, (Plan *) lfirst(l), isRoot);
+				}
+			}
+			break;
+		default:
+			{
+				/* do nothing */
+			}
+	}
+
+	/* Process children. */
+	ybPlanIdWalker(jstate, plan->lefttree, false /* isRoot */ );
+	ybPlanIdWalker(jstate, plan->righttree, false /* isRoot */ );
+
+	/*
+	 * Hash the target list of the node. For a non-root node, we do
+	 * a symmetric hash, i.e. [a1, a2] will produce the same hash as
+	 * [a2, a1]. At the top node we consider order important, i.e.,
+	 * a non-symmetric hash.
+	 *
+	 * For example, "SELECT a1, b1 FROM t1" (Q1) will get a different plan id
+	 * from "SELECT b1, a1 FROM t1" (Q2). The plans are equivalent in a relational
+	 * sense, but we assume final output field order is important. If I ask for
+	 * the Q1 result, I do not want the Q2 result instead.
+	 */
+	YbJumbleList(jstate, plan->targetlist, !isRoot);
+
+	if (yb_enable_planner_trace)
+		elog(DEBUG1, "jumble after target list node %d : %lu", plan->plan_node_id, YbHashJumbleState(jstate));
+
+	/*
+	 * Hash the quals of the node. Treat the hash symmetrically.
+	 */
+	YbJumbleList(jstate, plan->qual, true /* symmetric */ );
+
+	if (yb_enable_planner_trace)
+		elog(DEBUG1, "jumble after qual list node %d : %lu", plan->plan_node_id, YbHashJumbleState(jstate));
+
+	/*
+	 * Set the node's target and qual lists to NULL so the jumble code does not
+	 * process them. However, we save the node's target list in the jumble state
+	 * because we need it to resolve sort column indices when jumbling the node.
+	 */
+	jstate->ybTargetList = plan->targetlist;
+	plan->targetlist = NIL;
+	List *saveQual = plan->qual;
+	plan->qual = NIL;
+
+	/* Jumble the node itself. */
+	YbJumbleNode(jstate, (Node *) plan);
+
+	if (yb_enable_planner_trace)
+		elog(DEBUG1, "jumble after node %d : %lu", plan->plan_node_id, YbHashJumbleState(jstate));
+
+	/* Restore the target and qual lists. */
+	plan->targetlist = jstate->ybTargetList;
+	plan->qual = saveQual;
+}
+
+/*
+ * Compare range table entries for sorting.
+ */
+static int
+ybCmpRangeTblEntry(const ListCell *lc1, const ListCell *lc2)
+{
+	RangeTblEntry *rte1 = (RangeTblEntry *) lfirst(lc1);
+	RangeTblEntry *rte2 = (RangeTblEntry *) lfirst(lc2);
+
+	int cmp = 0;
+
+	if (rte1 != rte2)
+	{
+		if (rte1->rtekind == RTE_RELATION)
+		{
+			if (rte2->rtekind == RTE_RELATION)
+			{
+				/*
+				 * We have 2 relations.
+				 */
+				if (rte1->relkind == RELKIND_RELATION && rte2->relkind == RELKIND_RELATION)
+				{
+					/*
+					 * We expect the ybScannedObjectName fields to be non-NULL in most
+					 * cases. However, makeNode(RangeTblEntry) is called is many
+					 * places and there are no guarantees the field is set by all the
+					 * callers.
+					 */
+					 if (rte1->ybScannedObjectName == NULL && rte1->relid != InvalidOid)
+					{
+						char *relName = get_rel_name(rte1->relid);
+						if (relName != NULL)
+							rte1->ybScannedObjectName = pstrdup(relName);
+					}
+
+					if (rte2->ybScannedObjectName == NULL && rte2->relid != InvalidOid)
+					{
+						char *relName = get_rel_name(rte2->relid);
+						if (relName != NULL)
+							rte2->ybScannedObjectName = pstrdup(relName);
+					}
+
+					if (rte1->ybScannedObjectName != NULL &&
+						rte2->ybScannedObjectName != NULL)
+					{
+						cmp = strcmp(rte1->ybScannedObjectName, rte2->ybScannedObjectName);
+					}
+
+					if (cmp == 0)
+					{
+						char *schemaName1 = rte1->ybSchemaName;
+
+						if (schemaName1 == NULL)
+						{
+							Oid schemaOid1 = get_rel_namespace(rte1->relid);
+							schemaName1 = get_namespace_name(schemaOid1);
+							rte1->ybSchemaName = schemaName1;
+						}
+
+						char *schemaName2 = rte2->ybSchemaName;
+
+						if (schemaName2 == NULL)
+						{
+							Oid schemaOid2 = get_rel_namespace(rte2->relid);
+							schemaName2 = get_namespace_name(schemaOid2);
+							rte2->ybSchemaName = schemaName2;
+						}
+
+						if (schemaName1 != NULL && schemaName2 != NULL)
+							cmp = strcmp(schemaName1, schemaName2);
+
+						if (cmp == 0)
+						{
+							if (rte1->eref != NULL && rte1->eref->aliasname != NULL &&
+								rte2->eref != NULL && rte2->eref->aliasname != NULL)
+								/*
+								 * Compare the expanded reference names.
+								 */
+								cmp = strcmp(rte1->eref->aliasname, rte2->eref->aliasname);
+							else if (rte1->alias != NULL &&
+									rte1->alias->aliasname != NULL &&
+									rte2->alias != NULL &&
+									rte2->alias->aliasname != NULL)
+								/*
+								 * Compare the user-written alias clauses.
+								 */
+								cmp = strcmp(rte1->alias->aliasname, rte2->alias->aliasname);
+						}
+
+						if (cmp == 0)
+							/*
+							 * Must be different blocks since the names are the same.
+							 * In this case, unique id is OK to use since all rels
+							* in a block get assigned before the rels in another block.
+							 */
+							cmp = rte1->ybUniqueBaseId - rte2->ybUniqueBaseId;
+					}
+				}
+				else if (rte1->relkind == RELKIND_RELATION)
+					cmp = -1;
+				else if (rte2->relkind == RELKIND_RELATION)
+					cmp = 1;
+				else if (rte1->relkind != rte2->relkind)
+					cmp = (rte1->relkind < rte2->relkind);
+				else if (rte1->eref != NULL && rte1->eref->aliasname != NULL &&
+						rte2->eref != NULL && rte2->eref->aliasname != NULL)
+					/*
+					 * Compare the expanded reference names.
+					 */
+					cmp = strcmp(rte1->eref->aliasname, rte2->eref->aliasname);
+				else if (rte1->alias != NULL && rte1->alias->aliasname != NULL &&
+						rte2->alias != NULL && rte2->alias->aliasname != NULL)
+					/*
+					 * Compare the user-written alias clauses.
+					 */
+					cmp = strcmp(rte1->alias->aliasname, rte2->alias->aliasname);
+				/* 2 non-relations will compare equal if none of the above conditions is true */
+			}
+			else
+				/*
+				 * Relations sort before non-relations.
+				 */
+				cmp = -1;
+		}
+		else if (rte2->rtekind == RTE_RELATION)
+			/*
+			 * Relations sort before non-relations.
+			 */
+			cmp = 1;
+		else if (rte1->rtekind == RTE_CTE)
+		{
+			if (rte2->rtekind == RTE_CTE)
+				/* Compare CTE names. */
+				cmp = strcmp(rte1->ctename, rte2->ctename);
+			else
+				/* CTEs sort before non-CTEs. */
+				cmp = -1;
+		}
+		else if (rte2->rtekind == RTE_CTE)
+			/* CTEs sort before non-CTEs. */
+			cmp = 1;
+		else if (rte1->rtekind != rte2->rtekind)
+			/* Different RTE types so pick one. */
+			cmp = rte1->rtekind - rte2->rtekind;
+		else if (rte1->eref != NULL && rte1->eref->aliasname != NULL &&
+				rte2->eref != NULL && rte2->eref->aliasname != NULL)
+			/*
+			 * Compare the expanded reference names.
+			 */
+			cmp = strcmp(rte1->eref->aliasname, rte2->eref->aliasname);
+		else if (rte1->alias != NULL && rte1->alias->aliasname != NULL &&
+				rte2->alias != NULL && rte2->alias->aliasname != NULL)
+			/*
+			 * Compare the user-written alias clauses.
+			 */
+			cmp = strcmp(rte1->alias->aliasname, rte2->alias->aliasname);
+		else
+			/*
+			 * Must be different blocks so unique id is OK to use.
+			 */
+			cmp = rte1->ybUniqueBaseId - rte2->ybUniqueBaseId;
+	}
+
+	return cmp;
+}
+
+/*
+ * Build a map from an RT index to a sorted RT index. E.g., if we have
+ * a rangle table list with 3 RTEs t3, t1, and t2 (usually because
+ * that is their order in the FROM clause), the RT indexes will be
+ * 1, 2, and 3, respectively. The sorted (by name) RT list will be (t1, t2, t3)
+ * and the map will contain [3, 1, 2]:
+ *
+ *    table t3 has a RT index of 1 and maps to sorted entry 3.
+ *    table t1 has a RT index of 2 and maps to sorted entry 1.
+ *    table t2 has a RT index of 3 and maps to sorted entry 2.
+ *
+ * This function returns the sorted RT index (ie. [3, 1, 2]
+ *
+ * We will use the sorted RT indexes to generate
+ * a canonical hash (jumble) for the RTEs.
+ */
+static int *
+ybBuildRtIndexMap(List *rtable, List *sortedRtable)
+{
+	int numRts = list_length(rtable);
+	int *ybRtIndexMap = (int *) palloc(numRts * sizeof(int));
+	int rti;
+	for (rti = 0; rti < numRts; rti++)
+	{
+		RangeTblEntry *rte = rt_fetch(rti + 1, rtable);
+
+		ListCell *lc;
+		int sortedRtIndex = 1;
+		bool found = false;
+		foreach(lc, sortedRtable)
+		{
+			RangeTblEntry *rte2 = (RangeTblEntry *) lfirst(lc);
+			if (rte == rte2)
+			{
+				found = true;
+				break;
+			}
+
+			++sortedRtIndex;
+		}
+
+		Assert(found);
+
+		ybRtIndexMap[rti] = sortedRtIndex;
+	}
+
+	return ybRtIndexMap;
+}
+
+/*
+ * Do the plan id calculation.
+ */
+static void
+ybCalculatePlanId(PlannedStmt *plannedStmt)
+{
+	YbJumbleState *jstate = YbInitJumble();
+	ListCell *lc;
+	ListCell *lc2;
+
+	jstate->ybUseNames = true;
+
+	/*
+	 * Sort the range table list.
+	 */
+	List *sortedRtable = list_copy(plannedStmt->rtable);
+	bool duplPresent = false;
+
+	/* See if the list contains duplicate relations. */
+	List *saveAliasList = NIL;
+	foreach(lc, plannedStmt->rtable)
+	{
+		RangeTblEntry *rte1 = (RangeTblEntry *) lfirst(lc);
+
+		if (rte1->relid != InvalidOid)
+		{
+			foreach(lc2, plannedStmt->rtable)
+			{
+				if (lc != lc2)
+				{
+					RangeTblEntry *rte2 = (RangeTblEntry *) lfirst(lc2);
+					if (rte1->relid == rte2->relid)
+					{
+						duplPresent = true;
+						break;
+					}
+				}
+			}
+		}
+		else
+			duplPresent = true;
+
+		if (duplPresent)
+			break;
+
+		/* Save the alias. */
+		saveAliasList = lappend(saveAliasList, rte1->eref->aliasname);
+	}
+
+	if (!duplPresent)
+		/*
+		 * Put the actual relation name on the range table entry.
+		 * We do this so if a query is aliased differently and
+		 * there are no duplicates, but gets the same plan,
+		 * then we get the same plan id. This is because the FROM lists
+		 * will sort the same using actual names.
+		 */
+		foreach(lc, plannedStmt->rtable)
+		{
+			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+			char *relName = rte->ybScannedObjectName;
+
+			if (relName == NULL)
+			{
+				relName = get_rel_name(rte->relid);
+				rte->ybScannedObjectName = relName;
+			}
+
+			rte->eref->aliasname = relName;
+		}
+
+	list_sort(sortedRtable, ybCmpRangeTblEntry);
+
+	if (!duplPresent)
+		forboth(lc, plannedStmt->rtable, lc2, saveAliasList)
+		{
+			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
+			char *alias = (char *) lfirst(lc2);
+
+			rte->eref->aliasname = alias;
+		}
+
+	list_free(saveAliasList);
+
+	/*
+	 * Build the map from RT indexes to sorted RT indexes and store
+	 * it on the jumble state.
+	 */
+	jstate->ybRtIndexMap = ybBuildRtIndexMap(plannedStmt->rtable, sortedRtable);
+
+	/* Walk the plan and calculate the jumble. */
+	ybPlanIdWalker(jstate, plannedStmt->planTree, true /* isRoot */ );
+
+	/* Now walk each subplan. */
+	foreach(lc, plannedStmt->subplans)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lc);
+
+		ybPlanIdWalker(jstate, subplan, false /* isRoot */ );
+	}
+
+	/* Jumble the sorted range table list. */
+	YbJumbleRangeTableList(jstate, sortedRtable);
+
+	if (yb_enable_planner_trace)
+		elog(DEBUG1, "jumble after range table list : %lu", YbHashJumbleState(jstate));
+
+	/* Store the plan id on the planned statement. */
+	plannedStmt->ybPlanId = YbHashJumbleState(jstate);
+
+	/* Clean up. */
+	list_free(sortedRtable);
+	pfree(jstate->ybRtIndexMap);
+	pfree(jstate);
+}
+
+/*
+ * Get the plan id.
+ */
+ uint64
+ ybGetPlanId(PlannedStmt *plannedStmt)
+ {
+	/*
+	 * If the plan id has not been computed, call the function to calculate it.
+	 * E.g., even if QPM is on, we would need to calculate the plan id if an
+	 * EXPLAIN requests it.
+	 */
+	if (plannedStmt->ybPlanId == 0)
+		ybCalculatePlanId(plannedStmt);
+
+	return plannedStmt->ybPlanId;
+ }

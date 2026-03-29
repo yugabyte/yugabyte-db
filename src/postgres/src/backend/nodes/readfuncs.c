@@ -1641,6 +1641,7 @@ _readPlannedStmt(void)
 	READ_LOCATION_FIELD(stmt_location);
 	READ_INT_FIELD(yb_num_referenced_relations);
 	READ_INT_FIELD(stmt_len);
+	READ_UINT64_FIELD(ybPlanId);
 
 	READ_DONE();
 }
@@ -1863,6 +1864,9 @@ ReadCommonScan(Scan *local_node)
 	ReadCommonPlan(&local_node->plan);
 
 	READ_UINT_FIELD(scanrelid);
+
+	/* YB */
+	READ_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -2613,6 +2617,9 @@ _readHash(void)
 	READ_INT_FIELD(skewColumn);
 	READ_BOOL_FIELD(skewInherit);
 	READ_FLOAT_FIELD(rows_total);
+
+	/* YB */
+	READ_STRING_FIELD(ybSkewTableName);
 
 	READ_DONE();
 }
