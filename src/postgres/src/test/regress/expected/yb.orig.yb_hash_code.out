@@ -1401,13 +1401,11 @@ INSERT INTO tt VALUES(-2147483648, 3);
 -- Try a 1 element IN with row constructor. Should get an index scan since this turns into an equality.
 \set query 'SELECT i, j, yb_hash_code(i) hash_code_i, yb_hash_code(1) hash_code_1 FROM tt WHERE row(j, yb_hash_code(i)) IN (row(1, yb_hash_code(1))) ORDER BY 1, 2'
 :explain2run2
-                         QUERY PLAN                         
-------------------------------------------------------------
- Sort
-   Sort Key: i
-   ->  Index Only Scan using tt_i_j_idx on tt
-         Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
-(4 rows)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Index Only Scan using tt_i_j_idx on tt
+   Index Cond: ((yb_hash_code(i) = 4624) AND (j = 1))
+(2 rows)
 
                 QUERY PLAN                
 ------------------------------------------

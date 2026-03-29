@@ -8889,3 +8889,93 @@ yb_maybe_test_fail_ddl(void)
 			break;
 	}
 }
+
+/*
+ * yb_has_hash_code_equality_qual
+ *	  Check whether the relation's restrictions include
+ *	  yb_hash_code(hash_cols) = <constant> where the hash_cols match the
+ *	  hash columns of this specific index.  When true the scan is constrained
+ *	  to a single hash bucket where range comparisons on hash columns are valid
+ *	  (rows are stored in (hash_cols, range_cols) order within the bucket).
+ *
+ *	  The arguments of yb_hash_code() are checked against the index's hash
+ *	  column attribute numbers to prevent mis-applying the optimization when
+ *	  the predicate refers to a different index's hash columns.
+ */
+bool
+yb_has_hash_code_equality_qual(IndexOptInfo *index)
+{
+	ListCell   *lc;
+
+	foreach(lc, index->rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		OpExpr	   *opexpr;
+		Node	   *lhs;
+		Node	   *rhs;
+		FuncExpr   *funcexpr;
+		ListCell   *arg_lc;
+		int			col;
+		bool		args_match;
+
+		if (!IsA(rinfo->clause, OpExpr))
+			continue;
+
+		opexpr = (OpExpr *) rinfo->clause;
+
+		if (opexpr->opno != Int4EqualOperator)
+			continue;
+
+		if (list_length(opexpr->args) != 2)
+			continue;
+
+		lhs = (Node *) linitial(opexpr->args);
+		rhs = (Node *) lsecond(opexpr->args);
+
+		if (IsA(lhs, RelabelType))
+			lhs = (Node *) ((RelabelType *) lhs)->arg;
+		if (IsA(rhs, RelabelType))
+			rhs = (Node *) ((RelabelType *) rhs)->arg;
+
+		if (IsA(lhs, FuncExpr) &&
+			((FuncExpr *) lhs)->funcid == F_YB_HASH_CODE &&
+			IsA(rhs, Const))
+			funcexpr = (FuncExpr *) lhs;
+		else if (IsA(rhs, FuncExpr) &&
+				 ((FuncExpr *) rhs)->funcid == F_YB_HASH_CODE &&
+				 IsA(lhs, Const))
+			funcexpr = (FuncExpr *) rhs;
+		else
+			continue;
+
+		if (list_length(funcexpr->args) != index->nhashcolumns)
+			continue;
+
+		/*
+		 * Verify that each argument of yb_hash_code() references the
+		 * corresponding hash column of this index, not some other column.
+		 */
+		args_match = true;
+		col = 0;
+		foreach(arg_lc, funcexpr->args)
+		{
+			Node   *arg = (Node *) lfirst(arg_lc);
+
+			if (IsA(arg, RelabelType))
+				arg = (Node *) ((RelabelType *) arg)->arg;
+
+			if (!IsA(arg, Var) ||
+				((Var *) arg)->varattno != index->indexkeys[col])
+			{
+				args_match = false;
+				break;
+			}
+			col++;
+		}
+
+		if (args_match)
+			return true;
+	}
+
+	return false;
+}

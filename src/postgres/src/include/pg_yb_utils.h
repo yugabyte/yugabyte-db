@@ -1607,4 +1607,7 @@ extern YbcPgStatement YbNewTruncateColocatedIgnoreNotFound(Relation rel,
 extern const unsigned char *YbGetLocalTServerUuid();
 extern void YbUCharToUuid(const unsigned char *in, pg_uuid_t *out);
 
+struct IndexOptInfo;
+extern bool yb_has_hash_code_equality_qual(struct IndexOptInfo *index);
+
 #endif							/* PG_YB_UTILS_H */
