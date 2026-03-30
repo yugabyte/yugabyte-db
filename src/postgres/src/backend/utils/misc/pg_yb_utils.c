@@ -2272,6 +2272,7 @@ bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
 int			yb_toast_catcache_threshold = 2048; /* 2 KB */
+int			yb_catcache_list_from_preloaded_limit = 100000;
 int			yb_parallel_range_size = 1024 * 1024;
 int			yb_insert_on_conflict_read_batch_size = 1024;
 bool		yb_enable_fkey_catcache = true;

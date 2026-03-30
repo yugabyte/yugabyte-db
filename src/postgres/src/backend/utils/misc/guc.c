@@ -6046,6 +6046,17 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_catcache_list_from_preloaded_limit", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Max tuples in a preloaded catalog cache for local list building. 0 disables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_catcache_list_from_preloaded_limit,
+		100000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
