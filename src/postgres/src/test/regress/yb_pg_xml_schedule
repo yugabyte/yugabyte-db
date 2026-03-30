@@ -8,4 +8,4 @@
 test: yb.port.test_setup
 
 test: yb.port.xmlmap
-test: yb.port.xml
+test: xml

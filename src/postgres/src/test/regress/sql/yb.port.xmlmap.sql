@@ -1,6 +1,6 @@
 CREATE SCHEMA testxmlschema;
 
-CREATE TABLE testxmlschema.test1 (a int, b text, PRIMARY KEY (a ASC)); -- YB: add pk for deterministic ordering
+CREATE TABLE testxmlschema.test1 (a int, b text);
 INSERT INTO testxmlschema.test1 VALUES (1, 'one'), (2, 'two'), (-1, null);
 CREATE DOMAIN testxmldomain AS varchar;
 CREATE TABLE testxmlschema.test2 (z int, y varchar(500), x char(6),
@@ -30,9 +30,9 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, false, '');
 SELECT table_to_xml_and_xmlschema('testxmlschema.test1', false, true, '');
 SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, true, 'foo');
 
-SELECT query_to_xml('SELECT * FROM testxmlschema.test1 ORDER BY a', false, false, ''); -- YB: ORDER BY for deterministic results
-SELECT query_to_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a', false, false, ''); -- YB: ORDER BY for deterministic results
-SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a', true, true, ''); -- YB: ORDER BY for deterministic results
+SELECT query_to_xml('SELECT * FROM testxmlschema.test1', false, false, '');
+SELECT query_to_xmlschema('SELECT * FROM testxmlschema.test1', false, false, '');
+SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1', true, true, '');
 
 DECLARE xc CURSOR WITH HOLD FOR SELECT * FROM testxmlschema.test1 ORDER BY 1, 2;
 SELECT cursor_to_xml('xc'::refcursor, 5, false, true, '');

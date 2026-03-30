@@ -1,5 +1,5 @@
 CREATE SCHEMA testxmlschema;
-CREATE TABLE testxmlschema.test1 (a int, b text, PRIMARY KEY (a ASC)); -- YB: add pk for deterministic ordering
+CREATE TABLE testxmlschema.test1 (a int, b text);
 INSERT INTO testxmlschema.test1 VALUES (1, 'one'), (2, 'two'), (-1, null);
 CREATE DOMAIN testxmldomain AS varchar;
 CREATE TABLE testxmlschema.test2 (z int, y varchar(500), x char(6),
@@ -17,10 +17,6 @@ SELECT table_to_xml('testxmlschema.test1', false, false, '');
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
                                                               +
  <row>                                                        +
-   <a>-1</a>                                                  +
- </row>                                                       +
-                                                              +
- <row>                                                        +
    <a>1</a>                                                   +
    <b>one</b>                                                 +
  </row>                                                       +
@@ -28,6 +24,10 @@ SELECT table_to_xml('testxmlschema.test1', false, false, '');
  <row>                                                        +
    <a>2</a>                                                   +
    <b>two</b>                                                 +
+ </row>                                                       +
+                                                              +
+ <row>                                                        +
+   <a>-1</a>                                                  +
  </row>                                                       +
                                                               +
  </test1>                                                     +
@@ -40,11 +40,6 @@ SELECT table_to_xml('testxmlschema.test1', true, false, 'foo');
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="foo">+
                                                                           +
  <row>                                                                    +
-   <a>-1</a>                                                              +
-   <b xsi:nil="true"/>                                                    +
- </row>                                                                   +
-                                                                          +
- <row>                                                                    +
    <a>1</a>                                                               +
    <b>one</b>                                                             +
  </row>                                                                   +
@@ -52,6 +47,11 @@ SELECT table_to_xml('testxmlschema.test1', true, false, 'foo');
  <row>                                                                    +
    <a>2</a>                                                               +
    <b>two</b>                                                             +
+ </row>                                                                   +
+                                                                          +
+ <row>                                                                    +
+   <a>-1</a>                                                              +
+   <b xsi:nil="true"/>                                                    +
  </row>                                                                   +
                                                                           +
  </test1>                                                                 +
@@ -62,10 +62,6 @@ SELECT table_to_xml('testxmlschema.test1', false, true, '');
                          table_to_xml                          
 ---------------------------------------------------------------
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
-   <a>-1</a>                                                  +
- </test1>                                                     +
-                                                              +
- <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
    <a>1</a>                                                   +
    <b>one</b>                                                 +
  </test1>                                                     +
@@ -73,6 +69,10 @@ SELECT table_to_xml('testxmlschema.test1', false, true, '');
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
    <a>2</a>                                                   +
    <b>two</b>                                                 +
+ </test1>                                                     +
+                                                              +
+ <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
+   <a>-1</a>                                                  +
  </test1>                                                     +
                                                               +
  
@@ -82,11 +82,6 @@ SELECT table_to_xml('testxmlschema.test1', true, true, '');
                          table_to_xml                          
 ---------------------------------------------------------------
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
-   <a>-1</a>                                                  +
-   <b xsi:nil="true"/>                                        +
- </test1>                                                     +
-                                                              +
- <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
    <a>1</a>                                                   +
    <b>one</b>                                                 +
  </test1>                                                     +
@@ -94,6 +89,11 @@ SELECT table_to_xml('testxmlschema.test1', true, true, '');
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
    <a>2</a>                                                   +
    <b>two</b>                                                 +
+ </test1>                                                     +
+                                                              +
+ <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
+   <a>-1</a>                                                  +
+   <b xsi:nil="true"/>                                        +
  </test1>                                                     +
                                                               +
  
@@ -423,10 +423,6 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', false, false, '');
  </xsd:schema>                                                                                                +
                                                                                                               +
  <row>                                                                                                        +
-   <a>-1</a>                                                                                                  +
- </row>                                                                                                       +
-                                                                                                              +
- <row>                                                                                                        +
    <a>1</a>                                                                                                   +
    <b>one</b>                                                                                                 +
  </row>                                                                                                       +
@@ -434,6 +430,10 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', false, false, '');
  <row>                                                                                                        +
    <a>2</a>                                                                                                   +
    <b>two</b>                                                                                                 +
+ </row>                                                                                                       +
+                                                                                                              +
+ <row>                                                                                                        +
+   <a>-1</a>                                                                                                  +
  </row>                                                                                                       +
                                                                                                               +
  </test1>                                                                                                     +
@@ -478,11 +478,6 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, false, '');
  </xsd:schema>                                                                                                +
                                                                                                               +
  <row>                                                                                                        +
-   <a>-1</a>                                                                                                  +
-   <b xsi:nil="true"/>                                                                                        +
- </row>                                                                                                       +
-                                                                                                              +
- <row>                                                                                                        +
    <a>1</a>                                                                                                   +
    <b>one</b>                                                                                                 +
  </row>                                                                                                       +
@@ -490,6 +485,11 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, false, '');
  <row>                                                                                                        +
    <a>2</a>                                                                                                   +
    <b>two</b>                                                                                                 +
+ </row>                                                                                                       +
+                                                                                                              +
+ <row>                                                                                                        +
+   <a>-1</a>                                                                                                  +
+   <b xsi:nil="true"/>                                                                                        +
  </row>                                                                                                       +
                                                                                                               +
  </test1>                                                                                                     +
@@ -526,10 +526,6 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', false, true, '');
  </xsd:schema>                                                                             +
                                                                                            +
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                             +
-   <a>-1</a>                                                                               +
- </test1>                                                                                  +
-                                                                                           +
- <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                             +
    <a>1</a>                                                                                +
    <b>one</b>                                                                              +
  </test1>                                                                                  +
@@ -537,6 +533,10 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', false, true, '');
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                             +
    <a>2</a>                                                                                +
    <b>two</b>                                                                              +
+ </test1>                                                                                  +
+                                                                                           +
+ <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                             +
+   <a>-1</a>                                                                               +
  </test1>                                                                                  +
                                                                                            +
  
@@ -574,11 +574,6 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, true, 'foo');
  </xsd:schema>                                                                               +
                                                                                              +
  <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="foo">                   +
-   <a>-1</a>                                                                                 +
-   <b xsi:nil="true"/>                                                                       +
- </test1>                                                                                    +
-                                                                                             +
- <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="foo">                   +
    <a>1</a>                                                                                  +
    <b>one</b>                                                                                +
  </test1>                                                                                    +
@@ -588,17 +583,18 @@ SELECT table_to_xml_and_xmlschema('testxmlschema.test1', true, true, 'foo');
    <b>two</b>                                                                                +
  </test1>                                                                                    +
                                                                                              +
+ <test1 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="foo">                   +
+   <a>-1</a>                                                                                 +
+   <b xsi:nil="true"/>                                                                       +
+ </test1>                                                                                    +
+                                                                                             +
  
 (1 row)
 
-SELECT query_to_xml('SELECT * FROM testxmlschema.test1 ORDER BY a', false, false, ''); -- YB: ORDER BY for deterministic results
+SELECT query_to_xml('SELECT * FROM testxmlschema.test1', false, false, '');
                          query_to_xml                          
 ---------------------------------------------------------------
  <table xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
-                                                              +
- <row>                                                        +
-   <a>-1</a>                                                  +
- </row>                                                       +
                                                               +
  <row>                                                        +
    <a>1</a>                                                   +
@@ -610,11 +606,15 @@ SELECT query_to_xml('SELECT * FROM testxmlschema.test1 ORDER BY a', false, false
    <b>two</b>                                                 +
  </row>                                                       +
                                                               +
+ <row>                                                        +
+   <a>-1</a>                                                  +
+ </row>                                                       +
+                                                              +
  </table>                                                     +
  
 (1 row)
 
-SELECT query_to_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a', false, false, ''); -- YB: ORDER BY for deterministic results
+SELECT query_to_xmlschema('SELECT * FROM testxmlschema.test1', false, false, '');
                                      query_to_xmlschema                                     
 --------------------------------------------------------------------------------------------
  <xsd:schema                                                                               +
@@ -650,7 +650,7 @@ SELECT query_to_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a', false,
  </xsd:schema>
 (1 row)
 
-SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a', true, true, ''); -- YB: ORDER BY for deterministic results
+SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1', true, true, '');
                                   query_to_xml_and_xmlschema                                  
 ----------------------------------------------------------------------------------------------
  <xsd:schema                                                                                 +
@@ -680,11 +680,6 @@ SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a'
  </xsd:schema>                                                                               +
                                                                                              +
  <row xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                                 +
-   <a>-1</a>                                                                                 +
-   <b xsi:nil="true"/>                                                                       +
- </row>                                                                                      +
-                                                                                             +
- <row xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                                 +
    <a>1</a>                                                                                  +
    <b>one</b>                                                                                +
  </row>                                                                                      +
@@ -692,6 +687,11 @@ SELECT query_to_xml_and_xmlschema('SELECT * FROM testxmlschema.test1 ORDER BY a'
  <row xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                                 +
    <a>2</a>                                                                                  +
    <b>two</b>                                                                                +
+ </row>                                                                                      +
+                                                                                             +
+ <row xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">                                 +
+   <a>-1</a>                                                                                 +
+   <b xsi:nil="true"/>                                                                       +
  </row>                                                                                      +
                                                                                              +
  
@@ -804,10 +804,6 @@ SELECT schema_to_xml('testxmlschema', false, true, '');
  <testxmlschema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">+
                                                                       +
  <test1>                                                              +
-   <a>-1</a>                                                          +
- </test1>                                                             +
-                                                                      +
- <test1>                                                              +
    <a>1</a>                                                           +
    <b>one</b>                                                         +
  </test1>                                                             +
@@ -815,6 +811,10 @@ SELECT schema_to_xml('testxmlschema', false, true, '');
  <test1>                                                              +
    <a>2</a>                                                           +
    <b>two</b>                                                         +
+ </test1>                                                             +
+                                                                      +
+ <test1>                                                              +
+   <a>-1</a>                                                          +
  </test1>                                                             +
                                                                       +
                                                                       +
@@ -849,11 +849,6 @@ SELECT schema_to_xml('testxmlschema', true, false, '');
  <test1>                                                              +
                                                                       +
  <row>                                                                +
-   <a>-1</a>                                                          +
-   <b xsi:nil="true"/>                                                +
- </row>                                                               +
-                                                                      +
- <row>                                                                +
    <a>1</a>                                                           +
    <b>one</b>                                                         +
  </row>                                                               +
@@ -861,6 +856,11 @@ SELECT schema_to_xml('testxmlschema', true, false, '');
  <row>                                                                +
    <a>2</a>                                                           +
    <b>two</b>                                                         +
+ </row>                                                               +
+                                                                      +
+ <row>                                                                +
+   <a>-1</a>                                                          +
+   <b xsi:nil="true"/>                                                +
  </row>                                                               +
                                                                       +
  </test1>                                                             +
@@ -1226,11 +1226,6 @@ SELECT schema_to_xml_and_xmlschema('testxmlschema', true, true, 'foo');
  </xsd:schema>                                                                                                             +
                                                                                                                            +
  <test1>                                                                                                                   +
-   <a>-1</a>                                                                                                               +
-   <b xsi:nil="true"/>                                                                                                     +
- </test1>                                                                                                                  +
-                                                                                                                           +
- <test1>                                                                                                                   +
    <a>1</a>                                                                                                                +
    <b>one</b>                                                                                                              +
  </test1>                                                                                                                  +
@@ -1238,6 +1233,11 @@ SELECT schema_to_xml_and_xmlschema('testxmlschema', true, true, 'foo');
  <test1>                                                                                                                   +
    <a>2</a>                                                                                                                +
    <b>two</b>                                                                                                              +
+ </test1>                                                                                                                  +
+                                                                                                                           +
+ <test1>                                                                                                                   +
+   <a>-1</a>                                                                                                               +
+   <b xsi:nil="true"/>                                                                                                     +
  </test1>                                                                                                                  +
                                                                                                                            +
                                                                                                                            +
