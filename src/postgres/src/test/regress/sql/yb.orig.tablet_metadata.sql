@@ -10,6 +10,18 @@ SELECT
 FROM yb_tablet_metadata WHERE relname IN ('test_table_1', 'test_table_2')
 ORDER BY start_hash_code NULLS FIRST;
 
+-- Test that tablet_attrs column contains expected JSON keys
+SELECT
+    relname,
+    tablet_attrs ? 'sst_files_disk_size' AS has_sst_size,
+    tablet_attrs ? 'wal_files_disk_size' AS has_wal_size,
+    tablet_attrs ? 'uncompressed_sst_files_disk_size' AS has_uncompressed_sst_size,
+    (tablet_attrs->>'sst_files_disk_size')::bigint >= 0 AS sst_size_non_negative,
+    (tablet_attrs->>'wal_files_disk_size')::bigint >= 0 AS wal_size_non_negative,
+    (tablet_attrs->>'uncompressed_sst_files_disk_size')::bigint >= 0 AS uncompressed_sst_size_non_negative
+FROM yb_tablet_metadata WHERE relname = 'test_table_1'
+ORDER BY start_hash_code NULLS FIRST;
+
 -- Test that we are able to join with yb_servers()
 SELECT
     ytm.relname,

@@ -67,11 +67,13 @@ CREATE VIEW yb_tablet_metadata AS
         t.start_hash_code,
         t.end_hash_code,
         t.leader,
-        t.replicas
+        t.replicas,
+        t.tablet_attrs
     FROM
         yb_get_tablet_metadata() t
     LEFT JOIN
-        pg_class c ON c.relname = t.object_name
+        pg_class c ON c.oid = (CASE WHEN length(t.object_uuid) = 32
+            THEN ('x' || right(t.object_uuid, 8))::bit(32)::int::oid ELSE NULL END)
     LEFT JOIN
         pg_namespace n ON n.oid = c.relnamespace
     WHERE

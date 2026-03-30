@@ -3079,7 +3079,13 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
         .tablet_descriptor = MakeYbcPgTabletsDescriptor(tablet_metadata),
         .replicas = replicas_array,
         .replicas_count = static_cast<size_t>(tablet_metadata.replicas().size()),
-        .is_hash_partitioned = tablet_metadata.is_hash_partitioned()
+        .is_hash_partitioned = tablet_metadata.is_hash_partitioned(),
+        .sst_files_disk_size = tablet_metadata.has_sst_files_disk_size()
+            ? tablet_metadata.sst_files_disk_size() : -1,
+        .wal_files_disk_size = tablet_metadata.has_wal_files_disk_size()
+            ? tablet_metadata.wal_files_disk_size() : -1,
+        .uncompressed_sst_files_disk_size = tablet_metadata.has_uncompressed_sst_files_disk_size()
+            ? tablet_metadata.uncompressed_sst_files_disk_size() : -1
       };
       ++dest;
     }
@@ -3380,7 +3386,7 @@ void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
 
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
-  DCHECK(param_values);
+  DCHECK(param_values || num_params == 0);
   handle->SetParams(std::span{param_values, param_values + num_params});
 }
 

@@ -8507,10 +8507,13 @@ string_list_compare(const ListCell *a, const ListCell *b)
  * - end_hash_code: int32
  * - leader: text
  * - replicas: text[]
+ * - tablet_attrs: jsonb
  *
  * The start_hash_code and end_hash_code are the hash codes of the start and end
  * keys of the tablet for hash sharded tables. Leader is provided as a separate
  * column for simpler querying and self-explanatory access.
+ * tablet_attrs is a JSONB column containing miscellaneous tablet-level metadata
+ * such as SST file size, WAL file size, and uncompressed SST file size.
  */
 Datum
 yb_get_tablet_metadata(PG_FUNCTION_ARGS)
@@ -8520,7 +8523,7 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 	Tuplestorestate *tupstore;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
-	static int	ncols = 9;
+	static int	ncols = 10;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -8614,6 +8617,56 @@ yb_get_tablet_metadata(PG_FUNCTION_ARGS)
 		{
 			nulls[7] = true;
 			nulls[8] = true;
+		}
+
+		/* Build tablet_attrs JSONB with disk size information.
+		 * Only include keys for which data is available (sentinel -1 means
+		 * unavailable). If no data is available, set to NULL. */
+		{
+			StringInfoData tablet_attrs_buf;
+			bool		first_attr = true;
+
+			initStringInfo(&tablet_attrs_buf);
+			appendStringInfoChar(&tablet_attrs_buf, '{');
+
+			if (tablet->sst_files_disk_size >= 0)
+			{
+				appendStringInfo(&tablet_attrs_buf, "\"sst_files_disk_size\": %lld",
+								 (long long) tablet->sst_files_disk_size);
+				first_attr = false;
+			}
+
+			if (tablet->wal_files_disk_size >= 0)
+			{
+				if (!first_attr)
+					appendStringInfoString(&tablet_attrs_buf, ", ");
+				appendStringInfo(&tablet_attrs_buf, "\"wal_files_disk_size\": %lld",
+								 (long long) tablet->wal_files_disk_size);
+				first_attr = false;
+			}
+
+			if (tablet->uncompressed_sst_files_disk_size >= 0)
+			{
+				if (!first_attr)
+					appendStringInfoString(&tablet_attrs_buf, ", ");
+				appendStringInfo(&tablet_attrs_buf,
+								 "\"uncompressed_sst_files_disk_size\": %lld",
+								 (long long) tablet->uncompressed_sst_files_disk_size);
+				first_attr = false;
+			}
+
+			if (first_attr)
+			{
+				/* No disk size data available — return NULL instead of {} */
+				nulls[9] = true;
+			}
+			else
+			{
+				appendStringInfoChar(&tablet_attrs_buf, '}');
+				values[9] = DirectFunctionCall1(jsonb_in,
+												CStringGetDatum(tablet_attrs_buf.data));
+			}
+			pfree(tablet_attrs_buf.data);
 		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
