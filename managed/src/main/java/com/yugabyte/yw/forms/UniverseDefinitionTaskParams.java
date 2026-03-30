@@ -1914,6 +1914,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public PrevYBSoftwareConfig prevYBSoftwareConfig;
 
   @Data
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public static class PrevYBSoftwareConfig {
 
     @ApiModelProperty private String softwareVersion;
@@ -1927,12 +1928,54 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty private boolean canRollbackCatalogUpgrade;
 
-    // Canary upgrade progress: set when upgrade is paused for canary
-    @ApiModelProperty private boolean mastersUpgradeCompleted;
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. True when canary upgrade is enabled"
+                + " for this upgrade (task progress API)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private boolean isCanaryUpgrade;
 
-    @ApiModelProperty private List<UUID> primaryClusterAZsCompleted;
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Canary pause state when upgrade is"
+                + " paused at a canary point")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private CanaryPauseState canaryPauseState = null;
 
-    @ApiModelProperty private Map<UUID, List<UUID>> readReplicaClusterAZsCompleted;
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ master upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> masterAZUpgradeStatesList = new ArrayList<>();
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ tserver upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> tserverAZUpgradeStatesList = new ArrayList<>();
+
+    /**
+     * After YBA restart or task failure, any AZ left {@link AZUpgradeStatus#IN_PROGRESS} should be
+     * marked {@link AZUpgradeStatus#FAILED} so progress is not stuck mid-AZ.
+     */
+    public void markInProgressAzUpgradeStatusesAsFailed() {
+      if (masterAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : masterAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+      if (tserverAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : tserverAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+    }
   }
 
   // XCluster: All the xCluster related code resides in this section.

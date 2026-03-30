@@ -15,7 +15,11 @@ import static org.mockito.Mockito.when;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.AZUpgradeStatus;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
@@ -250,5 +254,56 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
               autoRetryableTaskUuids.remove(ct.getTaskUUID()));
         });
     assertEquals(0, autoRetryableTaskUuids.size());
+  }
+
+  @Test
+  public void testUpdateUniverseSoftwareUpgradeStateSetMarksInProgressAzFailed() {
+    universe = ModelFactory.createUniverse(customer.getId());
+    UUID taskUuid = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUuid);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUuid,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.SoftwareUpgradeYB,
+        "universe");
+
+    UUID azUuid = UUID.randomUUID();
+    UUID clusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    AZUpgradeState inProg =
+        new AZUpgradeState(
+            azUuid, "az-1", ServerType.TSERVER, clusterUuid, AZUpgradeStatus.IN_PROGRESS);
+
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams d = u.getUniverseDetails();
+          d.placementModificationTaskUuid = taskUuid;
+          d.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading;
+          d.prevYBSoftwareConfig = new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+          d.prevYBSoftwareConfig.getTserverAZUpgradeStatesList().add(inProg);
+          u.setUniverseDetails(d);
+        },
+        false);
+
+    taskManager.updateUniverseSoftwareUpgradeStateSet();
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        AZUpgradeStatus.FAILED,
+        universe
+            .getUniverseDetails()
+            .prevYBSoftwareConfig
+            .getTserverAZUpgradeStatesList()
+            .get(0)
+            .getStatus());
   }
 }

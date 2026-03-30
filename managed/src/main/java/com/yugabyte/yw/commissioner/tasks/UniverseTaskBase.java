@@ -5720,29 +5720,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
-  /** Creates a subtask that saves software upgrade progress and pauses after this subtask group. */
-  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
-      boolean mastersUpgradeCompleted,
-      List<UUID> primaryClusterAZsCompleted,
-      Map<UUID, List<UUID>> readReplicaClusterAZsCompleted) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("SaveSoftwareUpgradeProgress");
-    subTaskGroup.setPausedAfter(true);
-    SaveSoftwareUpgradeProgress.Params params = new SaveSoftwareUpgradeProgress.Params();
-    params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.mastersUpgradeCompleted = mastersUpgradeCompleted;
-    params.primaryClusterAZsCompleted =
-        primaryClusterAZsCompleted != null ? new ArrayList<>(primaryClusterAZsCompleted) : null;
-    params.readReplicaClusterAZsCompleted =
-        readReplicaClusterAZsCompleted != null
-            ? new HashMap<>(readReplicaClusterAZsCompleted)
-            : null;
-    SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
-    task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   /** Mark YBC backup state as completed and updates its expiry time. */
   public SubTaskGroup createMarkYBCBackupSucceeded(UUID customerUUID, UUID backupUUID) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("MarkYBCBackupSucceed");

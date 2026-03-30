@@ -145,6 +145,49 @@
       },
       "type" : "object"
     },
+    "AZUpgradeState" : {
+      "description" : "Availability zone software upgrade state",
+      "properties" : {
+        "azName" : {
+          "description" : "WARNING: This is a preview API that could change. Availability zone name for this upgrade state entry",
+          "type" : "string"
+        },
+        "azUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Availability zone UUID for this upgrade state entry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusterUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Cluster UUID (primary or read replica) for this AZ",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "serverType" : {
+          "description" : "WARNING: This is a preview API that could change. Server type (MASTER or TSERVER) for this AZ",
+          "enum" : [
+            "MASTER",
+            "TSERVER",
+            "CONTROLLER",
+            "YQLSERVER",
+            "YSQLSERVER",
+            "REDISSERVER",
+            "EITHER"
+          ],
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ upgrade status: NOT_STARTED; IN_PROGRESS before that AZ's upgrade subtasks run, then COMPLETED when done, or FAILED on task failure / YBA restart; COMPLETED; FAILED (subtask failure or stale IN_PROGRESS after upgrade failure / platform restart)",
+          "enum" : [
+            "NOT_STARTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "FAILED"
+          ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "AZUpgradeStep" : {
       "description" : "AZ upgrade step: order is list order; pauseAfterTserverUpgrade controls canary pause after this AZ",
       "properties" : {
@@ -15630,33 +15673,42 @@
         "canRollbackCatalogUpgrade" : {
           "type" : "boolean"
         },
-        "mastersUpgradeCompleted" : {
+        "canaryPauseState" : {
+          "description" : "WARNING: This is a preview API that could change. Canary pause state when upgrade is paused at a canary point",
+          "enum" : [
+            "NOT_PAUSED",
+            "PAUSED_AFTER_MASTERS",
+            "PAUSED_AFTER_TSERVERS_AZ"
+          ],
+          "type" : "string"
+        },
+        "canaryUpgrade" : {
           "type" : "boolean"
         },
-        "primaryClusterAZsCompleted" : {
+        "masterAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ master upgrade progress (standard and canary)",
           "items" : {
-            "format" : "uuid",
-            "type" : "string"
+            "$ref" : "#/definitions/AZUpgradeState"
           },
           "type" : "array"
-        },
-        "readReplicaClusterAZsCompleted" : {
-          "additionalProperties" : {
-            "items" : {
-              "format" : "uuid",
-              "type" : "string"
-            },
-            "type" : "array"
-          },
-          "type" : "object"
         },
         "softwareVersion" : {
           "type" : "string"
         },
         "targetUpgradeSoftwareVersion" : {
           "type" : "string"
+        },
+        "tserverAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ tserver upgrade progress (standard and canary)",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
         }
       },
+      "required" : [
+        "canaryUpgrade"
+      ],
       "type" : "object"
     },
     "Principal" : {
