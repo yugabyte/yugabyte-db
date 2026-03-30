@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-The archive changes command limits the disk space used by the locally queued CDC events. After the changes from the local queue are applied on the target YugabyteDB database (and source-replica database), they are eligible for deletion. The command gives an option to archive the changes before deleting by moving them to another directory.
+The archive changes command limits the disk space used by the locally queued CDC events. After the changes from the local queue are applied on the target YugabyteDB database (and source-replica database), they are eligible for deletion.
 
-Note that even if some changes are applied to the target databases, locally queued CDC events are deleted only after the disk use exceeds 70%.
+You can either choose to delete the segments or archive them to a separate location.
 
 ## Syntax
 
@@ -32,14 +32,6 @@ When run at the same time, flags take precedence over configuration flag setting
 | <div style="width:150px">CLI flag</div> | Config file parameter | Description |
 | :--- | :-------- | :---------- |
 
-| --delete-changes-without-archiving |
-
-```yaml{.nocopy}
-archive-changes:
-  delete-changes-without-archiving:
-```
-
-|Delete the imported changes without archiving them. Note that the changes are deleted from the export directory only after disk utilisation exceeds 70%. <br>Default: false <br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --fs-utilization-threshold |
 
 ```yaml{.nocopy}
@@ -47,15 +39,14 @@ archive-changes:
   fs-utilization-threshold:
 ```
 
-|Disk utilization threshold in percentage. <br>Default: 70 |
-| --move-to |
+|Disk utilization threshold in percentage for the export directory. Used only with `--policy delete`. <br>Default: 70 |
+| --policy |
 
-```yaml{.nocopy}
-archive-changes:
-  move-to:
+```yaml {.nocopy}
+policy:
 ```
 
-|Path to the directory where the imported change events are to be moved to. Note that the changes are deleted from the export directory only after the disk use exceeds 70%. |
+| Specifies how to handle processed segments: `delete` or `archive`. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -63,6 +54,13 @@ export-dir:
 ```
 
 |Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
+| --archive-dir |
+
+```yaml {.nocopy}
+archive-dir: 
+```
+
+| An existing directory to copy processed segments into before they are removed from the export directory. <br> Required when policy is `archive`. |
 | --send-diagnostics |
 
 ```yaml{.nocopy}
