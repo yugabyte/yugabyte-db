@@ -14,7 +14,8 @@ import {
   CommunicationPortsSpec,
   PlacementRegion,
   UniverseCreateReqBody,
-  ClusterNetworkingSpecAllOfEnableExposingService
+  ClusterNetworkingSpecAllOfEnableExposingService,
+  EncryptionInTransitSpec
 } from '../../../../v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
   CloudType,
@@ -24,6 +25,7 @@ import {
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
 import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from './fields/FieldNames';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
+import { SecuritySettingsProps, CertType } from './steps/security-settings/dtos';
 
 export function getCreateUniverseSteps(t: TFunction, resilienceType?: ResilienceType) {
   return [
@@ -282,6 +284,66 @@ export const canSelectMultipleRegions = (resilienceType?: ResilienceType) => {
   return resilienceType !== ResilienceType.SINGLE_NODE;
 };
 
+export const getCreateEITPayload = (
+  securitySettings: SecuritySettingsProps,
+  cloudType: CloudType
+): EncryptionInTransitSpec => {
+  const {
+    enableNodeToNodeEncryption,
+    enableClientToNodeEncryption,
+    rootCertificate,
+    certType
+  } = securitySettings;
+  if (cloudType === CloudType.kubernetes) {
+    return {
+      enable_node_to_node_encrypt: securitySettings?.enableNodeToNodeEncryption ? true : false,
+      enable_client_to_node_encrypt: securitySettings?.enableClientToNodeEncryption ? true : false,
+      root_ca: securitySettings?.enableNodeToNodeEncryption
+        ? certType === CertType?.CUSTOM
+          ? securitySettings?.rootCertificate
+          : ''
+        : '',
+      client_root_ca: securitySettings?.enableClientToNodeEncryption
+        ? certType === CertType?.CUSTOM
+          ? securitySettings?.rootCertificate
+          : ''
+        : ''
+    };
+  } else {
+    const {
+      useSameCertificate,
+      enableBothEncryption,
+      rootCToNCertificate,
+      rootNToNCertificate,
+      certType,
+      certTypeCToN,
+      certTypeNtoN
+    } = securitySettings;
+    return {
+      enable_node_to_node_encrypt: useSameCertificate
+        ? enableBothEncryption
+        : enableNodeToNodeEncryption,
+      enable_client_to_node_encrypt: useSameCertificate
+        ? enableBothEncryption
+        : enableClientToNodeEncryption,
+      root_ca: useSameCertificate
+        ? certType === CertType.CUSTOM
+          ? rootCertificate
+          : ''
+        : certTypeNtoN === CertType.CUSTOM
+        ? rootNToNCertificate
+        : '',
+      client_root_ca: useSameCertificate
+        ? certType === CertType.CUSTOM
+          ? rootCertificate
+          : ''
+        : certTypeCToN === CertType.CUSTOM
+        ? rootCToNCertificate
+        : ''
+    };
+  }
+};
+
 export const mapCreateUniversePayload = (
   formValues: createUniverseFormProps
 ): UniverseCreateReqBody => {
@@ -315,6 +377,7 @@ export const mapCreateUniversePayload = (
   );
 
   const gflags = mapGFlags(databaseSettings.gFlags);
+  const providerType = generalSettings?.providerConfiguration?.code;
 
   const payload: UniverseCreateReqBody = {
     arch: instanceSettings.arch,
@@ -324,12 +387,7 @@ export const mapCreateUniversePayload = (
       encryption_at_rest_spec: {
         kms_config_uuid: securitySettings.kmsConfig
       },
-      encryption_in_transit_spec: {
-        root_ca: securitySettings.rootCertificate,
-        client_root_ca: securitySettings.rootCToNCertificate,
-        enable_client_to_node_encrypt: securitySettings.enableClientToNodeEncryption,
-        enable_node_to_node_encrypt: securitySettings.enableNodeToNodeEncryption
-      },
+      encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType),
       use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...databaseSettings.ycql
@@ -342,7 +400,7 @@ export const mapCreateUniversePayload = (
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
         communication_ports: mapCommunicationPorts(otherAdvancedSettings),
-        enable_ipv6: otherAdvancedSettings.enableIPV6 ?? false,
+        enable_ipv6: securitySettings.enableIPV6 ?? false,
         ...(otherAdvancedSettings?.enableExposingService && {
           enable_exposing_service: ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED
         })
@@ -368,13 +426,12 @@ export const mapCreateUniversePayload = (
               ['gflag_groups']: ['ENHANCED_POSTGRES_COMPATIBILITY']
             })
           },
-          instance_tags: otherAdvancedSettings.instanceTags.reduce(
-            (acc, tag) => {
+          ...(providerType !== CloudType.kubernetes && {
+            instance_tags: otherAdvancedSettings?.instanceTags.reduce((acc, tag) => {
               acc[tag.name] = tag.value;
               return acc;
-            },
-            {} as Record<string, string>
-          ),
+            }, {} as Record<string, string>)
+          }),
           networking_spec: {
             enable_lb: true,
             enable_exposing_service: 'UNEXPOSED',
@@ -677,7 +734,7 @@ export const computeResilienceTypeFromProvider = (
   [RESILIENCE_FACTOR]: number;
 } => {
   const numOfRegions = provider.regions.length;
-  const numOfAZs = (provider.regions as unknown as Region[]).reduce(
+  const numOfAZs = ((provider.regions as unknown) as Region[]).reduce(
     (acc, region) => acc + region.zones.length,
     0
   );

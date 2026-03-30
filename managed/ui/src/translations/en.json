@@ -3497,6 +3497,8 @@
         "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges tocomplete this step.",
+        "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
         "databaseVersion": "Database Version",
         "databaseVersionPlaceholder": "Select Database Version",
         "errMsg": {
@@ -3768,6 +3770,7 @@
       },
       "securitySettings": {
         "publicIPTitle": "Public IP assignment",
+        "networkAcessTitle": "Network Access",
         "eitTitle": "Encryption in Transit Settings",
         "earTitle": "Encryption at Rest Settings",
         "publicIPField": {
@@ -3786,8 +3789,15 @@
           "selectRootCert": "Select Root Certificate",
           "rootCertificatePlaceHolder": "Select",
           "genSelfSignedCert": "Generate Self Signed Certificate",
-          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption"
-        }
+          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption",
+          "eitLabel": "Enable Encryption in Transit",
+          "nodeToNodeLabel": "<strong>Node-to-Node</strong> Encryption",
+          "clientToNodeLabel": "<strong>Client-to-Node</strong> Encryption",
+          "certTypeLabel": "Certificate Type",
+          "selfGenerated": "Use system-generated (self-signed) certificate",
+          "customManaged": "Use customer-managed certificate"
+        },
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
       },
       "proxySettings": {
         "header": "Proxy Configuration",

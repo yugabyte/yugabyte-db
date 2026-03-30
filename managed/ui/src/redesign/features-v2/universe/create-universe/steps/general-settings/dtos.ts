@@ -23,7 +23,7 @@ export interface ProviderType extends Provider {
 }
 export interface GeneralSettingsProps {
   [UNIVERSE_NAME]: UniverseSpec['name'];
-  [PROVIDER_CONFIGURATION]: ProviderType;
+  [PROVIDER_CONFIGURATION]: ProviderType | undefined;
   [DATABASE_VERSION]: UniverseInfo['ybc_software_version'];
   [CLOUD]: string;
 }

@@ -10,8 +10,17 @@
 import { ChangeEvent } from 'react';
 import { sortBy } from 'lodash';
 import { useQuery } from 'react-query';
-import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
-import { YBAutoComplete, YBLabel, YBSelectProps, mui } from '@yugabyte-ui-library/core';
+import { useTranslation, Trans } from 'react-i18next';
+import { useUpdateEffect } from 'react-use';
+import {
+  Controller,
+  FieldValues,
+  Path,
+  PathValue,
+  useFormContext,
+  useWatch
+} from 'react-hook-form';
+import { YBAutoComplete, YBLabel, YBSelectProps, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
 import { YBProvider } from '../../../../../../components/configRedesign/providerRedesign/types';
 import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
@@ -19,6 +28,9 @@ import {
   ProviderCode,
   ProviderStatus
 } from '../../../../../../components/configRedesign/providerRedesign/constants';
+
+//icons
+import InfoIcon from '../../../../../assets/info-new.svg';
 
 interface ProviderConfigurationFieldProps<T extends FieldValues>
   extends Omit<YBSelectProps, 'name' | 'control'> {
@@ -38,7 +50,7 @@ export interface Provider {
   details: Record<string, any>;
 }
 
-const { Box } = mui;
+const { Box, Typography } = mui;
 
 export const ProviderConfigurationField = <T extends FieldValues>({
   name,
@@ -49,6 +61,7 @@ export const ProviderConfigurationField = <T extends FieldValues>({
   disabled
 }: ProviderConfigurationFieldProps<T>) => {
   const { control, setValue } = useFormContext<T>();
+  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
   const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
     enabled: !!filterByProvider
   });
@@ -76,6 +89,25 @@ export const ProviderConfigurationField = <T extends FieldValues>({
     }
   };
 
+  useUpdateEffect(() => {
+    setValue('providerConfiguration' as Path<T>, null as PathValue<T, Path<T>>);
+  }, [filterByProvider]);
+
+  const renderEmptyState = () => {
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', padding: '8px 0px' }}>
+        <Typography sx={{ color: '#4E5F6D' }} variant="subtitle1">
+          <Trans
+            t={t}
+            i18nKey={'providerEmptyState'}
+            components={{ a: <br />, b: <strong /> }}
+            values={{ providerCode: filterByProvider?.toUpperCase() }}
+          />
+        </Typography>
+      </Box>
+    );
+  };
+
   return (
     <Controller
       control={control}
@@ -84,7 +116,14 @@ export const ProviderConfigurationField = <T extends FieldValues>({
         const value = providersList.find((provider) => provider.uuid === field.value?.uuid) ?? null;
         return (
           <div>
-            <YBLabel error={!!fieldState.error}>{label}</YBLabel>
+            <YBLabel error={!!fieldState.error}>
+              {label}
+              <YBTooltip title={t('providerTooltip')} placement="top-start">
+                <span style={{ marginTop: '4px' }}>
+                  <InfoIcon />
+                </span>
+              </YBTooltip>
+            </YBLabel>
             <Box sx={{ flex: 1 }}>
               <YBAutoComplete
                 loading={isLoading}
@@ -104,6 +143,7 @@ export const ProviderConfigurationField = <T extends FieldValues>({
                 dataTestId="ProvidersField-AutoComplete-container"
                 size="large"
                 disabled={disabled}
+                noOptionsText={renderEmptyState()}
               />
             </Box>
           </div>
