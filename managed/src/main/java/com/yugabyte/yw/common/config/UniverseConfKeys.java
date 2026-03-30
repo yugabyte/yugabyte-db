@@ -1825,14 +1825,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " Servers). Used when task params do not override.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
-      new ConfKeyInfo<>(
-          "yb.checks.tablespaces_before_edit.enabled",
-          ScopeType.UNIVERSE,
-          "Check if edit operation will affect existing tablespaces",
-          "Check if edit operation will affect existing tablespaces",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_new_perf_advisor_ui",
