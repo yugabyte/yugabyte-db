@@ -82,14 +82,14 @@ ORDER BY
  -1970690938654296136 | TServer              | Raft_WaitingForReplication         | RPCWait         |   194
  -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |    18
  -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |     5
- -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |  1023
+ -1970690938654296136 | YSQL                 | OnCpu_Active                       | Cpu             |  1023
                     0 | TServer              | OnCpu_Passive                      | Cpu             |    10
                     0 | TServer              | OnCpu_Active                       | Cpu             |     9
   6107501747146929242 | TServer              | OnCpu_Active                       | Cpu             |   208
   6107501747146929242 | TServer              | RocksDB_NewIterator                | DiskIO          |     5
   6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
   6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
-  6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
+  6107501747146929242 | YSQL                 | OnCpu_Active                       | Cpu             |   285
   6107501747146929242 | YSQL                 | TableRead                          | RPCWait         |   658
   6107501747146929242 | YSQL                 | CatalogRead                        | RPCWait         |     1
 ```
@@ -136,7 +136,7 @@ ORDER BY
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  1359
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Rpc_Done                                 | WaitOnCondition |     5
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | LockedBatchEntry_Lock                    | WaitOnCondition |   141
- UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | QueryProcessing                          | Cpu             |  1929
+ UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | OnCpu_Active                             | Cpu             |  1929
 ```
 
 ### Detect a hot shard
@@ -359,7 +359,7 @@ GROUP BY
 ```
 
 ```output
-                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count 
+                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count
 ----------------------------------------------------+--------------------------------------+-----------+------+-------+---------+------------+-------
  COMMIT                                             | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
  ANALYZE "public"."postgresqlkeyvalue"              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |    44
