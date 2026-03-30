@@ -40,8 +40,8 @@ void AppendLineToStream(const std::string& s, ostream* out) {
 
 std::pair<Result<std::string>, Result<std::string>> DumpEntryToString(
     Slice key, Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    StorageDbType db_type) {
-  const auto key_str = DocDBKeyToDebugStr(key, db_type);
+    StorageDbType db_type, IncludeWriteTime include_write_time) {
+  const auto key_str = DocDBKeyToDebugStr(key, db_type, include_write_time);
   if (!key_str.ok()) {
     return {key_str.status(), value.ToDebugHexString()};
   }
@@ -52,8 +52,10 @@ std::pair<Result<std::string>, Result<std::string>> DumpEntryToString(
 template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    StorageDbType db_type, IncludeBinary include_binary, DumpStringFunc func) {
-  auto [key_res, value_res] = DumpEntryToString(key, value, schema_packing_provider, db_type);
+    StorageDbType db_type, IncludeBinary include_binary, IncludeWriteTime include_write_time,
+    DumpStringFunc func) {
+  auto [key_res, value_res] = DumpEntryToString(
+      key, value, schema_packing_provider, db_type, include_write_time);
   func(Format("$0 -> $1", key_res, value_res));
   if (include_binary) {
     func(Format("$0 -> $1\n", FormatSliceAsStr(key), FormatSliceAsStr(value)));
@@ -63,7 +65,8 @@ void ProcessDumpEntry(
 template <class DumpStringFunc>
 void DocDBDebugDump(
     rocksdb::DB* rocksdb, SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    StorageDbType db_type, IncludeBinary include_binary, DumpStringFunc dump_func) {
+    StorageDbType db_type, IncludeBinary include_binary, IncludeWriteTime include_write_time,
+    DumpStringFunc dump_func) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
   auto iter = std::unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
@@ -71,7 +74,8 @@ void DocDBDebugDump(
 
   while (iter->Valid()) {
     ProcessDumpEntry(
-        iter->key(), iter->value(), schema_packing_provider, db_type, include_binary, dump_func);
+        iter->key(), iter->value(), schema_packing_provider, db_type, include_binary,
+        include_write_time, dump_func);
     iter->Next();
   }
   const auto s = iter->status();
@@ -85,7 +89,8 @@ void DocDBDebugDump(
 std::string EntryToString(
     const Slice key, const Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type, const std::string& key_suffix, AllowEmptyValue allow_empty_value) {
-  auto [key_res, value_res] = DumpEntryToString(key, value, schema_packing_provider, db_type);
+  auto [key_res, value_res] = DumpEntryToString(
+      key, value, schema_packing_provider, db_type, IncludeWriteTime::kTrue);
   std::string value_str;
   auto value_copy = value;
   if (value_res.ok()) {
@@ -116,23 +121,33 @@ std::string EntryToString(
 void DocDBDebugDump(
     rocksdb::DB* rocksdb, ostream& out,
     SchemaPackingProvider* schema_packing_provider /*null ok*/, StorageDbType db_type,
-    IncludeBinary include_binary) {
+    IncludeBinary include_binary, IncludeWriteTime include_write_time) {
   DocDBDebugDump(
-      rocksdb, schema_packing_provider, db_type, include_binary,
+      rocksdb, schema_packing_provider, db_type, include_binary, include_write_time,
       std::bind(&AppendLineToStream, _1, &out));
 }
 
 std::string DocDBDebugDumpToStr(
     DocDB docdb, SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    IncludeBinary include_binary) {
+    IncludeBinary include_binary, IncludeWriteTime include_write_time) {
   std::stringstream ss;
   DocDBDebugDump(
-      docdb.regular, ss, schema_packing_provider, StorageDbType::kRegular, include_binary);
+      docdb.regular, ss, schema_packing_provider, StorageDbType::kRegular, include_binary,
+      include_write_time);
   if (docdb.intents) {
     DocDBDebugDump(
-        docdb.intents, ss, schema_packing_provider, StorageDbType::kIntents, include_binary);
+        docdb.intents, ss, schema_packing_provider, StorageDbType::kIntents, include_binary,
+        include_write_time);
   }
   return ss.str();
+}
+
+std::string DocDBDebugDumpToStr(
+    DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time) {
+  return DocDBDebugDumpToStr(
+      docdb, schema_packing_provider, IncludeBinary::kFalse, include_write_time);
 }
 
 std::string DocDBDebugDumpToStr(
@@ -157,27 +172,46 @@ void AppendToContainer(const std::string& s, std::vector<std::string>* out) {
 
 template <class T>
 void DocDBDebugDumpToContainer(
-    rocksdb::DB* rocksdb, SchemaPackingProvider* schema_packing_provider /*null ok*/, T* out,
-    StorageDbType db_type) {
+    rocksdb::DB* rocksdb, SchemaPackingProvider* schema_packing_provider /*null ok*/, T& out,
+    StorageDbType db_type, IncludeWriteTime include_write_time) {
   void (*f)(const std::string&, T*) = AppendToContainer;
   DocDBDebugDump(
-      rocksdb, schema_packing_provider, db_type, IncludeBinary::kFalse, std::bind(f, _1, out));
+      rocksdb, schema_packing_provider, db_type, IncludeBinary::kFalse, include_write_time,
+      std::bind(f, _1, &out));
+}
+
+template <class Out>
+void DocDBDebugDumpToContainerImpl(
+    Out& out, DocDB docdb, SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time) {
+  DocDBDebugDumpToContainer(
+      docdb.regular, schema_packing_provider, out, StorageDbType::kRegular, include_write_time);
+  if (docdb.intents) {
+    DocDBDebugDumpToContainer(
+        docdb.intents, schema_packing_provider, out, StorageDbType::kIntents, include_write_time);
+  }
 }
 
 void DocDBDebugDumpToContainer(
-    DocDB docdb, SchemaPackingProvider* schema_packing_provider /*null ok*/,
-    std::unordered_set<std::string>* out) {
-  DocDBDebugDumpToContainer(docdb.regular, schema_packing_provider, out, StorageDbType::kRegular);
-  if (docdb.intents) {
-    DocDBDebugDumpToContainer(docdb.intents, schema_packing_provider, out, StorageDbType::kIntents);
-  }
+    std::unordered_set<std::string>& out, DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time) {
+  DocDBDebugDumpToContainerImpl(out, docdb, schema_packing_provider, include_write_time);
+}
+
+void DocDBDebugDumpToContainer(
+    std::vector<std::string>& out, DocDB docdb,
+    SchemaPackingProvider* schema_packing_provider /*null ok*/,
+    IncludeWriteTime include_write_time) {
+  DocDBDebugDumpToContainerImpl(out, docdb, schema_packing_provider, include_write_time);
 }
 
 void DumpRocksDBToLog(
     rocksdb::DB* rocksdb, SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type, const std::string& log_prefix) {
   std::vector<std::string> lines;
-  DocDBDebugDumpToContainer(rocksdb, schema_packing_provider, &lines, db_type);
+  DocDBDebugDumpToContainer(
+      rocksdb, schema_packing_provider, lines, db_type, IncludeWriteTime::kTrue);
   LOG(INFO) << log_prefix << AsString(db_type) << " DB dump:";
   for (const auto& line : lines) {
     LOG(INFO) << log_prefix << "  " << line;

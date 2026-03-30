@@ -82,7 +82,7 @@ TEST_F(AdvisoryLockDocOperationTest, ExclusiveLock) {
   ASSERT_OK(Lock(kDBOid, 2, 3, 4,
                  PgsqlLockRequestPB::PG_LOCK_EXCLUSIVE, true));
   std::unordered_set<std::string> locks;
-  DocDBDebugDumpToContainer(&locks);
+  DocDBDebugDumpToContainer(locks);
   LOG(INFO) << CollectionToString(locks);
   ASSERT_TRUE(locks.contains(Format(
       "SubDocKey(DocKey(0x0000, [1111], [2, 3, 4]), []) [kStrongRead, kStrongWrite] "
@@ -97,7 +97,7 @@ TEST_F(AdvisoryLockDocOperationTest, ShareLock) {
   ASSERT_OK(Lock(kDBOid, 4, 5, 6,
                  PgsqlLockRequestPB::PG_LOCK_SHARE, true));
   std::unordered_set<std::string> locks;
-  DocDBDebugDumpToContainer(&locks);
+  DocDBDebugDumpToContainer(locks);
   ASSERT_TRUE(locks.contains(Format(
       "SubDocKey(DocKey(0x0000, [1111], [2, 3, 4]), []) [kStrongRead] "
       "HT<max> -> TransactionId($0) WriteId(0) l",

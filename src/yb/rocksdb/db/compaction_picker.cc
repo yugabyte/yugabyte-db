@@ -1599,8 +1599,9 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::DoPickCompaction(
           ioptions_.compaction_options_universal.always_include_size_threshold,
           sorted_runs, log_buffer);
       if (c) {
-        LOG_TO_BUFFER_DETAIL(log_buffer, "[%s] Universal: compacting for size ratio\n",
-                    cf_name.c_str());
+        LOG_TO_BUFFER_DETAIL(
+            log_buffer, "[%s] Universal: compacting for size ratio, stop_style: %d\n",
+            cf_name.c_str(), ioptions_.compaction_options_universal.stop_style);
       } else {
         // ENG-1401: We trigger compaction logic when num files exceeds
         // level0_file_num_compaction_trigger. However, we only want to compact based on
@@ -1751,6 +1752,10 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
   // important because otherwise we may have a possible integer underflow when
   // dealing with unsigned types.
   assert(sorted_runs.size() > 0);
+
+  RDEBUG(
+    ioptions_.info_log, "[%s] Universal: stop_style %d",
+    cf_name.c_str(), ioptions_.compaction_options_universal.stop_style);
 
   // Considers a candidate file only if it is smaller than the
   // total size accumulated so far.

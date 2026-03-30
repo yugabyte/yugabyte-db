@@ -26,7 +26,14 @@ namespace docdb {
 
 Result<std::string> DocDBKeyToDebugStr(
     Slice key_slice, StorageDbType db_type,
-    dockv::HybridTimeRequired htRequired = dockv::HybridTimeRequired::kTrue);
+    dockv::HybridTimeRequired ht_required = dockv::HybridTimeRequired::kTrue,
+    IncludeWriteTime include_write_time = IncludeWriteTime::kTrue);
+
+inline Result<std::string> DocDBKeyToDebugStr(
+    Slice key_slice, StorageDbType db_type, IncludeWriteTime include_write_time) {
+  return DocDBKeyToDebugStr(
+      key_slice, db_type, dockv::HybridTimeRequired::kTrue, include_write_time);
+}
 
 Result<std::string> DocDBValueToDebugStr(
     KeyType key_type, Slice key, Slice value,
