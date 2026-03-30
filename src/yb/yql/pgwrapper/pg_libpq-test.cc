@@ -4335,18 +4335,45 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
     // Check that the sum of the cache misses for all the indexes on each table is equal to the
     // table-level cache miss metric.
     int64_t total_table_cache_misses = 0;
+    std::unordered_map<std::string, int64_t> per_table_table_misses;
     for (const auto& metric : metrics) {
       if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos) {
         auto table_name = metric.labels.at("table_name");
         ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
             << "Expected sum of index cache misses for table " << table_name
             << " to be equal to the table cache misses";
+        per_table_table_misses[table_name] = metric.value;
         total_table_cache_misses += metric.value;
         LOG_IF(INFO, metric.value > 0)
             << "Table " << table_name << " has " << metric.value << " cache misses";
       }
     }
     ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
+
+    // Verify that list miss and neg miss metrics are exported and
+    // that list_misses + neg_misses <= total table misses for each table.
+    int64_t total_list_misses = 0;
+    int64_t total_neg_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        total_list_misses += metric.value;
+        ASSERT_LE(metric.value, per_table_table_misses[table_name])
+            << "List misses for " << table_name << " should not exceed total table misses";
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " list cache misses";
+      }
+      if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        total_neg_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " negative cache misses";
+      }
+    }
+    LOG(INFO) << "Total list misses: " << total_list_misses
+              << ", total neg misses: " << total_neg_misses;
+    ASSERT_GT(total_list_misses + total_neg_misses, 0)
+        << "Expected at least some list or neg misses";
   }
 }
 
@@ -4358,26 +4385,35 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     PgLibPqTest::UpdateMiniClusterOptions(options);
   }
 
+
   void TestAmopNegCacheMiss(bool preloaded) {
+  struct AmopMetrics {
+    int64_t total;
+    int64_t negative;
+  };
+
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.Execute("CREATE TABLE test(k TEXT PRIMARY KEY)"));
 
     auto conn2 = ASSERT_RESULT(Connect());
-    auto runQueryAndGetMetricLambda = [&]() -> Result<int64_t> {
-      // This query currently causes a cache lookup on pg_amop for a row that doesn't exist
+    auto runQueryAndGetMetrics = [&]() -> Result<AmopMetrics> {
       auto str = VERIFY_RESULT(
           conn2.FetchAllAsString("EXPLAIN (ANALYZE, DIST) SELECT * FROM test WHERE k <> 'a'"));
       LOG(INFO) << "output " << str;
 
-      auto value = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
-      LOG(INFO) << "metric value for pg_amop misses " << value;
-      return value;
+      AmopMetrics m;
+      m.total = VERIFY_RESULT(GetCatCacheTableMissMetric("pg_amop"));
+      m.negative = VERIFY_RESULT(GetCatCacheNegMissMetric("pg_amop"));
+      LOG(INFO) << "pg_amop total misses " << m.total
+                << ", neg misses " << m.negative;
+      return m;
     };
 
-    int64_t value1 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-    int64_t value2 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    auto m1 = ASSERT_RESULT(runQueryAndGetMetrics());
+    auto m2 = ASSERT_RESULT(runQueryAndGetMetrics());
 
-    ASSERT_GT(value2, value1);
+    ASSERT_GT(m2.total, m1.total);
+    ASSERT_GT(m2.negative, m1.negative);
 
     LOG(INFO) << "Testing invalid values for yb_neg_catcache_ids";
     ASSERT_NOK_PG_ERROR_CODE(conn2.Execute("SET yb_neg_catcache_ids='52252'"),
@@ -4389,19 +4425,22 @@ class PgLibPqAmopNegCacheTest : public PgLibPqTest {
     LOG(INFO) << "Completed invalid tests";
 
     ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='3'"));
-    int64_t value3 = ASSERT_RESULT(runQueryAndGetMetricLambda());
+    auto m3 = ASSERT_RESULT(runQueryAndGetMetrics());
 
     if (preloaded) {
       // When preloaded, allowing neg caching already returns a neg cache hit
       // so we should see no further misses on pg_amop at this point.
-      ASSERT_EQ(value3, value2);
+      ASSERT_EQ(m3.total, m2.total);
+      ASSERT_EQ(m3.negative, m2.negative);
     } else {
       // When not preloaded, we need one additional query to create the neg
       // cache entry, after which we should see no further misses.
-      ASSERT_GT(value3, value2);
+      ASSERT_GT(m3.total, m2.total);
+      ASSERT_GT(m3.negative, m2.negative);
 
-      int64_t value4 = ASSERT_RESULT(runQueryAndGetMetricLambda());
-      ASSERT_EQ(value4, value3);
+      auto m4 = ASSERT_RESULT(runQueryAndGetMetrics());
+      ASSERT_EQ(m4.total, m3.total);
+      ASSERT_EQ(m4.negative, m3.negative);
     }
   }
 };
@@ -4438,6 +4477,61 @@ TEST_F_EX(PgLibPqTest, PgAmopPreloadNegCacheTest, PgLibPqAmopPreloadNegCacheTest
   TestAmopNegCacheMiss(true);
 }
 
+class PgLibPqOperatorCacheLazyListTest : public PgLibPqTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_debug_log_catcache_events=true");
+    options->extra_tserver_flags.emplace_back(
+        "--ysql_catalog_preload_additional_table_list=pg_operator");
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, PgOperatorCacheLazyList, PgLibPqOperatorCacheLazyListTest) {
+  // Phase 1: With yb_catcache_list_from_preloaded_limit = 100000 (default),
+  // the lazy list build should satisfy the list miss locally -- no RPC misses.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_catcache_list_from_preloaded_limit = 100000"));
+
+    auto start_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto start_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+
+    auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 2 + 2"));
+    ASSERT_EQ(result, 4);
+
+    auto end_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto end_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+    LOG(INFO) << "Lazy build (limit=100K): table misses " << start_misses
+              << " -> " << end_misses
+              << ", list misses " << start_list << " -> " << end_list;
+    ASSERT_EQ(end_misses, 0);
+    ASSERT_EQ(end_list, 0);
+  }
+
+  // Phase 2: With yb_catcache_list_from_preloaded_limit = 0, the lazy build
+  // is disabled and the list miss must go to the master -- expect misses.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET yb_catcache_list_from_preloaded_limit = 0"));
+
+    auto start_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto start_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+
+    auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT 2 + 2"));
+    ASSERT_EQ(result, 4);
+
+    auto end_misses = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_operator"));
+    auto end_list = ASSERT_RESULT(GetCatCacheListMissMetric("pg_operator"));
+    LOG(INFO) << "No lazy build (limit=0): table misses " << start_misses
+              << " -> " << end_misses
+              << ", list misses " << start_list << " -> " << end_list;
+    ASSERT_GT(end_misses, start_misses);
+    ASSERT_GT(end_list, start_list);
+  }
+}
+
 class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -4460,25 +4554,33 @@ class PgLibPqPgInheritsNegCacheTest : public PgLibPqTest {
       "CREATE UNIQUE INDEX ON foo (v1, r);"
       "INSERT INTO foo VALUES (1,1,1,1);"));
 
-    auto start_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_total = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto start_neg = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_inherits"));
 
     // Run the query on a fresh conn
     auto conn2 = ASSERT_RESULT(Connect());
     auto str = conn2.FetchAllAsString(
         "EXPLAIN (ANALYZE, DIST) INSERT INTO foo VALUES (1,1,1,1) ON CONFLICT (h, r) DO UPDATE SET "
         "v2=foo.v2+1");
-    auto end_value = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_total = ASSERT_RESULT(GetCatCacheTableMissMetric("pg_inherits"));
+    auto end_neg = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_inherits"));
+
+    LOG(INFO) << "pg_inherits total misses: " << start_total << " -> " << end_total
+              << ", neg misses: " << start_neg << " -> " << end_neg;
 
     int32_t updated_v2 = ASSERT_RESULT(conn2.FetchRow<int32_t>(
         "SELECT v2 FROM foo WHERE h=1 AND r=1"));
     ASSERT_EQ(2, updated_v2);
 
-    // Given we are preloaded, we should not have any cache misses (incl neg misses)
-    // for the query above which should cause lookups for ancestors of a table in pg_inherits
-    if (!minimal_preload)
-      ASSERT_EQ(end_value, start_value);
-    else
-      ASSERT_GT(end_value, start_value);
+    if (!minimal_preload) {
+      ASSERT_EQ(end_total, start_total);
+      ASSERT_EQ(end_neg, start_neg);
+    } else {
+      ASSERT_GT(end_total, start_total);
+      // Some of the misses under minimal preload should be negative (lookups
+      // for non-existent parent relations).
+      ASSERT_GE(end_neg, start_neg);
+    }
   }
 };
 
@@ -4579,6 +4681,8 @@ TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimal
   ASSERT_OK(conn2.Execute("SET yb_neg_catcache_ids='23,24'"));
   ASSERT_OK(conn2.Execute("INSERT INTO user_enum_table VALUES ('red')"));
 
+  auto neg_before = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_enum"));
+
   auto result = ASSERT_RESULT(conn2.FetchRow<std::string>(
       "SELECT c::text FROM user_enum_table"));
   ASSERT_EQ(result, "red");
@@ -4586,6 +4690,13 @@ TEST_F_EX(PgLibPqTest, PgEnumMinPreloadNegativeCaching, BasePgEnumPreloadMinimal
   auto cast_result = ASSERT_RESULT(conn2.FetchRow<std::string>(
       "SELECT 'green'::user_color::text"));
   ASSERT_EQ(cast_result, "green");
+
+  auto neg_after = ASSERT_RESULT(GetCatCacheNegMissMetric("pg_enum"));
+  LOG(INFO) << "pg_enum neg misses: " << neg_before << " -> " << neg_after;
+
+  // pg_enum is preloaded and the enum values exist, so there should be
+  // no neg misses (all lookups find the tuple).
+  ASSERT_EQ(neg_after, 0);
 }
 
 // Test that preloading pg_range prevents cache misses on the RANGEMULTIRANGE catcache.
