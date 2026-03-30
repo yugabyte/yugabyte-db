@@ -575,15 +575,15 @@ public class GCPUtil implements CloudUtil {
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("GET");
         con.connect();
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-        String inputLine;
-        StringBuffer content = new StringBuffer();
-        while ((inputLine = in.readLine()) != null) {
-          content.append(inputLine);
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()))) {
+          String inputLine;
+          StringBuffer content = new StringBuffer();
+          while ((inputLine = in.readLine()) != null) {
+            content.append(inputLine);
+          }
+          JsonNode response = Json.mapper().readTree(content.toString());
+          PRICE_JSON = response.get("gcp_price_list");
         }
-        in.close();
-        JsonNode response = Json.mapper().readTree(content.toString());
-        PRICE_JSON = response.get("gcp_price_list");
       }
       JsonNode prices = PRICE_JSON.findValue(instanceType);
       Double spotPrice = prices.findValue(region).asDouble();

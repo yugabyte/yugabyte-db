@@ -271,10 +271,8 @@ public class NFSUtil implements StorageUtil {
 
   private Map<String, Boolean> parseBulkCheckOutputFile(String filePath) {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
-    File targetLocalFile = null;
-    try {
-      targetLocalFile = new File(filePath);
-      BufferedReader bReader = new BufferedReader(new FileReader(targetLocalFile));
+    File targetLocalFile = new File(filePath);
+    try (BufferedReader bReader = new BufferedReader(new FileReader(targetLocalFile))) {
       bReader
           .lines()
           .forEach(
@@ -282,13 +280,11 @@ public class NFSUtil implements StorageUtil {
                 String[] splitLine = fLine.trim().split("\\s+");
                 bulkCheckFileExistsMap.put(splitLine[0], splitLine[1].equals("0") ? false : true);
               });
-      bReader.close();
-      targetLocalFile.delete();
       return bulkCheckFileExistsMap;
     } catch (IOException e) {
       throw new RuntimeException("Error parsing bulk check output for NFS locations.");
     } finally {
-      if (targetLocalFile != null && targetLocalFile.exists()) {
+      if (targetLocalFile.exists()) {
         targetLocalFile.delete();
       }
     }
