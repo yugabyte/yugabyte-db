@@ -2734,17 +2734,16 @@ class PgClientServiceImpl::Impl : public SessionProvider {
   // Best-effort enrichment: failures are logged but never fail the overall request.
   // Uses a TTL-based cache to avoid fanning out ListTablets RPCs on every query.
   void EnrichTabletsWithDiskSizes(PgTabletsMetadataResponsePB* resp) {
-    // Check if cache needs refreshing. If so, immediately push the expiry forward
-    // to prevent concurrent threads from also triggering a refresh (thundering herd).
+    // Check if cache needs refreshing. Use a separate in-flight flag to prevent
+    // concurrent threads from all triggering refreshes (thundering herd), which
+    // is especially important when TTL is 0 (caching disabled).
     bool needs_refresh = false;
     {
       std::lock_guard lock(disk_sizes_cache_mutex_);
       auto now = CoarseMonoClock::now();
-      if (now >= disk_sizes_cache_expiry_) {
+      if (now >= disk_sizes_cache_expiry_ && !disk_sizes_refresh_in_flight_) {
         needs_refresh = true;
-        // Push expiry forward so other threads use stale cache while we refresh.
-        disk_sizes_cache_expiry_ = now + std::chrono::seconds(
-            FLAGS_tablet_disk_sizes_cache_ttl_sec);
+        disk_sizes_refresh_in_flight_ = true;
       }
     }
 
@@ -2757,6 +2756,9 @@ class PgClientServiceImpl::Impl : public SessionProvider {
       std::lock_guard lock(disk_sizes_cache_mutex_);
       disk_sizes_cache_ = std::move(new_cache);
       disk_sizes_cache_populated_ = true;
+      disk_sizes_refresh_in_flight_ = false;
+      disk_sizes_cache_expiry_ = CoarseMonoClock::now() + std::chrono::seconds(
+          FLAGS_tablet_disk_sizes_cache_ttl_sec);
     }
 
     // Apply cached sizes to response entries. Only set fields for known values
@@ -3345,6 +3347,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
 
   std::mutex disk_sizes_cache_mutex_;
   bool disk_sizes_cache_populated_ GUARDED_BY(disk_sizes_cache_mutex_) = false;
+  bool disk_sizes_refresh_in_flight_ GUARDED_BY(disk_sizes_cache_mutex_) = false;
   std::unordered_map<std::string, TabletDiskSizeInfo> disk_sizes_cache_
       GUARDED_BY(disk_sizes_cache_mutex_);
   CoarseTimePoint disk_sizes_cache_expiry_
