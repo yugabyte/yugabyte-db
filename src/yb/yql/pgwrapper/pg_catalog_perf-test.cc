@@ -72,6 +72,9 @@ using yb::common::ParseJson;
 
 namespace yb::pgwrapper {
 
+constexpr auto qpmTableName1 = "qpm_test1";
+constexpr auto qpmTableName2 = "qpm_test2";
+
 namespace {
 
 Status EnableCatCacheEventLogging(PGConn* conn) {
@@ -231,6 +234,14 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
   // when a DB connection is made.
   uint32_t ASHCollectorRPCCount() const {
     return static_cast<uint32_t>(num_connections_created_ == 1);
+  }
+
+  std::string GetQpmInsertQuery(const std::string& tableName, int val) {
+    return yb::Format("INSERT INTO $0 VALUES($1)", tableName, val);
+  }
+
+  std::string GetQpmTrackConfig(bool qpmEnabled) {
+    return yb::Format("SET yb_pg_stat_plans_track TO $0", (qpmEnabled ? "top" : "none"));
   }
 
   std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
@@ -638,6 +649,81 @@ TEST_F(PgCatalogPerfTest, RPCCountAfterDdlFailure) {
   // The failed DDL will trigger a lookup for the catalog version. This will result in a read call
   // to the master.
   ASSERT_EQ(rpc_count_for_ddl_failure, rpc_count_for_ddl_success + 1);
+}
+
+// QPM (and any other code requiring plan id calculation) can require looking
+// up object names in the catalog. This test makes sure we do not do unnecessary
+// calls to get an object name if the object has an invalid OID (e.g., an RTE
+// of type RTE_FUNCTION or RTE_RESULT).
+//
+// The test works by running statements with QPM OFF/ON and making sure
+// the RPC counts are the same.
+TEST_F(PgCatalogPerfTest, RPCCountQpm) {
+
+  std::vector<std::string> qpmTestQueryVec;
+
+  // The plans for these queries reference objects that have an invalid OID.
+  auto qpmQuery = yb::Format(
+    "SELECT COUNT(*) FROM GENERATE_SERIES(1, 5) dt(x), $0 WHERE col1=x", qpmTableName1);
+  qpmTestQueryVec.push_back(qpmQuery);
+
+  qpmQuery = yb::Format(
+    "INSERT INTO $0(col1) SELECT (SELECT MAX(1) FROM $1) AS x FROM $2",
+    qpmTableName2, qpmTableName1, qpmTableName1);
+
+  qpmTestQueryVec.push_back(qpmQuery);
+  qpmQuery = GetQpmInsertQuery(qpmTableName1, 0);
+  qpmTestQueryVec.push_back(qpmQuery);
+
+  // Get a connection and create 2 tables.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (col1 INT)", qpmTableName1));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (col1 INT)", qpmTableName2));
+
+  // Create statements to set QPM tracking.
+  std::vector<std::string> qpmConfigVec(2);
+  qpmConfigVec[0] = GetQpmTrackConfig(false);
+  qpmConfigVec[1] = GetQpmTrackConfig(true);
+
+  // Process each statement.
+  for (const std::string& qpmQueryString : qpmTestQueryVec) {
+
+    // Determine if we have an INSERT or a SELECT.
+    bool isSelect;
+    if (qpmQueryString.find("INSERT INTO", 0, 11) != std::string::npos)
+      isSelect = false;
+    else if (qpmQueryString.find("SELECT ", 0, 7) == std::string::npos)
+      FAIL() << "Unexpected query : " << qpmQueryString;
+    else
+      isSelect = true;
+
+    uint64 rpcs[2];
+    for (bool qpmEnabled : {false, true}) {
+
+      // Get the RPC stats.
+      rpcs[qpmEnabled] = ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) {
+        // Set QPM tracking.
+        RETURN_NOT_OK(conn->Execute(qpmConfigVec[qpmEnabled].c_str()));
+
+        // Execute the statement.
+        if (!isSelect)
+          // No rows returned so invoke Execute.
+        RETURN_NOT_OK(conn->Execute(qpmQueryString));
+        else
+          // Single row/column returned so invoke FetchRow.
+        (void) VERIFY_RESULT(conn->FetchRow<int64_t>(qpmQueryString));
+
+        // Return RPC count.
+        return static_cast<Status>(Status::OK());
+      }));
+    }
+
+    // Check that RPC count is the same with QPM OFF/ON.
+    ASSERT_EQ(rpcs[0], rpcs[1]) << "RPC check failed for " << qpmQueryString;
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", qpmTableName1));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", qpmTableName2));
 }
 
 TEST_F(PgCatalogPerfTest, RPCCountAfterDmlFailure) {

@@ -7749,7 +7749,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"yb_pg_stat_plans_cache_replacement_algorithm", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Enable true LRU in Query Plan Management."),
+			gettext_noop("Specifies cache replacement policy for Query Plan Management."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
