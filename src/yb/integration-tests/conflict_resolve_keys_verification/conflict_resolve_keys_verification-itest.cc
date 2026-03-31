@@ -478,4 +478,10 @@ TEST_F(ConflictResolveKeysVerificationITest, FastPath) {
   RunTestsForFile(sql_file);
 }
 
+TEST_F(ConflictResolveKeysVerificationITest, ColocatedTableWrite) {
+  const std::string sql_file = "colocated_table.sql";
+  prepare_table_row_ = false;
+  RunTestsForFile(sql_file);
+}
+
 } // namespace yb
