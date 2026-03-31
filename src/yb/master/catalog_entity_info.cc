@@ -1238,8 +1238,8 @@ bool TableInfo::IsUserCreated(const ReadLock& lock) const {
     return false;
   }
   return !is_system() && !IsSequencesSystemTable(lock) &&
-         lock->namespace_id() != kSystemNamespaceId &&
-         !IsColocationParentTable();
+         lock->namespace_id() != kSystemNamespaceId && !IsColocationParentTable() &&
+         lock->namespace_name() != kYbSystemDbName;
 }
 
 bool TableInfo::IsUserTable(const ReadLock& lock) const {
