@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: cloud-queries-live
     parent: cloud-monitor
-    weight: 200
+    weight: 300
 type: docs
 ---
 

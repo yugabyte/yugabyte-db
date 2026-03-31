@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-cloud:
     identifier: cloud-queries-slow
     parent: cloud-monitor
-    weight: 300
+    weight: 200
 type: docs
 ---
 
