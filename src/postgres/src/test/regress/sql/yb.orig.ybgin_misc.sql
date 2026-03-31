@@ -4,8 +4,11 @@
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (costs off)'
 
 -- Always choose index scan.
 SET enable_seqscan = off;
@@ -22,17 +25,17 @@ CREATE INDEX ON jsonbs USING ybgin (j);
 -- tsvector
 INSERT INTO vectors (v) VALUES ('a b c i k'), ('abc j k');
 SELECT $$
-UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k'
+:P UPDATE vectors SET v = ts_delete(v, '{c, j}'::text[]) WHERE v @@ 'k';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT v FROM vectors WHERE v @@ 'k' ORDER BY i;
 DELETE FROM vectors WHERE v @@ 'k';
 -- jsonb
 INSERT INTO jsonbs (j) VALUES ('[4,7,"sh",3,"du"]'), ('{"du":[7,9], "sh":13}');
 SELECT $$
-UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du'
+:P UPDATE jsonbs SET j = j - 'sh' WHERE j ? 'du';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT j FROM jsonbs WHERE j ? 'du' ORDER BY i;
 DELETE FROM jsonbs WHERE j ? 'du';
 
@@ -80,13 +83,13 @@ INSERT INTO vectors (v) VALUES
     (E'\x7F\x7F\x7F\x7F'),
     (E'\x7F\x7F');
 SELECT $$
-SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i
+:P SELECT v FROM vectors WHERE v @@ E'\x7F\x7F\x7F:*' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-DELETE FROM vectors WHERE v @@ E'\x7F:*'
+:P DELETE FROM vectors WHERE v @@ E'\x7F:*';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- Prefix match with other odd characters.
@@ -137,19 +140,19 @@ DELETE FROM vectors WHERE v @@ E'\x7F:*';
 
 -- AND inside tsquery
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a & bb'
+:P SELECT * FROM vectors WHERE v @@ 'a & bb';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- AND between '@@' ops
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb'
+:P SELECT * FROM vectors WHERE v @@ 'a' and v @@ 'bb';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- INTERSECT between '@@' selects
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb'
+:P SELECT * FROM vectors WHERE v @@ 'a' INTERSECT SELECT * FROM vectors WHERE v @@ 'bb';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- Three ways to query tsvectors containing at least one of two specific words.
@@ -157,19 +160,19 @@ $$ AS query \gset
 
 -- OR inside tsquery
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a | c'
+:P SELECT * FROM vectors WHERE v @@ 'a | c';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- OR between '@@' ops
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c'
+:P SELECT * FROM vectors WHERE v @@ 'a' or v @@ 'c';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- UNION between '@@' selects
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c'
+:P SELECT * FROM vectors WHERE v @@ 'a' UNION SELECT * FROM vectors WHERE v @@ 'c';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- Complicated query
@@ -177,14 +180,14 @@ $$ AS query \gset
 
 -- Top-level disjunction where the last item is simple
 SELECT $$
-SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o'
+:P SELECT * FROM vectors WHERE v @@ '((a & e) | (ccc & ccd)) & o';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Top-level disjunction where the last item is complex
 SELECT $$
-SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))'
+:P SELECT * FROM vectors WHERE v @@ 'o & ((a & e) | (ccc & ccd))';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- TODO(jason): add top-level conjunction tests
 
 --
@@ -245,9 +248,9 @@ INSERT INTO garrays (a) VALUES ('{11, 22}');
 CREATE INDEX ON garrays USING ybgin (a);
 INSERT INTO garrays (a) VALUES ('{22, 33}'), ('{33, 11}');
 SELECT $$
-SELECT * FROM garrays WHERE a && '{11}'
+:P SELECT * FROM garrays WHERE a && '{11}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Cleanup
 DROP TABLE garrays;
 DROP TABLEGROUP g;

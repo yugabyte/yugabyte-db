@@ -5,8 +5,10 @@
 -- Logical test on small size table, using column-ref expression index.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (COSTS OFF)'
 
 CREATE TABLE text_books ( id int PRIMARY KEY, author text, year int);
@@ -24,25 +26,25 @@ INSERT INTO text_books (id, author, year)
   VALUES (5, '{ "first_name": "Stephen", "last_name": "Hawking" }', 1988);
 --
 SELECT $$
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+:P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+:P SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
 SELECT $$
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+:P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+:P SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 --
 -- Logical test on small size table, using JSONB expression index.
 --
@@ -77,24 +79,24 @@ INSERT INTO books (id, details)
                 "genre": "science",
                 "editors": ["Melisa", "Mark", "John"] }');
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Drop INDEX and run again.
 DROP index books_author_first_name;
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
