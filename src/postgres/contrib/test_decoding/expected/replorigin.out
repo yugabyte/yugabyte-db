@@ -252,8 +252,62 @@ SELECT pg_drop_replication_slot('regression_slot_no_lsn');
 (1 row)
 
 SELECT pg_replication_origin_drop('regress_test_decoding: regression_slot_no_lsn');
- pg_replication_origin_drop 
+ pg_replication_origin_drop
 ----------------------------
- 
+
+(1 row)
+
+-- Test pg_replication_origin_session_setup_shared
+-- This variant sets the origin without acquiring an exclusive slot,
+-- allowing multiple sessions to tag writes with the same origin concurrently.
+SELECT pg_replication_origin_create('regress_test_decoding: shared_origin');
+ pg_replication_origin_create
+------------------------------
+                            1
+(1 row)
+
+-- shared setup should work
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
+ pg_replication_origin_session_setup_shared
+--------------------------------------------
+
+(1 row)
+
+-- session should report origin as setup
+SELECT pg_replication_origin_session_is_setup();
+ pg_replication_origin_session_is_setup
+----------------------------------------
+ t
+(1 row)
+
+-- calling shared setup again on the same session should succeed (idempotent)
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
+ pg_replication_origin_session_setup_shared
+--------------------------------------------
+
+(1 row)
+
+-- non-existent origin should still fail
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: does_not_exist');
+ERROR:  replication origin "regress_test_decoding: does_not_exist" does not exist
+-- reset shared origin
+SELECT pg_replication_origin_session_reset_shared();
+ pg_replication_origin_session_reset_shared
+--------------------------------------------
+
+(1 row)
+
+-- session should no longer report origin as setup
+SELECT pg_replication_origin_session_is_setup();
+ pg_replication_origin_session_is_setup
+----------------------------------------
+ f
+(1 row)
+
+-- clean up
+SELECT pg_replication_origin_drop('regress_test_decoding: shared_origin');
+ pg_replication_origin_drop
+----------------------------
+
 (1 row)
 

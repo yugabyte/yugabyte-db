@@ -1377,6 +1377,30 @@ pg_replication_origin_session_setup(PG_FUNCTION_ARGS)
 }
 
 /*
+ * Setup a replication origin for this session without acquiring an exclusive
+ * slot. This allows multiple sessions to tag their writes with the same
+ * xrepl_origin_id concurrently. No progress tracking is performed — this is
+ * only suitable for write tagging (e.g., CDC origin filtering).
+ */
+Datum
+pg_replication_origin_session_setup_shared(PG_FUNCTION_ARGS)
+{
+	char	   *name;
+	RepOriginId origin;
+
+	replorigin_check_prerequisites(false, false);
+
+	name = text_to_cstring((text *) DatumGetPointer(PG_GETARG_DATUM(0)));
+	origin = replorigin_by_name(name, false);
+
+	replorigin_session_origin = origin;
+
+	pfree(name);
+
+	PG_RETURN_VOID();
+}
+
+/*
  * Reset previously setup origin in this session
  */
 Datum
@@ -1389,6 +1413,19 @@ pg_replication_origin_session_reset(PG_FUNCTION_ARGS)
 	replorigin_session_origin = InvalidRepOriginId;
 	replorigin_session_origin_lsn = InvalidXLogRecPtr;
 	replorigin_session_origin_timestamp = 0;
+
+	PG_RETURN_VOID();
+}
+
+/*
+ * Reset a shared replication origin previously set with
+ * pg_replication_origin_session_setup_shared(). Simply clears the
+ * session variable without touching shared-memory slots.
+ */
+Datum
+pg_replication_origin_session_reset_shared(PG_FUNCTION_ARGS)
+{
+	replorigin_session_origin = InvalidRepOriginId;
 
 	PG_RETURN_VOID();
 }
