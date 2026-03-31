@@ -765,6 +765,58 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(MultiColumnUpdateFollowedByUpdate
   CheckCount(expected_count, count);
 }
 
+// Test that an upsert (INSERT ON CONFLICT DO UPDATE) on an existing row produces a DELETE
+// followed by an INSERT in CDC output.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertOnExistingRowProducesDeleteThenInsert)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // Insert a row (key=1, value_1=2) and consume its CDC records.
+  ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(&change_resp, stream_id, tablets, 1));
+
+  // Upsert the same row with a new value (value_1=10). Internally generates a tombstone
+  // (DELETE) followed by a packed row (INSERT) for the same key.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0($1, $2) VALUES (1, 10) ON CONFLICT ($1) DO UPDATE SET $2 = 10",
+      kTableName, kKeyColumnName, kValueColumnName));
+
+  // Expect DELETE(key=1) + INSERT(key=1, value_1=10), no UPDATEs.
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  ExpectedRecord expected_records[] = {{1, 0}, {1, 10}};
+
+  GetChangesResponsePB upsert_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
+      &change_resp.cdc_sdk_checkpoint()));
+
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : upsert_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    ASSERT_LT(seen_dml_records, 2);
+    CheckRecord(record, expected_records[seen_dml_records], count);
+    seen_dml_records++;
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[3] << " delete record";
+  CheckCount(expected_count, count);
+}
+
 // Insert one row, delete inserted row.
 // Expected records: (DDL, INSERT, DELETE).
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardDeleteWithAutoCommit)) {
