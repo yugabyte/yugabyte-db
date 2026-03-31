@@ -181,7 +181,7 @@ static int od_frontend_startup(od_client_t *client)
 
 		int rc = kiwi_be_read_startup(
 			machine_msg_data(msg), machine_msg_size(msg),
-			&client->startup, &client->yb_startup_settings, true);
+			&client->startup, &client->yb_startup_settings);
 		machine_msg_free(msg);
 		if (rc == -1)
 			goto error;
@@ -228,7 +228,7 @@ static int od_frontend_startup(od_client_t *client)
 		return -1;
 	rc = kiwi_be_read_startup(machine_msg_data(msg), machine_msg_size(msg),
 				  &client->startup,
-				  &client->yb_startup_settings, true);
+				  &client->yb_startup_settings);
 	machine_msg_free(msg);
 	if (rc == -1)
 		goto error;
@@ -2087,9 +2087,7 @@ static od_frontend_status_t od_frontend_remote(od_client_t *client)
 			/* YB: This is never expected to get a variable */
 			kiwi_var_t *timeout_var = yb_kiwi_vars_get(
 				&client->yb_vars_session,
-				"odyssey_catchup_timeout",
-				yb_od_instance_should_lowercase_guc_name(
-					instance));
+				"odyssey_catchup_timeout");
 #else
 			kiwi_var_t *timeout_var =
 				kiwi_vars_get(&client->vars,
@@ -2451,8 +2449,7 @@ static void od_application_name_add_host(od_client_t *client)
 	char *app_name = "unknown";
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_t *app_name_var = yb_kiwi_vars_get(
-		&client->yb_vars_session, "application_name",
-		yb_od_instance_should_lowercase_guc_name(instance));
+		&client->yb_vars_session, "application_name");
 #else
 	kiwi_var_t *app_name_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_APPLICATION_NAME);
@@ -2469,9 +2466,7 @@ static void od_application_name_add_host(od_client_t *client)
 			    app_name_len, app_name, peer_name);
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_vars_update(&client->yb_vars_session, "application_name", 17,
-			 app_name_with_host, length + 1,
-			 yb_od_instance_should_lowercase_guc_name(
-				 instance)); // return code ignored
+			 app_name_with_host, length + 1); // return code ignored
 #else
 	kiwi_vars_set(&client->vars, KIWI_VAR_APPLICATION_NAME,
 		      app_name_with_host,

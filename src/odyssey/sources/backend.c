@@ -577,9 +577,7 @@ static inline int od_backend_startup(od_server_t *server,
 						&client->yb_external_client
 							 ->yb_vars_startup,
 						name, name_len, value,
-						value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						value_len);
 				}
 			} else if ((name_len != sizeof("session_authorization") ||
 				strncmp(name, "session_authorization", name_len))) {
@@ -591,16 +589,12 @@ static inline int od_backend_startup(od_server_t *server,
 				     YB_PARAM_STATUS_SOURCE_STARTUP)
 					kiwi_vars_update(
 						&server->yb_vars_default, name,
-						name_len, value, value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						name_len, value, value_len);
 				else if (flags &
 					 YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 					kiwi_vars_update(
 						&server->yb_vars_session, name,
-						name_len, value, value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						name_len, value, value_len);
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -1076,8 +1070,6 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	char *value;
 	uint32_t value_len;
 	char flags = 0;
-	bool should_lowercase_name =
-		yb_od_instance_should_lowercase_guc_name(instance);
 
 	int rc;
 	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
@@ -1130,27 +1122,25 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (flags & YB_PARAM_STATUS_SOURCE_STARTUP)
 		kiwi_vars_update(&server->yb_vars_default, name, name_len,
-				 value, value_len, should_lowercase_name);
+				 value, value_len);
 	else if (flags & YB_PARAM_STATUS_DEFAULT_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_default, name,
-					      name_len, should_lowercase_name);
+					      name_len);
 
 	if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 		kiwi_vars_update(&server->yb_vars_session, name, name_len,
-				 value, value_len, should_lowercase_name);
+				 value, value_len);
 	else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_session, name,
-					      name_len, should_lowercase_name);
+					      name_len);
 
 	if (!server_only) {
 		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 			kiwi_vars_update(&client->yb_vars_session, name,
-					 name_len, value, value_len,
-					 should_lowercase_name);
+					 name_len, value, value_len);
 		else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
-						      name, name_len,
-						      should_lowercase_name);
+						      name, name_len);
 	}
 
 	return 0;

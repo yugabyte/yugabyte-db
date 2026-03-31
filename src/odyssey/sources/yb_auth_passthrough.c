@@ -700,14 +700,9 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				 * that have to be replayed in a transactional backend to get the
 				 * same impact as the client's startup packet.
 				 * See od_frontend_setup_params() for more details.
-				 * TODO (vikram.damle) (#29178): Check what has to be done for GUC name
-				 * casing now that we are "fixing" auth passthrough.
 				 */
-				kiwi_vars_update(
-					&client->yb_vars_startup, name,
-					name_len, value, value_len,
-					yb_od_instance_should_lowercase_guc_name(
-						instance));
+				kiwi_vars_update(&client->yb_vars_startup, name,
+						 name_len, value, value_len);
 			}
 
 			machine_msg_free(msg);

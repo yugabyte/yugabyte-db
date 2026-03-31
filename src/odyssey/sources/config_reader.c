@@ -1013,7 +1013,7 @@ static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 				return NOT_OK_RESPONSE;
 			}
 			kiwi_vars_update(dest, optarg, optarg_len + 1, optval,
-					 optval_len + 1, false);
+					 optval_len + 1);
 			free(optarg);
 			free(optval);
 			break;
