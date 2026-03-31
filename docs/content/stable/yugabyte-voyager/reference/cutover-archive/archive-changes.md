@@ -43,10 +43,19 @@ archive-changes:
 | --policy |
 
 ```yaml {.nocopy}
-policy:
+archive-changes:
+  policy:
 ```
 
 | Specifies how to handle processed segments: `delete` or `archive`. |
+| --archive-dir |
+
+```yaml {.nocopy}
+archive-changes:
+  archive-dir: 
+```
+
+| An existing directory to copy processed segments into before they are removed from the export directory. <br> Required when policy is `archive`. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}
@@ -54,13 +63,6 @@ export-dir:
 ```
 
 |Path to the export directory. This directory is a workspace used to store exported schema DDL files, export data files, migration state, and a log file.|
-| --archive-dir |
-
-```yaml {.nocopy}
-archive-dir: 
-```
-
-| An existing directory to copy processed segments into before they are removed from the export directory. <br> Required when policy is `archive`. |
 | --send-diagnostics |
 
 ```yaml{.nocopy}
