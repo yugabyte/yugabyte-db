@@ -183,7 +183,7 @@ def query_test(uniqueId: str, wait: bool) -> bool:
 # For test re-try, though, if the prior attempt did not get reported, then the re-try report will
 # fail and then there is no record. So we need to query to check for the prior attempt and in the
 # case it might be in-process, wait for it, to be sure whether we shold report as a retry or not.
-def create_test(test: TestDescriptor, time_sec: float, attempt: int) -> str:
+def create_test(test: TestDescriptor, time_sec: float, attempt: int, rerun: bool) -> str:
     csi = csi_env()
     parent = os.getenv('YB_CSI_' + test.language, '')
 
@@ -194,26 +194,31 @@ def create_test(test: TestDescriptor, time_sec: float, attempt: int) -> str:
     pt = SimpleTestDescriptor.parse(full_name)
     tname = f"{pt.class_name} - {pt.test_name}"
 
-    if attempt > 0:
-        # Spark re-tries happen only if there is some failure, so attempts are serial.
+    if rerun:
+        # In this case, we are intentionally re-running a completed test.
         retry = True
-        wait = True
-        # In this case the previous attempt died before having a chance to report completion.
-        # We need to query to find out if the previous attempt reported start or not.
     else:
-        # Repetitions are same test intentionally run multiple times, in parallel and random order.
-        # We need to query to make sure one has at least started before reporting these as retry.
-        retry = (csi['reps'] != '1')
-        if test.attempt_index == 1:
-            wait = False
-        else:
+        if attempt > 0:
+            # Spark re-tries happen only if there is some failure, so attempts are serial.
+            retry = True
             wait = True
+            # In this case the previous attempt died before having a chance to report completion.
+            # We need to query to find out if the previous attempt reported start or not.
+        else:
+            # Repetitions are same test intentionally run multiple times, in parallel and random
+            # order. We need to query to make sure one has at least started before reporting these
+            # as retry.
+            retry = (csi['reps'] != '1')
+            if test.attempt_index == 1:
+                wait = False
+            else:
+                wait = True
 
-    if retry:
-        prev_test = query_test(full_name, wait)
-        if not prev_test:
-            # Found no previous test, so do not call this one a retry.
-            retry = False
+        if retry:
+            prev_test = query_test(full_name, wait)
+            if not prev_test:
+                # Found no previous test, so do not call this one a retry.
+                retry = False
 
     # TestCase ID (used to compare across test runs) seems to depend on codeRef & parameters
     # instead we give uniqueId with fully-specified name.  uniqueID is not shown in web UI.
