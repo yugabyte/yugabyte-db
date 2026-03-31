@@ -1267,7 +1267,7 @@ You can specify additional `archive changes` parameters in the `archive-changes`
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
+yb-voyager archive changes --export-dir <EXPORT-DIR> --policy <POLICY-TYPE>
 ```
 
   {{% /tab %}}
@@ -1530,9 +1530,13 @@ yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
 
     {{< /tabpane >}}
 
+    **Note** that for PostgreSQL migrations, if you want to resume live migration from PostgreSQL to the target YugabyteDB database to prepare for cutover to target again, use the flag `--restart-data-migration-source-target` along with the `initiate cutover to source` command.
+
     Refer to [cutover to source](../../reference/cutover-archive/cutover/#cutover-to-source) for more information.
 
     The `initiate cutover to source` command stops the `export data from target` process, followed by the `import data to source` process after it has imported all the events to the source database.
+
+    
 
 1. Wait for the cutover process to complete. Monitor the status of the cutover process using the following command:
 
