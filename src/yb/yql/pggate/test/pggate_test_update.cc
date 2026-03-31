@@ -142,7 +142,7 @@ TEST_F(PggateTestUpdate, TestUpdate) {
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
-  // Specify the rows we want to update by binding primary columns.
+  // Specify the rows we want to update by binding key columns.
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_hash));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_id));
 

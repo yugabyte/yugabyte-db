@@ -439,7 +439,7 @@ typedef struct {
 } YbcServerDescriptor;
 
 typedef struct {
-  bool is_primary;
+  bool is_key;
   bool is_hash;
 } YbcPgColumnInfo;
 

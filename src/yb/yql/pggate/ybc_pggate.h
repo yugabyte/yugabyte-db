@@ -532,8 +532,8 @@ YbcStatus YbPgDmlAppendColumnRef(
 //     of the same allocated statement.
 //
 //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
-//   - BindColumn() can only be used for primary-key columns.
-//   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+//   - BindColumn() can only be used for key columns.
+//   - This bind-column function is used to bind the key column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
 //
