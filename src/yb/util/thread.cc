@@ -188,7 +188,7 @@ uint64_t ReadAtomicInt(const std::atomic<uint64_t>* metric) {
 class ThreadCategoryTracker {
  public:
   explicit ThreadCategoryTracker(const string& name, bool expose_as_counter = false)
-      : name_(std::move(name)), expose_as_counter_(expose_as_counter) {}
+      : name_(name), expose_as_counter_(expose_as_counter) {}
 
   void IncrementCategory(const string& category);
   void DecrementCategory(const string& category);
@@ -260,7 +260,7 @@ std::atomic<uint64_t>& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(
 class ThreadMgr {
  public:
   ThreadMgr() {
-    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", true);
+    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", /*expose_as_counter=*/true);
     running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 
