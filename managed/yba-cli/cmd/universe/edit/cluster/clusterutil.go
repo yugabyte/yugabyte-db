@@ -142,6 +142,17 @@ func editClusterUtil(
 
 	placementInfo := cluster.GetPlacementInfo()
 	cloudList := placementInfo.GetCloudList()
+
+	// Collect AZ UUIDs from the original placement before any zone modifications.
+	oldAZUUIDs := make(map[string]bool)
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				oldAZUUIDs[az.GetUuid()] = true
+			}
+		}
+	}
+
 	cloudList, err = universeutil.RemoveOrAddZones(
 		cloudList,
 		providerUsed.GetRegions(),
@@ -153,6 +164,22 @@ func editClusterUtil(
 	)
 	if err != nil {
 		return nil, ybaclient.UniverseResp{}, ybaclient.UniverseConfigureTaskParams{}, err
+	}
+
+	// Compute which AZ UUIDs were removed so their nodes can be marked ToBeRemoved.
+	newAZUUIDs := make(map[string]bool)
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				newAZUUIDs[az.GetUuid()] = true
+			}
+		}
+	}
+	removedAZUUIDs := make(map[string]bool)
+	for azUUID := range oldAZUUIDs {
+		if !newAZUUIDs[azUUID] {
+			removedAZUUIDs[azUUID] = true
+		}
 	}
 
 	placementInfo.SetCloudList(cloudList)
@@ -261,14 +288,29 @@ func editClusterUtil(
 
 	userIntent.SetDeviceInfo(deviceInfo)
 	cluster.SetUserIntent(userIntent)
+	clusterUUID := cluster.GetUuid()
 	clusters[clusterIndex] = cluster
+
+	nodeDetailsSet := universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
+		universeDetails.GetNodeDetailsSet())
+
+	// Nodes in removed zones must be marked ToBeRemoved so the backend can detect
+	// the placement change. Without this the update API returns a 400 "No changes"
+	// error because isSamePlacement only iterates new AZs and misses removals.
+	if len(removedAZUUIDs) > 0 {
+		for i, node := range nodeDetailsSet {
+			if node.GetPlacementUuid() == clusterUUID &&
+				removedAZUUIDs[node.GetAzUuid()] {
+				nodeDetailsSet[i].SetState("ToBeRemoved")
+			}
+		}
+	}
 
 	req := ybaclient.UniverseConfigureTaskParams{
 		UniverseUUID:       util.GetStringPointer(universeUUID),
 		CurrentClusterType: util.GetStringPointer(clusterType),
 		Clusters:           clusters,
-		NodeDetailsSet: universeutil.BuildNodeDetailsRespArrayToNodeDetailsArray(
-			universeDetails.GetNodeDetailsSet()),
+		NodeDetailsSet:     nodeDetailsSet,
 		CommunicationPorts: universeDetails.CommunicationPorts,
 	}
 
