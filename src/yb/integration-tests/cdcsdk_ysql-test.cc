@@ -12988,7 +12988,6 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
 }
 
 TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_populate_end_markers_transactions) = true;
   ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
   const auto kOrigin1 = "origin1";
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
