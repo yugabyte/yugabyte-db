@@ -117,3 +117,20 @@ SELECT * FROM base ORDER BY k;
 ---+---
 (0 rows)
 
+-- GH-30373
+-- The scans set "reference row marks" which should NOT be explained as part of EXPLAIN's output.
+CREATE TABLE gh30373 (id INT PRIMARY KEY);
+INSERT INTO gh30373 VALUES(1);
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+EXPLAIN (ANALYZE ON) UPDATE gh30373 a SET id = b.id+1 FROM gh30373 b WHERE a.id=b.id;
+                                                    QUERY PLAN                                                     
+-------------------------------------------------------------------------------------------------------------------
+ Update on gh30373 a  (cost=0.00..226.50 rows=0 width=0) (actual rows=0 loops=1)
+   ->  YB Batched Nested Loop Join  (cost=0.00..226.50 rows=1000 width=96) (actual rows=1 loops=1)
+         Join Filter: (a.id = b.id)
+         ->  Seq Scan on gh30373 a  (cost=0.00..100.00 rows=1000 width=64) (actual rows=1 loops=1)
+         ->  Index Scan using gh30373_pkey on gh30373 b  (cost=0.00..0.11 rows=1 width=36) (actual rows=1 loops=1)
+               Index Cond: (id = ANY (ARRAY[a.id, $2, $3, ..., $1024]))
+(6 rows)
+
+ROLLBACK;
