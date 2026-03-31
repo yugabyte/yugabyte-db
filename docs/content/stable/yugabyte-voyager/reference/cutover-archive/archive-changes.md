@@ -39,7 +39,7 @@ archive-changes:
   fs-utilization-threshold:
 ```
 
-|Disk utilization threshold in percentage for the export directory. Used only with `--policy delete`. <br>Default: 70 |
+|Disk use threshold (in percent) for the export directory. Used only with `--policy delete`. <br>Default: 70 |
 | --policy |
 
 ```yaml {.nocopy}
@@ -55,7 +55,7 @@ archive-changes:
   archive-dir: 
 ```
 
-| An existing directory to copy processed segments into before they are removed from the export directory. <br> Required when policy is `archive`. |
+| Path to an existing directory to copy processed segments into before they are removed from the export directory. <br> Required when policy is `archive`. |
 | -e, --export-dir |
 
 ```yaml{.nocopy}

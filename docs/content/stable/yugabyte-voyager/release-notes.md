@@ -27,13 +27,13 @@ This release includes breaking changes for Voyager migrations. Migrations starte
 
 ### New feature
 
-- Added support for multiple iterations of the PostgreSQL to YugabyteDB to PostgreSQL in live migration with fall-back workflow, so you can run repeated fall-back cycles with a consistent migration layout.
+- Added support for multiple iterations of the PostgreSQL to YugabyteDB to PostgreSQL in live migration with fall-back workflow, so you can run repeated fall-back cycles without having to restart the migration from scratch.
 
 ### Enhancements
 
 - Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command configuration options with explicit policies and flags. You must set the `--policy` flag to `delete` or `archive`. For `archive`, set the `--archive-dir` flag to the directory where processed change segments are copied before the originals are removed.
 
-- The `export-data` step of the cutover process is resumable. If cutover fails before it is marked as processed in the migration metadata, the flow is now resumable.
+- The `export-data` processing step of the cutover process is resumable. If export-data fails before cutover is marked as processed, it can be retried by re-running the command.
 
 ### Bug fix
 
