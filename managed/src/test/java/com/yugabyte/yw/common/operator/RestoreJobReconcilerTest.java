@@ -3,6 +3,8 @@
 package com.yugabyte.yw.common.operator;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -29,6 +31,7 @@ import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
@@ -148,7 +151,8 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     return backupCr;
   }
 
-  private RestoreJob createRestoreJobCr() {
+  private RestoreJob createRestoreJobCr(
+      Boolean useTablespaces, Boolean useRoles, Boolean usePrivileges) {
     RestoreJob restoreJob = new RestoreJob();
     ObjectMeta metadata = new ObjectMeta();
     metadata.setName("test-restore-job");
@@ -159,8 +163,82 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     spec.setBackup("test-backup-cr");
     spec.setKeyspace("test-keyspace");
     spec.setUniverse("test-universe");
+    spec.setUseTablespaces(useTablespaces);
+    spec.setUseRoles(useRoles);
+    spec.setUsePrivileges(usePrivileges);
     restoreJob.setSpec(spec);
     return restoreJob;
+  }
+
+  @Test
+  public void testGetRestoreParamsWithExplicitValues() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob = createRestoreJobCr(true, true, false);
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertNotNull(params);
+    assertNotNull(params.backupStorageInfoList);
+    assertFalse(params.backupStorageInfoList.isEmpty());
+
+    for (BackupStorageInfo bsi : params.backupStorageInfoList) {
+      assertTrue("useTablespaces should be true", bsi.isUseTablespaces());
+      assertEquals("useRoles should be true", true, bsi.getUseRoles());
+      assertEquals("usePrivileges should be false", false, bsi.getUsePrivileges());
+      assertEquals("test-keyspace", bsi.keyspace);
+    }
+  }
+
+  @Test
+  public void testGetRestoreParamsWithDefaults() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertNotNull(params);
+    assertNotNull(params.backupStorageInfoList);
+    assertFalse(params.backupStorageInfoList.isEmpty());
+
+    for (BackupStorageInfo bsi : params.backupStorageInfoList) {
+      assertFalse("useTablespaces should be false", bsi.isUseTablespaces());
+      assertEquals("useRoles should be false", false, bsi.getUseRoles());
+      assertEquals("usePrivileges should be true", true, bsi.getUsePrivileges());
+    }
+  }
+
+  @Test
+  public void testGetRestoreParamsWithNullFieldsUsesDefaults() throws Exception {
+    doReturn(testUniverse)
+        .when(operatorUtils)
+        .getUniverseFromNameAndNamespace(anyLong(), anyString(), nullable(String.class));
+
+    io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
+    when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
+
+    // null fields should fall back to defaults: false, false, true
+    RestoreJob restoreJob = createRestoreJobCr(null, null, null);
+    RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
+
+    assertNotNull(params);
+    assertNotNull(params.backupStorageInfoList);
+    assertFalse(params.backupStorageInfoList.isEmpty());
+
+    for (BackupStorageInfo bsi : params.backupStorageInfoList) {
+      assertFalse("useTablespaces should default to false", bsi.isUseTablespaces());
+      assertEquals("useRoles should default to false", false, bsi.getUseRoles());
+      assertEquals("usePrivileges should default to true", true, bsi.getUsePrivileges());
+    }
   }
 
   @Test
@@ -172,7 +250,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
     when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
 
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(true, false, true);
     RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
 
     assertEquals(testCustomer.getUuid(), params.customerUUID);
@@ -194,7 +272,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
         .when(operatorUtils)
         .resolveReadyKmsConfigUuid(eq("test-kms-config-cr"), eq(NAMESPACE));
 
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
     restoreJob.getSpec().setKmsConfig("test-kms-config-cr");
 
     RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
@@ -214,7 +292,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
 
     // kmsConfig left unset on the spec (plaintext backup case).
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
 
     RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
 
@@ -242,7 +320,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
     when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
 
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
     restoreJob.getSpec().setKeyspace(null);
 
     RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
@@ -269,7 +347,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
     when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
 
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
     restoreJob.getSpec().setKeyspace("renamed_db");
 
     RestoreBackupParams params = restoreJobReconciler.getRestoreBackupParamsFromCr(restoreJob);
@@ -298,7 +376,7 @@ public class RestoreJobReconcilerTest extends FakeDBApplication {
     io.yugabyte.operator.v1alpha1.Backup backupCr = createBackupCr(testBackup);
     when(backupIndexer.list()).thenReturn(Collections.singletonList(backupCr));
 
-    RestoreJob restoreJob = createRestoreJobCr();
+    RestoreJob restoreJob = createRestoreJobCr(false, false, true);
     restoreJob.getSpec().setKeyspace("one_name_for_all");
 
     Exception ex =

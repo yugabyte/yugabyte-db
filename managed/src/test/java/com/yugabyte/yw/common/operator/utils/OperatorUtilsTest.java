@@ -226,6 +226,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     spec.put("universe", "operator-universe");
     spec.put("schedulingFrequency", "3600000");
     spec.put("incrementalBackupFrequency", "900000");
+    spec.put("useTablespaces", true);
+    spec.put("useRoles", true);
+    spec.put("usePrivileges", false);
     return spec;
   }
 
@@ -236,6 +239,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     spec.put("storageConfig", "operator-storage");
     spec.put("universe", "operator-universe");
     spec.put("incrementalBackupBase", "full-backup");
+    spec.put("useTablespaces", true);
+    spec.put("useRoles", true);
+    spec.put("usePrivileges", false);
     return spec;
   }
 
@@ -259,6 +265,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(scheduleParams.keyspaceTableList.size(), 1);
     assertEquals(scheduleParams.keyspaceTableList.get(0).keyspace, "testdb");
     assertEquals(scheduleParams.backupType, TableType.PGSQL_TABLE_TYPE);
+    assertEquals(true, scheduleParams.useTablespaces);
+    assertEquals(true, scheduleParams.getUseRoles());
+    assertEquals(false, scheduleParams.getUsePrivileges());
   }
 
   @Test
@@ -365,6 +374,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(backupParams.keyspaceTableList.get(0).keyspace, "testdb");
     assertEquals(backupParams.backupType, TableType.PGSQL_TABLE_TYPE);
     assertEquals(backupParams.baseBackupUUID, backup.getBackupUUID());
+    assertEquals(true, backupParams.useTablespaces);
+    assertEquals(true, backupParams.getUseRoles());
+    assertEquals(false, backupParams.getUsePrivileges());
   }
 
   @Test
@@ -855,6 +867,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
         Json.fromJson(backupSchedule.getTaskParams(), BackupRequestParams.class);
     params.schedulingFrequency = 3600L;
     params.frequencyTimeUnit = TimeUnit.MINUTES;
+    params.useTablespaces = true;
+    params.setUseRoles(true);
+    params.setUsePrivileges(false);
     backupSchedule.setTaskParams(Json.toJson(params));
     backupSchedule.save();
 
@@ -887,6 +902,9 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals(
         3600L * 60 * 1000,
         spec.getSchedulingFrequency().longValue()); // From ModelFactory.createScheduleBackup
+    assertEquals(true, spec.getUseTablespaces());
+    assertEquals(true, spec.getUseRoles());
+    assertEquals(false, spec.getUsePrivileges());
   }
 
   @Test

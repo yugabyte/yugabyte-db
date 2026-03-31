@@ -124,6 +124,17 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
           restoreJob.getMetadata().getName());
     }
 
+    Boolean useTablespaces =
+        restoreJob.getSpec().getUseTablespaces() != null
+            ? restoreJob.getSpec().getUseTablespaces()
+            : false;
+    Boolean useRoles =
+        restoreJob.getSpec().getUseRoles() != null ? restoreJob.getSpec().getUseRoles() : false;
+    Boolean usePrivileges =
+        restoreJob.getSpec().getUsePrivileges() != null
+            ? restoreJob.getSpec().getUsePrivileges()
+            : true;
+
     List<BackupTableParams> backupList = backup.getBackupInfo().backupList;
     if (CollectionUtils.isEmpty(backupList)) {
       throw new Exception("Nothing to restore!");
@@ -162,6 +173,9 @@ public class RestoreJobReconciler implements ResourceEventHandler<RestoreJob>, R
       }
       bSI.storageLocation = bTP.storageLocation;
       bSI.backupType = backup.getBackupInfo().backupType;
+      bSI.setUseTablespaces(useTablespaces);
+      bSI.setUseRoles(useRoles);
+      bSI.setUsePrivileges(usePrivileges);
       bSIList.add(bSI);
     }
     restoreBackupParams.backupStorageInfoList = bSIList;
