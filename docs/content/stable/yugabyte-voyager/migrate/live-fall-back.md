@@ -1530,7 +1530,7 @@ yb-voyager initiate cutover to source --export-dir <EXPORT_DIR>
 
     {{< /tabpane >}}
 
-    **Note** that PostgreSQL migrations, if you want to resume live migration from PostgreSQL to the target YugabyteDB database to prepare for cutover to target again, use the flag `--restart-data-migration-source-target` along with the `initiate cutover to source` command.
+    **Note** that for PostgreSQL migrations, if you want to resume live migration from PostgreSQL to the target YugabyteDB database to prepare for cutover to target again, use the flag `--restart-data-migration-source-target` along with the `initiate cutover to source` command.
 
     Refer to [cutover to source](../../reference/cutover-archive/cutover/#cutover-to-source) for more information.
 
