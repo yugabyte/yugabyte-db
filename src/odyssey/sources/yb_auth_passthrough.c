@@ -193,15 +193,23 @@ static machine_msg_t *yb_read_auth_pkt_from_server(od_client_t *client,
 {
 	machine_msg_t *msg = NULL;
 
-	msg = od_read(&server->io, UINT32_MAX);
+	const uint32_t login_timeout_ms = client->config_listen->client_login_timeout;
+
+	msg = od_read(&server->io, login_timeout_ms);
 	if (msg == NULL) {
 		if (!machine_timedout()) {
 			od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
 				 server->client, server,
 				 "read error from server: %s",
 				 od_io_error(&server->io));
-			return NULL;
+		} else {
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				client, server,
+				"Timeout during auth packet read from server (%"PRIu32" ms). Closing connection",
+				login_timeout_ms);
 		}
+		return NULL;
 	}
 
 	return msg;
@@ -259,9 +267,32 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	kiwi_fe_type_t type;
 	int rc = -1;
 
+	const int login_timeout_ms = client->config_listen->client_login_timeout;
+
 	/* Wait for password response packet from the client. */
+	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = od_read(&client->io, login_timeout_ms);
+
+		/*
+		 * YB: Unconditionally exit if the client has not given a relevant
+		 * (KIWI_FE_PASSWORD_MESSAGE) response within the timeout. This avoids a
+		 * malicious client keeping the connection open by sending irrelevant
+		 * packets.
+		 */
+		uint64_t now_ts = machine_time_us();
+		if (now_ts - start_ts > login_timeout_ms * ((uint64_t)1000)) {
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				client, server,
+				"Timeout during auth packet read from client (%"PRIu64" ms). Closing connection",
+				(now_ts - start_ts) / 1000);
+			yb_client_exit_mid_passthrough(server, instance);
+			if (msg != NULL)
+				machine_msg_free(msg);
+			return -1;
+		}
+
 		if (msg == NULL) {
 			od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
 				 client, NULL, "read error in middleware: %s",
@@ -391,7 +422,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 				progress = YB_CLI_AUTH_SUCCESS;
 			else if(auth_pkt_type == 12)  /* SCRAM Fin: wait for AuthOK */
 				progress = YB_CLI_AUTH_AWAIT_FIN;
-			else 
+			else
 				progress = YB_CLI_AUTH_PROGRESS;
 
 			rc = yb_client_write_pkt(client, server, instance, msg,
@@ -460,7 +491,7 @@ static int yb_route_auth_packets(od_server_t *server, od_client_t *client)
 		case YB_CLI_AUTH_SUCCESS:
 			return 0;
 		case YB_CLI_AUTH_AWAIT_FIN:
-			/* 
+			/*
 			 * In case of mechanisms like SCRAM, the server sends
 			 * the last packet before sending the AuthOK packet.
 			 * Thus, we need to forward two consecutive packets from

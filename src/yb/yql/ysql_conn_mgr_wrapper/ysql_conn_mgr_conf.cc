@@ -62,6 +62,7 @@ DECLARE_uint32(ysql_conn_mgr_reserve_internal_conns);
 DECLARE_uint32(TEST_ysql_conn_mgr_auth_delay_ms);
 DECLARE_string(ysql_conn_mgr_alter_guc_adoption_strategy);
 DECLARE_int32(ysql_conn_mgr_alter_guc_stale_backend_ttl_ms);
+DECLARE_uint32(ysql_conn_mgr_auth_msg_timeout);
 
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
@@ -226,6 +227,7 @@ Result<std::string> YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%yb_use_unix_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "" : "#"},
     {"{%yb_use_tcp_socket%}", FLAGS_ysql_conn_mgr_use_unix_conn ? "#" : ""},
     {"{%yb_use_auth_backend%}", BoolToString(FLAGS_ysql_conn_mgr_use_auth_backend)},
+    {"{%yb_client_login_timeout%}", std::to_string(FLAGS_ysql_conn_mgr_auth_msg_timeout)},
     {"{%readahead_buffer_size%}", std::to_string(FLAGS_ysql_conn_mgr_readahead_buffer_size)},
     {"{%tcp_keepalive%}", std::to_string(FLAGS_ysql_conn_mgr_tcp_keepalive)},
     {"{%tcp_keepalive_keep_interval%}",
