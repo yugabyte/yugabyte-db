@@ -35,13 +35,13 @@ You can also install a standalone version using any of the following methods:
     </a>
   </li>
   <li>
-    <a href="#macosarm" class="nav-link" id="macosarm-tab" data-bs-toggle="tab" role="tab" aria-controls="macosarm" aria-selected="true">
+    <a href="#macosarm" class="nav-link" id="macosarm-tab" data-bs-toggle="tab" role="tab" aria-controls="macosarm" aria-selected="false">
       <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS ARM
     </a>
   </li>
   <li>
-    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux x86
     </a>
@@ -64,7 +64,7 @@ You can also install a standalone version using any of the following methods:
   <div id="macosx86" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macosx86-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+curl -OL https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
 echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
@@ -74,7 +74,7 @@ cd yugabyte-client-{{< yb-version version="stable" >}}
   <div id="macosarm" class="tab-pane fade" role="tabpanel" aria-labelledby="macosarm-tab">
 
 ```sh
-wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
+curl -OL https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
 echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-arm64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-arm64.tar.gz
 cd yugabyte-client-{{< yb-version version="stable" >}}
