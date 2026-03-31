@@ -771,6 +771,17 @@ static od_frontend_status_t od_frontend_remote_server(od_relay_t *relay,
 		od_backend_evict_server_hashmap(server, "close prepared statement", data, size);
 		skip_forward_to_client = true;
 		break;
+	case YB_BE_NO_PARSE_PARSE_COMPLETE:
+		/* YB: No-op, return ParseComplete instead of YBNoParseParseComplete to client.
+		 * Rewrite type byte in-place so the client sees a standard
+		 * ParseComplete; preserves packet position in the relay iov.
+		 */
+		*data = KIWI_BE_PARSE_COMPLETE;
+		break;
+	case YB_BE_PARSE_NO_PARSE_COMPLETE:
+		// YB: Custom parse complete packet not required to be forwarded to client.
+		skip_forward_to_client = true;
+		break;
 	case KIWI_BE_ERROR_RESPONSE:
 		od_backend_error(server, "main", data, size);
 		break;

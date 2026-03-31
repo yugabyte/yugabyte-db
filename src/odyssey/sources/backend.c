@@ -1219,6 +1219,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		}
+		/*
+		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE and
+		 * YB_BE_PARSE_NO_PARSE_COMPLETE here as od_backend_ready_wait's job is
+		 * to just consume all the packets from the backend.
+		 */
 		machine_msg_free(msg);
 	}
 	/* never reached */
