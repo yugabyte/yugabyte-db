@@ -4127,6 +4127,18 @@
           "description" : "Time before deleting the backup from storage, in milliseconds",
           "format" : "int64",
           "type" : "integer"
+        },
+        "usePrivileges" : {
+          "description" : "Backup privileges for roles",
+          "type" : "boolean"
+        },
+        "useRoles" : {
+          "description" : "Backup global ysql roles",
+          "type" : "boolean"
+        },
+        "useTablespaces" : {
+          "description" : "Is tablespaces information included",
+          "type" : "boolean"
         }
       },
       "type" : "object"
