@@ -114,7 +114,7 @@ const CERTComponent: FC<CertCompProps> = ({ toggleFieldPath, certFieldPath, cert
                       sx={{ display: 'flex', flexDirection: 'column', width: '100%', pl: 4 }}
                       data-testid="RootCertificateField-Container"
                     >
-                      <YBLabel>{t('selectRootCert')}</YBLabel>
+                      <YBLabel error={!!fieldState.error}>{t('selectRootCert')}</YBLabel>
                       <Box
                         sx={{
                           display: 'flex',
