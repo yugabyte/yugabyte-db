@@ -118,7 +118,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -134,6 +133,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
@@ -173,7 +173,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
-          TaskType.SetNodeState,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
           TaskType.WaitForMasterLeader,
@@ -189,6 +188,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetFlagInMemory,
           TaskType.SetFlagInMemory,
           TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.SetNodeState,
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
