@@ -95,11 +95,11 @@ CLI:
 Example to delete changes without archiving them to another destination is as follows:
 
 ```sh
-yb-voyager archive changes --export-dir /dir/export-dir --delete-changes-without-archiving true
+yb-voyager archive changes --export-dir /dir/export-dir --policy delete
 ```
 
 Example to archive changes from the export directory to another destination is as follows:
 
 ```sh
-yb-voyager archive changes --export-dir /dir/export-dir --move-to /dir/archived-changes-dir
+yb-voyager archive changes --export-dir /dir/export-dir --policy archive --archive-dir /dir/archive-dir
 ```

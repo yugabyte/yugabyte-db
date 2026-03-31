@@ -31,7 +31,8 @@ This release includes breaking changes for Voyager migrations. Migrations starte
 
 ### Enhancements
 
-- Improved the `archive changes` command configuration options with explicit policies and flags.
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command configuration options with explicit policies and flags. You must set the `--policy` flag to `delete` or `archive`. For `archive`, set the `--archive-dir` flag to the directory where processed change segments are copied before the originals are removed.
+
 - The `export-data` step of the cutover process is resumable. If cutover fails before it is marked as processed in the migration metadata, the flow is now resumable.
 
 ### Bug fix
