@@ -2455,7 +2455,10 @@ void YBCStopSysTablePrefetching() {
 }
 
 bool YBCIsSysTablePrefetchingStarted() {
-  return pgapi->IsSysTablePrefetchingStarted();
+  // https://github.com/yugabyte/yugabyte-db/issues/30880
+  // YBCIsSysTablePrefetchingStarted can be called during PG backend shutdown
+  // via YBCIsLegacyModeForCatalogOps when pgapi is already set to nullptr.
+  return pgapi && pgapi->IsSysTablePrefetchingStarted();
 }
 
 void YBCRegisterSysTableForPrefetching(
