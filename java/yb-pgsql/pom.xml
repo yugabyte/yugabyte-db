@@ -99,5 +99,11 @@
       <version>4.1.0</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.mongodb</groupId>
+      <artifactId>mongodb-driver-sync</artifactId>
+      <version>5.3.1</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>
