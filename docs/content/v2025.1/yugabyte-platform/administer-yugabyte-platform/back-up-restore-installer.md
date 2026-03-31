@@ -101,8 +101,9 @@ When finished, the restored YugabyteDB Anywhere is ready to continue managing yo
 
 The following table describes optional flags you can include with the `restoreBackup` command.
 
-| Flag | Description | Default |
+| <div style="width:150px">Flag</div> | Description | Default |
 | :--- | :---------- | :------ |
+| --disable_version_check | Exclude version metadata when performing restore. | false |
 | -h, --help | Help for `restoreBackup`. | |
 | --migration | Restore from a Replicated installation. For information on migrating from Replicated, refer to [Migrate from Replicated](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/). | false |
 | --skip_dbdrop | Skip dropping the YugabyteDB Anywhere database before a migration restore. Valid only if --migration is true. | false |
