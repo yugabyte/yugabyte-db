@@ -75,10 +75,8 @@ public class TestDocumentDBGateway extends BasePgSQLTest {
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("enable_pg_cron", "true");
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_enable_documentdb,ysql_enable_documentdb_gateway");
+    flagMap.put("allowed_preview_flags_csv", "ysql_enable_documentdb");
     flagMap.put("ysql_enable_documentdb", "true");
-    flagMap.put("ysql_enable_documentdb_gateway", "true");
     return flagMap;
   }
 
@@ -86,10 +84,8 @@ public class TestDocumentDBGateway extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("enable_pg_cron", "true");
-    flagMap.put("allowed_preview_flags_csv",
-        "ysql_enable_documentdb,ysql_enable_documentdb_gateway");
+    flagMap.put("allowed_preview_flags_csv", "ysql_enable_documentdb");
     flagMap.put("ysql_enable_documentdb", "true");
-    flagMap.put("ysql_enable_documentdb_gateway", "true");
     flagMap.put("ysql_documentdb_gateway_port", String.valueOf(GATEWAY_PORT));
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     return flagMap;
