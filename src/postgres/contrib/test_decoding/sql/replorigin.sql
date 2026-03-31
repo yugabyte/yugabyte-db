@@ -119,3 +119,29 @@ SELECT data FROM pg_logical_slot_get_changes('regression_slot_no_lsn', NULL, NUL
 SELECT pg_replication_origin_session_reset();
 SELECT pg_drop_replication_slot('regression_slot_no_lsn');
 SELECT pg_replication_origin_drop('regress_test_decoding: regression_slot_no_lsn');
+
+-- Test pg_replication_origin_session_setup_shared
+-- This variant sets the origin without acquiring an exclusive slot,
+-- allowing multiple sessions to tag writes with the same origin concurrently.
+SELECT pg_replication_origin_create('regress_test_decoding: shared_origin');
+
+-- shared setup should work
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
+
+-- session should report origin as setup
+SELECT pg_replication_origin_session_is_setup();
+
+-- calling shared setup again on the same session should succeed (idempotent)
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
+
+-- non-existent origin should still fail
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: does_not_exist');
+
+-- reset shared origin
+SELECT pg_replication_origin_session_reset_shared();
+
+-- session should no longer report origin as setup
+SELECT pg_replication_origin_session_is_setup();
+
+-- clean up
+SELECT pg_replication_origin_drop('regress_test_decoding: shared_origin');
