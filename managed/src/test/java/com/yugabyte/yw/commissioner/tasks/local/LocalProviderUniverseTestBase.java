@@ -938,10 +938,10 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
       UniverseDefinitionTaskParams.Cluster primaryCluster = universeDetails.getPrimaryCluster();
       ReplicationInfoPB replicationInfo = config.getReplicationInfo();
       PlacementInfoPB liveReplicas = replicationInfo.getLiveReplicas();
-      if (primaryCluster.getOverallPlacement().hasRankOrdering()) {
+      if (primaryCluster.placementInfo.hasRankOrdering()) {
         Map<Integer, List<String>> prefs = new LinkedHashMap<>();
         primaryCluster
-            .getOverallPlacement()
+            .placementInfo
             .azStream()
             .filter(az -> az.leaderPreference > 0)
             .sorted(Comparator.comparing(az -> az.leaderPreference))
