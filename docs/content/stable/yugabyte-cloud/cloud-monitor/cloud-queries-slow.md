@@ -27,7 +27,7 @@ Slow queries are only available for YSQL.
 
 ## View Slow Queries
 
-To view slow queries, navigate to the cluster **Performace** tab and choose **Queries>Slow Queries**.
+To view slow queries, navigate to the cluster **Performance** tab and choose **Queries>Slow Queries**.
 
 ![Cluster Slow Queries](/images/yb-cloud/managed-monitor-slow-queries.png)
 
