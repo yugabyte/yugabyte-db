@@ -18,7 +18,8 @@ struct od_config_listen {
 
 	int backlog;
 
-	int client_login_timeout;
+	/* YB: Use uint32 as multiple APIs expect timeout value to be uint32_t*/
+	uint32_t client_login_timeout;
 	int compression;
 
 	od_list_t link;

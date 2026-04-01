@@ -531,6 +531,21 @@ static bool od_config_reader_number64(od_config_reader_t *reader,
 	return true;
 }
 
+static bool yb_od_config_reader_number32(od_config_reader_t *reader,
+	uint32_t *number)
+{
+od_token_t token;
+int rc;
+rc = od_parser_next(&reader->parser, &token);
+if (rc != OD_PARSER_NUM) {
+od_parser_push(&reader->parser, &token);
+od_config_reader_error(reader, &token, "expected 'number'");
+return false;
+}
+*number = token.value.num;
+return true;
+}
+
 static bool od_config_reader_yes_no(od_config_reader_t *reader, int *value)
 {
 	od_token_t token;
@@ -716,7 +731,7 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 			continue;
 		/* client_login_timeout */
 		case OD_LCLIENT_LOGIN_TIMEOUT:
-			if (!od_config_reader_number(
+			if (!yb_od_config_reader_number32(
 				    reader, &listen->client_login_timeout))
 				return NOT_OK_RESPONSE;
 			continue;
