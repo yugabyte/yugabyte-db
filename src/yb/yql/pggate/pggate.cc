@@ -2776,7 +2776,7 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
     return result;
 }
 
-Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
+Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle) {
   auto ts_info = VERIFY_RESULT(ListTabletServers());
   auto& t_servers = ts_info.tablet_servers;
   std::vector<std::string> uuids;
@@ -2784,7 +2784,7 @@ Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   for (auto& ts : t_servers) {
     uuids.emplace_back(std::move(ts.server.uuid));
   }
-  auto read = std::make_unique<PgGlobalViewRead>(std::move(uuids));
+  auto read = std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids));
   *handle = read.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
   return Status::OK();

@@ -898,7 +898,7 @@ class PgApiImpl {
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
-  Status NewGlobalViewRead(PgGlobalViewRead** handle);
+  Status NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle);
   YbcRemotePgExecResult Exec(PgGlobalViewRead* handle, std::string_view query);
 
   //----------------------------------------------------------------------------------------------

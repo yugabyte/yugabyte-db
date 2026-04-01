@@ -3386,8 +3386,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle) {
-  return ToYBCStatus(pgapi->NewGlobalViewRead(handle));
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(database_name, handle));
 }
 
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {

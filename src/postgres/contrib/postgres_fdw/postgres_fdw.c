@@ -53,6 +53,7 @@
 
 /* YB includes */
 #include "catalog/pg_authid.h"
+#include "commands/dbcommands.h"
 #include "pg_yb_utils.h"
 #include "utils/acl.h"
 #include "yb/yql/pggate/util/ybc_pgresult_util.h"
@@ -1635,7 +1636,8 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 
 	/* YB: Create and initialize the global view scan. */
 	if (yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
-		HandleYBStatus(YBCPgNewGlobalViewRead(&fsstate->yb_gvr));
+		HandleYBStatus(YBCPgNewGlobalViewRead(get_database_name(MyDatabaseId),
+			&fsstate->yb_gvr));
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,

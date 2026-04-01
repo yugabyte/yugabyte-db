@@ -16,8 +16,9 @@
 
 namespace yb::pggate {
 
-PgGlobalViewRead::PgGlobalViewRead(std::vector<std::string>&& tserver_uuids)
-    : tserver_uuids_(std::move(tserver_uuids)) {}
+PgGlobalViewRead::PgGlobalViewRead(
+    const char* database_name, std::vector<std::string>&& tserver_uuids)
+    : database_name_(database_name), tserver_uuids_(std::move(tserver_uuids)) {}
 
 void PgGlobalViewRead::ResetScan() {
   // params_ is not cleared here: postgresReScanForeignScan sets cursor_exists to false,
@@ -37,7 +38,7 @@ void PgGlobalViewRead::SetParams(std::span<const char*> values) {
 YbcRemotePgExecResult PgGlobalViewRead::ExecScan(PgClient& client, std::string_view query) {
   while (next_tserver_idx_ < tserver_uuids_.size()) {
     const auto& tserver_uuid = tserver_uuids_[next_tserver_idx_++];
-    auto res = client.RemoteExec(query, tserver_uuid, params_);
+    auto res = client.RemoteExec(query, database_name_, tserver_uuid, params_);
     if (!res.ok()) {
       LOG(WARNING) << "Failed to execute remote pg query: " << res.status();
       continue;

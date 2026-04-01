@@ -1100,7 +1100,7 @@ YbcStatus YBCQueryAutoAnalyze(
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);

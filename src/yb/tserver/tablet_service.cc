@@ -3545,7 +3545,7 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      "template1", /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;

@@ -708,6 +708,7 @@ message PgRemoteExecRequestPB {
   // One entry per query parameter ($1, $2, ...).
   // A param with no value set represents SQL NULL.
   repeated PgQueryParamPB params = 3;
+  required string database_name = 4;
 }
 
 message PgRemoteExecResponsePB {
