@@ -233,7 +233,8 @@ To use the YugabyteDB Kubernetes Operator with an existing YugabyteDB Anywhere i
 1. Run the following `helm upgrade` command to enable the YBA upgrade:
 
     ```sh
-    helm upgrade yba yugabytedb/yugaware --version 2024.1.0 --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test"
+    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="stable" format="short">}} \
+      --set yugaware.kubernetesOperatorEnabled=true,yugaware.kubernetesOperatorNamespace=yb-platform-test
     ```
 
 1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:
