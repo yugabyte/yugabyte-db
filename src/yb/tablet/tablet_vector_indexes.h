@@ -106,7 +106,7 @@ class TabletVectorIndexes :
   Status Verify();
 
   Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht) const;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const;
 
   void SetHasVectorDeletion() {
     has_vector_deletion_.store(true);

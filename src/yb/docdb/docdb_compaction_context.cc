@@ -604,7 +604,8 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
     if (iterator()) {
       return;
     }
-    iterator_holder_ = CHECK_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max()));
+    iterator_holder_ =
+        CHECK_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max(), nullptr));
     CHECK_NOTNULL(iterator());
   }
 

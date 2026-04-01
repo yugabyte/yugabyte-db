@@ -172,7 +172,7 @@ class DocVectorMetadataIteratorProvider {
  public:
   virtual ~DocVectorMetadataIteratorProvider() = default;
   virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht) const = 0;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const = 0;
 };
 
 using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
