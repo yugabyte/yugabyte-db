@@ -503,7 +503,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
           createUserIntent(
               ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
       UserIntent newReadReplicaIntent = null;
-      if (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())) {
+      if (ybUniverse.getSpec().getReadReplica() != null) {
         newReadReplicaIntent =
             getReadReplicaUserIntent(
                 universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
@@ -604,7 +604,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         createUserIntent(
             ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
     UserIntent newReadReplicaIntent = null;
-    if (CollectionUtils.isNotEmpty(u.getUniverseDetails().getReadOnlyClusters())) {
+    if (ybUniverse.getSpec().getReadReplica() != null) {
       newReadReplicaIntent =
           getReadReplicaUserIntent(
               u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
@@ -712,7 +712,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     incomingIntent.enableExposingService = currentUserIntent.enableExposingService;
 
     UserIntent incomingReadReplicaIntent = null;
-    if (CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())) {
+    if (ybUniverse.getSpec().getReadReplica() != null) {
       incomingReadReplicaIntent =
           getReadReplicaUserIntent(
               universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
