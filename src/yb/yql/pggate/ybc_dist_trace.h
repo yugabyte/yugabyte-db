@@ -41,16 +41,34 @@
 extern "C" {
 #endif
 
+#define YB_DIST_TRACE_START_SPAN(op_name) \
+  do { \
+    if (YBCIsDistTraceEnabled() && !YBCIsOtelScopeStackEmpty()) { \
+      YBCDistTraceStartSpan(op_name); \
+    } \
+  } while (0)
+
+#define YB_DIST_TRACE_END_SPAN() \
+  do { \
+    if (YBCIsDistTraceEnabled() && !YBCIsOtelScopeStackEmpty()) { \
+      YBCDistTraceEndSpan(); \
+    } \
+  } while (0)
+
+bool YBCIsOtelScopeStackEmpty();
 void YBCInitDistTrace(int64_t process_pid, const char* node_uuid);
 void YBCCleanupDistTrace();
 bool YBCIsDistTraceEnabled();
 bool YBCIsTraceParentValidAndRemote(const char* traceparent);
 YbcOtelSpanContext YBCGetValidSpanContext(const char* traceparent);
 void YBCDestroySpanContext(YbcOtelSpanContext span_context);
-YbcOtelScope YBCDistTraceStartRootSpan(
+void YBCDistTraceStartRootSpan(
     const char* query_string, YbcOtelSpanContext span_ctx, YbcPgOid db_oid, YbcPgOid user_id);
-void YBCDistTraceSetSpanAttributeUint64(YbcOtelScope scope, const char* key, uint64_t value);
-void YBCDistTraceEndSpan(YbcOtelScope scope);
+void YBCDistTraceStartSpan(const char* op_name);
+void YBCDistTraceSetCurrSpanAttrUint64(const char* key, uint64_t value);
+void YBCDistTraceEndSpan();
+bool YBCDistTraceIsRootSpan();
+void YBCDistTraceClearStack();
 
 #ifdef __cplusplus
 }  // extern "C"

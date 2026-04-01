@@ -13,6 +13,8 @@
 
 #include "yb/yql/pggate/ybc_dist_trace.h"
 
+#include <stack>
+
 #include "opentelemetry/common/attribute_value.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/span_metadata.h"
@@ -26,11 +28,25 @@
 
 namespace yb::pggate {
 
+namespace {
+
+namespace context = opentelemetry::context;
 namespace common = opentelemetry::common;
 namespace trace = opentelemetry::trace;
 namespace nostd = opentelemetry::nostd;
 
 constexpr size_t kMaxTruncatedQueryLength = 256;
+
+using OtelScopeEntry = std::pair<
+    opentelemetry::trace::Scope,
+    opentelemetry::nostd::shared_ptr<opentelemetry::trace::Span>>;
+
+std::stack<OtelScopeEntry>& OtelScopeStack() {
+  static std::stack<OtelScopeEntry> stack;
+  return stack;
+}
+
+}  // namespace
 
 class OtelSpanContext : public PgMemctx::Registrable {
  public:
@@ -43,29 +59,6 @@ class OtelSpanContext : public PgMemctx::Registrable {
 
  private:
   trace::SpanContext span_ctx_;
-};
-
-class OtelScope : public PgMemctx::Registrable {
- public:
-  explicit OtelScope(nostd::shared_ptr<trace::Span> sp)
-      : span_(std::move(sp)), scope_(span_) {}
-
-  ~OtelScope() {
-    if (!ended_normally_) {
-      span_->SetStatus(trace::StatusCode::kError, "Span did not end normally");
-    }
-  }
-
-  void SetAttribute(const char* key, const common::AttributeValue& value) {
-    span_->SetAttribute(key, value);
-  }
-
-  void EndedNormally() { ended_normally_ = true; }
-
- private:
-  nostd::shared_ptr<trace::Span> span_;
-  trace::Scope scope_;
-  bool ended_normally_ = false;
 };
 
 extern "C" {
@@ -109,12 +102,23 @@ void YBCCleanupDistTrace() {
   dist_trace::CleanupDistTrace();
 }
 
-YbcOtelScope YBCDistTraceStartRootSpan(
+void YBCDistTraceClearStack() {
+  while (!YBCIsOtelScopeStackEmpty()) {
+    // Spans remaining on the stack were interrupted by an ERROR before they could end normally.
+    OtelScopeStack().top().second->SetStatus(
+        trace::StatusCode::kError, "Span did not end normally");
+    OtelScopeStack().pop();
+  }
+}
+
+void YBCDistTraceStartRootSpan(
     const char* query, YbcOtelSpanContext yb_span_ctx, YbcPgOid db_oid, YbcPgOid user_id) {
   DCHECK(query);
+  DCHECK(YBCIsOtelScopeStackEmpty());
 
   trace::StartSpanOptions options;
-
+  // kServer kind indicates that the span covers server-side handling of a remote request
+  // while the client awaits a response.
   options.kind = trace::SpanKind::kServer;
   options.parent = DCHECK_NOTNULL(yb_span_ctx)->span_ctx();
 
@@ -122,29 +126,41 @@ YbcOtelScope YBCDistTraceStartRootSpan(
   // StartSpan makes a deep copy of all attributes into a separate buffer before returning,
   // so query only needs to remain valid through this call.
   auto span = dist_trace::GetDistTracer()->StartSpan(
-      "ysql.query",
+      "query",
       {{"db.id", db_oid},
        {"user.id", user_id},
        {"query.text", nostd::string_view(query, strnlen(query, kMaxTruncatedQueryLength))}},
       options);
 
-  auto scope = std::make_unique<OtelScope>(std::move(span));
-  auto* raw = scope.get();
-  YBCGetPgCallbacks()->GetCurrentYbMemctx()->Register(scope.release());
-  return raw;
+  OtelScopeStack().emplace(trace::Scope(span), std::move(span));
 }
 
-void YBCDistTraceSetSpanAttributeUint64(YbcOtelScope scope, const char* key, uint64_t value) {
-  DCHECK_NOTNULL(scope)->SetAttribute(key, value);
+void YBCDistTraceStartSpan(const char* op_name) {
+  trace::StartSpanOptions options;
+  options.kind = trace::SpanKind::kInternal;
+
+  auto span = dist_trace::GetDistTracer()->StartSpan(op_name, options);
+
+  OtelScopeStack().emplace(trace::Scope(span), std::move(span));
 }
 
-void YBCDistTraceEndSpan(YbcOtelScope scope) {
-  DCHECK_NOTNULL(scope)->EndedNormally();
-  // Destroying the memory context invokes ~Scope, which calls Span::End().
-  // End() enqueues already-populated SpanData for the batcher to export to the collector.
-  PgMemctx::Destroy(scope);
+void YBCDistTraceSetCurrSpanAttrUint64(const char* key, uint64_t value) {
+  DCHECK(!YBCIsOtelScopeStackEmpty());
+  DCHECK_NOTNULL(OtelScopeStack().top().second)->SetAttribute(key, value);
+}
+
+void YBCDistTraceEndSpan() {
+  DCHECK(!YBCIsOtelScopeStackEmpty());
+  OtelScopeStack().pop();
+}
+
+bool YBCDistTraceIsRootSpan() {
+  return OtelScopeStack().size() == 1;
+}
+
+bool YBCIsOtelScopeStackEmpty() {
+  return OtelScopeStack().empty();
 }
 
 } // extern "C"
-
 } // namespace yb::pggate
