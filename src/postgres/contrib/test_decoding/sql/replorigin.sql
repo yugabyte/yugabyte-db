@@ -131,13 +131,18 @@ SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared
 -- session should report origin as setup
 SELECT pg_replication_origin_session_is_setup();
 
--- calling shared setup again on the same session should succeed (idempotent)
+-- calling shared setup again should error (already setup)
 SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
 
--- non-existent origin should still fail
+-- non-existent origin should still fail (reset first to allow the call)
+SELECT pg_replication_origin_session_reset_shared();
 SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: does_not_exist');
 
--- reset shared origin
+-- reset when no origin is setup should error
+SELECT pg_replication_origin_session_reset_shared();
+
+-- setup again, then reset normally
+SELECT pg_replication_origin_session_setup_shared('regress_test_decoding: shared_origin');
 SELECT pg_replication_origin_session_reset_shared();
 
 -- session should no longer report origin as setup
