@@ -260,6 +260,10 @@ public class YNPConfigGenerator {
     ynpNode.put("is_install_node_agent", false);
     ynpNode.put("yb_user_id", "1994");
     ynpNode.put("is_yb_prebuilt_image", params.isYbPrebuiltImage());
+    boolean cgroupEnabled =
+        confGetter.getConfForScope(
+            params.getProvider(), ProviderConfKeys.enableCgroupConfiguration);
+    ynpNode.put("configure_cgroup", cgroupEnabled);
     loggingNode.put("level", "INFO");
     loggingNode.put("directory", params.getNodeAgentHome().resolve("logs").toString());
 

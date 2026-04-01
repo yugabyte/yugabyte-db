@@ -37,6 +37,14 @@ var ScriptFilesToCopy = []struct {
 	{"collect_metrics_wrapper.sh.j2", "bin/collect_metrics_wrapper.sh"},
 }
 
+// CgroupScriptFilesToCopy lists additional scripts installed only when configure_cgroup is enabled.
+var CgroupScriptFilesToCopy = []struct {
+	Src  string
+	Dest string
+}{
+	{"yb-tserver-cgroup-exec.sh.j2", "bin/yb-tserver-cgroup-exec.sh"},
+}
+
 type ConfigureServerHandler struct {
 	shellTask *ShellTask
 	param     *pb.ConfigureServerInput
@@ -229,10 +237,10 @@ func (h *ConfigureServerHandler) setupServerScript(
 		"yb_home_dir":       home,
 		"num_cores_to_keep": h.param.GetNumCoresToKeep(),
 		"yb_metrics_dir":    yb_metrics_dir,
+		"configure_cgroup":  h.param.GetConfigureCgroup(),
 	}
 
 	for _, fileInfo := range ScriptFilesToCopy {
-		// Copy the script.
 		_, err := module.CopyFile(
 			ctx,
 			serverScriptContext,
@@ -243,6 +251,21 @@ func (h *ConfigureServerHandler) setupServerScript(
 		)
 		if err != nil {
 			return err
+		}
+	}
+	if h.param.GetConfigureCgroup() {
+		for _, fileInfo := range CgroupScriptFilesToCopy {
+			_, err := module.CopyFile(
+				ctx,
+				serverScriptContext,
+				filepath.Join(module.ServerTemplateSubpath, fileInfo.Src),
+				filepath.Join(home, fileInfo.Dest),
+				fs.FileMode(0755),
+				h.username,
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	for _, process := range h.param.GetProcesses() {

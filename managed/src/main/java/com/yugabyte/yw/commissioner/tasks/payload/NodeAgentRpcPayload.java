@@ -454,6 +454,9 @@ public class NodeAgentRpcPayload {
     Integer num_cores_to_keep =
         confGetter.getConfForScope(universe, UniverseConfKeys.numCoresToKeep);
     configureServerInputBuilder.setNumCoresToKeep(num_cores_to_keep);
+    boolean cgroupEnabled =
+        confGetter.getConfForScope(provider, ProviderConfKeys.enableCgroupConfiguration);
+    configureServerInputBuilder.setConfigureCgroup(cgroupEnabled);
     return configureServerInputBuilder.build();
   }
 

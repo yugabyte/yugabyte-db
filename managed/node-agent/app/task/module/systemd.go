@@ -298,7 +298,8 @@ func IsProcessEnabled(
 	return stdOut == "enabled", nil
 }
 
-// UpdateUserSystemdUnits updates the user systemd unit file for the given process only if it exists.
+// UpdateUserSystemdUnits updates the user-level systemd unit file for the given process.
+// It is a no-op when the unit does not exist under ~/.config/systemd/user/.
 func UpdateUserSystemdUnits(
 	ctx context.Context,
 	username, process string,
@@ -323,6 +324,7 @@ func UpdateUserSystemdUnits(
 		logOut.WriteLine("Skipping for non-user systemd for %s", process)
 		return nil
 	}
+
 	util.FileLogger().Infof(ctx, "Updating user systemd unit at %s", path)
 	logOut.WriteLine("Updating user systemd unit at %s", path)
 	_, err = CopyFile(
@@ -336,6 +338,7 @@ func UpdateUserSystemdUnits(
 	if err != nil {
 		return err
 	}
+
 	_, err = RunShellCmdWithRetry(
 		ctx,
 		SystemdBackOff,

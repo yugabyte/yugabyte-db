@@ -41,6 +41,9 @@ ynp:
   # Ref: https://github.com/aws/clock-bound
   is_configure_clockbound: false
 
+  # When true, YNP configures TServer cgroup isolation. When false, no cgroup
+  # tuning is applied.
+  configure_cgroup: true
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.
