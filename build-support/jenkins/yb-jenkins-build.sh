@@ -385,8 +385,6 @@ if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
     export PATH=${JAVA_HOME}/bin:${PATH}
   fi
 
-  heading "Java 'clean' build is complete, will now actually build Java code"
-
   for java_project_dir in "${yb_java_project_dirs[@]}"; do
     pushd "${java_project_dir}"
     heading "Building Java code in directory '${java_project_dir}'"
@@ -404,14 +402,13 @@ if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
     fatal "Java build failed, stopping here."
   fi
 
-  heading "Running a test locally to force Maven to download all test-time dependencies"
+  heading "Forcing Maven to download all test-time dependencies"
   (
     cd "${YB_SRC_ROOT}/java"
-    build_yb_java_code test \
-                       -Dtest=org.yb.client.TestTestUtils#testDummy \
+    build_yb_java_code test-compile \
                        "${MVN_OPTS_TO_DOWNLOAD_ALL_DEPS[@]}"
   )
-  heading "Finished running a test locally to force Maven to download all test-time dependencies"
+  heading "Finished forcing Maven to download all test-time dependencies"
 
   # Tell gen_version_info.py to store the Git SHA1 of the commit really present in the code
   # being built, not our temporary commit to update pom.xml files.

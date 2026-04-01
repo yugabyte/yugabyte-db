@@ -166,7 +166,7 @@
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${maven-surefire-plugin.version}</version>
           <configuration>
-            <failIfNoTests>false</failIfNoTests>
+            <failIfNoTests>true</failIfNoTests>
             <reuseForks>${testing.reuseForks}</reuseForks>
             <forkedProcessTimeoutInSeconds>${yb.forked.test.process.timeout.sec}</forkedProcessTimeoutInSeconds>
             <argLine>${testArgLine}</argLine>
@@ -579,6 +579,17 @@
         <maven-dependency-plugin.phase>none</maven-dependency-plugin.phase>
         <yb.collect.tests.only>true</yb.collect.tests.only>
       </properties>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 </project>
