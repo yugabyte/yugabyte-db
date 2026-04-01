@@ -28,6 +28,7 @@ import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseQueryLogsExport;
 import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseRestart;
+import api.v2.models.UniverseResumeCanaryUpgrade;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -222,6 +223,15 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
 
     log.info("Started software rollback task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask resumeCanarySoftwareUpgrade(
+      UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
   }
 
