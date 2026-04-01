@@ -2646,10 +2646,23 @@ void yb_read_conf_from_env_var(od_rules_t *rules, od_config_t *config,
 	/* strlen returns 0 if the env var is not set. */
 	const int yb_password_len = strlen(yb_password);
 
+	const char *yb_ctrl_username = getenv("YB_YSQL_CONN_MGR_USER");
+	if (yb_ctrl_username == NULL) {
+		yb_ctrl_username = "yugabyte";
+	}
+
+	const char *yb_ctrl_dbname = getenv("YB_YSQL_CONN_MGR_DB");
+	if (yb_ctrl_dbname == NULL) {
+		yb_ctrl_dbname = "yugabyte";
+	}
+
 	/*
-	 * Connections from Ysql Connection Manager will be authenticated
-	 * via yb-tserver-key. Therefore, yb_password can't be null.
+	 * YB: Connections from Ysql Connection Manager will be authenticated
+	 * via yb-tserver-key. Control connections use yb_ctrl_username and
+	 * yb_ctrl_dbname. Therefore, all three must be non-null.
 	 */
+	assert(yb_ctrl_username != NULL);
+	assert(yb_ctrl_dbname != NULL);
 	assert(yb_password != NULL);
 
 	od_list_t *i;
@@ -2671,15 +2684,24 @@ void yb_read_conf_from_env_var(od_rules_t *rules, od_config_t *config,
 		}
 #endif
 
+		/* Set storage_user and storage_db for control connection pool */
+		if (rule->pool->routing == OD_RULE_POOL_INTERVAL) {
+			if (rule->storage_user)
+				free(rule->storage_user);
+			rule->storage_user = strndup(yb_ctrl_username, USER_NAME_MAX_LEN - 1);
+			rule->storage_user_len = strlen(rule->storage_user);
+
+			if (rule->storage_db)
+				free(rule->storage_db);
+			rule->storage_db = strndup(yb_ctrl_dbname, DB_NAME_MAX_LEN - 1);
+		}
+
 		/* Set storage_password */
 		if (yb_password != NULL) {
 			if (rule->storage_password)
 				free(rule->storage_password);
-			rule->storage_password = (char *)malloc(
-				sizeof(char) * (yb_password_len + 1));
-			strcpy(rule->storage_password, yb_password);
-			rule->storage_password_len =
-				strlen(rule->storage_password);
+			rule->storage_password = strdup(yb_password);
+			rule->storage_password_len = yb_password_len;
 		}
 	}
 }
