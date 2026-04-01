@@ -209,11 +209,38 @@ The [YugabyteDB Master Server](../../../architecture/yb-master/) (YB-Master) hos
 <!--| LSM-DB Seek/Next Num Ops | The number of calls to seek / next. | |
 | LSM-DB Seeks/Sec/Node | The number of calls to seek per second per node. | |
 | SSTable size/Node | The size (in bytes) of all SST files. | |
+-->
+
+### CDC
+
+| Graph | Description | Use |
+| :--- | :--- | :--- |
+| | | |
+
+## Advanced metrics
+
+### YSQL
+
+### YCQL
+
+### Resource
+
+### Per Process
+
+### Disk I/O
+
+### Tablet Server
+
+### Master Server
+
+### Master Server Advanced
+
+### DocDB
 
 <!--### YSQL Advanced
 
 | Graph | Description | Use |
-| :---| :--- | :--- |
+| :--- | :--- | :--- |
 | YSQL Operations/sec  | The number of various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | You may consider this information while examining other metrics. |
 | YSQL Average Latency (ms) | The average time taken by various transaction control operations, such as BEGIN, COMMIT, ROLLBACK, as well as other operations through the YSQL API. | You may consider this information while examining other metrics. |
 -->
