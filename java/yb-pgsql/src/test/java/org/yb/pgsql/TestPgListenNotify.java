@@ -15,24 +15,41 @@ package org.yb.pgsql;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.common.net.HostAndPort;
+import com.google.protobuf.ByteString;
 import com.yugabyte.PGConnection;
 import com.yugabyte.PGNotification;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.CommonNet;
+import org.yb.CommonNet.CloudInfoPB;
+import org.yb.CommonTypes;
 import org.yb.YBTestRunner;
+import org.yb.client.ListSnapshotSchedulesResponse;
+import org.yb.client.ModifyClusterConfigLiveReplicas;
+import org.yb.client.ModifyClusterConfigReadReplicas;
+import org.yb.client.SnapshotScheduleInfo;
+import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
 import org.yb.util.ProcessUtil;
 import org.yb.util.Timeouts;
+import org.yb.util.YBBackupUtil;
 
 /**
  * Tests for LISTEN/NOTIFY functionality including error handling during
@@ -200,29 +217,508 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
-   * Polls the given connection for notifications by executing "SELECT 1" and
-   * checking for notifications after each attempt. Asserts that a notification
-   * with the expected channel and payload is received within the timeout.
+   * Verifies that a connection receives its own notifications (self-notify).
    */
-  private void waitForNotification(Connection connection, String expectedChannel,
-      String expectedPayload) throws Exception {
-    PGNotification[] notifications = null;
-    PGConnection pgConecction = connection.unwrap(PGConnection.class);
-    try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 30; attempt++) {
-        // The JDBC driver fetches notifications as a side-effect of executing a query.
+  @Test
+  public void testSelfNotify() throws Exception {
+    try (Connection conn = getConnectionBuilder().connect()) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+        stmt.execute("NOTIFY " + CHANNEL + ", 'self_notify'");
+      }
+      waitForNotification(conn, CHANNEL, "self_notify");
+    }
+  }
+
+  /**
+   * Verifies that LISTEN and NOTIFY issued within the same transaction
+   * result in the notification being delivered after COMMIT, regardless
+   * of the order of LISTEN and NOTIFY within the transaction.
+   */
+  @Test
+  public void testListenAndNotifyInSameTransaction() throws Exception {
+    // Case 1: LISTEN before NOTIFY.
+    try (Connection conn = getConnectionBuilder().connect()) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("LISTEN " + CHANNEL);
+        stmt.execute("NOTIFY " + CHANNEL + ", 'listen_first'");
+        stmt.execute("COMMIT");
+      }
+      waitForNotification(conn, CHANNEL, "listen_first");
+    }
+
+    // Case 2: NOTIFY before LISTEN.
+    try (Connection conn = getConnectionBuilder().connect()) {
+      try (Statement stmt = conn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("NOTIFY " + CHANNEL + ", 'notify_first'");
+        stmt.execute("LISTEN " + CHANNEL);
+        stmt.execute("COMMIT");
+      }
+      waitForNotification(conn, CHANNEL, "notify_first");
+    }
+  }
+
+  /**
+   * Verifies LISTEN behavior inside subtransactions:
+   *   - LISTEN inside a committed subtransaction (RELEASE SAVEPOINT) takes effect
+   *     and the connection receives notifications after COMMIT.
+   *   - LISTEN inside a rolled-back subtransaction (ROLLBACK TO SAVEPOINT) is
+   *     cancelled and the connection does NOT receive notifications after COMMIT.
+   */
+  @Test
+  public void testListenInSubtransaction() throws Exception {
+    // Case 1: LISTEN in a committed subtransaction -- should receive notifications.
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("SAVEPOINT sp1");
+        stmt.execute("LISTEN " + CHANNEL);
+        stmt.execute("RELEASE SAVEPOINT sp1");
+        stmt.execute("COMMIT");
+      }
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_listen_commit'");
+      }
+      waitForNotification(listenerConn, CHANNEL, "subtxn_listen_commit");
+    }
+
+    // Case 2: LISTEN in a rolled-back subtransaction -- should NOT receive notifications.
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("SAVEPOINT sp2");
+        stmt.execute("LISTEN " + CHANNEL);
+        stmt.execute("ROLLBACK TO SAVEPOINT sp2");
+        stmt.execute("COMMIT");
+      }
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_listen_abort'");
+      }
+
+      Thread.sleep(5000);
+      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+      try (Statement stmt = listenerConn.createStatement()) {
         stmt.execute("SELECT 1");
-        notifications = pgConecction.getNotifications();
-        if (notifications != null && notifications.length > 0) {
-          break;
-        }
-        Thread.sleep(500);
+      }
+      PGNotification[] notifs = pgConn.getNotifications();
+      assertTrue("Should not receive notifications when LISTEN was in rolled-back subtransaction",
+          notifs == null || notifs.length == 0);
+    }
+  }
+
+  /**
+   * Verifies NOTIFY behavior inside subtransactions:
+   *   - A notification sent inside a committed subtransaction (RELEASE SAVEPOINT)
+   *     is delivered to the listener.
+   *   - A notification sent inside a rolled-back subtransaction (ROLLBACK TO SAVEPOINT)
+   *     is NOT delivered to the listener.
+   */
+  @Test
+  public void testNotifyInSubtransaction() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      // Subtransaction that commits: notification should be delivered.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("SAVEPOINT sp1");
+        stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_commit'");
+        stmt.execute("RELEASE SAVEPOINT sp1");
+        stmt.execute("COMMIT");
+      }
+      waitForNotification(listenerConn, CHANNEL, "subtxn_commit");
+
+      // Subtransaction that aborts: notification should NOT be delivered.
+      // A sentinel notification is sent after the rollback to confirm the delivery path.
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("BEGIN");
+        stmt.execute("SAVEPOINT sp2");
+        stmt.execute("NOTIFY " + CHANNEL + ", 'subtxn_abort'");
+        stmt.execute("ROLLBACK TO SAVEPOINT sp2");
+        stmt.execute("NOTIFY " + CHANNEL + ", 'sentinel'");
+        stmt.execute("COMMIT");
+      }
+
+      List<PGNotification> received =
+          waitForNotification(listenerConn, CHANNEL, "sentinel");
+      for (PGNotification n : received) {
+        assertTrue("Should not receive notification from rolled-back subtransaction, got: "
+            + n.getParameter(), !n.getParameter().equals("subtxn_abort"));
       }
     }
-    assertNotNull("Expected to receive a notification", notifications);
-    assertTrue("Expected at least one notification", notifications.length > 0);
-    assertEquals(expectedChannel, notifications[0].getName());
-    assertEquals(expectedPayload, notifications[0].getParameter());
+  }
+
+  /**
+   * Sends a large number of notifications in a single transaction and verifies
+   * that all are delivered in order to the listener.
+   */
+  @Test
+  public void testLargeNumberOfNotifiesInTransaction() throws Exception {
+    final int numNotifications = 500;
+
+    try (Connection listenerConn = getConnectionBuilder().connect();
+         Connection notifierConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("BEGIN");
+        for (int i = 0; i < numNotifications; i++) {
+          stmt.addBatch("NOTIFY " + CHANNEL + ", 'msg_" + i + "'");
+        }
+        stmt.executeBatch();
+        stmt.execute("COMMIT");
+      }
+
+      List<PGNotification> allNotifs = waitForNotification(
+          listenerConn, CHANNEL, "msg_" + (numNotifications - 1));
+      assertEquals("Expected all notifications to be delivered",
+          numNotifications, allNotifs.size());
+      for (int i = 0; i < numNotifications; i++) {
+        assertEquals(CHANNEL, allNotifs.get(i).getName());
+        assertEquals("msg_" + i, allNotifs.get(i).getParameter());
+      }
+    }
+  }
+
+  /**
+   * Verifies that a committed notification is still delivered to an active
+   * listener even after the notifier's backend is killed with SIGKILL.
+   */
+  @Test
+  public void testNotifyCommitAndNotifierCrash() throws Exception {
+    try (Connection listenerConn = getConnectionBuilder().connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      Connection notifierConn = getConnectionBuilder().connect();
+      int notifierPid = getPgBackendPid(notifierConn);
+      try (Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'survive_crash'");
+      }
+      ProcessUtil.signalProcess(notifierPid, "KILL");
+      LOG.info("Crashed notifier backend PID: {}", notifierPid);
+
+      waitForNotification(listenerConn, CHANNEL, "survive_crash");
+    }
+  }
+
+  /**
+   * Backs up the source database, sends notifications on it, restores to a new database,
+   * then verifies that LISTEN/NOTIFY works on the restored database with no spurious
+   * notifications from the source.
+   */
+  @Test
+  public void testListenNotifyAfterBackupRestore() throws Exception {
+    YBBackupUtil.setTSAddresses(miniCluster.getTabletServers());
+    YBBackupUtil.setMasterAddresses(masterAddresses);
+    YBBackupUtil.setPostgresContactPoint(miniCluster.getPostgresContactPoints().get(0));
+    YBBackupUtil.maybeStartYbControllers(miniCluster);
+
+    final String restoredDb = "restored_db";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE t (id INT PRIMARY KEY, val TEXT)");
+      stmt.execute("INSERT INTO t VALUES (1, 'hello'), (2, 'world')");
+    }
+
+    // Send notifications on the source database before backup.
+    try (Connection notifierConn = getConnectionBuilder().connect();
+         Statement stmt = notifierConn.createStatement()) {
+      stmt.execute("NOTIFY " + CHANNEL + ", 'before_backup'");
+    }
+
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", "ysql.yugabyte");
+    if (!TestUtils.useYbController()) {
+      backupDir = new JSONObject(output).getString("snapshot_url");
+    }
+
+    // Send more notifications after backup.
+    try (Connection notifierConn = getConnectionBuilder().connect();
+         Statement stmt = notifierConn.createStatement()) {
+      stmt.execute("NOTIFY " + CHANNEL + ", 'after_backup'");
+    }
+
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ysql." + restoredDb);
+
+    // Verify data was restored.
+    try (Connection restoredConn = getConnectionBuilder().withDatabase(restoredDb).connect();
+         Statement stmt = restoredConn.createStatement()) {
+      assertQuery(stmt, "SELECT * FROM t ORDER BY id",
+          new Row(1, "hello"), new Row(2, "world"));
+    }
+
+    // LISTEN on the restored database -- no stale notifications should arrive.
+    try (Connection listenerConn = getConnectionBuilder().withDatabase(restoredDb).connect()) {
+      try (Statement stmt = listenerConn.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      Thread.sleep(5000);
+      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+      try (Statement pollStmt = listenerConn.createStatement()) {
+        pollStmt.execute("SELECT 1");
+      }
+      PGNotification[] stale = pgConn.getNotifications();
+      assertTrue("Expected no spurious notifications after restore",
+          stale == null || stale.length == 0);
+
+      // Send a new NOTIFY on the restored database and verify delivery.
+      try (Connection notifierConn = getConnectionBuilder().withDatabase(restoredDb).connect();
+           Statement stmt = notifierConn.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'after_restore'");
+      }
+
+      waitForNotification(listenerConn, CHANNEL, "after_restore");
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE " + restoredDb);
+    }
+  }
+
+  /**
+   * Tests LISTEN/NOTIFY isolation between a source database and its clone.
+   * Verifies:
+   *   - Fresh LISTEN/NOTIFY works on the cloned database.
+   *   - Notifications sent on the clone are NOT received by source listeners.
+   *   - Notifications sent on the source are NOT received by clone listeners.
+   */
+  @Test
+  public void testListenNotifyWithDbClone() throws Exception {
+    YBClient client = miniCluster.getClient();
+
+    for (HostAndPort master : miniCluster.getMasters().keySet()) {
+      client.setFlag(master, "enable_db_clone", "true");
+    }
+
+    // A snapshot schedule is required for cloning.
+    client.createSnapshotSchedule(
+        CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL, "yugabyte",
+        /* retentionInSecs */ 600, /* timeIntervalInSecs */ 10);
+
+    // Wait for at least one snapshot to be created.
+    TestUtils.waitFor(() -> {
+      ListSnapshotSchedulesResponse resp = client.listSnapshotSchedules(null);
+      for (SnapshotScheduleInfo info : resp.getSnapshotScheduleInfoList()) {
+        if (!info.getSnapshotInfoList().isEmpty()) {
+          return true;
+        }
+      }
+      return false;
+    }, 60000);
+
+    final String cloneDb = "clone_db";
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE DATABASE " + cloneDb + " TEMPLATE yugabyte");
+    }
+
+    // Set up listeners on both source and clone databases.
+    try (Connection sourceListener = getConnectionBuilder().connect();
+         Connection cloneListener = getConnectionBuilder().withDatabase(cloneDb).connect()) {
+      try (Statement stmt = sourceListener.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = cloneListener.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+
+      // NOTIFY on clone: clone listener should receive, source should NOT.
+      try (Connection cloneNotifier = getConnectionBuilder().withDatabase(cloneDb).connect();
+           Statement stmt = cloneNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'from_clone'");
+      }
+      waitForNotification(cloneListener, CHANNEL, "from_clone");
+
+      // Use a sentinel to verify the source listener didn't get the clone's notification.
+      try (Connection sourceNotifier = getConnectionBuilder().connect();
+           Statement stmt = sourceNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'source_sentinel'");
+      }
+      List<PGNotification> sourceNotifs =
+          waitForNotification(sourceListener, CHANNEL, "source_sentinel");
+      for (PGNotification n : sourceNotifs) {
+        assertTrue("Source should not receive notifications from clone, got: "
+            + n.getParameter(), !n.getParameter().equals("from_clone"));
+      }
+
+      // NOTIFY on source: source listener should receive, clone should NOT.
+      try (Connection sourceNotifier = getConnectionBuilder().connect();
+           Statement stmt = sourceNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'from_source'");
+      }
+      waitForNotification(sourceListener, CHANNEL, "from_source");
+
+      // Use a sentinel to verify the clone listener didn't get the source's notification.
+      try (Connection cloneNotifier = getConnectionBuilder().withDatabase(cloneDb).connect();
+           Statement stmt = cloneNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'clone_sentinel'");
+      }
+      List<PGNotification> cloneNotifs =
+          waitForNotification(cloneListener, CHANNEL, "clone_sentinel");
+      for (PGNotification n : cloneNotifs) {
+        assertTrue("Clone should not receive notifications from source, got: "
+            + n.getParameter(), !n.getParameter().equals("from_source"));
+      }
+    }
+
+    try (Statement stmt = connection.createStatement()) {
+      if (isTestRunningWithConnectionManager())
+        waitForStatsToGetUpdated();
+      stmt.execute("DROP DATABASE " + cloneDb);
+    }
+  }
+
+  /**
+   * Tests LISTEN/NOTIFY with a read replica node:
+   *   1. Both LISTEN and NOTIFY on the read replica node.
+   *   2. LISTEN on read replica, NOTIFY on primary.
+   *   3. LISTEN on primary, NOTIFY on read replica.
+   */
+  @Test
+  public void testListenNotifyWithReadReplica() throws Exception {
+    final String RR_UUID = "readcluster";
+    final String CLOUD = "cloud1";
+    final String REGION = "datacenter1";
+    final String ZONE = "rack1";
+
+    YBClient client = miniCluster.getClient();
+
+    // Start a read replica tserver with LISTEN/NOTIFY enabled.
+    Map<String, String> rrFlags = new HashMap<>(getTServerFlags());
+    rrFlags.put("placement_cloud", CLOUD);
+    rrFlags.put("placement_region", REGION);
+    rrFlags.put("placement_zone", ZONE);
+    rrFlags.put("placement_uuid", RR_UUID);
+    int rrIndex = miniCluster.getNumTServers();
+    miniCluster.startTServer(rrFlags);
+    miniCluster.waitForTabletServers(rrIndex + 1);
+
+    // Configure cluster: live placement (default UUID) + read replica placement.
+    CloudInfoPB cloudInfo = CloudInfoPB.newBuilder()
+        .setPlacementCloud(CLOUD)
+        .setPlacementRegion(REGION)
+        .setPlacementZone(ZONE)
+        .build();
+    CommonNet.PlacementBlockPB placementBlock = CommonNet.PlacementBlockPB.newBuilder()
+        .setCloudInfo(cloudInfo)
+        .setMinNumReplicas(1)
+        .build();
+
+    CommonNet.PlacementInfoPB livePlacement = CommonNet.PlacementInfoPB.newBuilder()
+        .addPlacementBlocks(placementBlock)
+        .setNumReplicas(3)
+        .setPlacementUuid(ByteString.copyFromUtf8(""))
+        .build();
+    CommonNet.PlacementInfoPB rrPlacement = CommonNet.PlacementInfoPB.newBuilder()
+        .addPlacementBlocks(placementBlock)
+        .setNumReplicas(1)
+        .setPlacementUuid(ByteString.copyFromUtf8(RR_UUID))
+        .build();
+
+    new ModifyClusterConfigLiveReplicas(client, livePlacement).doCall();
+    new ModifyClusterConfigReadReplicas(client, Arrays.asList(rrPlacement)).doCall();
+
+    final int LB_WAIT_TIME_MS = 120 * 1000;
+    assertTrue("Load balancer did not become active",
+        client.waitForLoadBalancerActive(LB_WAIT_TIME_MS));
+    assertTrue("Load balancer did not become idle",
+        client.waitForLoadBalancerIdle(LB_WAIT_TIME_MS));
+
+    // Verify the RR tserver is actually a read replica.
+    try (Connection rrConn = getConnectionBuilder().withTServer(rrIndex).connect();
+         Statement stmt = rrConn.createStatement()) {
+      String rrHost = miniCluster.getPostgresContactPoints().get(rrIndex).getHostName();
+      getSingleRow(stmt,
+          "SELECT 1 FROM yb_servers() WHERE host = '" + rrHost
+          + "' AND node_type = 'read_replica'");
+    }
+
+    // Case 1: LISTEN and NOTIFY both on the read replica node.
+    LOG.info("Case 1: LISTEN and NOTIFY both on read replica");
+    try (Connection rrListener = getConnectionBuilder().withTServer(rrIndex).connect();
+         Connection rrNotifier = getConnectionBuilder().withTServer(rrIndex).connect()) {
+      try (Statement stmt = rrListener.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = rrNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'rr_to_rr'");
+      }
+      waitForNotification(rrListener, CHANNEL, "rr_to_rr");
+    }
+
+    // Case 2: LISTEN on read replica, NOTIFY on primary.
+    LOG.info("Case 2: LISTEN on read replica, NOTIFY on primary");
+    try (Connection rrListener = getConnectionBuilder().withTServer(rrIndex).connect();
+         Connection primaryNotifier = getConnectionBuilder().withTServer(0).connect()) {
+      try (Statement stmt = rrListener.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = primaryNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'primary_to_rr'");
+      }
+      waitForNotification(rrListener, CHANNEL, "primary_to_rr");
+    }
+
+    // Case 3: LISTEN on primary, NOTIFY on read replica.
+    LOG.info("Case 3: LISTEN on primary, NOTIFY on read replica");
+    try (Connection primaryListener = getConnectionBuilder().withTServer(0).connect();
+         Connection rrNotifier = getConnectionBuilder().withTServer(rrIndex).connect()) {
+      try (Statement stmt = primaryListener.createStatement()) {
+        stmt.execute("LISTEN " + CHANNEL);
+      }
+      try (Statement stmt = rrNotifier.createStatement()) {
+        stmt.execute("NOTIFY " + CHANNEL + ", 'rr_to_primary'");
+      }
+      waitForNotification(primaryListener, CHANNEL, "rr_to_primary");
+    }
+  }
+
+  /**
+   * Polls the given connection for notifications by executing "SELECT 1",
+   * collecting all received notifications until one matching the expected
+   * channel and payload is found. Returns the complete list of notifications
+   * received (including the match).
+   */
+  private List<PGNotification> waitForNotification(Connection connection,
+      String expectedChannel, String expectedPayload) throws Exception {
+    List<PGNotification> allNotifications = new ArrayList<>();
+    PGConnection pgConn = connection.unwrap(PGConnection.class);
+    boolean found = false;
+    try (Statement stmt = connection.createStatement()) {
+      for (int attempt = 0; attempt < 75 && !found; attempt++) {
+        stmt.execute("SELECT 1");
+        PGNotification[] notifications = pgConn.getNotifications();
+        if (notifications != null) {
+          for (PGNotification n : notifications) {
+            allNotifications.add(n);
+            if (n.getName().equals(expectedChannel)
+                && n.getParameter().equals(expectedPayload)) {
+              found = true;
+            }
+          }
+        }
+        if (!found) {
+          Thread.sleep(200);
+        }
+      }
+    }
+    assertTrue("Expected to receive notification on channel '" + expectedChannel
+        + "' with payload '" + expectedPayload + "'", found);
+    return allNotifications;
   }
 
   /**
