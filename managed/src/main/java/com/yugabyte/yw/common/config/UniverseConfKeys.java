@@ -1172,6 +1172,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " fails.",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> xclusterPauseRpcTimeout =
+      new ConfKeyInfo<>(
+          "yb.xcluster.pause_rpc_timeout",
+          ScopeType.UNIVERSE,
+          "Timeout for xCluster Pause RPC call",
+          "Timeout for xCluster Pause RPC call; if the SetUniverseReplicationEnabled RPC times out,"
+              + " you can increase this runtime config to alleviate the issue",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration>
       xclusterDbScopedDeleteReplicationOnSourceTimeoutDuringFailover =
           new ConfKeyInfo<>(
