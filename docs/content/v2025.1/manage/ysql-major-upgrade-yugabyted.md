@@ -75,6 +75,8 @@ Use the `upgrade check_version_compatibility` command to make sure your cluster 
 output: ✅ Clusters are compatible for upgrade.
 ```
 
+If the precheck flags any extensions as being incompatible, drop the extensions and run the precheck again. You can re-enable them after the upgrade is finalized.
+
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Backup](../../reference/configuration/yugabyted/#backup).
 {{</tip>}}

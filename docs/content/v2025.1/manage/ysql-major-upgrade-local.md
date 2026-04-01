@@ -94,6 +94,8 @@ Checking for invalid "sql_identifier" user columns          ok
 *Clusters are compatible*
 ```
 
+If the precheck flags any extensions as being incompatible, drop the extensions and run the precheck again. You can re-enable them after the upgrade is finalized.
+
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).
 {{</tip>}}
