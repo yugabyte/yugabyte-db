@@ -45,18 +45,18 @@ struct od_client {
 
 	kiwi_be_startup_t startup;
 	/*
-	 * All GUC settings sent in startup packet other than
-	 * user, database & replication
+	 * YB: All GUC settings sent in startup packet other than
+	 * user, database & replication. This includes GUC settings
+	 * set via the `options` arg in the startup packet - these
+	 * are stored as a raw string, without parsing.
+	 * Because of this, GUC lookups should not be done against
+	 * yb_startup_settings.
 	 */
 	kiwi_vars_t yb_startup_settings;
 
-	/*
-	 * YB: For auth passthrough, only yb_vars_session is used
-	 * and it stores all vars
-	 */
-	/* vars set through startup packet */
+	/* YB: vars set through startup packet */
 	kiwi_vars_t yb_vars_startup;
-	/* vars set through SET statements */
+	/* YB: vars set through SET statements */
 	kiwi_vars_t yb_vars_session;
 	kiwi_key_t key;
 
