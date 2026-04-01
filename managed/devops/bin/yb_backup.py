@@ -116,6 +116,7 @@ DEFAULT_YB_USER = 'yugabyte'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 PLATFORM_VERSION_FILE_PATH = os.path.join(SCRIPT_DIR, '../../yugaware/conf/version_metadata.json')
 YB_VERSION_RE = re.compile(r'^version (\d+\.\d+\.\d+\.\d+).*')
+MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS = (2, 27, 0, 0)
 YB_ADMIN_HELP_RE = re.compile(r'^ \d+\. (\w+).*')
 
 XXH64HASH_TOOL_PATH = os.path.join(YB_HOME_DIR, 'bin/xxhash')
@@ -780,6 +781,25 @@ class YBVersion:
         self.parts = matched.group(1).split('.') if matched else None
         if self.parts:
             logging.info("[app] YB cluster version: " + '.'.join(self.parts))
+
+    def is_at_least(self, minimum_version):
+        if not self.parts:
+            return False
+        try:
+            def normalize_version(version):
+                # Normalize stable releases version to preview version for comparison.
+                # 2024.1 -> 2.21, 2024.2 -> 2.23, 2025.1 -> 2.25, 2025.2 -> 2.27.
+                if len(version) >= 2 and version[0] >= 2024:
+                    major, minor = version[0], version[1]
+                    mapped_minor = 21 + 4 * (major - 2024) + 2 * (minor - 1)
+                    return (2, mapped_minor) + tuple(version[2:])
+                return tuple(version)
+
+            current = normalize_version(tuple(int(part) for part in self.parts))
+            minimum = normalize_version(tuple(int(part) for part in minimum_version))
+            return current >= minimum
+        except ValueError:
+            return False
 
 
 class YBTSConfig:
@@ -3099,8 +3119,17 @@ class YBBackup:
             sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
             db_name = keyspace_name(self.args.keyspace[0])
             ysql_dump_args = ['--include-yb-metadata', '--serializable-deferrable', '--create',
-                              '--schema-only', '--with-statistics',
+                              '--schema-only',
                               '--dbname=' + db_name, '--file=' + sql_dump_path]
+            if self.database_version.is_at_least(MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS):
+                ysql_dump_args.append('--with-statistics')
+            else:
+                logging.info(
+                    "[app] Skip --with-statistics for database version '%s' "
+                    "(requires >= %s.%s)",
+                    self.database_version.string,
+                    MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS[0],
+                    MIN_DB_VERSION_WITH_YSQL_DUMP_STATISTICS[1])
 
             if self.args.dump_role_checks:
                 ysql_dump_args.append('--dump-role-checks')
