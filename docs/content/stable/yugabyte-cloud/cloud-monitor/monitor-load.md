@@ -54,8 +54,6 @@ The colors in the load chart indicate where time is being spent, such as CPU, I/
 
 A key signal in this chart is CPU usage. The green portion of the bars represents CPU demand, while the dashed gray line represents total CPU capacity, the number of vCPUs in the cluster. When CPU demand exceeds this line, the cluster is CPU-bound and queries are competing for CPU resources. In that case, performance can be improved either by adding more CPU capacity or by optimizing the queries that are consuming the most CPU.
 
-In a typical scenario, an application sends a query to a YSQL process, and that process contacts its local TServer. The TServer farms out the SQL to the appropriate nodes that have the data needed to satisfy the query. Therefore, a typical query requires at least two connections to the cluster: one for the YSQL process, and at least one TServer thread. (There can be multiple TServer threads active if the query has data on multiple nodes.)
-
 The colors in the chart are typically CPU for the active TServer threads and TServerWait for those YSQL processes waiting for the TServer threads to complete their parts of the SQL query.
 
 If other waits show up as a significant portion of the bar chart that could indicate some kind of bottleneck.
