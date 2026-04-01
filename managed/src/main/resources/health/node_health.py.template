@@ -259,6 +259,9 @@ YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
 YB_PROCESS_OPEN_FILES = MetricDefinition(
     "yb_process_open_files",
     "Check number of open files per process and its subprocesses")
+YB_PROCESS_LIMIT = MetricDefinition(
+    "yb_process_limit",
+    "Process resource limits from /proc/<pid>/limits")
 YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
     "yb_node_unexpected_tserver_running",
     "Tserver is running on node (but should not)")
@@ -1983,6 +1986,50 @@ class NodeChecker():
                                            has_error=True, metrics = metrics)
 
 
+    def check_process_limits(self, process_name):
+        metric = Metric.from_definition(YB_PROCESS_LIMIT)
+        e = self._new_metric_entry("Per-process limits check", process_name)
+        process = Label("process", process_name)
+        try:
+            pid = self.get_process_pid_by_name(process_name)
+            if pid is None:
+                return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+
+            cmd = 'cat /proc/{}/limits'.format(pid)
+            output = self._check_output(cmd).strip()
+
+            limit_map = {
+                'Max open files': 'max_open_files',
+                'Max processes': 'max_processes',
+                'Max core file size': 'max_core_file_size',
+                'Max locked memory': 'max_locked_memory',
+            }
+
+            for line in output.split('\n'):
+                for limit_name, label_value in limit_map.items():
+                    if line.startswith(limit_name):
+                        parts = line[len(limit_name):].split()
+                        if len(parts) >= 2:
+                            soft = parts[0]
+                            hard = parts[1]
+                            soft_val = -1 if soft == 'unlimited' else int(soft)
+                            hard_val = -1 if hard == 'unlimited' else int(hard)
+                            metric.add_value(soft_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'soft')])
+                            metric.add_value(hard_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'hard')])
+                        break
+
+            return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+        except Exception as ex:
+            return e.fill_and_return_entry(
+                ["Failed to parse process limits: {}".format(str(ex))],
+                has_error=True, metrics=[metric])
+
     def check_other_process_stats(self):
         metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)
         e = self._new_metric_entry("Per-process topK other check")
@@ -2849,6 +2896,7 @@ def main():
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
+        coordinator.add_check(checker, "check_process_limits", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2896,6 +2944,7 @@ def main():
             coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
+        coordinator.add_check(checker, "check_process_limits", TSERVER)
 
     coordinator.add_check(checker, "check_disk_utilization")
     coordinator.add_check(checker, "check_for_core_files")
