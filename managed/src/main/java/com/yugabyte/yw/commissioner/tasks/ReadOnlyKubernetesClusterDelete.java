@@ -21,12 +21,16 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.UniverseInProgressException;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -39,10 +43,14 @@ import org.apache.commons.collections4.CollectionUtils;
 @Abortable
 @Retryable
 public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  public ReadOnlyKubernetesClusterDelete(BaseTaskDependencies baseTaskDependencies) {
+  public ReadOnlyKubernetesClusterDelete(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @JsonDeserialize(converter = Params.Converter.class)
@@ -71,7 +79,14 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
   @Override
   public void run() {
     Universe universe = lockAndFreezeUniverseForUpdate(-1, null /* Txn callback */);
+    Throwable th = null;
     try {
+      kubernetesStatus.startYBUniverseEventStatus(
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.ReadOnlyKubernetesClusterDelete.name(),
+          getUserTaskUUID(),
+          UniverseState.EDITING);
       List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
       if (CollectionUtils.isEmpty(roClusters)) {
         String msg =
@@ -218,8 +233,16 @@ public class ReadOnlyKubernetesClusterDelete extends KubernetesTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      th = t;
       throw t;
     } finally {
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          TaskType.ReadOnlyKubernetesClusterDelete.name(),
+          getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
+          th);
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();

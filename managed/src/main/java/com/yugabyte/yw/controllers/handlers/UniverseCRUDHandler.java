@@ -1805,6 +1805,15 @@ public class UniverseCRUDHandler {
 
   public UUID clusterDelete(
       Customer customer, Universe universe, UUID clusterUUID, Boolean isForceDelete) {
+    return clusterDelete(customer, universe, clusterUUID, isForceDelete, null);
+  }
+
+  public UUID clusterDelete(
+      Customer customer,
+      Universe universe,
+      UUID clusterUUID,
+      Boolean isForceDelete,
+      KubernetesResourceDetails resourceDetails) {
     List<Cluster> existingNonPrimaryClusters =
         universe.getUniverseDetails().getNonPrimaryClusters();
 
@@ -1828,6 +1837,9 @@ public class UniverseCRUDHandler {
       taskParams.clusterUUID = clusterUUID;
       taskParams.isForceDelete = isForceDelete;
       taskParams.expectedUniverseVersion = universe.getVersion();
+      if (resourceDetails != null) {
+        taskParams.setKubernetesResourceDetails(resourceDetails);
+      }
       taskUUID = commissioner.submit(TaskType.ReadOnlyKubernetesClusterDelete, taskParams);
     } else {
       switch (cluster.clusterType) {
