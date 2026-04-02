@@ -12739,5 +12739,94 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesHandlesLogCloseDuringRead) {
   ASSERT_TRUE(cdc_error_received);
 }
 
+TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  // Wait for few seconds to let background task of catalog manager run.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  auto index_table = ASSERT_RESULT(GetTable(
+      &test_cluster_, kNamespaceName, Format("$0_idx", kTableName), true /* verify_table_name */,
+      true /* exclude_system_tables */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(test_client()->GetTablets(index_table, 0, &index_tablets, nullptr));
+  ASSERT_EQ(index_tablets.size(), 1);
+  auto index_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablets[0].tablet_id()));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto tablet_stream_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({index_tablet_peer->tablet_id(), stream_id}));
+  ASSERT_FALSE(tablet_stream_entry.has_value());
+  ASSERT_FALSE(index_tablet_peer->is_under_cdc_sdk_replication());
+}
+
+TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, Format("$0_1", kTableName), 1 /* num_tablets */));
+
+  auto stream_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_1"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, Format("$0_2", kTableName), 1 /* num_tablets */,
+      false /* add_primary_key */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &table_2_tablets, nullptr));
+  ASSERT_EQ(table_2_tablets.size(), 1);
+  auto table_2_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_2_tablets[0].tablet_id()));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto table_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_1}));
+  ASSERT_FALSE(table_2_entry.has_value());
+  ASSERT_FALSE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+
+  auto stream_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_2"));
+
+  auto table_3 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, Format("$0_3", kTableName), 1 /* num_tablets */,
+      false /* add_primary_key */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_3_tablets;
+  ASSERT_OK(test_client()->GetTablets(table_3, 0, &table_3_tablets, nullptr));
+  ASSERT_EQ(table_3_tablets.size(), 1);
+  auto table_3_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_3_tablets[0].tablet_id()));
+
+  table_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_2}));
+  ASSERT_TRUE(table_2_entry.has_value());
+  ASSERT_TRUE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+
+  auto table_3_stream_1_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_1}));
+  auto table_3_stream_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_2}));
+  ASSERT_FALSE(table_3_stream_1_entry.has_value());
+  ASSERT_TRUE(table_3_stream_2_entry.has_value());
+  ASSERT_TRUE(table_3_tablet_peer->is_under_cdc_sdk_replication());
+}
+
 }  // namespace cdc
 }  // namespace yb
