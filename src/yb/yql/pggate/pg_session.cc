@@ -1177,6 +1177,9 @@ std::string PgSession::LogPrefix() const {
 
 Status PgSession::AcquireAdvisoryLock(
     const YbcAdvisoryLockId& lock_id, YbcAdvisoryLockMode mode, bool wait, bool session) {
+  SCHECK(
+      yb_read_time == 0, IllegalState,
+      "Advisory lock acquisition can not be performed while yb_read_time is set to nonzero.");
   RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::AcquireLock(ToString(lock_id))));
   tserver::PgAcquireAdvisoryLockRequestPB req;
   AdvisoryLockRequestInitCommon(req, pg_client_.SessionID(), lock_id, mode);
