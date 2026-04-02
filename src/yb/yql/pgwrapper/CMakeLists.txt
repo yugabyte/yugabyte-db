@@ -146,7 +146,7 @@ ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_cbo_dependent_flags-test)
 if (NOT APPLE)
-  # We disable this test when running on non-Apple platforms as they do not support cgroups.
+  # We disable this test when running on Apple platform as it does not support cgroups.
   ADD_YB_TEST(pg_cgroups-test)
 endif()
 ADD_YB_TEST(pg_clock_skew-test)

@@ -426,7 +426,7 @@ ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
 if (NOT APPLE)
-  # We disable this test when running on non-Apple platforms as they do not support cgroups.
+  # We disable this test when running on Apple platform as it does not support cgroups.
   ADD_YB_TEST(tserver_cgroup_manager-test)
 endif()
 ADD_YB_TEST(header_manager_impl-test)

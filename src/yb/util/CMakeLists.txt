@@ -361,7 +361,7 @@ ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
 if (NOT APPLE)
-  # We disable this test when running on non-Apple platforms as they do not support cgroups.
+  # We disable this test when running on Apple platform as it does not support cgroups.
   ADD_YB_TEST(cgroups-test)
 endif()
 ADD_YB_TEST(callback_bind-test)
