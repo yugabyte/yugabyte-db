@@ -65,7 +65,7 @@ Once all the nodes have been upgraded, monitor the cluster to ensure it is healt
 
 - Make sure workloads are running as expected and there are no errors in the logs.
 - Check that all nodes are up and reachable.
-- Check the [performance metrics](../../cloud-monitor/overview/) for spikes or anomalies.
+- Check the [performance metrics](../../cloud-monitor/monitor-performance/) for spikes or anomalies.
 
 If you have problems, you can [roll back](#roll-back-an-upgrade) during this time.
 

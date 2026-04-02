@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-You can export [cluster metrics](../overview/) to third-party tools for analysis and customization.
+You can export [cluster metrics](../monitor-metrics/) to third-party tools for analysis and customization.
 
 Metrics export is not available for Sandbox clusters.
 

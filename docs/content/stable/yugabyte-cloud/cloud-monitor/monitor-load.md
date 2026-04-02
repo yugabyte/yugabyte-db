@@ -7,7 +7,7 @@ headcontent: Discover whether the system was overloaded, and why
 menu:
   stable_yugabyte-cloud:
     identifier: monitor-load
-    parent: cloud-monitor
+    parent: monitor-performance
     weight: 350
 type: docs
 ---
