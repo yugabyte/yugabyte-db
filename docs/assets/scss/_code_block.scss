@@ -61,6 +61,7 @@ main {
         position: relative;
       }
     }
+    
 
     > pre,
     .highlight {
@@ -74,6 +75,10 @@ main {
       background-clip: border-box;
       border: 1px solid rgba(0, 0, 0, .125);
       border-radius: .25rem;
+
+      pre{
+        overflow: visible;
+      }
     }
 
     li > p + pre,
