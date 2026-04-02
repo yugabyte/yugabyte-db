@@ -1427,12 +1427,19 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
   auto namespace_id = table->namespace_id();
   std::vector<CDCStreamInfoPtr> streams;
 
+  Schema schema;
+  Status status = table->GetSchema(&schema);
+  if (!status.ok()) {
+    return STATUS(InternalError, Format("Error while getting schema for table: $0", table->name()));
+  }
+
   // Get all the CDCSDK streams on the namespace
   {
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream_info = entry.second;
-      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id) {
+      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
+          IsTableEligibleForCDCSDKStream(table, schema)) {
         streams.emplace_back(stream_info);
       }
     }
@@ -1466,7 +1473,7 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
                         << ", cdc_sdk_safe_time: " << *(entry.cdc_sdk_safe_time);
   }
 
-  auto status = cdc_state_table_->InsertEntries(entries);
+  status = cdc_state_table_->InsertEntries(entries);
   if (!status.ok()) {
     LOG(WARNING) << "Encoutered error while trying to add tablet:" << tablet_id
                  << " of table: " << table->id() << ", to cdc_state table: " << status;

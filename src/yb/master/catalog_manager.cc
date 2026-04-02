@@ -11191,6 +11191,17 @@ Status CatalogManager::SendCreateTabletRequests(
   auto schedules_to_tablets_map = VERIFY_RESULT(
       master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(
           SysRowEntryType::TABLET));
+
+  Schema schema;
+  if (!tablets.empty()) {
+    Status status = tablets[0]->table()->GetSchema(&schema);
+    if (!status.ok()) {
+      return STATUS(
+          InternalError,
+          Format("Error while getting schema for table: $0", tablets[0]->table()->name()));
+    }
+  }
+
   for (const TabletInfoPtr& tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
@@ -11202,7 +11213,7 @@ Status CatalogManager::SendCreateTabletRequests(
       }
     }
 
-    bool stream_exists_on_namespace = false;
+    bool can_set_cdc_sdk_retention_barriers = false;
     auto namespace_id = tablet->table()->namespace_id();
     {
       SharedLock lock(mutex_);
@@ -11211,8 +11222,9 @@ Status CatalogManager::SendCreateTabletRequests(
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
         // one stream with replication slot consumption exists on the namespace.
         if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-            !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-          stream_exists_on_namespace =  true;
+            !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+            IsTableEligibleForCDCSDKStream(tablet->table(), schema)) {
+          can_set_cdc_sdk_retention_barriers = true;
           break;
         }
       }
@@ -11220,7 +11232,7 @@ Status CatalogManager::SendCreateTabletRequests(
 
     for (const RaftPeerPB& peer : config.peers()) {
       shared_ptr<AsyncCreateReplica> task;
-      if (stream_exists_on_namespace && FLAGS_ysql_yb_enable_replication_slot_consumption) {
+      if (can_set_cdc_sdk_retention_barriers && FLAGS_ysql_yb_enable_replication_slot_consumption) {
         task = std::make_shared<AsyncCreateReplica>(
             master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, schedules, epoch,
               CDCSDKSetRetentionBarriers::kTrue /* cdc_sdk_set_retention_barriers */);

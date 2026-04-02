@@ -12096,5 +12096,36 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesHandlesLogCloseDuringRead) {
   ASSERT_TRUE(cdc_error_received);
 }
 
+TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */, true /* set_pgsql_proxy_bind_address */));
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  // Wait for few seconds to let background task of catalog manager run.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  auto index_table = ASSERT_RESULT(GetTable(
+      &test_cluster_, kNamespaceName, Format("$0_idx", kTableName), true /* verify_table_name */,
+      true /* exclude_system_tables */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(test_client()->GetTablets(index_table, 0, &index_tablets, nullptr));
+  ASSERT_EQ(index_tablets.size(), 1);
+  auto index_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablets[0].tablet_id()));
+
+  CDCStateTable cdc_state_table(test_client());
+  auto tablet_stream_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({index_tablet_peer->tablet_id(), stream_id}));
+  ASSERT_FALSE(tablet_stream_entry.has_value());
+  ASSERT_FALSE(index_tablet_peer->is_under_cdc_sdk_replication());
+}
+
 }  // namespace cdc
 }  // namespace yb
