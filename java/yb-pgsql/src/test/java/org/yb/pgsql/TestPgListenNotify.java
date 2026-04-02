@@ -217,6 +217,105 @@ public class TestPgListenNotify extends BasePgListenNotifyTest {
   }
 
   /**
+   * Validates that the notifications poller correctly persists its streaming position
+   * (restart_lsn) to the cdc_state table after processing each transaction. When the
+   * poller is killed and restarts, it should resume from the persisted position and NOT
+   * re-deliver notifications that were already consumed.
+   *
+   * Scenario:
+   *   1. Listener starts LISTEN on a channel.
+   *   2. Three notifications are sent and received by the listener.
+   *   3. The notifications poller is killed with SIGTERM.
+   *   4. The poller restarts automatically (bgw_restart_time = 1s).
+   *   5. Verify no old notifications are re-delivered to the listener.
+   *   6. Send a new notification and verify it is delivered.
+   */
+  @Test
+  public void testPollerRestartDoesNotRedeliverNotifications() throws Exception {
+    final String channel = "poller_restart";
+
+    try (Connection listenerConn = getConnectionBuilder().withTServer(0).connect();
+         Statement listenerStmt = listenerConn.createStatement()) {
+      listenerStmt.execute("LISTEN " + channel);
+
+      try (Connection notifierConn = getConnectionBuilder().connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", 'msg1'");
+        notifierStmt.execute("NOTIFY " + channel + ", 'msg2'");
+        notifierStmt.execute("NOTIFY " + channel + ", 'msg3'");
+      }
+
+      List<PGNotification> received = waitForNotification(listenerConn, channel, "msg3");
+      assertEquals("Should receive all 3 notifications", 3, received.size());
+      LOG.info("Received initial notifications: " + received);
+
+      // Allow the poller to finish LSN persistence for the last transaction.
+      // YBCCalculatePersistAndGetRestartLSN runs after adding to the queue,
+      // so there's a small window between delivery and LSN flush.
+      Thread.sleep(Timeouts.adjustTimeoutSecForBuildType(2000));
+
+      int pollerPid = getPollerPid(listenerStmt);
+      LOG.info("Notifications poller PID: " + pollerPid);
+
+      // SIGTERM causes FATAL -> proc_exit(1). The postmaster treats exit code 1
+      // as a non-crash exit, so only the bgworker is restarted (not all backends).
+      ProcessUtil.signalProcess(pollerPid, "TERM");
+      LOG.info("Sent SIGTERM to notifications poller (pid " + pollerPid + ")");
+
+      int newPollerPid = waitForPollerRestart(listenerStmt, pollerPid);
+      LOG.info("Notifications poller restarted with PID: " + newPollerPid);
+
+      // Give the restarted poller time to re-stream. If LSN persistence is broken,
+      // old notifications would be re-delivered during this window.
+      Thread.sleep(5000);
+
+      PGConnection pgConn = listenerConn.unwrap(PGConnection.class);
+      listenerStmt.execute("SELECT 1");
+      PGNotification[] spurious = pgConn.getNotifications();
+      assertTrue("Old notifications should not be re-delivered after poller restart",
+          spurious == null || spurious.length == 0);
+
+      // Verify that the restarted poller delivers new notifications.
+      try (Connection notifierConn = getConnectionBuilder().connect();
+           Statement notifierStmt = notifierConn.createStatement()) {
+        notifierStmt.execute("NOTIFY " + channel + ", 'after_restart'");
+      }
+
+      waitForNotification(listenerConn, channel, "after_restart");
+      LOG.info("New notification received after poller restart");
+    }
+  }
+
+  private int getPollerPid(Statement stmt) throws Exception {
+    Row row = getSingleRow(stmt,
+        "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+    return row.getInt(0);
+  }
+
+  /**
+   * Polls pg_stat_activity until the notifications poller appears with a PID
+   * different from {@code oldPid}, indicating it has restarted.
+   */
+  private int waitForPollerRestart(Statement stmt, int oldPid) throws Exception {
+    for (int attempt = 0; attempt < 60; attempt++) {
+      try {
+        List<Row> rows = getRowList(stmt,
+            "SELECT pid FROM pg_stat_activity WHERE backend_type = 'notifications poller'");
+        if (!rows.isEmpty()) {
+          int pid = rows.get(0).getInt(0);
+          if (pid != oldPid)
+            return pid;
+        }
+      } catch (Exception e) {
+        // Poller might not be visible yet during restart.
+      }
+      Thread.sleep(500);
+    }
+    fail("Notifications poller did not restart within 30 seconds");
+    return -1;
+  }
+
+  /**
    * Verifies that a connection receives its own notifications (self-notify).
    */
   @Test
