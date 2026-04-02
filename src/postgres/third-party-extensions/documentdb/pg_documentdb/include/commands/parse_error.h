@@ -22,12 +22,12 @@ ThrowTopLevelTypeMismatchError(const char *fieldName, const char *fieldTypeName,
 							   const char *expectedTypeName)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-					errmsg("BSON field '%s' is the wrong type '%s', "
-						   "expected type '%s'",
-						   fieldName, fieldTypeName, expectedTypeName),
-					errdetail_log("BSON field '%s' is the wrong type '%s', "
-								  "expected type '%s'",
-								  fieldName, fieldTypeName, expectedTypeName)));
+					errmsg(
+						"The BSON field '%s' has an incorrect type '%s'; it should be of type '%s'.",
+						fieldName, fieldTypeName, expectedTypeName),
+					errdetail_log(
+						"The BSON field '%s' has an incorrect type '%s'; it should be of type '%s'.",
+						fieldName, fieldTypeName, expectedTypeName)));
 }
 
 
@@ -128,14 +128,14 @@ EnsureTopLevelFieldIsBooleanLike(const char *fieldName, const bson_iter_t *iter)
 	if (!BsonTypeIsNumberOrBool(bson_iter_type(iter)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-						errmsg("BSON field '%s' is the wrong type '%s', "
-							   "expected types '[bool, long, int, decimal, "
-							   "double']",
-							   fieldName, BsonIterTypeName(iter)),
-						errdetail_log("BSON field '%s' is the wrong type '%s', "
-									  "expected types '[bool, long, int, decimal, "
-									  "double']",
-									  fieldName, BsonIterTypeName(iter))));
+						errmsg(
+							"The BSON field '%s' has an incorrect type '%s'; it should be"
+							" one of the following valid types: [bool, long, int, decimal, double]",
+							fieldName, BsonIterTypeName(iter)),
+						errdetail_log(
+							"The BSON field '%s' has an incorrect type '%s'; it should be"
+							" one of the following valid types: [bool, long, int, decimal, double]",
+							fieldName, BsonIterTypeName(iter))));
 	}
 }
 
@@ -150,12 +150,14 @@ EnsureTopLevelFieldIsNumberLike(const char *fieldName, const bson_value_t *value
 	if (!BsonTypeIsNumber(value->value_type))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-						errmsg("BSON field '%s' is the wrong type '%s', "
-							   "expected types '[int, decimal, double, long']",
-							   fieldName, BsonTypeName(value->value_type)),
-						errdetail_log("BSON field '%s' is the wrong type '%s', "
-									  "expected types '[int, decimal, double, long']",
-									  fieldName, BsonTypeName(value->value_type))));
+						errmsg(
+							"The BSON field '%s' has an incorrect type '%s'; it should be"
+							" one of the following valid types: [int, decimal, double, long]",
+							fieldName, BsonTypeName(value->value_type)),
+						errdetail_log(
+							"The BSON field '%s' has an incorrect type '%s'; it should be"
+							" one of the following valid types: [int, decimal, double, long]",
+							fieldName, BsonTypeName(value->value_type))));
 	}
 }
 
@@ -189,7 +191,7 @@ static inline void
 ThrowTopLevelMissingFieldError(const char *fieldName)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-					errmsg("BSON field '%s' is missing but a required field",
+					errmsg("The BSON field '%s' is required but was not provided",
 						   fieldName)));
 }
 
@@ -198,9 +200,9 @@ static inline void
 ThrowTopLevelMissingFieldErrorWithCode(const char *fieldName, int code)
 {
 	ereport(ERROR, (errcode(code),
-					errmsg("BSON field '%s' is missing but a required field",
+					errmsg("The BSON field '%s' is required but was not provided",
 						   fieldName),
-					errdetail_log("BSON field '%s' is missing but a required field",
+					errdetail_log("The BSON field '%s' is required but was not provided",
 								  fieldName)));
 }
 
@@ -213,7 +215,7 @@ EnsureStringValueNotDollarPrefixed(const char *fieldValue, int fieldLength)
 		ereport(ERROR, (
 					errcode(ERRCODE_DOCUMENTDB_LOCATION16410),
 					errmsg(
-						"FieldPath field names may not start with '$'. Consider using $getField or $setField.")));
+						"FieldPath field names are not allowed to begin with the operators symbol '$'; consider using $getField or $setField instead.")));
 	}
 }
 

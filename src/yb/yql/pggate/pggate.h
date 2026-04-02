@@ -466,8 +466,8 @@ class PgApiImpl {
   //     of the same allocated statement.
   //
   //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
-  //   - BindColumn() can only be used for primary-key columns.
-  //   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+  //   - BindColumn() can only be used for key columns.
+  //   - This bind-column function is used to bind the key column "key" with "key_expr" that can
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   Status DmlBindColumn(YbcPgStatement handle, int attr_num, YbcPgExpr attr_value);
@@ -528,11 +528,16 @@ class PgApiImpl {
   // Utility method that checks stmt type and calls exec insert, update, or delete internally.
   Status DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_count);
 
-  // This function adds a primary column to be used in the construction of the tuple id (ybctid).
+  // This function adds a key column to be used in the construction of the tuple id (ybctid).
   Status DmlAddYBTupleIdColumn(PgStatement *handle, int attr_num, uint64_t datum,
                                bool is_null, const YbcPgTypeEntity *type_entity);
 
   Result<dockv::KeyBytes> BuildTupleId(const YbcPgYBTupleIdDescriptor& descr);
+
+  // Decode primary key column values from a serialized ybctid (DocKey).
+  Status DecodePKColumnsFromBasectid(
+      const PgObjectId& table_id, Slice basectid,
+      int num_attrs, YbcPgAttrValueDescriptor* attrs);
 
   // DB Operations: SET, WHERE, ORDER_BY, GROUP_BY, etc.
   // + The following operations are run by DocDB.
@@ -893,7 +898,8 @@ class PgApiImpl {
 
   Status TriggerRelcacheInitConnection(const std::string& dbname);
 
-  Status NewGlobalViewRead(const char* query, PgGlobalViewRead** handle);
+  Status NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle);
+  YbcRemotePgExecResult Exec(PgGlobalViewRead* handle, std::string_view query);
 
   //----------------------------------------------------------------------------------------------
   // Advisory Locks.

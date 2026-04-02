@@ -22,12 +22,10 @@ int od_compression_frontend_setup(od_client_t *client,
 	 */
 	if (instance->config.yb_use_auth_backend)
 		compression_var = yb_kiwi_vars_get(
-			&client->yb_vars_startup, "compression",
-			yb_od_instance_should_lowercase_guc_name(instance));
+			&client->yb_vars_startup, "compression");
 	else
 		compression_var = yb_kiwi_vars_get(
-			&client->yb_vars_session, "compression",
-			yb_od_instance_should_lowercase_guc_name(instance));
+			&client->yb_vars_session, "compression");
 #else
 	kiwi_var_t *compression_var =
 		kiwi_vars_get(&client->vars, KIWI_VAR_COMPRESSION);

@@ -297,9 +297,13 @@ public class OperatorImportResource extends UniverseTaskBase {
               + cfg.getType());
     }
     Set<UUID> associatedUniverseUUIDs = customerConfigService.getAssociatedUniverseUUIDS(cfg);
+    // Filter down to universes that still exist and are not operator controlled while also not
+    // being the universe that is being imported.
     Set<Universe> associatedUniverses =
         associatedUniverseUUIDs.stream()
-            .map(Universe::getOrBadRequest)
+            .map(Universe::maybeGet)
+            .filter(ou -> ou.isPresent())
+            .map(ou -> ou.get())
             .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
             .filter(u -> !u.getUniverseUUID().equals(taskParams().universeUUID))
             .collect(Collectors.toSet());

@@ -1040,9 +1040,6 @@ static inline int od_auth_backend_sasl_final(od_server_t *server,
 /*
  * YB: Fetch next message of type KIWI_FE_PASSWORD_MESSAGE from
  * client and forward to server, ignoring all other client messages.
- * Currently, waits indefinitely until client sends appropriate
- * message.
- * TODO (#27709): Add cumulative timeout of `client_login_timeout` ms.
  */
 static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
 	od_client_t *client, od_instance_t *instance, char *context)
@@ -1050,8 +1047,31 @@ static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
 	kiwi_fe_type_t type;
 	machine_msg_t *msg = NULL;
 
+	const int login_timeout_ms = client->config_listen->client_login_timeout;
+
+	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = od_read(&client->io, login_timeout_ms);
+
+		/*
+		 * YB: Unconditionally exit if the client has not given a relevant
+		 * (KIWI_FE_PASSWORD_MESSAGE) response within the timeout. This avoids a
+		 * malicious client keeping the connection open by sending irrelevant
+		 * packets.
+		 */
+		uint64_t now_ts = machine_time_us();
+		if (now_ts - start_ts > login_timeout_ms * ((uint64_t)1000)) {
+			od_error(
+				&instance->logger, context, client, server,
+				"Timeout during auth packet read from client (%"PRIu64" ms). Closing connection",
+				(now_ts - start_ts) / 1000);
+
+			if (msg != NULL)
+				machine_msg_free(msg);
+
+			return -1;
+		}
+
 		if (msg == NULL) {
 			od_error(&instance->logger, context,
 				client, NULL,
@@ -1089,8 +1109,7 @@ static inline int yb_od_relay_client_to_auth_server(od_server_t *server,
 }
 
 /*
- * YB: Fetch next message of server (if not already passed as `msg`),
- * TODO (#27709): Add timeout of `client_login_timeout` ms.
+ * YB: Forward the supplied server msg to the client.
  */
 static inline int yb_od_relay_auth_server_to_client(od_server_t *server, machine_msg_t *msg,
 	od_client_t *client, od_instance_t *instance, char *context)
@@ -1155,7 +1174,9 @@ int od_auth_backend(od_server_t *server, machine_msg_t *msg,
 		/*
 		 * AuthenticationCleartextPassword and AuthenticationMD5Password.
 		 *
-		 * Other possible values are AuthenticationSASL,
+		 * Other possible value is AuthenticationSASL,
+		 * AuthenticationSASLContinue and AuthenticationSASLFinal,
+		 * if USE_SCRAM is defined.
 		 */
 #ifdef USE_SCRAM
 		assert(auth_type == OD_AUTH_CLEARTEXT

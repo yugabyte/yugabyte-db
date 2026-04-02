@@ -348,6 +348,21 @@ Result<HybridTime> XClusterManager::GetXClusterSafeTimeForNamespace(
   return XClusterTargetManager::GetXClusterSafeTimeForNamespace(namespace_id, filter);
 }
 
+Status XClusterManager::XClusterFailover(
+    const XClusterFailoverRequestPB* req,
+    XClusterFailoverResponsePB* resp,
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
+  auto deadline = rpc->GetClientDeadline();
+
+  LOG(INFO) << "Initiating xCluster failover for replication group " << replication_group_id;
+  return XClusterTargetManager::XClusterFailover(
+      replication_group_id, epoch, deadline, catalog_manager_.AsyncTaskPool(), resp);
+}
+
 Status XClusterManager::RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) {
   return XClusterTargetManager::RefreshXClusterSafeTimeMap(epoch);
 }
@@ -1016,6 +1031,32 @@ void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
   monitored_tasks_.erase(task);
 }
 
+Status XClusterManager::RegisterUniqueFailoverTask(
+    const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+
+  auto& failover_task = failover_tasks_[replication_group_id];
+  if (auto existing = failover_task.lock()) {
+    return STATUS_FORMAT(
+        AlreadyPresent, "xCluster failover already in progress for replication group $0",
+        replication_group_id);
+  }
+
+  failover_task = task;
+
+  RSTATUS_DCHECK(
+      monitored_tasks_.insert(task).second, AlreadyPresent,
+      Format("Task $0 already registered", task->description()));
+  return Status::OK();
+}
+
+void XClusterManager::UnRegisterFailoverTask(
+    const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  monitored_tasks_.erase(task);
+  failover_tasks_.erase(replication_group_id);
+}
+
 Status XClusterManager::ProcessCreateTableReq(
     const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
     const NamespaceId& namespace_id) const {
@@ -1028,7 +1069,8 @@ Status XClusterManager::ValidateCreateTableRequest(const CreateTableRequestPB& r
   if (!req.old_rewrite_table_id().empty()) {
     table_id = req.old_rewrite_table_id();
     error_str = "Cannot rewrite a table that is a part of non-automatic mode XCluster replication.";
-  } else if (IsIndex(req) && req.skip_index_backfill()) {
+  } else if (IsIndex(req) && req.skip_index_backfill() &&
+             !req.index_info().has_vector_idx_options()) {
     table_id = req.indexed_table_id();
     error_str =
         "Cannot create nonconcurrent index on a table that is a part of non-automatic mode "

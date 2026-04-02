@@ -31,7 +31,8 @@ typedef struct ExtensionVersion
 	int Patch;
 } ExtensionVersion;
 
-ExtensionVersion RefreshCurrentVersion(void);
+const char * GetCurrentVersionForLogging(void);
+const char * GetCurrentShortVersionStringForLogging(void);
 
 bool IsExtensionVersionAtleast(ExtensionVersion extVersion, MajorVersion major, int minor,
 							   int

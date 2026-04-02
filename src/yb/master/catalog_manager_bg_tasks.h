@@ -51,7 +51,7 @@ namespace master {
 
 class CatalogManager;
 
-int32_t TEST_transaction_status_check_run_count();
+int32_t TEST_catalog_manager_bg_task_run_count();
 
 class CatalogManagerBgTasks final {
  public:

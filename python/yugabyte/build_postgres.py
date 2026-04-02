@@ -590,6 +590,7 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-ldap',
                 '--with-openssl',
                 '--with-gssapi',
+                '--with-libxml',
                 # Options are ossp (original/old implementation), bsd (BSD) and e2fs
                 # (libuuid-based for Unix/Mac).
                 '--with-uuid=e2fs',

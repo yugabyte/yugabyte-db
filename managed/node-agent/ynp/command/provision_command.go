@@ -665,6 +665,9 @@ func (pc *ProvisionCommand) buildScript(
 	if defaultValue["loglevel"] == "DEBUG" {
 		f.WriteString("set -x\n")
 	}
+	// Add /usr/sbin to PATH for cases where warning is issued when sudo is not used and
+	// sbin is not in PATH.
+	f.WriteString("export PATH=\"$PATH:/usr/sbin\"\n")
 	if pc.args.PreflightCheckOutFile != "" {
 		dir := filepath.Dir(pc.args.PreflightCheckOutFile)
 		err = os.MkdirAll(dir, 0755)

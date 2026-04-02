@@ -7,7 +7,7 @@ import { shouldMarkNodesFieldError } from './lessNodesFieldError';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
 import { canSelectMultipleRegions, getFaultToleranceNeeded } from '../../CreateUniverseUtils';
-import { FaultToleranceType } from '../resilence-regions/dtos';
+import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
 
@@ -20,7 +20,7 @@ interface RegionCardProps {
   showErrorsAfterSubmit?: boolean;
 }
 
-const { styled, Typography, Box } = mui;
+const { styled, Typography, Box, Link } = mui;
 
 const StyledRegionCard = styled('div')(({ theme }) => ({
   background: '#FBFCFD',
@@ -72,7 +72,6 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
 
   const az = watch(`availabilityZones.${region.code}`);
   const allAz = watch('availabilityZones');
-  const nodesPerAz = watch('nodeCountPerAz');
   const totalAzCount = Object.values(allAz ?? {}).reduce((acc, zones) => acc + zones.length, 0);
 
   const showNodesCountError = shouldMarkNodesFieldError(
@@ -80,14 +79,28 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
     (errors as any)?.lesserNodes?.message
   );
   const isRegionAzLimitReached = az.length >= region.zones.length;
-  const maxTotalAzCount = getFaultToleranceNeeded(resilienceAndRegionsSettings?.resilienceFactor ?? 1);
+  const ft = resilienceAndRegionsSettings?.faultToleranceType;
+  const displayReplicationFactor = getFaultToleranceNeeded(
+    resilienceAndRegionsSettings?.resilienceFactor ?? 1
+  );
+  const maxTotalAzCount =
+    ft === FaultToleranceType.NODE_LEVEL
+      ? Math.max(1, displayReplicationFactor - 1)
+      : displayReplicationFactor;
+  const isGuided = resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
   const isTotalAzLimitReached =
-    resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL &&
+    isGuided &&
+    (ft === FaultToleranceType.AZ_LEVEL || ft === FaultToleranceType.NODE_LEVEL) &&
     totalAzCount >= maxTotalAzCount;
   const isAddAzDisabled = isRegionAzLimitReached || isTotalAzLimitReached;
+  const isAddAzDisabledByAzLevelCap = isTotalAzLimitReached && ft !== FaultToleranceType.NODE_LEVEL;
   const addAzTooltip = isAddAzDisabled
     ? isTotalAzLimitReached
-      ? t('tooltips.addAvailabilityZoneDisabled', {
+      ? ft === FaultToleranceType.NODE_LEVEL
+        ? t('tooltips.addAvailabilityZoneDisabledNodeLevel', {
+          max_az: maxTotalAzCount
+        })
+        : t('tooltips.addAvailabilityZoneDisabled', {
           outage_count: resilienceAndRegionsSettings?.resilienceFactor ?? 1,
           az_count: maxTotalAzCount
         })
@@ -97,9 +110,14 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
 
+    const existingZones = Object.values(allAz ?? {}).flat() as ZoneType[];
+    const nodeCountFromConfig =
+      existingZones.find((z) => typeof z.nodeCount === 'number' && z.nodeCount >= 1)?.nodeCount ??
+      1;
+
     setValue(`availabilityZones.${region.code}`, [
       ...az,
-      { ...azToAdd, nodeCount: nodesPerAz ?? 1, preffered: az.length }
+      { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: az.length }
     ], { shouldValidate: true });
   };
 
@@ -156,9 +174,42 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
             }}
           />
         ))}
-        {resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL &&
+        {(resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL || resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.NODE_LEVEL) &&
           canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType) && (
-            <YBTooltip title={isAddAzDisabled ? <StyledTooltipText>{addAzTooltip}</StyledTooltipText> : ''}>
+            <YBTooltip
+              title={
+                isAddAzDisabled ? (
+                  isAddAzDisabledByAzLevelCap ? (
+                    <StyledTooltipText>
+                      <Trans
+                        t={t}
+                        i18nKey="tooltips.addAvailabilityZoneDisabled"
+                        values={{
+                          outage_count: resilienceAndRegionsSettings?.resilienceFactor ?? 1,
+                          az_count: maxTotalAzCount
+                        }}
+                        components={{
+                          br: <br />,
+                          a: (
+                            <Link
+                              href={"#"}
+                              rel="noopener noreferrer"
+                              underline="always"
+                              onClick={(e) => e.stopPropagation()}
+                              sx={{ fontSize: '11.5px', lineHeight: '16px' }}
+                            />
+                          )
+                        }}
+                      />
+                    </StyledTooltipText>
+                  ) : (
+                    <StyledTooltipText>{addAzTooltip}</StyledTooltipText>
+                  )
+                ) : (
+                  ''
+                )
+              }
+            >
               <span style={{ width: 'fit-content', marginLeft: '34px' }}>
                 <YBButton
                   variant="secondary"

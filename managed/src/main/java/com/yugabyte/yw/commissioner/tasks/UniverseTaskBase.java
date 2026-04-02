@@ -1003,8 +1003,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           throw new IllegalStateException(msg);
         }
         if (getUserTaskUUID().equals(universeDetails.updatingTaskUUID)) {
-          // Freeze always sets this to the UUID of the currently run task. If it is already set to
-          // the current task UUID, freeze is already run for this task.
           String msg = "Universe " + universe.getUniverseUUID() + " is already frozen";
           log.error(msg);
           throw new IllegalStateException(msg);
@@ -1243,9 +1241,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (isFirstTry()) {
         createFreezeUniverseTask(universeUuid, firstRunTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
-      } else {
+      } else if (!getUserTaskUUID().equals(universe.getUniverseDetails().updatingTaskUUID)) {
         createFreezeUniverseTask(universeUuid, retryTxnCallback)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
+      } else {
+        log.info(
+            "Skipping freeze for universe {} as it is already frozen by task {}",
+            universeUuid,
+            getUserTaskUUID());
       }
       // Run to apply the change first before adding the rest of the subtasks.
       getRunnableTask().runSubTasks();
@@ -5077,6 +5080,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void createDisableMasterOnNonMasterNodesTasks(
       List<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
     Universe universe = getUniverse();
+    if (!confGetter.getConfForScope(
+        universe, UniverseConfKeys.allowDisableMasterOnNonMasterNodeSubtask)) {
+      log.info(
+          "Skipping disable master on non-master nodes; "
+              + "yb.universe.allow_disable_master_on_non_master_node_subtask is false");
+      return;
+    }
     // Filter out all nodes that are not masters according to both YBA and YBDB.
     nodes =
         nodes.stream()
@@ -5451,7 +5461,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         String.format("Node %s already exist. Pick different universe name.", taskParams.nodeName));
   }
 
-  public Optional<Map<String, JsonNode>> maybeGetInstanceDetails(NodeTaskParams taskParams) {
+  /**
+   * Fetches the instance details from the IaaS for the node in taskParams. If ensureSingleInstance
+   * is true, it will throw exception if multiple instances are found. It returns empty if no
+   * instance is found.
+   *
+   * @param taskParams the task params containing the node information.
+   * @param ensureSingleInstance if true, it will throw exception if multiple instances are found
+   *     for the node, else it will return all the instances found for the node.
+   * @return Optional of list of instance details. It will be empty if and only if no instance is
+   *     found for the node.
+   */
+  public Optional<List<Map<String, JsonNode>>> maybeGetInstancesDetails(
+      NodeTaskParams taskParams, boolean ensureSingleInstance) {
     ShellResponse response =
         nodeManager.nodeCommand(NodeManager.NodeCommandType.List, taskParams).processErrors();
     if (Strings.isNullOrEmpty(response.message)) {
@@ -5459,22 +5481,36 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return Optional.empty();
     }
     JsonNode jsonNode = Json.parse(response.message);
-    if (jsonNode.isArray()) {
-      jsonNode = jsonNode.get(0);
+    if (!jsonNode.isArray()) {
+      jsonNode = Json.newArray().add(jsonNode);
     }
-    return Optional.of(
-        Streams.stream(jsonNode.fields())
-            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())));
+    List<Map<String, JsonNode>> details =
+        Streams.stream(jsonNode.elements())
+            .map(
+                n ->
+                    Streams.stream(n.fields())
+                        .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue())))
+            .collect(Collectors.toList());
+    if (ensureSingleInstance && details.size() > 1) {
+      String errMsg =
+          String.format(
+              "Multiple instances found for node %s. Details: %s",
+              taskParams.nodeName, Util.filterInstanceDetailsForLogging(details));
+      log.error(errMsg);
+      throw new RuntimeException(errMsg);
+    }
+    return details.isEmpty() ? Optional.empty() : Optional.of(details);
   }
 
   public boolean isInstanceRunning(NodeTaskParams taskParams) {
-    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    Optional<List<Map<String, JsonNode>>> optional =
+        maybeGetInstancesDetails(taskParams, true /* ensureSingleInstance */);
     if (!optional.isPresent()) {
       String errMsg = String.format("Node %s is not found", taskParams.nodeName);
       log.error(errMsg);
       throw new RuntimeException(errMsg);
     }
-    JsonNode node = optional.get().getOrDefault("is_running", BooleanNode.TRUE);
+    JsonNode node = optional.get().get(0).getOrDefault("is_running", BooleanNode.TRUE);
     return !node.isNull() && node.asBoolean();
   }
 
@@ -5482,7 +5518,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public Optional<Boolean> instanceExists(
       NodeTaskParams taskParams, Map<String, String> expectedTags) {
     log.info("Expected tags: {}", expectedTags);
-    Optional<Map<String, JsonNode>> optional = maybeGetInstanceDetails(taskParams);
+    Optional<List<Map<String, JsonNode>>> optional =
+        maybeGetInstancesDetails(taskParams, true /* ensureSingleInstance */);
     if (!optional.isPresent()) {
       // Instance does not exist.
       return Optional.empty();
@@ -5490,7 +5527,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (MapUtils.isEmpty(expectedTags)) {
       return Optional.of(true);
     }
-    Map<String, JsonNode> properties = optional.get();
+    Map<String, JsonNode> properties = optional.get().get(0);
     int unmatchedCount = 0;
     for (Map.Entry<String, String> entry : expectedTags.entrySet()) {
       JsonNode node = properties.get(entry.getKey());
@@ -5677,6 +5714,29 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.isSoftwareRollbackAllowed = isSoftwareRollbackAllowed;
     params.retainPrevYBSoftwareConfig = retainPrevYBSoftwareConfig;
     UpdateUniverseSoftwareUpgradeState task = createTask(UpdateUniverseSoftwareUpgradeState.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Creates a subtask that saves software upgrade progress and pauses after this subtask group. */
+  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
+      boolean mastersUpgradeCompleted,
+      List<UUID> primaryClusterAZsCompleted,
+      Map<UUID, List<UUID>> readReplicaClusterAZsCompleted) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("SaveSoftwareUpgradeProgress");
+    subTaskGroup.setPausedAfter(true);
+    SaveSoftwareUpgradeProgress.Params params = new SaveSoftwareUpgradeProgress.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.mastersUpgradeCompleted = mastersUpgradeCompleted;
+    params.primaryClusterAZsCompleted =
+        primaryClusterAZsCompleted != null ? new ArrayList<>(primaryClusterAZsCompleted) : null;
+    params.readReplicaClusterAZsCompleted =
+        readReplicaClusterAZsCompleted != null
+            ? new HashMap<>(readReplicaClusterAZsCompleted)
+            : null;
+    SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -5895,9 +5955,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
+    Universe universe = getUniverse();
+    if (processType == ServerType.MASTER) {
+      Integer param = taskParams().sleepAfterMasterRestartMillis;
+      if (param == null) {
+        return confGetter.getConfForScope(universe, UniverseConfKeys.sleepAfterMasterRestartMs);
+      }
+      return param;
+    } else {
+      Integer param = taskParams().sleepAfterTServerRestartMillis;
+      if (param == null) {
+        return confGetter.getConfForScope(universe, UniverseConfKeys.sleepAfterTServerRestartMs);
+      }
+      return param;
+    }
   }
 
   protected SubTaskGroup createWaitForClockSyncTasks(

@@ -11,13 +11,16 @@
 // under the License.
 
 #include "yb/tserver/tserver_call_home.h"
-#include <boost/system/error_code.hpp>
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/ysql_call_home_stats.h"
+
+#include "yb/util/format.h"
+
+DECLARE_bool(enable_ysql);
 
 using std::string;
-
-using strings::Substitute;
 
 namespace yb {
 
@@ -34,7 +37,7 @@ class BasicCollector : public TserverCollector {
 
   string collector_name() override { return "BasicCollector"; }
 
-  virtual CollectionLevel collection_level() override { return CollectionLevel::LOW; }
+  CollectionLevel collection_level() override { return CollectionLevel::LOW; }
 };
 
 class TabletsCollector : public TserverCollector {
@@ -43,17 +46,34 @@ class TabletsCollector : public TserverCollector {
 
   void Collect(CollectionLevel collection_level) override {
     int ntablets = tserver()->tablet_manager()->GetNumLiveTablets();
-    json_ = Substitute("\"tablets\":$0", ntablets);
+    json_ = Format("\"tablets\":$0", ntablets);
   }
 
   string collector_name() override { return "TabletsCollector"; }
 
-  virtual CollectionLevel collection_level() override { return CollectionLevel::ALL; }
+  CollectionLevel collection_level() override { return CollectionLevel::ALL; }
+};
+
+class YsqlNodeStatsCollector : public TserverCollector {
+ public:
+  using TserverCollector::TserverCollector;
+
+  void Collect(CollectionLevel collection_level) override {
+    auto stats_json = BuildStatsJson(tserver(), {"template1"}, YsqlNodeQueries::kNodeLevel, {});
+    json_ = Format("\"ysql_node_stats\":$0", stats_json);
+  }
+
+  string collector_name() override { return "YsqlNodeStatsCollector"; }
+
+  CollectionLevel collection_level() override { return CollectionLevel::ALL; }
 };
 
 TserverCallHome::TserverCallHome(TabletServer* server) : CallHome(server) {
   AddCollector<BasicCollector>();
   AddCollector<TabletsCollector>();
+  if (FLAGS_enable_ysql) {
+    AddCollector<YsqlNodeStatsCollector>();
+  }
 }
 
 }  // namespace tserver

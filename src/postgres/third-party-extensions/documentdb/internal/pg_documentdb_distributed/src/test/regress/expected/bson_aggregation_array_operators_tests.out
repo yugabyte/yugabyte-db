@@ -135,30 +135,30 @@ SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$in": [{"$literal"
 
 -- second argument must be an array
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [3, "$b"]}}');
-ERROR:  $in requires an array as a second argument, found: missing
+ERROR:  Expected 'array' type for $in operator but found 'missing' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [3, {"$undefined": true}]}}');
-ERROR:  $in requires an array as a second argument, found: undefined
+ERROR:  Expected 'array' type for $in operator but found 'undefined' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [3, { }]}}');
-ERROR:  $in requires an array as a second argument, found: object
+ERROR:  Expected 'array' type for $in operator but found 'object' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [3, "str"]}}');
-ERROR:  $in requires an array as a second argument, found: string
+ERROR:  Expected 'array' type for $in operator but found 'string' type
 SELECT * FROM bson_dollar_project('{"a": true}', '{"result": { "$in": [3, "$a"]}}');
-ERROR:  $in requires an array as a second argument, found: bool
+ERROR:  Expected 'array' type for $in operator but found 'bool' type
 SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$in": [3, "$a"]}}');
-ERROR:  $in requires an array as a second argument, found: int
+ERROR:  Expected 'array' type for $in operator but found 'int' type
 -- number of arguments should be 2
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [3]}}');
-ERROR:  Expression $in takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": 2}}');
-ERROR:  Expression $in takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [1, 2, 3, 4]}}');
-ERROR:  Expression $in takes exactly 2 arguments. 4 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 4 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [1, 2, 3, 4, 6, 7, 8]}}');
-ERROR:  Expression $in takes exactly 2 arguments. 7 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 7 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": null}}');
-ERROR:  Expression $in takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$in": [{"$not": []}, 2, 3]}}');
-ERROR:  Expression $in takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $in requires exactly 2 arguments, but 3 arguments were actually provided.
 -- $size operator
 -- returns expected result
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [[1, 2]]}}');
@@ -199,29 +199,29 @@ SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4]}', '{"result": { "$size": 
 
 -- should error if no array is passed in
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [null]}}');
-ERROR:  The argument to $size must be an array, but was of type: null
+ERROR:  $size requires an array argument, but received a value of type: null
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": null}}');
-ERROR:  The argument to $size must be an array, but was of type: null
+ERROR:  $size requires an array argument, but received a value of type: null
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": "$b"}}');
-ERROR:  The argument to $size must be an array, but was of type: missing
+ERROR:  $size requires an array argument, but received a value of type: missing
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [{ }]}}');
-ERROR:  The argument to $size must be an array, but was of type: object
+ERROR:  $size requires an array argument, but received a value of type: object
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [true]}}');
-ERROR:  The argument to $size must be an array, but was of type: bool
+ERROR:  $size requires an array argument, but received a value of type: bool
 -- should error if wrong number of args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [null, 2]}}');
-ERROR:  Expression $size takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $size requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": []}}');
-ERROR:  Expression $size takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $size requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [{"$divide": [1, 0]}, 2]}}');
-ERROR:  Expression $size takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $size requires exactly 1 arguments, but 2 arguments were actually provided.
 -- should honor nested expression errors
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [{"$divide": [1, 0]}]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- nested mongo evaluates expressions in array eventhough they are not needed for $size calculation
 -- for error validation. 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$size": [[{"$divide": [1, 0]}, 2]]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- $arrayElemAt
 -- returns expected element positive idx
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[1], 0]}}');
@@ -458,13 +458,13 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [true, -5]
 ERROR:  $arrayElemAt's first argument must be an array, but is bool
 -- should error if second arg is not a number
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {}]}}');
-ERROR:  $arrayElemAt's second argument must be a numeric value, but is object
+ERROR:  The second argument of $arrayElemAt must be a numeric type value, but it is object instead.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], true]}}');
-ERROR:  $arrayElemAt's second argument must be a numeric value, but is bool
+ERROR:  The second argument of $arrayElemAt must be a numeric type value, but it is bool instead.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], [1, 2]]}}');
-ERROR:  $arrayElemAt's second argument must be a numeric value, but is array
+ERROR:  The second argument of $arrayElemAt must be a numeric type value, but it is array instead.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], "string"]}}');
-ERROR:  $arrayElemAt's second argument must be a numeric value, but is string
+ERROR:  The second argument of $arrayElemAt must be a numeric type value, but it is string instead.
 -- should return null if second arg is null or undefined
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], null]}}');
  bson_dollar_project 
@@ -480,35 +480,35 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], "$a"
 
 -- should error if second arg is not representable as a 32-bit integer
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberLong": "2147483648"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 2147483648
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 2147483648
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberLong": "-2147483649"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: -2147483649
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: -2147483649
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberDouble": "1.1"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 1.1
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 1.1
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberDouble": "1.0003"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 1.0003
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 1.0003
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[1, 2, 3, {"a": 5}], {"$numberDouble": "2147483648.0"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 2.14748E+09
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 2.14748E+09
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[1, 2, 3, {"a": 5}], {"$numberDouble": "-2147483649.0"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: -2.14748E+09
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: -2.14748E+09
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberDecimal": "2147483648.0"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 2147483648.0
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 2147483648.0
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberDecimal": "-2147483649.0"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: -2147483649.0
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: -2147483649.0
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7], {"$numberDecimal": "1.0003"}]}}');
-ERROR:  $arrayElemAt's second argument must be representable as a 32-bit integer: 1.0003
+ERROR:  The second argument of $arrayElemAt must be a valid 32-bit integer value: 1.0003
 -- should honor nested expression errors even second arg is not a 32-bit integer or if the value is found (even if the index points to an expression that doesn't produce an error).
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[{"$divide": [1, 0]}], {"$numberDecimal": "1.0003"}]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[1, {"$divide": [1, 0]}], 0]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- should error if wrong number of args is provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [7]}}');
-ERROR:  Expression $arrayElemAt takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $arrayElemAt requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7]]}}');
-ERROR:  Expression $arrayElemAt takes exactly 2 arguments. 1 were passed in.
+ERROR:  The expression $arrayElemAt requires exactly 2 arguments, but 1 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayElemAt": [[7, {"$divide": [1, 0]}], {"$numberLong": "2147483648"}, 2]}}');
-ERROR:  Expression $arrayElemAt takes exactly 2 arguments. 3 were passed in.
+ERROR:  The expression $arrayElemAt requires exactly 2 arguments, but 3 arguments were actually provided.
 -- $first operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [[1]]}}');
           bson_dollar_project          
@@ -549,27 +549,27 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": ["$a"]}}');
 
 -- should error if no array is provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [{}]}}');
-ERROR:  $first's argument must be an array, but is object
+ERROR:  The argument provided for $first must be of array type, yet it is actually object.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [true]}}');
-ERROR:  $first's argument must be an array, but is bool
+ERROR:  The argument provided for $first must be of array type, yet it is actually bool.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [false]}}');
-ERROR:  $first's argument must be an array, but is bool
+ERROR:  The argument provided for $first must be of array type, yet it is actually bool.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": ["string"]}}');
-ERROR:  $first's argument must be an array, but is string
+ERROR:  The argument provided for $first must be of array type, yet it is actually string.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [1]}}');
-ERROR:  $first's argument must be an array, but is int
+ERROR:  The argument provided for $first must be of array type, yet it is actually int.
 -- should error with wrong number of args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [1, 2, 3]}}');
-ERROR:  Expression $first takes exactly 1 arguments. 3 were passed in.
+ERROR:  The expression $first requires exactly 1 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [[], 2]}}');
-ERROR:  Expression $first takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $first requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": []}}');
-ERROR:  Expression $first takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $first requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [{"$divide": [1, 0]}, 2]}}');
-ERROR:  Expression $first takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $first requires exactly 1 arguments, but 2 arguments were actually provided.
 -- should honor nested expression errors
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$first": [[1, 2, 3, 4, {"$divide": [1, 0]}]]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- $last operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [[1]]}}');
           bson_dollar_project          
@@ -610,27 +610,27 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": ["$a"]}}');
 
 -- should error if no array is provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [{}]}}');
-ERROR:  $last's argument must be an array, but is object
+ERROR:  The argument provided for $last must be of array type, yet it is actually object.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [true]}}');
-ERROR:  $last's argument must be an array, but is bool
+ERROR:  The argument provided for $last must be of array type, yet it is actually bool.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [false]}}');
-ERROR:  $last's argument must be an array, but is bool
+ERROR:  The argument provided for $last must be of array type, yet it is actually bool.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": ["string"]}}');
-ERROR:  $last's argument must be an array, but is string
+ERROR:  The argument provided for $last must be of array type, yet it is actually string.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [1]}}');
-ERROR:  $last's argument must be an array, but is int
+ERROR:  The argument provided for $last must be of array type, yet it is actually int.
 -- should error with wrong number of args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [1, 2, 3]}}');
-ERROR:  Expression $last takes exactly 1 arguments. 3 were passed in.
+ERROR:  The expression $last requires exactly 1 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [[], 2]}}');
-ERROR:  Expression $last takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $last requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": []}}');
-ERROR:  Expression $last takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $last requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [{"$divide": [1, 0]}, 2]}}');
-ERROR:  Expression $last takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $last requires exactly 1 arguments, but 2 arguments were actually provided.
 -- should honor nested expression errors
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$last": [[{"$divide": [1, 0]}, 1, 2, 3, 4]]}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 -- $objectToArray: returns expected array
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": { }}}');
  bson_dollar_project 
@@ -725,24 +725,24 @@ SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$objectToArray":
 
 -- $objectToArray: expects document as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": [1]}}');
-ERROR:  $objectToArray requires a document input, found: int
+ERROR:  $objectToArray expression requires a document input, but received: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": 1}}');
-ERROR:  $objectToArray requires a document input, found: int
+ERROR:  $objectToArray expression requires a document input, but received: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": "string"}}');
-ERROR:  $objectToArray requires a document input, found: string
+ERROR:  $objectToArray expression requires a document input, but received: string
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": [true]}}');
-ERROR:  $objectToArray requires a document input, found: bool
+ERROR:  $objectToArray expression requires a document input, but received: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": false}}');
-ERROR:  $objectToArray requires a document input, found: bool
+ERROR:  $objectToArray expression requires a document input, but received: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": {"$add": [1, 2]}}}');
-ERROR:  $objectToArray requires a document input, found: int
+ERROR:  $objectToArray expression requires a document input, but received: int
 -- $objectToArray: accepts exactly 1 arg
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": []}}');
-ERROR:  Expression $objectToArray takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $objectToArray requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": [1, 2]}}');
-ERROR:  Expression $objectToArray takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $objectToArray requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$objectToArray": [{}, {}]}}');
-ERROR:  Expression $objectToArray takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $objectToArray requires exactly 1 arguments, but 2 arguments were actually provided.
 -- $arrayToObject: returns expected object
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[]]}}');
  bson_dollar_project 
@@ -869,58 +869,58 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$arrayToObject": { "$objec
 
 -- $arrayToObject: accepts exactly 1 arg
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": []}}');
-ERROR:  Expression $arrayToObject takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $arrayToObject requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [1, 2, 3]}}');
-ERROR:  Expression $arrayToObject takes exactly 1 arguments. 3 were passed in.
+ERROR:  The expression $arrayToObject requires exactly 1 arguments, but 3 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [1, 2]}}');
-ERROR:  Expression $arrayToObject takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $arrayToObject requires exactly 1 arguments, but 2 arguments were actually provided.
 -- $arrayToObject: input must be array
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [1]}}');
-ERROR:  $arrayToObject requires an array input, found: int
+ERROR:  $arrayToObject needs an array as input, but a different type was provided: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [{}]}}');
-ERROR:  $arrayToObject requires an array input, found: object
+ERROR:  $arrayToObject needs an array as input, but a different type was provided: object
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [{"$add": [1, 1]}]}}');
-ERROR:  $arrayToObject requires an array input, found: int
+ERROR:  $arrayToObject needs an array as input, but a different type was provided: int
 -- $arrayToObject: requires consistent input all objects or all arrays
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["a", "value"], {"k": "b", "v": 1}]]}}');
-ERROR:  $arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Array was detected, now found: object
+ERROR:  $arrayToObject needs a consistent format of input. All elements must either be arrays or objects exclusively. An array was identified initially, but the following element was found: object
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "b", "v": 1}, ["a", "value"]]]}}');
-ERROR:  $arrayToObject requires a consistent input format. Elements must all be arrays or all be objects. Object was detected, now found: array
+ERROR:  $arrayToObject needs a consistent format of input; every element should be either entirely arrays or entirely objects. An object was initially detected, but the following element was found: array
 -- $arrayToObject: key must be string
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[[1, "value"]]]}}');
-ERROR:  $arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: int
+ERROR:  Expected 'string' type for $arrayToObject entries but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["a", "value"], ["b", "foo"], [2, 2]]]}}');
-ERROR:  $arrayToObject requires an array of key-value pairs, where the key must be of type string. Found key type: int
+ERROR:  Expected 'string' type for $arrayToObject entries but found 'int' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": 1, "v": "value"}]]}}');
-ERROR:  $arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: int
+ERROR:  $arrayToObject needs an input object containing keys 'k' and 'v', with 'k' specifically required to be a string type. Detected type: int
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a", "v": "value"}, {"k": "b", "v": "value"}, {"k": 1, "v": "value"}]]}}');
-ERROR:  $arrayToObject requires an object with keys 'k' and 'v', where the value of 'k' must be of type string. Found type: int
+ERROR:  $arrayToObject needs an input object containing keys 'k' and 'v', with 'k' specifically required to be a string type. Detected type: int
 -- $arrayToObject: array input format must be of length 2
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["value"]]]}}');
-ERROR:  $arrayToObject requires an array of size 2 arrays,found array of size: 1
+ERROR:  $arrayToObject needs an array containing exactly two elements, but received one with size: 1
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["a", "value"], ["b", "v"], [1, 2, 3]]]}}');
-ERROR:  $arrayToObject requires an array of size 2 arrays,found array of size: 3
+ERROR:  $arrayToObject needs an array containing exactly two elements, but received one with size: 3
 -- $arrayToObject: document input format must have 2 fields
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a"}]]}}');
-ERROR:  $arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:1
+ERROR:  $arrayToObject needs object keys named 'k' and 'v', but an incorrect number of keys was detected: 1
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a", "v": "b"}, {"k": "a"}]]}}');
-ERROR:  $arrayToObject requires an object keys of 'k' and 'v'. Found incorrect number of keys:1
+ERROR:  $arrayToObject needs object keys named 'k' and 'v', but an incorrect number of keys was detected: 1
 -- $arrayToObject: document input must have a 'k' and a 'v' field
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a", "foo": "value"}]]}}');
-ERROR:  $arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: { "k" : "a", "foo" : "value" }
+ERROR:  $arrayToObject needs an object containing both 'k' and 'v' keys, but one or both of these required keys are missing from: { "k" : "a", "foo" : "value" }
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a", "v": "b"}, {"v": "a", "blah": "k"}]]}}');
-ERROR:  $arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: { "v" : "a", "blah" : "k" }
+ERROR:  $arrayToObject needs an object containing both 'k' and 'v' keys, but one or both of these required keys are missing from: { "v" : "a", "blah" : "k" }
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "a", "v": "b"}, {"v": "a", "k": "k"}, {"blah": 1, "foo": 2}]]}}');
-ERROR:  $arrayToObject requires an object with keys 'k' and 'v'. Missing either or both keys from: { "blah" : 1, "foo" : 2 }
+ERROR:  $arrayToObject needs an object containing both 'k' and 'v' keys, but one or both of these required keys are missing from: { "blah" : 1, "foo" : 2 }
 -- $arrayToObject: key must not contain embedded null byte
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "fo\u0000os", "v": "value"}]]}}');
-ERROR:  Key field cannot contain an embedded null byte
+ERROR:  Key field must not include an embedded null byte
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[{"k": "fo\u0000", "v": "value"}]]}}');
-ERROR:  Key field cannot contain an embedded null byte
+ERROR:  Key field must not include an embedded null byte
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["\u0000", "value"]]]}}');
-ERROR:  Key field cannot contain an embedded null byte
+ERROR:  Key field must not include an embedded null byte
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$arrayToObject": [[["\u0000hello", "value"]]]}}');
-ERROR:  Key field cannot contain an embedded null byte
+ERROR:  Key field must not include an embedded null byte
 --$slice Operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$slice": [[1,2,3],1,1]}}');
             bson_dollar_project            
@@ -1003,11 +1003,11 @@ select bson_dollar_project('{"_id":"1", "a" : 1  }', '{"slicedArray" : { "$slice
 (1 row)
 
 select bson_dollar_project('{"_id":"1", "a" : 1  }', '{"slicedArray" : { "$slice" : ["$a",-1,2]} }');
-ERROR:  First argument to $slice must be an array, but is of type: int
+ERROR:  The first parameter provided to $slice must be an array, but a value of type int was received instead.
 select bson_dollar_project('{"_id":"1", "a" : 1  }', '{"slicedArray" : { "$slice" : [[1,2,3,4,5],1,0]} }');
-ERROR:  Third argument to $slice must be positive: 0
+ERROR:  The third argument provided to the $slice operator must have a positive value: 0
 select bson_dollar_project('{"_id":"1", "a" : 1  }', '{"slicedArray" : { "$slice" : [[1,2,3,4,5],2,-1]} }');
-ERROR:  Third argument to $slice must be positive: -1
+ERROR:  The third argument provided to the $slice operator must have a positive value: -1
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"a" : { "$slice" : ["$b",-1,2]} }');
      bson_dollar_project     
 ---------------------------------------------------------------------
@@ -1041,9 +1041,9 @@ select bson_dollar_project('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], 
 (1 row)
 
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : ["$a",1,2]} , "b":0}');
-ERROR:  Cannot do exclusion on field b in inclusion projection.
+ERROR:  exclusion cannot be applied to field b within the inclusion projection.
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3], "b" : 22, "c" : [1,2,3], "d":4  }', '{"a" : { "$slice" : ["$a",1,2]} , "b":0, "d":1}');
-ERROR:  Cannot do exclusion on field b in inclusion projection.
+ERROR:  exclusion cannot be applied to field b within the inclusion projection.
 --$slice has NULL input
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"a" : { "$slice" : [null,1,2]} }');
      bson_dollar_project     
@@ -1065,31 +1065,31 @@ select bson_dollar_project('{"_id":"1", "a" : [1,2,3,4,5]  }', '{"a" : { "$slice
 
 --Invalid Input Negative cases $slice projection
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : "str"}}');
-ERROR:  Expression $slice takes at least 2 arguments, and at most 3, but 1 were passed in.
+ERROR:  The expression $slice requires no fewer than 2 arguments and no more than 3 arguments, but 1 arguments were actually provided.
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["hello",1,2]}}');
-ERROR:  First argument to $slice must be an array, but is of type: string
+ERROR:  The first parameter provided to $slice must be an array, but a value of type string was received instead.
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a","str",2]}}');
-ERROR:  Second argument to $slice must be numeric, but is of type: string
+ERROR:  The Second argument for the $slice needs to be a numeric value; however, it is currently of type: string
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",1,"str"]}}');
-ERROR:  Third argument to $slice must be numeric, but is of type: string
+ERROR:  The Third argument for the $slice needs to be a numeric value; however, it is currently of type: string
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",1,1.02]}}');
-ERROR:  Third argument to $slice can't be represented as a 32-bit integer: 1.02
+ERROR:  The Third value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: 1.02
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",1,-1]}}');
-ERROR:  Third argument to $slice must be positive: -1
+ERROR:  The third argument provided to the $slice operator must have a positive value: -1
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",1,0]}}');
-ERROR:  Third argument to $slice must be positive: 0
+ERROR:  The third argument provided to the $slice operator must have a positive value: 0
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a"]}}');
-ERROR:  Expression $slice takes at least 2 arguments, and at most 3, but 1 were passed in.
+ERROR:  The expression $slice requires no fewer than 2 arguments and no more than 3 arguments, but 1 arguments were actually provided.
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",1,2,4]}}');
-ERROR:  Expression $slice takes at least 2 arguments, and at most 3, but 4 were passed in.
+ERROR:  The expression $slice requires no fewer than 2 arguments and no more than 3 arguments, but 4 arguments were actually provided.
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",{ "$numberDecimal" : "NaN"},{ "$numberDecimal" : "NaN"}]}}');
-ERROR:  Second argument to $slice can't be represented as a 32-bit integer: NaN
+ERROR:  The Second value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: NaN
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",{ "$numberDecimal" : "NaN"},{ "$numberDecimal" : "Infinity"}]}}');
-ERROR:  Second argument to $slice can't be represented as a 32-bit integer: NaN
+ERROR:  The Second value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: NaN
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",{ "$numberDecimal" : "Infinity"},{ "$numberDecimal" : "NaN"}]}}');
-ERROR:  Second argument to $slice can't be represented as a 32-bit integer: Infinity
+ERROR:  The Second value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: Infinity
 select bson_dollar_project('{"_id":"1", "a" : [1,2,3] }', '{"a" : { "$slice" : ["$a",{ "$numberDecimal" : "Infinity"},{ "$numberDecimal" : "Infinity"}]}}');
-ERROR:  Second argument to $slice can't be represented as a 32-bit integer: Infinity
+ERROR:  The Second value provided to the $slice operator cannot be expressed within the limits of a 32-bit integer: Infinity
 -- $concatArrays operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$concatArrays": []}}');
  bson_dollar_project 
@@ -1227,15 +1227,15 @@ SELECT * FROM bson_dollar_project('{"doc": {"foo": "string"}, "array": ["first",
 
 -- $concatArrays error when arguments are not an array
 SELECT * FROM bson_dollar_project('{"a": {"b": "1"}}', '{"result": { "$concatArrays": "$a"}}');
-ERROR:  $concatArrays only supports arrays, not object
+ERROR:  $concatArrays requires array inputs, but a value of type object was provided
 SELECT * FROM bson_dollar_project('{"a": {"b": "1"}}', '{"result": { "$concatArrays": ["$a"]}}');
-ERROR:  $concatArrays only supports arrays, not object
+ERROR:  $concatArrays requires array inputs, but a value of type object was provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$concatArrays": [[1], {"a": "1"}]}}');
-ERROR:  $concatArrays only supports arrays, not object
+ERROR:  $concatArrays requires array inputs, but a value of type object was provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$concatArrays": [true]}}');
-ERROR:  $concatArrays only supports arrays, not bool
+ERROR:  $concatArrays requires array inputs, but a value of type bool was provided
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$concatArrays": ["string"]}}');
-ERROR:  $concatArrays only supports arrays, not string
+ERROR:  $concatArrays requires array inputs, but a value of type string was provided
 -- $filter simple cond
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true}} }');
                         bson_dollar_project                        
@@ -1304,29 +1304,29 @@ SELECT * FROM bson_dollar_project('{"a": null}', '{"result": {"$filter": {"input
  { "result" : null }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}}} }');
-                 bson_dollar_project                  
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}}} }');
+              bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : [ "robert", "john", "david", "eric" ] }
+ { "result" : [ "foo", "baz", "var", "blah" ] }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$name", null]}, "as": "name"}}}');
-                 bson_dollar_project                  
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$dummy", null]}, "as": "dummy"}}}');
+              bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : [ "robert", "john", "david", "eric" ] }
+ { "result" : [ "foo", "baz", "var", "blah" ] }
 (1 row)
 
 -- $filter reference variable with dotted expression
-SELECT * FROM bson_dollar_project('{"a": [{"first": "john", "middle": "eric"}, {"first": "robert", "middle": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this.middle", null]}}} }');
-                    bson_dollar_project                     
+SELECT * FROM bson_dollar_project('{"a": [{"first": "foo", "second": "bar"}, {"first": "baz", "second": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this.second", null]}}} }');
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : [ { "first" : "john", "middle" : "eric" } ] }
+ { "result" : [ { "first" : "foo", "second" : "bar" } ] }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"a": [{"first": "john", "middle": "eric"}, {"first": "robert", "middle": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$person.middle", null]}, "as": "person"}}}');
-                    bson_dollar_project                     
+SELECT * FROM bson_dollar_project('{"a": [{"first": "foo", "second": "bar"}, {"first": "baz", "second": null}]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$dummy.second", null]}, "as": "dummy"}}}');
+                   bson_dollar_project                    
 ---------------------------------------------------------------------
- { "result" : [ { "first" : "john", "middle" : "eric" } ] }
+ { "result" : [ { "first" : "foo", "second" : "bar" } ] }
 (1 row)
 
 -- $filter with limit
@@ -1372,10 +1372,10 @@ SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"inp
  { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
 (1 row)
 
-SELECT * FROM bson_dollar_project('{"a": ["robert", "john", null, "david", null, null, "eric"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}, "limit": 4}} }');
-                 bson_dollar_project                  
+SELECT * FROM bson_dollar_project('{"a": ["foo", "baz", null, "var", null, null, "blah"]}', '{"result": {"$filter": {"input": "$a", "cond": {"$ne": ["$$this", null]}, "limit": 4}} }');
+              bson_dollar_project               
 ---------------------------------------------------------------------
- { "result" : [ "robert", "john", "david", "eric" ] }
+ { "result" : [ "foo", "baz", "var", "blah" ] }
 (1 row)
 
 -- $filter with nested filter and clashing variable names
@@ -1412,43 +1412,43 @@ SELECT * FROM bson_dollar_project('{"a": [-1,-2,-3,-4]}', '{"result": {"$filter"
 
 -- $filter, arg must be an object
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": {"$filter": "$a"}}');
-ERROR:  $filter only supports an object as its argument
+ERROR:  $filter can accept only an object type as its valid argument
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": {"$filter": true}}');
-ERROR:  $filter only supports an object as its argument
+ERROR:  $filter can accept only an object type as its valid argument
 SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": {"$filter": []}}');
-ERROR:  $filter only supports an object as its argument
+ERROR:  $filter can accept only an object type as its valid argument
 -- $filter, object should have cond and input, as/limit are optional, any other path is invalid
 SELECT * FROM bson_dollar_project('{"a": [-1,-2,-3,-4]}', '{"result": {"$filter": {"input": "$a"}}}');
-ERROR:  Missing 'cond' parameter to $filter
+ERROR:  The 'cond' parameter required by the $filter operator is missing
 SELECT * FROM bson_dollar_project('{"a": [-1,-2,-3,-4]}', '{"result": {"$filter": {"cond": true}}}');
-ERROR:  Missing 'input' parameter to $filter
+ERROR:  'Input' parameter is missing for $filter
 SELECT * FROM bson_dollar_project('{"a": [-1,-2,-3,-4]}', '{"result": {"$filter": {"input": "$a", "cond": true, "sort": false}}}');
-ERROR:  Unrecognized parameter to $filter: sort
+ERROR:  Parameter not recognized in $filter: sort
 -- $filter, input should be an array
 SELECT * FROM bson_dollar_project('{"a": { }}', '{"result": {"$filter": {"input": "$a", "cond": true}}}');
-ERROR:  input to $filter must be an array not object
+ERROR:  Expected 'array' type as input to $filter but found 'object' type
 SELECT * FROM bson_dollar_project('{"a": { }}', '{"result": {"$filter": {"input": "a", "cond": true}}}');
-ERROR:  input to $filter must be an array not string
+ERROR:  Expected 'array' type as input to $filter but found 'string' type
 SELECT * FROM bson_dollar_project('{"a": { }}', '{"result": {"$filter": {"input": true, "cond": true}}}');
-ERROR:  input to $filter must be an array not bool
+ERROR:  Expected 'array' type as input to $filter but found 'bool' type
 -- $filter, as variable name should be valid
 -- invalid
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "_element"}}}');
-ERROR:  '_element' starts with an invalid character for a user variable name
+ERROR:  The variable name '_element' begins with a character that is not valid for user-defined variables
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "1element"}}}');
-ERROR:  '1element' starts with an invalid character for a user variable name
+ERROR:  The variable name '1element' begins with a character that is not valid for user-defined variables
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "Element"}}}');
-ERROR:  'Element' starts with an invalid character for a user variable name
+ERROR:  The variable name 'Element' begins with a character that is not valid for user-defined variables
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "el@ement"}}}');
-ERROR:  'el@ement' contains an invalid character for a variable name: '@'
+ERROR:  The variable name 'el@ement' contains an invalid character '@'.
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "el-ement"}}}');
-ERROR:  'el-ement' contains an invalid character for a variable name: '-'
+ERROR:  The variable name 'el-ement' contains an invalid character '-'.
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": ""}}}');
-ERROR:  empty variable names are not allowed
+ERROR:  Variable names cannot be left empty
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": null}}}');
-ERROR:  empty variable names are not allowed
+ERROR:  Variable names cannot be left empty
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": true}}}');
-ERROR:  empty variable names are not allowed
+ERROR:  Variable names cannot be left empty
 -- valid
 SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input": "$a", "cond": true, "as": "element1"}}}');
  bson_dollar_project 
@@ -1470,28 +1470,28 @@ SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$filter": {"input":
 
 -- $filter, limit must be representable as a 32bit integer and > 0
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberDouble": "1.1"}}} }');
-ERROR:  $filter: limit must be represented as a 32-bit integral value: 1.1
+ERROR:  Operator $filter requires the limit to be specified as a 32-bit integer value: 1.1
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberDecimal": "1.1"}}} }');
-ERROR:  $filter: limit must be represented as a 32-bit integral value: 1.1
+ERROR:  Operator $filter requires the limit to be specified as a 32-bit integer value: 1.1
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberLong": "2147483648"}}} }');
-ERROR:  $filter: limit must be represented as a 32-bit integral value: 2147483648
+ERROR:  Operator $filter requires the limit to be specified as a 32-bit integer value: 2147483648
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberDouble": "2147483648.0"}}} }');
-ERROR:  $filter: limit must be represented as a 32-bit integral value: 2.14748E+09
+ERROR:  Operator $filter requires the limit to be specified as a 32-bit integer value: 2.14748E+09
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberDouble": "0.0"}}} }');
-ERROR:  $filter: limit must be greater than 0: 0
+ERROR:  $filter: limit value must be strictly greater than zero: 0
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": {"$numberDouble": "-1.0"}}} }');
-ERROR:  $filter: limit must be greater than 0: -1
+ERROR:  $filter: limit value must be strictly greater than zero: -1
 SELECT * FROM bson_dollar_project('{"a": [1, 2]}', '{"result": {"$filter": {"input": "$a", "cond": true, "limit": -100}} }');
-ERROR:  $filter: limit must be greater than 0: -100
+ERROR:  $filter: limit value must be strictly greater than zero: -100
 -- $filter, undefined variable
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4, 5, 6]}', '{"result": {"$filter": {"input": "$a", "as":"element", "cond": {"$gt": ["$$this", 3]}}} }');
-ERROR:  Use of undefined variable: this
+ERROR:  Attempting to use an undefined variable: this
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4, 5, 6]}', '{"result": {"$filter": {"input": "$a", "cond": {"$gt": ["$$element", 3]}}} }');
-ERROR:  Use of undefined variable: element
+ERROR:  Attempting to use an undefined variable: element
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4, 5, 6]}', '{"result": {"$filter": {"input": "$a", "cond": {"$gt": ["$$this", "$$filterValue"]}}} }');
-ERROR:  Use of undefined variable: filterValue
+ERROR:  Attempting to use an undefined variable: filterValue
 SELECT * FROM bson_dollar_project('{"a": [1, 2, 3, 4, 5, 6]}', '{"result": {"$filter": {"input": "$a", "cond": {"$gt": ["$$this", "$$filterValue.name.last"]}}} }');
-ERROR:  Use of undefined variable: filterValue
+ERROR:  Attempting to use an undefined variable: filterValue
 -- $firstN, operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"], "n":3} }}');
                                     bson_dollar_project                                    
@@ -1585,35 +1585,35 @@ NOTICE:  creating collection
 (1 row)
 
 select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarFirstN');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 select bson_dollar_project(document, '{"result": { "$firstN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarFirstN');
-ERROR:  Value for 'n' must be of integral type, but found "abc"
+ERROR:  Expected 'integer' type for 'n' field but found '"abc"' type
 --$firstN, operator invalid input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": true, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": 5, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": "abcvde", "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": 4.56, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": true }}');
-ERROR:  specification must be an object; found $firstN :true
+ERROR:  specification must be defined as an object, but the provided input was $firstN :true
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": "ayush_test_name" }}');
-ERROR:  specification must be an object; found $firstN :"ayush_test_name"
+ERROR:  specification must be defined as an object, but the provided input was $firstN :"ayush_test_name"
 --$firstN, operator invalid n
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n":"3"} }}');
-ERROR:  Value for 'n' must be of integral type, but found "3"
+ERROR:  Expected 'integer' type for 'n' field but found '"3"' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n":0} }}');
-ERROR:  'n' must be greater than 0, found 0
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n":-1} }}');
-ERROR:  'n' must be greater than 0, found -1
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is -1
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n":3.124} }}');
-ERROR:  Value for 'n' must be of integral type, but found 3.124
+ERROR:  Expected 'integer' type for 'n' field but found 'double' type for value '3.124'
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n": {"$numberDecimal": "9223372036854775808"} } }}');
-ERROR:  Value for 'n' must be of integral type, but found 9223372036854775808
+ERROR:  Expected 'integer' type for 'n' field but found 'decimal' type for value '9223372036854775808'
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4], "n": {"$numberDecimal": "0"} } }}');
-ERROR:  'n' must be greater than 0, found 0
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
 -- $lastN, operator with docs in db 
 select documentdb_api.insert_one('db','dollarLastN','{"a":[1,2,3] , "_id":1}');
 NOTICE:  creating collection
@@ -1657,16 +1657,16 @@ select documentdb_api.insert_one('db','dollarLastN','{"b":[] , "_id":5}');
 (1 row)
 
 select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":3} }}') from documentdb_api.collection('db','dollarLastN');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 select bson_dollar_project(document, '{"result": { "$lastN": {"input": "$a", "n":"abc"} }}') from documentdb_api.collection('db','dollarLastN');
-ERROR:  Value for 'n' must be of integral type, but found "abc"
+ERROR:  Expected 'integer' type for 'n' field but found '"abc"' type
 --$firstN, operator missing or extra args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"input": [1,2,3,4]} }}');
 ERROR:  $firstN requires an 'n' field
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"n": 5} }}');
-ERROR:  $firstN requires an 'input' field
+ERROR:  $firstN needs to have an 'input' field
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$firstN": {"n": 5, "input": [1,2,3], "abc":1} }}');
-ERROR:  $firstN found an unknown argument: abc
+ERROR:  $firstN encountered an unrecognized argument value: abc
 -- $lastN, operator
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,45,12,null,"asdhkas",12890.8912,{"$numberDecimal": "223.234823904823904823041212233"},{"$date": { "$numberLong" : "0" }},"\ud0008"], "n":3} }}');
                                                     bson_dollar_project                                                    
@@ -1718,37 +1718,37 @@ SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3
 
 --$lastN, operator invalid input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": true, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": 5, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": "abcvde", "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": 4.56, "n":3} }}');
-ERROR:  Input must be an array
+ERROR:  Expected 'array' type as input
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": true }}');
-ERROR:  specification must be an object; found $lastN :true
+ERROR:  specification must be defined as an object, but the provided input was $lastN :true
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": "ayush_test_name" }}');
-ERROR:  specification must be an object; found $lastN :"ayush_test_name"
+ERROR:  specification must be defined as an object, but the provided input was $lastN :"ayush_test_name"
 --$lastN, operator invalid n
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n":"3"} }}');
-ERROR:  Value for 'n' must be of integral type, but found "3"
+ERROR:  Expected 'integer' type for 'n' field but found '"3"' type
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n":0} }}');
-ERROR:  'n' must be greater than 0, found 0
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n":-1} }}');
-ERROR:  'n' must be greater than 0, found -1
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is -1
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n":3.124} }}');
-ERROR:  Value for 'n' must be of integral type, but found 3.124
+ERROR:  Expected 'integer' type for 'n' field but found 'double' type for value '3.124'
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n": {"$numberDecimal": "9223372036854775808"} } }}');
-ERROR:  Value for 'n' must be of integral type, but found 9223372036854775808
+ERROR:  Expected 'integer' type for 'n' field but found 'decimal' type for value '9223372036854775808'
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4], "n": {"$numberDecimal": "0"} } }}');
-ERROR:  'n' must be greater than 0, found 0
+ERROR:  The value of 'n' must be strictly greater than 0, but the current value is 0
 --$lastN, operator missing or extra args
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"input": [1,2,3,4]} }}');
 ERROR:  $lastN requires an 'n' field
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"n": 5} }}');
-ERROR:  $lastN requires an 'input' field
+ERROR:  $lastN needs to have an 'input' field
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$lastN": {"n": 5, "input": [1,2,3], "abc":1} }}');
-ERROR:  $lastN found an unknown argument: abc
+ERROR:  $lastN encountered an unrecognized argument value: abc
 -- $range, simple condition asc
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [1,10] } }');
                                                                                                             bson_dollar_project                                                                                                            
@@ -1895,41 +1895,41 @@ SELECT * FROM bson_dollar_project('{"city": "San Jose", "distance": 288}', '{"re
 
 -- $range, negative conditions starting number
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [2147483648,214748364121,40] } }');
-ERROR:  $range requires a starting value that can be represented as a 32-bit integer, found value: 2147483648
+ERROR:  The $range operator needs a starting value that fits within a 32-bit integer, but the provided value was: 2147483648
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [{"$numberDecimal":"0.35"},400,40] } }');
-ERROR:  $range requires a starting value that can be represented as a 32-bit integer, found value: 0.35
+ERROR:  The $range operator needs a starting value that fits within a 32-bit integer, but the provided value was: 0.35
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": ["abvcf",400,40] } }');
-ERROR:  $range requires a numeric starting value, found value of type: string
+ERROR:  $range expression requires a numeric start value but encountered a value of type: string
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [true,400,40] } }');
-ERROR:  $range requires a numeric starting value, found value of type: bool
+ERROR:  $range expression requires a numeric start value but encountered a value of type: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [null,400,40] } }');
-ERROR:  $range requires a numeric starting value, found value of type: null
+ERROR:  $range expression requires a numeric start value but encountered a value of type: null
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [null,400,40,400] } }');
-ERROR:  Expression $range takes at least 2 arguments, and at most 3, but 4 were passed in.
+ERROR:  The expression $range requires no fewer than 2 arguments and no more than 3 arguments, but 4 arguments were actually provided.
 -- $range, negative conditions ending number
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [2147648,214748364121,40] } }');
-ERROR:  $range requires a ending value that can be represented as a 32-bit integer, found value: 214748364121
+ERROR:  $range needs an ending value representable as a 32-bit integer, but encountered value: 214748364121
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [-10, {"$numberDecimal":"0.35"},4] } }');
-ERROR:  $range requires a ending value that can be represented as a 32-bit integer, found value: 0.35
+ERROR:  $range needs an ending value representable as a 32-bit integer, but encountered value: 0.35
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [400,"abvcf",400] } }');
-ERROR:  $range requires a numeric ending value, found value of type: string
+ERROR:  $range expression needs a numeric ending value, but a value of type string was provided
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [5,true,40] } }');
-ERROR:  $range requires a numeric ending value, found value of type: bool
+ERROR:  $range expression needs a numeric ending value, but a value of type bool was provided
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [1,null] } }');
-ERROR:  $range requires a numeric ending value, found value of type: null
+ERROR:  $range expression needs a numeric ending value, but a value of type null was provided
 -- $range, negative conditions step number
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [21,21471,2147483648] } }');
-ERROR:  $range requires a step value that can be represented as a 32-bit integer, found value: 2147483648
+ERROR:  $range operator needs a step value that fits within a 32-bit integer, but the provided value was: 2147483648
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [-10,15, {"$numberDecimal":"0.35"}] } }');
-ERROR:  $range requires a step value that can be represented as a 32-bit integer, found value: 0.35
+ERROR:  $range operator needs a step value that fits within a 32-bit integer, but the provided value was: 0.35
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [1,400,"abvcf"] } }');
-ERROR:  $range requires a numeric step value, found value of type: string
+ERROR:  Expression $range needs a numeric step value, but received a value of type: string
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [5,40,true] } }');
-ERROR:  $range requires a numeric step value, found value of type: bool
+ERROR:  Expression $range needs a numeric step value, but received a value of type: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [1,5,null] } }');
-ERROR:  $range requires a numeric step value, found value of type: null
+ERROR:  Expression $range needs a numeric step value, but received a value of type: null
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [1,5,0] } }');
-ERROR:  $range requires a non-zero step value
+ERROR:  $range requires a step value that cannot be zero
 -- $range, tests large numbers
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$size":{"$range": [200,20000] }} }');
             bson_dollar_project            
@@ -1987,13 +1987,13 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$arrayElemAt":[{"$range": 
 
 -- $range, tests memory limit exceed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [200,65535960] } }');
-ERROR:  $range would use too much memory (906389542 bytes) and cannot spill to disk. Memory limit: 104857600 bytes
+ERROR:  $range requires excessive memory (906389542 bytes) and cannot be offloaded to disk, exceeding the memory limit of 104857600 bytes.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [50000,65535960] } }');
-ERROR:  $range would use too much memory (905692342 bytes) and cannot spill to disk. Memory limit: 104857600 bytes
+ERROR:  $range requires excessive memory (905692342 bytes) and cannot be offloaded to disk, exceeding the memory limit of 104857600 bytes.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [0,1073741924] } }');
-ERROR:  $range would use too much memory (16068759686 bytes) and cannot spill to disk. Memory limit: 104857600 bytes
+ERROR:  $range requires excessive memory (16068759686 bytes) and cannot be offloaded to disk, exceeding the memory limit of 104857600 bytes.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$range": [0,6505360] } }');
-ERROR:  $range: the size of buffer to store output exceeded the 64MB limit
+ERROR:  $range: The buffer size required to store the output has gone beyond the allowed 64MB maximum limit.
 -- $reverseArray, simple case
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$reverseArray": {"$literal": [1] } } }');
             bson_dollar_project            
@@ -2089,7 +2089,7 @@ SELECT * FROM bson_dollar_project('{"nums": [1,2,3,4, {"$add":[1,2]}, "$field", 
 
 -- $reverseArray, negative cases
 SELECT * FROM bson_dollar_project('{"nums": [1,2,3,4, {"$add":[1,2]}, "$field", [145,9,9]]}', '{"result": {"$reverseArray": [1,2,345,5] } }');
-ERROR:  Expression $reverseArray takes exactly 1 arguments. 4 were passed in.
+ERROR:  The expression $reverseArray requires exactly 1 arguments, but 4 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{"nums": [1,2,3,4, {"$add":[1,2]}, "$field", [145,9,9]]}', '{"result": {"$reverseArray": true } }');
 ERROR:  The argument to $reverseArray must be an array, but was of type: bool
 SELECT * FROM bson_dollar_project('{"nums": [1,2,3,4, {"$add":[1,2]}, "$field", [145,9,9]]}', '{"result": {"$reverseArray": 1 } }');
@@ -2194,7 +2194,7 @@ SELECT * FROM bson_dollar_project('{"a": [[1,2,345,5]]}', '{"result": {"$indexOf
 
 -- $indexOfArray, negative cases
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [true, 50.0, 1,50] } }');
-ERROR:  $indexOfArray requires an array as a first argument, found: bool
+ERROR:  $indexOfArray expects the first argument to be an array, but received: bool
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 11, 5] } }');
           bson_dollar_project           
 ---------------------------------------------------------------------
@@ -2202,23 +2202,23 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, -1, 5] } }');
-ERROR:  $indexOfArray requires a nonnegative starting index, found: -1
+ERROR:  Operator $indexOfArray needs a nonnegative starting index value, but received: -1
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1, -5] } }');
-ERROR:  $indexOfArray requires a nonnegative ending index, found: -5
+ERROR:  Operator $indexOfArray needs a nonnegative ending index value, but received: -5
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1.1] } }');
-ERROR:  $indexOfArray requires an integral starting index, found a value of type: double, with value: 1.1
+ERROR:  The $indexOfArray operator needs an integer starting index, but encountered a value of type double with the value 1.1.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1,5.11] } }');
-ERROR:  $indexOfArray requires an integral ending index, found a value of type: double, with value: 5.11
+ERROR:  The $indexOfArray operator needs an integer ending index, but encountered a value of type double with the value 5.11.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1,5.11] } }');
-ERROR:  $indexOfArray requires an integral ending index, found a value of type: double, with value: 5.11
+ERROR:  The $indexOfArray operator needs an integer ending index, but encountered a value of type double with the value 5.11.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1,5,4] } }');
-ERROR:  Expression $indexOfArray takes at least 2 arguments, and at most 4, but 5 were passed in.
+ERROR:  The expression $indexOfArray requires no fewer than 2 arguments and no more than 4 arguments, but 5 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, "1",5] } }');
-ERROR:  $indexOfArray requires an integral starting index, found a value of type: string, with value: "1"
+ERROR:  The $indexOfArray operator needs an integer starting index, but encountered a value of type string with the value "1".
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1,"50"] } }');
-ERROR:  $indexOfArray requires an integral ending index, found a value of type: string, with value: "50"
+ERROR:  The $indexOfArray operator needs an integer ending index, but encountered a value of type string with the value "50".
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,2,345,5,100,90,11,50,234], 50.0, 1,90000000000000] } }');
-ERROR:  $indexOfArray requires an integral ending index, found a value of type: long, with value: 90000000000000
+ERROR:  The $indexOfArray operator needs an integer ending index, but encountered a value of type long with the value 90000000000000.
 -- $indexOfArray, search for elements of different type
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$indexOfArray": [[1,"2",true,{"a":1}], "2"] } }');
           bson_dollar_project          
@@ -2829,50 +2829,50 @@ select *from bson_dollar_project('{"bools": [true, true, false, true] }', '{"all
  { "allTrue" : [ false, false, false, false ] }
 (1 row)
 
-select *from bson_dollar_project('{ "Precinto": ["Hello", "", "big", "World", "!"] }', '{"Precinto": { "$map": { "input": "$Precinto", "as": "x", "in": { "$concat": [{ "$trim": { "input" : "$$x" }}, {"$cond": {"if": { "$eq": [ "$$x", "" ] }, "then": "*", "else": "#" } }, { "$trim": { "input" : "$$x" } } ] } } } }');
-                           bson_dollar_project                            
+select *from bson_dollar_project('{ "a": ["Hello", "", "big", "World", "!"] }', '{"a": { "$map": { "input": "$a", "as": "x", "in": { "$concat": [{ "$trim": { "input" : "$$x" }}, {"$cond": {"if": { "$eq": [ "$$x", "" ] }, "then": "1", "else": "2" } }, { "$trim": { "input" : "$$x" } } ] } } } }');
+                        bson_dollar_project                        
 ---------------------------------------------------------------------
- { "Precinto" : [ "Hello#Hello", "*", "big#big", "World#World", "!#!" ] }
+ { "a" : [ "Hello2Hello", "1", "big2big", "World2World", "!2!" ] }
 (1 row)
 
-select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"uniqueSet": {"$map": {"input": "$a","as": "x","in": { "$setUnion": ["$$x", [1,2]] }}}}');
-                                                                                                                   bson_dollar_project                                                                                                                    
+select *from bson_dollar_project('{"a": [["a", "b"], ["b", "c"], ["c", "d"], ["e", "a"], ["y", "z"]] }', '{"result": {"$map": {"input": "$a","as": "x","in": { "$setUnion": ["$$x", ["a","b"]] }}}}');
+                                                  bson_dollar_project                                                  
 ---------------------------------------------------------------------
- { "uniqueSet" : [ [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ], [ { "$numberInt" : "4" }, { "$numberInt" : "2" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] ] }
+ { "result" : [ [ "b", "a" ], [ "b", "a", "c" ], [ "b", "a", "c", "d" ], [ "b", "e", "a" ], [ "b", "y", "a", "z" ] ] }
 (1 row)
 
-select *from bson_dollar_project('{"outerArray": [{"innerArray": [1, 2, 3]},{"innerArray": [4, 5, 6]}]}', '{"result": {"$map": {"input": "$outerArray","as": "outerElement","in": {"$map": {"input": "$$outerElement.innerArray","as": "innerElement","in": { "$multiply": ["$$innerElement", 2] }}}}}}');
+select *from bson_dollar_project('{"a": [{"b": [1, 2, 3]},{"b": [4, 5, 6]}]}', '{"result": {"$map": {"input": "$a","as": "outer","in": {"$map": {"input": "$$outer.b","as": "inner","in": { "$multiply": ["$$inner", 2] }}}}}}');
                                                                              bson_dollar_project                                                                             
 ---------------------------------------------------------------------
  { "result" : [ [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "6" } ], [ { "$numberInt" : "8" }, { "$numberInt" : "10" }, { "$numberInt" : "12" } ] ] }
 (1 row)
 
 -- $map in $addfield stage
-SELECT documentdb_api.insert_one('db','map_in_addfield','{"_id":"1", "a": [{ "name": "Alice Smith", "country": "USA" },{ "name": "Bob Johnson", "country": "Canada" }]}', NULL);
+SELECT documentdb_api.insert_one('db','addFieldMap','{"_id":"1", "a": [{ "fieldA": "Hello World", "fieldB": "FOO" },{ "fieldA": "Goodbye everyone", "fieldB": "BAza" }]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "map_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$map": { "input": "$a", "as": "author", "in": {"name_country": { "$concat": ["$$author.name", " from ", "$$author.country"] }} } } } } ], "cursor": {} }');
-                                                                                                                 document                                                                                                                 
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "addFieldMap", "pipeline": [ { "$addFields": {"newField": { "$map": { "input": "$a", "as": "dummy", "in": {"fieldA_fieldB": { "$concat": ["$$dummy.fieldA", " -- ", "$$dummy.fieldB"] }} } } } } ], "cursor": {} }');
+                                                                                                                    document                                                                                                                    
 ---------------------------------------------------------------------
- { "_id" : "1", "a" : [ { "name" : "Alice Smith", "country" : "USA" }, { "name" : "Bob Johnson", "country" : "Canada" } ], "newField" : [ { "name_country" : "Alice Smith from USA" }, { "name_country" : "Bob Johnson from Canada" } ] }
+ { "_id" : "1", "a" : [ { "fieldA" : "Hello World", "fieldB" : "FOO" }, { "fieldA" : "Goodbye everyone", "fieldB" : "BAza" } ], "newField" : [ { "fieldA_fieldB" : "Hello World -- FOO" }, { "fieldA_fieldB" : "Goodbye everyone -- BAza" } ] }
 (1 row)
 
 -- $map, nested case
-select *from bson_dollar_project('{"items":[{"name":"a","quantity":10,"sizes":[{"name":"ab", "quantity":2}, {"name":"ac","quantity":3}]},{"name":"k","quantity":3,"sizes":[{"name":"kb", "quantity":3}, {"name":"kc", "quantity":5}]}]}', '{"items":{"$map":{"input":"$items","as":"item","in":{"name":"$$item.name","quantity":"$$item.quantity","sizes":{"$map":{"input":"$$item.sizes","as":"size","in":{"name":"$$size.name","quantity":{"$multiply":["$$size.quantity",2]}}}}}}}}');
-                                                                                                                                                                                     bson_dollar_project                                                                                                                                                                                      
+select *from bson_dollar_project('{"a":[{"fieldA":"abc","fieldB":2,"fieldC":[{"number":45, "foo":"ab"}, {"foo":"ac","number":1}]},{"fieldA":"def","fieldB":6,"fieldC":[{"foo":"kb", "number":10}]}]}', '{"result":{"$map":{"input":"$a","as":"dummy","in":{"fieldA":"$$dummy.fieldA","fieldB":"$$dummy.fieldB","fieldC":{"$map":{"input":"$$dummy.fieldC","as":"fieldC","in":{"foo":"$$fieldC.foo","number":{"$add":["$$fieldC.number",100]}}}}}}}}');
+                                                                                                                                                          bson_dollar_project                                                                                                                                                           
 ---------------------------------------------------------------------
- { "items" : [ { "name" : "a", "quantity" : { "$numberInt" : "10" }, "sizes" : [ { "name" : "ab", "quantity" : { "$numberInt" : "4" } }, { "name" : "ac", "quantity" : { "$numberInt" : "6" } } ] }, { "name" : "k", "quantity" : { "$numberInt" : "3" }, "sizes" : [ { "name" : "kb", "quantity" : { "$numberInt" : "6" } }, { "name" : "kc", "quantity" : { "$numberInt" : "10" } } ] } ] }
+ { "result" : [ { "fieldA" : "abc", "fieldB" : { "$numberInt" : "2" }, "fieldC" : [ { "foo" : "ab", "number" : { "$numberInt" : "145" } }, { "foo" : "ac", "number" : { "$numberInt" : "101" } } ] }, { "fieldA" : "def", "fieldB" : { "$numberInt" : "6" }, "fieldC" : [ { "foo" : "kb", "number" : { "$numberInt" : "110" } } ] } ] }
 (1 row)
 
 -- $map, negative cases
 select *from bson_dollar_project('{"a": 1}', '{"result": {"$map": {"input": "$a", "as": "x", "in": { "$add": ["$$x", 1] } } } }');
-ERROR:  input to $map must be an array not int
+ERROR:  The $map operator requires an array input, but received int instead
 select *from bson_dollar_project('{"a": [1, 2, 3]}', '{"result": {"$map": {"input": "$a" }} }');
-ERROR:  Missing 'in' parameter to $map
+ERROR:  'in' parameter must be specified for $map
 -- $reduce
 select *from bson_dollar_project('{"a": ["a", "b", "c"]}', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }');
  bson_dollar_project  
@@ -2892,16 +2892,16 @@ select *from bson_dollar_project('{"a": [ [ 3, 4 ], [ 5, 6 ] ] }', '{"result": {
  { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" } ] }
 (1 row)
 
-select *from bson_dollar_project('{"matrix": [[1, 2], [3, 4], [5, 6]] }', '{"sumOfMatrix": { "$reduce": { "input": "$matrix", "initialValue": 0, "in": { "$add" : ["$$value", {"$reduce": {"input": "$$this","initialValue": 0, "in": { "$add": ["$$value", "$$this"] }}}] } } } }');
-             bson_dollar_project             
----------------------------------------------------------------------
- { "sumOfMatrix" : { "$numberInt" : "21" } }
-(1 row)
-
-select *from bson_dollar_project('{ "Precinto": ["Hello", "", "big", "World", "!"] }', '{"Precinto": { "$reduce": { "input": "$Precinto", "initialValue": "", "in": { "$concat": [{ "$trim": { "input" : "$$value" }}, {"$cond": {"if": { "$eq": [ "$$value", "" ] }, "then": "*", "else": "#" } }, { "$trim": { "input" : "$$this" } } ] } } } }');
+select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }', '{"result": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add" : ["$$value", {"$reduce": {"input": "$$this","initialValue": 0, "in": { "$add": ["$$value", "$$this"] }}}] } } } }');
           bson_dollar_project           
 ---------------------------------------------------------------------
- { "Precinto" : "*Hello##big#World#!" }
+ { "result" : { "$numberInt" : "21" } }
+(1 row)
+
+select *from bson_dollar_project('{ "a": ["Hello", "", "big", "World", "!"] }', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": [{ "$trim": { "input" : "$$value" }}, {"$cond": {"if": { "$eq": [ "$$value", "" ] }, "then": "1", "else": "2" } }, { "$trim": { "input" : "$$this" } } ] } } } }');
+         bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : "1Hello22big2World2!" }
 (1 row)
 
 select *from bson_dollar_project('{"a": [2, 3, 5, 8, 13, 21,7,1]}','{"result": {"$reduce": { "input": "$a", "initialValue": 0, "in": { "$cond": [{ "$gt": ["$$this", 5] }, { "$add": ["$$value", 1] }, "$$value"] } } } }');
@@ -2910,45 +2910,45 @@ select *from bson_dollar_project('{"a": [2, 3, 5, 8, 13, 21,7,1]}','{"result": {
  { "result" : { "$numberInt" : "4" } }
 (1 row)
 
-select *from bson_dollar_project('{"bools": [true, true, false, true] }', '{"allTrue": { "$reduce": { "input": "$bools", "initialValue": true, "in": { "$and": ["$$value", "$$this"] }   } } }');
-  bson_dollar_project  
+select *from bson_dollar_project('{"a": [true, true, false, true] }', '{"result": { "$reduce": { "input": "$bools", "initialValue": true, "in": { "$and": ["$$value", "$$this"] }   } } }');
+ bson_dollar_project 
 ---------------------------------------------------------------------
- { "allTrue" : false }
+ { "result" : null }
 (1 row)
 
-select *from bson_dollar_project('{"a": [1, null, 3, null, 5] }', '{"total": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add": ["$$value", { "$ifNull": ["$$this", 0] }] }  } } }');
-         bson_dollar_project          
+select *from bson_dollar_project('{"a": [1, null, 3, null, 5] }', '{"result": { "$reduce": { "input": "$a", "initialValue": 0, "in": { "$add": ["$$value", { "$ifNull": ["$$this", 0] }] }  } } }');
+          bson_dollar_project          
 ---------------------------------------------------------------------
- { "total" : { "$numberInt" : "9" } }
+ { "result" : { "$numberInt" : "9" } }
 (1 row)
 
-select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"uniqueSet": {"$reduce": {"input": "$a","initialValue": [],"in": { "$setUnion": ["$$value", "$$this"] }}}}');
-                                                 bson_dollar_project                                                  
+select *from bson_dollar_project('{"a": [[1, 2], [2, 3], [3, 4]] }', '{"result": {"$reduce": {"input": "$a","initialValue": [],"in": { "$setUnion": ["$$value", "$$this"] }}}}');
+                                                bson_dollar_project                                                
 ---------------------------------------------------------------------
- { "uniqueSet" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "result" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
 (1 row)
 
-select *from bson_dollar_project('{"a": [{ "a": 1 }, { "b": 2 }, { "a": 2 }, { "b": 3 },{ "c": 3 }, { "c": 4 }] }','{"uniqueSet":{"$reduce": {"input": "$a","initialValue": {},"in":{ "$mergeObjects": ["$$value", "$$this"] }}}}');
-                                              bson_dollar_project                                               
+select *from bson_dollar_project('{"a": [{ "a": 1 }, { "b": 2 }, { "a": 2 }, { "b": 3 },{ "c": 3 }, { "c": 4 }] }','{"result":{"$reduce": {"input": "$a","initialValue": {},"in":{ "$mergeObjects": ["$$value", "$$this"] }}}}');
+                                             bson_dollar_project                                             
 ---------------------------------------------------------------------
- { "uniqueSet" : { "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } } }
+ { "result" : { "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } } }
 (1 row)
 
-select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"uniqueSet":{"$reduce": {"input": "$a","initialValue": 0,"in":{ "$sum": ["$$value",{ "$avg": "$$this" }] }}}}');
-              bson_dollar_project               
+select *from bson_dollar_project('{"a": [[1, 2], [3, 4], [5, 6]] }','{"result":{"$reduce": {"input": "$a","initialValue": 0,"in":{ "$sum": ["$$value",{ "$avg": "$$this" }] }}}}');
+             bson_dollar_project             
 ---------------------------------------------------------------------
- { "uniqueSet" : { "$numberDouble" : "10.5" } }
+ { "result" : { "$numberDouble" : "10.5" } }
 (1 row)
 
 -- $reduce in $addfield stage
-SELECT documentdb_api.insert_one('db','reduce_in_addfield','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
+SELECT documentdb_api.insert_one('db','addFieldReduce','{"_id":"1", "a": ["a", "b", "c"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "reduce_in_addfield", "pipeline": [ { "$addFields": {"newField": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } } } ], "cursor": {} }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "addFieldReduce", "pipeline": [ { "$addFields": {"newField": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } } } ], "cursor": {} }');
                            document                           
 ---------------------------------------------------------------------
  { "_id" : "1", "a" : [ "a", "b", "c" ], "newField" : "abc" }
@@ -2956,11 +2956,11 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "reduce_in_
 
 -- $reduce, negative cases
 select *from bson_dollar_project('{"a": 1}', '{"result": { "$reduce": { "input": "$a", "initialValue": "", "in": { "$concat": ["$$value", "$$this"] } } } }');
-ERROR:  input to $reduce must be an array not int
+ERROR:  The input provided to $reduce must be an array, not int
 select *from bson_dollar_project('{"a": [1, 2, 3]}', '{"result": {"$reduce": {"input": "$a", "initialValue": 0 }} }');
-ERROR:  Missing 'in' parameter to $reduce
+ERROR:  Missing 'in' argument for operator $reduce
 select *from bson_dollar_project('{"a": [1, 2, 3]}', '{"result": {"$reduce": {"input": "$a", "in": { "$concat": ["$$value", "$$this"] } }} }');
-ERROR:  Missing 'initialValue' parameter to $reduce
+ERROR:  The 'initialValue' parameter required by $reduce is missing.
 -- $maxN/minN, n too large
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": {"input": [1.1,2.2,"3"], "n": 23 }   }}');
                                                  bson_dollar_project                                                  
@@ -2975,9 +2975,9 @@ SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$minN"
 (1 row)
 
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$maxN": {"input":   [1, 2, 3, 5, 7, 9], "n": {"$numberDecimal": "12345678901234567890" } }   }}');
-ERROR:  Conversion would overflow target type
+ERROR:  Conversion would exceed target type limit
 SELECT * FROM bson_dollar_project('{}', '{"result": { "$minN": {"input":   [1, 2, 3, 5, 7, 9], "n": {"$numberDecimal": "12345678901234567890" } }   }}');
-ERROR:  Conversion would overflow target type
+ERROR:  Conversion would exceed target type limit
 -- $maxN/minN, n short
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": {"input": [1.1,2.2,"3"], "n": 2 }   }}');
                           bson_dollar_project                          
@@ -3006,19 +3006,19 @@ SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$minN"
 
 -- $maxN/minN, n missing
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": {"input": [1.1,2.2,"3"] }   }}');
-ERROR:  Missing value for 'n'
+ERROR:  Required value for 'n' is not provided
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$minN": {"input": [1.1,2.2,"3"] }   }}');
-ERROR:  Missing value for 'n'
+ERROR:  Required value for 'n' is not provided
 -- $maxN/minN, input missing
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": { "n": 1 }   }}');
-ERROR:  Missing value for 'input'
+ERROR:  No value provided for 'input'
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$minN": { "n": 1 }   }}');
-ERROR:  Missing value for 'input'
+ERROR:  No value provided for 'input'
 -- $maxN/minN, n and input missing
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": { "x": 1 }   }}');
-ERROR:  Unknown argument for 'n' operator: x
+ERROR:  Unrecognized parameter supplied for 'n' operator: x
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$minN": { "x": 1 }   }}');
-ERROR:  Unknown argument for 'n' operator: x
+ERROR:  Unrecognized parameter supplied for 'n' operator: x
 -- $maxN/minN, use input from $d1
 SELECT * FROM bson_dollar_project('{"d1": [1.1,2.1,3.1]}', '{"result": { "$maxN": {"input": "$d1", "n": 23 }   }}');
                                                                       bson_dollar_project                                                                       
@@ -3132,107 +3132,107 @@ SELECT * FROM bson_dollar_project('{"d1": [{ "$numberDecimal": "NaN" }, 1, 3, -2
 (1 row)
 
 -- $sortArray
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": 1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[9,7,4,6,8],"sortBy":1}}}');
                                                             bson_dollar_project                                                            
 ---------------------------------------------------------------------
- { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+ { "result" : [ { "$numberInt" : "4" }, { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "9" } ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": -1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[9,7,4,6,8],"sortBy":-1}}}');
                                                             bson_dollar_project                                                            
 ---------------------------------------------------------------------
- { "result" : [ { "$numberInt" : "5" }, { "$numberInt" : "4" }, { "$numberInt" : "3" }, { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "result" : [ { "$numberInt" : "9" }, { "$numberInt" : "8" }, { "$numberInt" : "7" }, { "$numberInt" : "6" }, { "$numberInt" : "4" } ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": ["apple", "banana", "orange", "pear"], "sortBy": 1 } } }');
-                  bson_dollar_project                   
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":["alpha","delta","charlie","bravo"],"sortBy":1}}}');
+                   bson_dollar_project                   
 ---------------------------------------------------------------------
- { "result" : [ "apple", "banana", "orange", "pear" ] }
+ { "result" : [ "alpha", "bravo", "charlie", "delta" ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": ["apple", "banana", "orange", "pear"], "sortBy": -1 } } }');
-                  bson_dollar_project                   
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":["alpha","delta","charlie","bravo"],"sortBy":-1}}}');
+                   bson_dollar_project                   
 ---------------------------------------------------------------------
- { "result" : [ "pear", "orange", "banana", "apple" ] }
+ { "result" : [ "delta", "charlie", "bravo", "alpha" ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [42], "sortBy": 1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[17],"sortBy":1}}}');
             bson_dollar_project             
 ---------------------------------------------------------------------
- { "result" : [ { "$numberInt" : "42" } ] }
+ { "result" : [ { "$numberInt" : "17" } ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [], "sortBy": 1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[],"sortBy":1}}}');
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "result" : [  ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [20, 4, { "a": "Free" }, 6, 21, 5, "Gratis", { "a": null }, { "a": { "sale": true, "price": 19 } }, {"$numberDecimal": "10.23"}, { "a": "On sale" }], "sortBy": 1 } } }');
-                                                                                                                                             bson_dollar_project                                                                                                                                              
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[13,2,{"a":"itemA"},4,25,3,"itemB",{"a":null},{"a":{"type":"x","flag":true}},{"$numberDecimal":"6.78"},{"a":"itemC"}],"sortBy":1}}}');
+                                                                                                                                 bson_dollar_project                                                                                                                                  
 ---------------------------------------------------------------------
- { "result" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberDecimal" : "10.23" }, { "$numberInt" : "20" }, { "$numberInt" : "21" }, "Gratis", { "a" : null }, { "a" : "Free" }, { "a" : "On sale" }, { "a" : { "sale" : true, "price" : { "$numberInt" : "19" } } } ] }
+ { "result" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberDecimal" : "6.78" }, { "$numberInt" : "13" }, { "$numberInt" : "25" }, "itemB", { "a" : null }, { "a" : "itemA" }, { "a" : "itemC" }, { "a" : { "type" : "x", "flag" : true } } ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [[6,2,3],[4,8,6], 4, 1, 6, 12, 5], "sortBy": 1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[[1,9,2],[8,3,5],9,2,7,10,6],"sortBy":1}}}');
                                                                                                                                         bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "$numberInt" : "1" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "12" }, [ { "$numberInt" : "4" }, { "$numberInt" : "8" }, { "$numberInt" : "6" } ], [ { "$numberInt" : "6" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
+ { "result" : [ { "$numberInt" : "2" }, { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "9" }, { "$numberInt" : "10" }, [ { "$numberInt" : "1" }, { "$numberInt" : "9" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "8" }, { "$numberInt" : "3" }, { "$numberInt" : "5" } ] ] }
 (1 row)
 
-select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [{"$numberDecimal": "NaN"}, 4, 1, 6, 12, 5, null, " "], "sortBy": 1 } } }');
+SELECT * FROM bson_dollar_project('{}', '{"result":{"$sortArray":{"input":[{"$numberDecimal":"NaN"},3,8,2,10,7,null," "],"sortBy":1}}}');
                                                                                  bson_dollar_project                                                                                 
 ---------------------------------------------------------------------
- { "result" : [ null, { "$numberDecimal" : "NaN" }, { "$numberInt" : "1" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "6" }, { "$numberInt" : "12" }, " " ] }
+ { "result" : [ null, { "$numberDecimal" : "NaN" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "10" }, " " ] }
 (1 row)
 
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": 1 } } } }');
-                                                                                                                                                                                    bson_dollar_project                                                                                                                                                                                     
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"a":1}}}}');
+                                                                                                                                        bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "name" : "charlie", "age" : { "$numberInt" : "42" }, "address" : { "street" : "12 French St", "city" : "New Brunswick" } }, { "name" : "dallas", "age" : { "$numberInt" : "36" }, "address" : { "street" : "12 Cowper St", "city" : "Palo Alto" } }, { "name" : "pat", "age" : { "$numberInt" : "30" }, "address" : { "street" : "12 Baker St", "city" : "London" } } ] }
+ { "result" : [ { "a" : "item1", "b" : { "$numberInt" : "23" }, "c" : { "d" : "value1", "e" : "typeA" } }, { "a" : "item2", "b" : { "$numberInt" : "45" }, "c" : { "d" : "value2", "e" : "typeB" } }, { "a" : "item3", "b" : { "$numberInt" : "31" }, "c" : { "d" : "value3", "e" : "typeC" } } ] }
 (1 row)
 
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "name": -1 } } } }');
-                                                                                                                                                                                    bson_dollar_project                                                                                                                                                                                     
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"a":-1}}}}');
+                                                                                                                                        bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "name" : "pat", "age" : { "$numberInt" : "30" }, "address" : { "street" : "12 Baker St", "city" : "London" } }, { "name" : "dallas", "age" : { "$numberInt" : "36" }, "address" : { "street" : "12 Cowper St", "city" : "Palo Alto" } }, { "name" : "charlie", "age" : { "$numberInt" : "42" }, "address" : { "street" : "12 French St", "city" : "New Brunswick" } } ] }
+ { "result" : [ { "a" : "item3", "b" : { "$numberInt" : "31" }, "c" : { "d" : "value3", "e" : "typeC" } }, { "a" : "item2", "b" : { "$numberInt" : "45" }, "c" : { "d" : "value2", "e" : "typeB" } }, { "a" : "item1", "b" : { "$numberInt" : "23" }, "c" : { "d" : "value1", "e" : "typeA" } } ] }
 (1 row)
 
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "address.city": 1 } } } }');
-                                                                                                                                                                                    bson_dollar_project                                                                                                                                                                                     
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"c.e":1}}}}');
+                                                                                                                                        bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "name" : "pat", "age" : { "$numberInt" : "30" }, "address" : { "street" : "12 Baker St", "city" : "London" } }, { "name" : "charlie", "age" : { "$numberInt" : "42" }, "address" : { "street" : "12 French St", "city" : "New Brunswick" } }, { "name" : "dallas", "age" : { "$numberInt" : "36" }, "address" : { "street" : "12 Cowper St", "city" : "Palo Alto" } } ] }
+ { "result" : [ { "a" : "item1", "b" : { "$numberInt" : "23" }, "c" : { "d" : "value1", "e" : "typeA" } }, { "a" : "item2", "b" : { "$numberInt" : "45" }, "c" : { "d" : "value2", "e" : "typeB" } }, { "a" : "item3", "b" : { "$numberInt" : "31" }, "c" : { "d" : "value3", "e" : "typeC" } } ] }
 (1 row)
 
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "address.city": -1 } } } }');
-                                                                                                                                                                                    bson_dollar_project                                                                                                                                                                                     
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"c.e":-1}}}}');
+                                                                                                                                        bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "name" : "dallas", "age" : { "$numberInt" : "36" }, "address" : { "street" : "12 Cowper St", "city" : "Palo Alto" } }, { "name" : "charlie", "age" : { "$numberInt" : "42" }, "address" : { "street" : "12 French St", "city" : "New Brunswick" } }, { "name" : "pat", "age" : { "$numberInt" : "30" }, "address" : { "street" : "12 Baker St", "city" : "London" } } ] }
+ { "result" : [ { "a" : "item3", "b" : { "$numberInt" : "31" }, "c" : { "d" : "value3", "e" : "typeC" } }, { "a" : "item2", "b" : { "$numberInt" : "45" }, "c" : { "d" : "value2", "e" : "typeB" } }, { "a" : "item1", "b" : { "$numberInt" : "23" }, "c" : { "d" : "value1", "e" : "typeA" } } ] }
 (1 row)
 
-select *from bson_dollar_project('{"team": [{ "name":"pat","age":30,"address":{"street":"12 Baker St","city":"London"}}, {"name":"dallas","age":36,"address":{"street":"12 Cowper St","city":"Palo Alto"}}, {"name":"charlie","age":42,"address":{"street":"12 French St","city":"New Brunswick" }}]}', '{"result": {"$sortArray": {"input": "$team", "sortBy": { "age": -1, "name": 1} } } }');
-                                                                                                                                                                                    bson_dollar_project                                                                                                                                                                                     
+SELECT * FROM bson_dollar_project('{"group":[{"a":"item1","b":23,"c":{"d":"value1","e":"typeA"}},{"a":"item2","b":45,"c":{"d":"value2","e":"typeB"}},{"a":"item3","b":31,"c":{"d":"value3","e":"typeC"}}]}', '{"result":{"$sortArray":{"input":"$group","sortBy":{"b":-1,"a":1}}}}');
+                                                                                                                                        bson_dollar_project                                                                                                                                         
 ---------------------------------------------------------------------
- { "result" : [ { "name" : "charlie", "age" : { "$numberInt" : "42" }, "address" : { "street" : "12 French St", "city" : "New Brunswick" } }, { "name" : "dallas", "age" : { "$numberInt" : "36" }, "address" : { "street" : "12 Cowper St", "city" : "Palo Alto" } }, { "name" : "pat", "age" : { "$numberInt" : "30" }, "address" : { "street" : "12 Baker St", "city" : "London" } } ] }
+ { "result" : [ { "a" : "item2", "b" : { "$numberInt" : "45" }, "c" : { "d" : "value2", "e" : "typeB" } }, { "a" : "item3", "b" : { "$numberInt" : "31" }, "c" : { "d" : "value3", "e" : "typeC" } }, { "a" : "item1", "b" : { "$numberInt" : "23" }, "c" : { "d" : "value1", "e" : "typeA" } } ] }
 (1 row)
 
 -- $sortArray, negative cases
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": null } }');
-ERROR:  $sortArray requires an object as an argument, found: null
+ERROR:  Expected 'document' type for $sortArray but found 'null' type
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": " " } }');
-ERROR:  $sortArray requires an object as an argument, found: string
+ERROR:  Expected 'document' type for $sortArray but found 'string' type
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": "", "sortBy": 1 } } }');
-ERROR:  The input argument to $sortArray must be an array, but was of type: string
+ERROR:  The provided input for the $sortArray operator must be an array, but a value of type string was received instead.
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"sortBy": 1 } } }');
-ERROR:  $sortArray requires 'input' to be specified
+ERROR:  $sortArray needs the 'input' parameter to be explicitly provided
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4] } } }');
-ERROR:  $sortArray requires 'sortBy' to be specified
+ERROR:  The $sortArray needs the 'sortBy' parameter to be explicitly specified
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": "", "sortBy": 1} } }');
-ERROR:  The input argument to $sortArray must be an array, but was of type: string
+ERROR:  The provided input for the $sortArray operator must be an array, but a value of type string was received instead.
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": {}, "sortBy": 1} } }');
-ERROR:  The input argument to $sortArray must be an array, but was of type: object
+ERROR:  The provided input for the $sortArray operator must be an array, but a value of type object was received instead.
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortByy": 1} } }');
-ERROR:  $sortArray found an unknown argument: sortByy
+ERROR:  $sortArray encountered an unrecognized argument: sortByy
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": 2} } }');
 ERROR:  The $sort element value must be either 1 or -1
 select *from bson_dollar_project('{}', '{"result": {"$sortArray": {"input": [1, 5, 3, 2, 4], "sortBy": ""} } }');
@@ -3308,18 +3308,18 @@ select *from bson_dollar_project('{"array1": [1, 2, 3], "array2": ["a", "b", "c"
 
 -- $zip, negative cases
 select *from bson_dollar_project('{"a": [[ 0 ], [ 1, 2 ], [ 3 ]]}', '{"result": {"$zip": {"inputs": "$a", "defaults": [ "a", "b", "c" ]} } }');
-ERROR:  cannot specify defaults unless useLongestLength is true
+ERROR:  defaults can only be specified when useLongestLength is set to true
 select *from bson_dollar_project('{"a": [[ 0 ], [ 1, 2 ], [ 3 ]]}', '{"result": {"$zip": {"inputs": "$a", "useLongestLength": true, "defaults": [ "a", "b" ]} } }');
-ERROR:  defaults and inputs must have the same length
+ERROR:  defaults and inputs are required to be of identical length
 select *from bson_dollar_project('{"a": []}', '{"result": {"$zip": {"inputs": "$a"} } }');
-ERROR:  $zip requires at least one input array
+ERROR:  $zip needs at least one provided input array
 select *from bson_dollar_project('{"a": null}', '{"result": {"$zip": {"inputs": "$a"} } }');
-ERROR:  inputs must be an array of expressions, found null
+ERROR:  Inputs must be provided as an array of expressions, but null was encountered instead.
 select *from bson_dollar_project('{"a": [1]}', '{"result": {"$zip": {"inputs": "$a"} } }');
-ERROR:  $zip found a non-array expression in input: 1
+ERROR:  The $zip encountered an input that is not an array: 1
 select *from bson_dollar_project('{"a": [[1,2,3], "anString"]}', '{"result": {"$zip": {"inputs": "$a"} } }');
-ERROR:  $zip found a non-array expression in input: "anString"
+ERROR:  The $zip encountered an input that is not an array: "anString"
 select *from bson_dollar_project('{"a": [[0], [1, 2]]}', '{"result": {"$zip": {"inputs": "$a", "useLongestLength": 0} } }');
-ERROR:  useLongestLength must be a bool, found int
+ERROR:  useLongestLength must be a boolean value, but a int type was given
 select *from bson_dollar_project('{"a": [[0], [1, 2]]}', '{"result": {"$zip": {"inputs": "$a", "useLongestLength": true, "defaults": 0} } }');
-ERROR:  defaults must be an array of expressions, found int
+ERROR:  defaults are expected to be provided as an array of expressions, but received int

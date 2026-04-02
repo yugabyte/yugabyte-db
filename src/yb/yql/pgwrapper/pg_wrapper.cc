@@ -443,6 +443,16 @@ DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
     "Ignore boolean condition for row count estimate in legacy cost model.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_nonempty_ms, 1,  // 1 ms
+    "Time in milliseconds for which the notifications poller process waits before polling again "
+    "in case the last poll returned notifications.");
+DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_nonempty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100,  // 100 ms
+    "Time in milliseconds for which the notifications poller process waits before polling again "
+    "in case the last poll returned no notifications.");
+DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
 

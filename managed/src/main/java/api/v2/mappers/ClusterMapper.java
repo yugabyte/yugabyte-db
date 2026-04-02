@@ -7,6 +7,7 @@ import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -65,6 +66,26 @@ public interface ClusterMapper {
               .findAny()
               .orElseThrow();
       toV1ClusterFromClusterEditSpec(clusterEditSpec, v1Cluster);
+    }
+    return v1Clusters;
+  }
+
+  @Mapping(target = "userIntent", source = ".")
+  Cluster toV1ClusterFromUniverseResizeNodesCluster(
+      UniverseResizeNodesCluster source, @MappingTarget Cluster v1Cluster);
+
+  default List<Cluster> toV1ClustersFromUniverseResizeNodesCluster(
+      List<UniverseResizeNodesCluster> resizeClusters, @MappingTarget List<Cluster> v1Clusters) {
+    if (resizeClusters == null) {
+      return v1Clusters;
+    }
+    for (UniverseResizeNodesCluster resizeCluster : resizeClusters) {
+      Cluster v1Cluster =
+          v1Clusters.stream()
+              .filter(c -> c.uuid.equals(resizeCluster.getUuid()))
+              .findAny()
+              .orElseThrow();
+      toV1ClusterFromUniverseResizeNodesCluster(resizeCluster, v1Cluster);
     }
     return v1Clusters;
   }

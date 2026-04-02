@@ -976,7 +976,7 @@ TEST_F(TabletServerTest, TestCallHome) {
   const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<TabletServer, TserverCallHome>(
-      webserver_dir, {} /*additional_collections*/, mini_server_->server());
+      webserver_dir, {"ysql_node_stats"} /*additional_collections*/, mini_server_->server());
 }
 
 // This tests whether the enabling/disabling of callhome is happening dynamically

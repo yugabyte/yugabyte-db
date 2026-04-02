@@ -118,8 +118,7 @@ class ClusterLoadBalancer {
   std::vector<scoped_refptr<TableInfo>> GetAllTablesClusterBalancerSkipped();
 
   // Return the replication info for 'table'.
-  virtual ReplicationInfoPB GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const;
+  virtual ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const;
 
   //
   // Catalog manager indirection methods.

@@ -169,7 +169,8 @@ Master::Master(const MasterOptions& opts)
       ts_manager_(new TSManager(*sys_catalog_)),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
       auto_flags_manager_(new MasterAutoFlagsManager(*this)),
-      ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
+      ysql_backends_manager_(new YsqlBackendsManager(
+          this, catalog_manager_->object_lock_info_manager(), catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
       tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),

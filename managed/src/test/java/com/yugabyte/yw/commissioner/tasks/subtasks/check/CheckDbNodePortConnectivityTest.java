@@ -18,6 +18,8 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -40,7 +42,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    universe = ModelFactory.createUniverse();
+    universe = ModelFactory.createUniverse(defaultCustomer.getId());
     sourceNode = new NodeDetails();
     sourceNode.nodeName = "source-node";
     sourceNode.cloudInfo = new CloudSpecificInfo();
@@ -63,6 +65,12 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     universe.getUniverseDetails().nodeDetailsSet.add(sourceNode);
     universe.getUniverseDetails().nodeDetailsSet.add(targetNode);
     universe.setUniverseDetails(universe.getUniverseDetails());
+    universe.save();
+  }
+
+  private void enableDualNic() {
+    RuntimeConfigEntry.upsert(defaultCustomer, CustomerConfKeys.cloudEnabled.getKey(), "true");
+    universe.updateConfig(Collections.singletonMap(Universe.DUAL_NET_LEGACY, "false"));
     universe.save();
   }
 
@@ -133,7 +141,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     task.initialize(params);
     IllegalArgumentException error = assertThrows(IllegalArgumentException.class, task::run);
     assertEquals(
-        "Invalid target IP for connectivity check from "
+        "Invalid target address for connectivity check from "
             + sourceNode.nodeName
             + " to target-node: 10.10.10.2; touch /tmp/pwned",
         error.getMessage());
@@ -315,6 +323,42 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testUsesSecondaryPrivateIpWhenDualNicEnabled() {
+    sourceNode.cloudInfo.secondary_private_ip = "172.16.0.1";
+    targetNode.cloudInfo.secondary_private_ip = "172.16.0.2";
+    universe.setUniverseDetails(universe.getUniverseDetails());
+    universe.save();
+    enableDualNic();
+
+    CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = sourceNode.nodeName;
+    params.nodeDetailsSet = new HashSet<>(Arrays.asList(sourceNode, targetNode));
+    params.sourceNode = sourceNode;
+    params.targetNodes = Collections.singletonList(targetNode);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    CheckDbNodePortConnectivity task =
+        AbstractTaskBase.createTask(CheckDbNodePortConnectivity.class);
+    task.initialize(params);
+    task.run();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<String>> commandCaptor =
+        (ArgumentCaptor<List<String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+    verify(mockNodeUniverseManager, times(4))
+        .runCommand(any(), any(), commandCaptor.capture(), any());
+
+    List<List<String>> commands = commandCaptor.getAllValues();
+    assertEquals("172.16.0.2", commands.get(0).get(4));
+    assertEquals("172.16.0.2", commands.get(1).get(4));
+    assertEquals("172.16.0.1", commands.get(2).get(4));
+    assertEquals("172.16.0.1", commands.get(3).get(4));
+  }
+
+  @Test
   public void testReverseCheckFailure() {
     CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
     params.setUniverseUUID(universe.getUniverseUUID());
@@ -335,6 +379,43 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
     RuntimeException error = assertThrows(RuntimeException.class, task::run);
     assertTrue(error.getMessage().contains("Port connectivity check failed (reverse)"));
     assertTrue(error.getMessage().contains("10.10.10.1"));
+  }
+
+  @Test
+  public void testSuccessWithHostnameTargetNode() {
+    NodeDetails hostnameTarget = new NodeDetails();
+    hostnameTarget.nodeName = "hostname-target";
+    hostnameTarget.cloudInfo = new CloudSpecificInfo();
+    hostnameTarget.cloudInfo.private_ip = "abc123.itest.yugabyte.com";
+    hostnameTarget.isMaster = true;
+    hostnameTarget.isTserver = true;
+    hostnameTarget.masterRpcPort = 7100;
+    hostnameTarget.tserverRpcPort = 9100;
+
+    // Source also uses a hostname
+    sourceNode.cloudInfo.private_ip = "source-host.itest.yugabyte.com";
+
+    universe.getUniverseDetails().nodeDetailsSet.add(hostnameTarget);
+    universe.setUniverseDetails(universe.getUniverseDetails());
+    universe.save();
+
+    CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = sourceNode.nodeName;
+    params.nodeDetailsSet = new HashSet<>(Arrays.asList(sourceNode, hostnameTarget));
+    params.sourceNode = sourceNode;
+    params.targetNodes = Collections.singletonList(hostnameTarget);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    CheckDbNodePortConnectivity task =
+        AbstractTaskBase.createTask(CheckDbNodePortConnectivity.class);
+    task.initialize(params);
+    task.run();
+
+    // 2 ports forward + 2 ports reverse = 4
+    verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
   }
 
   @Test
@@ -366,5 +447,46 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
 
     // Only targetNode is checked (4 calls); noIpTarget is skipped
     verify(mockNodeUniverseManager, times(4)).runCommand(any(), any(), anyList(), any());
+  }
+
+  @Test
+  public void testDoesNotSkipTargetWithOnlySecondaryPrivateIpWhenDualNicEnabled() {
+    NodeDetails dualNicTarget = new NodeDetails();
+    dualNicTarget.nodeName = "dual-nic-target";
+    dualNicTarget.cloudInfo = new CloudSpecificInfo();
+    dualNicTarget.cloudInfo.private_ip = null;
+    dualNicTarget.cloudInfo.secondary_private_ip = "172.16.0.3";
+    dualNicTarget.isMaster = true;
+    dualNicTarget.isTserver = true;
+    dualNicTarget.masterRpcPort = 7100;
+    dualNicTarget.tserverRpcPort = 9100;
+
+    sourceNode.cloudInfo.secondary_private_ip = "172.16.0.1";
+    universe.getUniverseDetails().nodeDetailsSet.add(dualNicTarget);
+    universe.setUniverseDetails(universe.getUniverseDetails());
+    universe.save();
+    enableDualNic();
+
+    CheckDbNodePortConnectivity.Params params = new CheckDbNodePortConnectivity.Params();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.nodeName = sourceNode.nodeName;
+    params.nodeDetailsSet = new HashSet<>(Arrays.asList(sourceNode, dualNicTarget));
+    params.sourceNode = sourceNode;
+    params.targetNodes = Collections.singletonList(dualNicTarget);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .thenReturn(ShellResponse.create(0, "ok"));
+
+    CheckDbNodePortConnectivity task =
+        AbstractTaskBase.createTask(CheckDbNodePortConnectivity.class);
+    task.initialize(params);
+    task.run();
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<String>> commandCaptor =
+        (ArgumentCaptor<List<String>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+    verify(mockNodeUniverseManager, times(4))
+        .runCommand(any(), any(), commandCaptor.capture(), any());
+    assertEquals("172.16.0.3", commandCaptor.getAllValues().get(0).get(4));
   }
 }

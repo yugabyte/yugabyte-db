@@ -1706,10 +1706,10 @@
     summary: Rollback detach universe
     description: |
       Invoke this from the YBA that should reclaim ownership of a universe that is currently in a detached
-      state (ie. if this API has been invoked on the universe POST /customers/{cUUID}/universes/{uniUUID}/detach, 
-      on that YBA instance). A Universe can be managed only by a single instance of YBA at any time. So, 
-      for cases where the universe was attached to another YBA 
-      (ie. using POST /customers/{cUUID}/universes/{uniUUID}/attach), only isForceRollback=true 
+      state (ie. if this API has been invoked on the universe POST /customers/{cUUID}/universes/{uniUUID}/detach,
+      on that YBA instance). A Universe can be managed only by a single instance of YBA at any time. So,
+      for cases where the universe was attached to another YBA
+      (ie. using POST /customers/{cUUID}/universes/{uniUUID}/attach), only isForceRollback=true
       can be used to rollback the detach operation in such case.
     tags:
       - Universe
@@ -2226,8 +2226,8 @@
     operationId: downloadFileCollection
     summary: Download collected files
     description: |
-      Download previously collected files from database nodes. Use the collection_uuid 
-      returned by the create file collection API (POST /file-collections) to identify 
+      Download previously collected files from database nodes. Use the collection_uuid
+      returned by the create file collection API (POST /file-collections) to identify
       which files to download.
 
       This API downloads the tar.gz archives from each database node and streams them
@@ -2243,7 +2243,7 @@
         in: query
         description: |
           If true, automatically delete the collected files from DB nodes after successful download.
-          This is equivalent to calling DELETE /file-collections/{collectionUUID} with 
+          This is equivalent to calling DELETE /file-collections/{collectionUUID} with
           delete_from_db_nodes=true after the download completes.
           Default is false (files remain on DB nodes until explicitly deleted).
           **Security**: When this is set to true, localhost restriction applies.
@@ -2363,6 +2363,60 @@
         checkOnlyPermission: false
     x-yba-api-since: 2026.1.0.0
     x-yba-api-visibility: internal
+'/customers/{cUUID}/universes/{uniUUID}/resize-nodes':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: resizeNodes
+    summary: Resize nodes in YBDB Universe.
+    description: |
+      Update the nodes' size. Size can include the instance type and number/size of disks, in
+      addition to updating related gflags and cgroups to match the resize.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseResizeNodesReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: ResizeNode
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 /yba-info:
   get:
     operationId: GetYBAInstanceInfo

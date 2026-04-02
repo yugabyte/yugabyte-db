@@ -21,6 +21,17 @@ rightNav:
 
 ### 2026
 
+#### March 27, 2026
+
+##### New features
+
+- Support for [exporting database audit logs](../cloud-monitor/managed-integrations/#amazon-s3) to [Amazon S3](https://aws.amazon.com/s3/).
+
+##### Database
+
+- Production track updated to 2024.2.7.3.
+- Early Access track updated to 2025.2.2.1.
+
 #### February 25, 2026
 
 ##### New features
@@ -694,9 +705,9 @@ rightNav:
 
 ##### New features
 
-- Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
-- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Perf Advisor** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
-- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Perf Advisor** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
+- Additional [performance metrics](../cloud-monitor/overview/). The new cluster **Performance>Metrics** tab features new metrics including YSQL and YCQL operations per second, YSQL and YCQL latency, network bytes per second, and more. Use these metrics to ensure the cluster configuration matches its performance requirements.
+- Ability to review running queries using the [Live Queries](../cloud-monitor/cloud-queries-live/) on the cluster **Performance** tab. Use this information to visually identify relevant database operations and evaluate query execution times.
+- Ability to review slow YSQL queries using the [YSQL Slow Queries](../cloud-monitor/cloud-queries-slow/) on the cluster **Performance** tab. You can use this information to identify slower-running database operations, look at query execution times over time, and discover potential queries for tuning.
 
 ##### Database
 

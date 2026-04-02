@@ -798,4 +798,50 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     JsonNode task = universeTasks.get(0);
     assertThat(task.get("typeName").asText(), equalTo("TLS Toggle ON"));
   }
+
+  @Test
+  public void testKubernetesOperatorTaskUsesBackgroundUserInResponse() {
+    String authToken = user.createAuthToken();
+    UUID taskUUID = UUID.randomUUID();
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
+    taskInfo.setUuid(taskUUID);
+    ObjectNode taskParams = Json.newObject();
+    taskParams.set("kubernetesResourceDetails", Json.newObject());
+    taskInfo.setTaskParams(taskParams);
+    taskInfo.setOwner("");
+    taskInfo.save();
+
+    CustomerTask task =
+        CustomerTask.create(
+            customer,
+            universe.getUniverseUUID(),
+            taskUUID,
+            CustomerTask.TargetType.Universe,
+            Create,
+            universe.getName(),
+            null,
+            "Unknown");
+
+    ObjectNode responseJson = Json.newObject();
+    responseJson.put("status", "Running");
+    responseJson.put("percent", 10.0);
+    responseJson.put("abortable", false);
+    responseJson.put("retryable", false);
+    responseJson.put("canRollback", false);
+
+    when(mockCommissioner.buildTaskStatus(eq(task), any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets(any(), any()))
+        .thenReturn(Collections.emptyMap());
+
+    Result result =
+        doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
+
+    assertThat(result.status(), is(OK));
+    JsonNode json = Json.parse(contentAsString(result));
+    JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
+    assertThat(universeTasks.isArray(), is(true));
+    JsonNode taskJson = universeTasks.get(0);
+    assertThat(taskJson.get("userEmail").asText(), equalTo(CustomerTask.BACKGROUND_TASK_USER));
+  }
 }

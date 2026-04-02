@@ -22,7 +22,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_i', 'my_idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_i', 'my_idx_1');
 
 -- not the same index since this doesn't specify partialFilterExpression
 SELECT documentdb_api_internal.create_indexes_non_concurrently(

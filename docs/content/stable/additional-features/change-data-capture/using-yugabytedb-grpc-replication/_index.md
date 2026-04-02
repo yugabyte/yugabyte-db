@@ -4,8 +4,9 @@ headerTitle: CDC using gRPC replication protocol
 linkTitle: gRPC protocol
 description: CDC using YugabyteDB gRPC replication protocol.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
+cascade:
+  tags:
+    feature: early-access
 aliases:
   - /stable/explore/change-data-capture/cdc-overview/
   - /stable/explore/change-data-capture/using-yugabytedb-grpc-replication/

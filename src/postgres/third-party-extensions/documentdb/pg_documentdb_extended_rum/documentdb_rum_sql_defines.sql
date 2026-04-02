@@ -1,0 +1,6 @@
+
+#define __API_OPCLASS_SCHEMA__ documentdb_extended_rum_catalog
+#define __API_CATALOG_SCHEMA__ documentdb_api_catalog
+#define __API_INDEX_PREFIX_NAME__ extended_rum
+#define __API_OPCLASS_INTERNAL_SCHEMA__ documentdb_extended_rum_catalog
+#define __API_SCHEMA_INTERNAL_V2__ documentdb_api_internal

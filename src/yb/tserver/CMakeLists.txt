@@ -292,6 +292,7 @@ set(TSERVER_SRCS
   xcluster_output_client.cc
   xcluster_write_implementations.cc
   ysql_advisory_lock_table.cc
+  ysql_call_home_stats.cc
   ysql_lease_manager.cc
   ysql_lease_poller.cc)
 
@@ -318,6 +319,7 @@ set(TSERVER_DEPS
   xcluster_producer_proto
   yb_ash
   yb_client
+  pq_utils
   yb_pggate_flags
   yb_pgresult_util
   yb_ysql_binary_runner

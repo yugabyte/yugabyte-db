@@ -25,6 +25,7 @@ import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -120,6 +121,10 @@ public interface UniverseDefinitionTaskParamsMapper {
 
   @InheritConfiguration(name = "defaultMapping")
   public MetricsExportConfigParams toMetricsExportConfigParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public ResizeNodeParams toResizeNodeParams(
       UniverseDefinitionTaskParams source, @Context Request request);
 
   @Mapping(target = "spec", source = ".")
@@ -229,7 +234,8 @@ public interface UniverseDefinitionTaskParamsMapper {
     @ValueMapping(target = "FINALIZING", source = "Finalizing"),
     @ValueMapping(target = "FINALIZEFAILED", source = "FinalizeFailed"),
     @ValueMapping(target = "ROLLINGBACK", source = "RollingBack"),
-    @ValueMapping(target = "ROLLBACKFAILED", source = "RollbackFailed")
+    @ValueMapping(target = "ROLLBACKFAILED", source = "RollbackFailed"),
+    @ValueMapping(target = "PAUSED", source = "Paused")
   })
   UniverseInfo.SoftwareUpgradeStateEnum mapSoftwareUpgradeState(
       UniverseDefinitionTaskParams.SoftwareUpgradeState state);

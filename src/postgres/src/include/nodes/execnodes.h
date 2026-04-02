@@ -1777,6 +1777,9 @@ typedef struct IndexOnlyScanState
 	/* YB specific attributes. */
 	bool		yb_ioss_might_recheck;
 	List	   *yb_ioss_aggrefs;
+	int			yb_ioss_num_decoded_pk_cols;		/* number of decoded PK columns */
+	AttrNumber *yb_ioss_decoded_pk_base_attnums;	/* base table attnums */
+	Oid		   *yb_ioss_decoded_pk_typids;			/* column type OIDs */
 } IndexOnlyScanState;
 
 /* ----------------

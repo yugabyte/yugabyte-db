@@ -91,12 +91,12 @@ Status ThreadPool::DoSubmit(const F& f) {
   bool enqueued;
   if (FLAGS_threadpool_use_current_trace_for_tasks) {
     TracePtr trace(Trace::CurrentTrace());
-    enqueued = impl_.EnqueueFunctor([f, trace]() {
+    enqueued = underlying_->EnqueueFunctor([f, trace]() {
       ADOPT_TRACE(trace.get());
       f();
     });
   } else {
-    enqueued = impl_.EnqueueFunctor(f);
+    enqueued = underlying_->EnqueueFunctor(f);
   }
 
   return PREDICT_TRUE(enqueued)
@@ -130,9 +130,9 @@ class ThreadPoolTokenImpl : public ThreadPoolToken {
 std::unique_ptr<ThreadPoolToken> ThreadPool::NewToken(ExecutionMode mode) {
   switch (mode) {
     case ExecutionMode::SERIAL:
-      return std::make_unique<ThreadPoolTokenImpl<Strand>>(&impl_);
+      return std::make_unique<ThreadPoolTokenImpl<Strand>>(underlying_.get());
     case ExecutionMode::CONCURRENT:
-      return std::make_unique<ThreadPoolTokenImpl<ThreadSubPool>>(&impl_);
+      return std::make_unique<ThreadPoolTokenImpl<ThreadSubPool>>(underlying_.get());
   }
   FATAL_INVALID_ENUM_VALUE(ExecutionMode, mode);
 }

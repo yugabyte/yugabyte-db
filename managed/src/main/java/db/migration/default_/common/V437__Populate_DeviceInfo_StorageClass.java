@@ -377,7 +377,7 @@ public class V437__Populate_DeviceInfo_StorageClass extends BaseJavaMigration {
 
   private static DeviceInfo getDeviceInfoFromUserIntent(
       JsonNode userIntentNode, String serverType) {
-    String property = serverType == "tserver" ? "deviceInfo" : "masterDeviceInfo";
+    String property = serverType.equals("tserver") ? "deviceInfo" : "masterDeviceInfo";
     if (!userIntentNode.has(property)) {
       return null;
     }

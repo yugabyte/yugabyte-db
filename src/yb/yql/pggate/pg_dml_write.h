@@ -79,7 +79,7 @@ class PgDmlWrite : public PgDml {
  private:
   [[nodiscard]] ArenaList<LWPgsqlColRefPB>& ColRefPBs() override;
 
-  Status DeleteEmptyPrimaryBinds();
+  Status DeleteEmptyKeyBinds();
 
   virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 

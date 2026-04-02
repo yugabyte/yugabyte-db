@@ -40,7 +40,6 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
-    createComprehensivePrecheckTasks(universe);
     if (isFirstTry()) {
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
@@ -65,6 +64,7 @@ public class ReplaceNodeInUniverse extends EditUniverseTaskBase {
 
       configureTaskParams(universe);
     }
+    createComprehensivePrecheckTasks(universe);
   }
 
   @Override

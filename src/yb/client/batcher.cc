@@ -262,7 +262,9 @@ void Batcher::FlushAsync(
 
     if (status.ok() && yb_op->table()->partition_schema().IsHashPartitioning()) {
       if (in_flight_op.partition_key.empty()) {
-        if (!yb_op->read_only()) {
+        // Partition key is empty for advisory unlock all op(s). Instead, the tablet is set.
+        if (!yb_op->read_only() &&
+            yb_op->type() != YBOperation::Type::PGSQL_LOCK && !yb_op->tablet()) {
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
       } else {

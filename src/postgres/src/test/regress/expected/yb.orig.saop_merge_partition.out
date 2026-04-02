@@ -2,38 +2,27 @@
 -- See yb_saop_merge_schedule for details about the test.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/yb_commands/saop_merge_setup.sql'
 \i :filename
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 \set off '/*+Set(yb_max_saop_merge_streams 0)*/'
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
-\set hint1 ':off'
-\set hint2 ':on'
+\set P1 ':explain'
+\set P2
+\set Q1 ':off'
+\set Q2 ':on'
+\set Pnext :iter_Q2
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -79,8 +68,10 @@
 (18 rows)
 
 -- Forward scan
-\set query 'SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, p1, p2, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -188,8 +179,10 @@
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, p1 DESC, p2 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -302,8 +295,10 @@
 CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                             QUERY PLAN                                             
 ---------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -343,8 +338,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 (15 rows)
 
 -- Forward scan
-\set query 'SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2, p1, r3, r1, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -445,8 +442,10 @@ CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) ORDER BY r2 DESC, p1 DESC, r3 DESC, r1 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)

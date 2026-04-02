@@ -466,6 +466,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
 --
@@ -586,6 +594,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE yugabyte; Type: COMMENT; Schema: -; Owner: postgres
 --
@@ -624,6 +640,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 \if :use_tablespaces
     SET default_tablespace = tsp1;
 \endif

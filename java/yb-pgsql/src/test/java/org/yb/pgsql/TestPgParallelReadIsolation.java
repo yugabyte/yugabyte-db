@@ -34,6 +34,8 @@ public class TestPgParallelReadIsolation extends BasePgSQLTest {
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("enable_object_locking_for_table_locks", "true");
     flagMap.put("ysql_yb_ddl_transaction_block_enabled", "true");
+    // TODO(#29490): Enable concurrent ddl after resolving parallel query issues.
+    appendToYsqlPgConf(flagMap, "yb_enable_concurrent_ddl=false");
     return flagMap;
   }
 

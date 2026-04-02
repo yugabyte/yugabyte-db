@@ -241,6 +241,8 @@ class DBImpl : public DB {
   yb::storage::UserFrontierPtr CalcMemTableFrontier(
       yb::storage::UpdateUserValueType frontier_type) override;
 
+  UserFrontierRange CalcMemTableFrontiers() override;
+
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
   // any column family match the specified name.

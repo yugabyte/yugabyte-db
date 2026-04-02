@@ -13,9 +13,11 @@
 #include <access/xact.h>
 #include <postmaster/bgworker.h>
 #include <storage/ipc.h>
+#include <storage/shmem.h>
 
 #include "documentdb_api_init.h"
 #include "metadata/metadata_guc.h"
+#include "metadata/metadata_cache.h"
 #include "planner/documentdb_planner.h"
 #include "customscan/custom_scan_registrations.h"
 #include "commands/connection_management.h"
@@ -24,6 +26,12 @@
 #include "vector/vector_spec.h"
 #include "commands/commands_common.h"
 #include "configs/config_initialization.h"
+#include "index_am/documentdb_rum.h"
+#include "infrastructure/cursor_store.h"
+#include "infrastructure/job_management.h"
+#include "background_worker/background_worker_job.h"
+#include "index_am/roaring_bitmap_adapter.h"
+#include "utils/error_utils.h"
 
 /* --------------------------------------------------------- */
 /* Data Types & Enum values */
@@ -31,6 +39,7 @@
 
 extern bool EnableBackgroundWorker;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 
 /* In single node mode, we always inline write operations */
 bool DefaultInlineWriteOperations = true;
@@ -39,13 +48,14 @@ bool ShouldUpgradeDataTables = true;
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-
+extern void RegisterBackgroundWorkerJobAllowedCommand(BackgroundWorkerJobCommand command);
 
 /* callbacks for transaction management */
 static void DocumentDBTransactionCallback(XactEvent event, void *arg);
 static void DocumentDBSubTransactionCallback(SubXactEvent event, SubTransactionId mySubid,
 											 SubTransactionId parentSubid, void *arg);
 static void DocumentDBSharedMemoryInit(void);
+static void DocumentDBSharedMemoryRequest(void);
 
 /* --------------------------------------------------------- */
 /* GUCs and default values */
@@ -67,6 +77,7 @@ InitApiConfigurations(char *prefix, char *newGucPrefix)
 	InitializeFeatureFlagConfigurations(prefix, newGucPrefix);
 	InitializeBackgroundJobConfigurations(prefix, newGucPrefix);
 	InitializeSystemConfigurations(prefix, newGucPrefix);
+	InitDocumentDBBackgroundWorkerConfigurations(newGucPrefix);
 }
 
 
@@ -87,11 +98,22 @@ InstallDocumentDBApiPostgresHooks(void)
 	ExtensionPreviousSetRelPathlistHook = set_rel_pathlist_hook;
 	set_rel_pathlist_hook = ExtensionRelPathlistHook;
 
+	ExtensionPreviousGetRelationInfoHook = get_relation_info_hook;
+	get_relation_info_hook = ExtensionGetRelationInfoHook;
+
 	RegisterXactCallback(DocumentDBTransactionCallback, NULL);
 	RegisterSubXactCallback(DocumentDBSubTransactionCallback, NULL);
 
 	RegisterScanNodes();
 	RegisterQueryScanNodes();
+	RegisterExplainScanNodes();
+
+	/* Load the rum routine in the shared_preload_libraries to avoid LoadLibrary calls all the time */
+	/* YB: Don't load RUM routine if YugaByte is enabled. */
+	if (!YBIsEnabledInPostgresEnvVar())
+		LoadRumRoutine();
+
+	SetupCursorStorage();
 }
 
 
@@ -100,9 +122,6 @@ void
 InitializeDocumentDBBackgroundWorker(char *libraryName, char *gucPrefix,
 									 char *extensionObjectPrefix)
 {
-	/* Initialize GUCs */
-	InitDocumentDBBackgroundWorkerGucs(gucPrefix);
-
 	if (!EnableBackgroundWorker)
 	{
 		return;
@@ -142,6 +161,9 @@ UninstallDocumentDBApiPostgresHooks(void)
 	set_rel_pathlist_hook = ExtensionPreviousSetRelPathlistHook;
 	ExtensionPreviousSetRelPathlistHook = NULL;
 
+	get_relation_info_hook = ExtensionPreviousGetRelationInfoHook;
+	ExtensionPreviousGetRelationInfoHook = NULL;
+
 	UnregisterXactCallback(DocumentDBTransactionCallback, NULL);
 	UnregisterSubXactCallback(DocumentDBSubTransactionCallback, NULL);
 }
@@ -152,6 +174,36 @@ InitializeSharedMemoryHooks(void)
 {
 	prev_shmem_startup_hook = shmem_startup_hook;
 	shmem_startup_hook = DocumentDBSharedMemoryInit;
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = DocumentDBSharedMemoryRequest;
+}
+
+
+/*
+ * Registers allowed background worker job commands.
+ */
+void
+InitializeBackgroundWorkerJobAllowedCommands(void)
+{
+	BackgroundWorkerJobCommand expiredRows = {
+		.name = "delete_expired_rows_background", .schema = ApiInternalSchemaName
+	};
+	RegisterBackgroundWorkerJobAllowedCommand(expiredRows);
+
+	BackgroundWorkerJobCommand buildIndexConcurrently = {
+		.name = "build_index_background", .schema = ApiInternalSchemaName
+	};
+	RegisterBackgroundWorkerJobAllowedCommand(buildIndexConcurrently);
+}
+
+
+/*
+ * Registers DocumentDB background worker jobs.
+ */
+void
+RegisterDocumentDBBackgroundWorkerJobs(void)
+{
+	RegisterIndexBuildBackgroundWorkerJobs();
 }
 
 
@@ -159,12 +211,28 @@ InitializeSharedMemoryHooks(void)
 /* Private methods */
 /* --------------------------------------------------------- */
 
+static void
+DocumentDBSharedMemoryRequest(void)
+{
+	if (prev_shmem_request_hook != NULL)
+	{
+		prev_shmem_request_hook();
+	}
+
+	/* Request ShMem from modules below */
+	RequestAddinShmemSpace(SharedFeatureCounterShmemSize());
+	RequestAddinShmemSpace(VersionCacheShmemSize());
+	RequestAddinShmemSpace(FileCursorShmemSize());
+}
+
 
 static void
 DocumentDBSharedMemoryInit(void)
 {
+	/* CODESYNC: With Shmem request above */
 	SharedFeatureCounterShmemInit();
 	InitializeVersionCache();
+	InitializeFileCursorShmem();
 
 	if (prev_shmem_startup_hook != NULL)
 	{
@@ -182,6 +250,7 @@ DocumentDBTransactionCallback(XactEvent event, void *arg)
 		case XACT_EVENT_PARALLEL_ABORT:
 		{
 			ConnMgrTryCancelActiveConnection();
+			DeletePendingCursorFiles();
 			break;
 		}
 

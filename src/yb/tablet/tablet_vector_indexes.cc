@@ -55,11 +55,13 @@ namespace {
 
 class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingReader {
  public:
-  Status Init(const Tablet& tablet, const ReadHybridTime& read_ht) {
+  Status Init(
+      const Tablet& tablet, const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) {
     rocksdb_op_ = tablet.CreateScopedRWOperationBlockingRocksDbShutdownStart();
     RETURN_NOT_OK(rocksdb_op_);
 
-    iter_holder_ = VERIFY_RESULT(tablet.vector_indexes().CreateVectorMetadataIterator(read_ht));
+    iter_holder_ = VERIFY_RESULT(
+        tablet.vector_indexes().CreateVectorMetadataIterator(read_ht, statistics));
     return Status::OK();
   }
 
@@ -81,9 +83,9 @@ class IndexContext : public docdb::DocVectorIndexContext {
   }
 
   Result<docdb::DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
-      const ReadHybridTime& read_ht) const override {
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const override {
     auto reader = std::make_unique<IndexReverseMappingReader>();
-    RETURN_NOT_OK(reader->Init(tablet_, read_ht));
+    RETURN_NOT_OK(reader->Init(tablet_, read_ht, statistics));
     return reader;
   }
 
@@ -207,6 +209,14 @@ Status TabletVectorIndexes::CreateIndex(
   return DoCreateIndex(index_table, indexed_table, bootstrap);
 }
 
+void InsertVectorIndex(docdb::DocVectorIndexes& indexes, const docdb::DocVectorIndexPtr& index) {
+  auto it = std::upper_bound(
+      indexes.begin(), indexes.end(), index, [](const auto& lhs, const auto& rhs) {
+    return lhs->column_id() < rhs->column_id();
+  });
+  indexes.insert(it, index);
+}
+
 Status TabletVectorIndexes::DoCreateIndex(
     const TableInfo& index_table, const TableInfoPtr& indexed_table, bool bootstrap) {
   SCHECK(shutdown_controller_.IsRunning(), ShutdownInProgress, "Tablet vector indexes shutdown");
@@ -267,14 +277,14 @@ Status TabletVectorIndexes::DoCreateIndex(
       return Status::OK();
     }
     if (indexes.use_count() == 1) {
-      indexes->push_back(it->second);
+      InsertVectorIndex(*indexes, it->second);
       return Status::OK();
     }
 
     auto new_indexes = std::make_shared<docdb::DocVectorIndexes>();
     new_indexes->reserve(indexes->size() + 1);
     *new_indexes = *indexes;
-    new_indexes->push_back(it->second);
+    InsertVectorIndex(*new_indexes, it->second);
     indexes = std::move(new_indexes);
   }
 
@@ -660,8 +670,8 @@ Status TabletVectorIndexes::Verify() {
         index_table->index_info->indexed_table_id()));
     IndexedTableReader reader(*vector_index);
     RETURN_NOT_OK(reader.Init(read_ht, Slice()));
-    auto reverse_mapping_reader = VERIFY_RESULT(
-        vector_index->context().CreateReverseMappingReader(ReadHybridTime::SingleTime(read_ht)));
+    auto reverse_mapping_reader = VERIFY_RESULT(vector_index->context().CreateReverseMappingReader(
+        ReadHybridTime::SingleTime(read_ht), nullptr));
     while (VERIFY_RESULT(reader.FetchNext())) {
       auto value = dockv::EncodedDocVectorValue::FromSlice(reader.current_vector_slice());
       auto vector_id = VERIFY_RESULT(value.DecodeId());
@@ -680,7 +690,7 @@ Status TabletVectorIndexes::Verify() {
 }
 
 Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMetadataIterator(
-    const ReadHybridTime& read_ht) const {
+    const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const {
   static std::array<char, 2> upper_bound {
       dockv::KeyEntryTypeAsChar::kVectorIndexMetadata,
       dockv::KeyEntryTypeAsChar::kMaxByte
@@ -688,6 +698,7 @@ Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMe
 
   docdb::ReadOperationData read_operation_data;
   RETURN_NOT_OK(tablet().GetSafeTimeReadOperationData(read_ht, read_operation_data));
+  read_operation_data.statistics = statistics;
 
   // TODO(vector_index): do we need to specify bloom filter options?
   auto iter = docdb::CreateIntentAwareIterator(

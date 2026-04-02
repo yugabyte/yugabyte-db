@@ -17,6 +17,28 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## v2026.3.3 - March 31, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.3.3.
+
+{{< /note >}}
+
+### New feature
+
+- Added support for multiple iterations of the PostgreSQL to YugabyteDB to PostgreSQL in live migration with fall-back workflow, so you can run repeated fall-back cycles without having to restart the migration from scratch.
+
+### Enhancements
+
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command configuration options with explicit policies and flags. You must set the `--policy` flag to `delete` or `archive`. For `archive`, set the `--archive-dir` flag to the directory where processed change segments are copied before the originals are removed.
+
+- The `export-data` processing step of the cutover process is resumable. If export-data fails before cutover is marked as processed, it can be retried by re-running the command.
+
+### Bug fix
+
+- Fixed a bug where xCluster configuration was not being properly detected on the target YugabyteDB, leading to missing guardrails during `import-data`.
+
 ## v2026.3.2 - March 17, 2026
 
 ### Enhancements

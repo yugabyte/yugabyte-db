@@ -130,4 +130,52 @@ public class SoftwareUpgradeParamsCanaryTest extends FakeDBApplication {
     assertTrue(
         ex.getMessage().contains("read replica") && ex.getMessage().contains("no read replica"));
   }
+
+  @Test
+  public void testVerifyParamsCanaryConfigAllowsPausedState() {
+    universeWithPlacement =
+        Universe.saveDetails(
+            universeWithPlacement.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              u.setUniverseDetails(u.getUniverseDetails());
+            });
+
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.ybSoftwareVersion = UPGRADE_VERSION;
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    AZUpgradeStep step = new AZUpgradeStep();
+    step.azUUID = validPrimaryAzUuid;
+    step.pauseAfterTserverUpgrade = false;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = Collections.singletonList(step);
+
+    Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
+    params.verifyParams(universe, true);
+    // no exception - canary config allows Paused state for resume
+  }
+
+  @Test
+  public void testVerifyParamsNoCanaryConfigRejectsPausedState() {
+    universeWithPlacement =
+        Universe.saveDetails(
+            universeWithPlacement.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              u.setUniverseDetails(u.getUniverseDetails());
+            });
+
+    SoftwareUpgradeParams params = new SoftwareUpgradeParams();
+    params.ybSoftwareVersion = UPGRADE_VERSION;
+    params.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    params.canaryUpgradeConfig = null;
+
+    Universe universe = Universe.getOrBadRequest(universeWithPlacement.getUniverseUUID());
+    PlatformServiceException ex =
+        assertThrows(PlatformServiceException.class, () -> params.verifyParams(universe, true));
+    assertTrue(ex.getMessage().contains("Paused") || ex.getMessage().contains("cannot"));
+  }
 }

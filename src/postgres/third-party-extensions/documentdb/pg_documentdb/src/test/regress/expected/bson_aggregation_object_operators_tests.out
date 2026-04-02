@@ -21,7 +21,7 @@ SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fi
 -- field parsed from expression
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
                         bson_dollar_project                         
----------------------------------------------------------------------
+--------------------------------------------------------------------
  { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
 (1 row)
 
@@ -147,23 +147,23 @@ SELECT * FROM documentdb_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{
 -- full expression
 -- field is required
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {}}}}');
-ERROR:  $getField requires 'field' to be specified
+ERROR:  $getField requires that the 'field' parameter must be explicitly specified
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"input": {}}}}}');
-ERROR:  $getField requires 'field' to be specified
+ERROR:  $getField requires that the 'field' parameter must be explicitly specified
 -- input is required
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "a"}}}}');
-ERROR:  $getField requires 'input' to be specified
+ERROR:  $getField needs the 'input' parameter to be defined
 -- field must be a string
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": null, "input": {}}}}}');
-ERROR:  $getField requires 'field' to evaluate to type String, but got null
+ERROR:  $getField needs 'field' to evaluate to a String type, but received null
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
-ERROR:  $getField requires 'field' to evaluate to type String, but got int
+ERROR:  $getField needs 'field' to evaluate to a String type, but received int
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
-ERROR:  $getField requires 'field' to evaluate to type String, but got array
+ERROR:  $getField needs 'field' to evaluate to a String type, but received array
 -- shorthand expression
 -- field must be a string
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
-ERROR:  $getField requires 'field' to evaluate to type String, but got array
+ERROR:  $getField needs 'field' to evaluate to a String type, but received array
 -- $unsetField
 -- postive cases
 -- null input
@@ -224,24 +224,24 @@ SELECT * FROM documentdb_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}
 
 -- negative cases
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": 1}}}');
-ERROR:  $unsetField only supports an object as its argument
+ERROR:  Expected 'document' type for $unsetField
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a"}}}}');
-ERROR:  $unsetField requires 'input' to be specified
+ERROR:  $unsetField needs the 'input' parameter to be explicitly specified
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"input": null}}}}');
-ERROR:  $unsetField requires 'field' to be specified
+ERROR:  $unsetField cannot proceed unless the 'field' parameter is explicitly defined
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null, "value": 1}}}}');
-ERROR:  $unsetField found an unknown argument: value
+ERROR:  $unsetField encountered an unrecognized argument value: value
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": {"$add": [2, 3]}, "input": null}}}}');
-ERROR:  $unsetField requires 'field' to evaluate to a constant, but got a non-constant argument
+ERROR:  The $unsetField needs the 'field' value to be constant, but a non-constant value was provided instead.
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "$a", "input": null}}}}');
-ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
+ERROR:  A field path reference is being used here, but it is not permitted in this specific context. Perhaps you intended to use the operators {$literal: '$a'} instead?
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": 5, "input": null}}}}');
-ERROR:  $unsetField requires 'field' to evaluate to type String, but got int
+ERROR:  Expected 'string' type for $unsetField but found 'int' type
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": ["a"], "input": null}}}}');
-ERROR:  $unsetField requires 'field' to evaluate to a constant, but got a non-constant argument
+ERROR:  The $unsetField needs the 'field' value to be constant, but a non-constant value was provided instead.
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": null, "input": null}}}}');
-ERROR:  $unsetField requires 'field' to evaluate to type String, but got null
+ERROR:  Expected 'string' type for $unsetField but found 'null' type
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": 3}}}}');
-ERROR:  $unsetField requires 'input' to evaluate to type Object
+ERROR:  $unsetField needs 'input' to evaluate as an Object type
 SELECT * FROM documentdb_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"$add": [2, 3]}}}}}');
-ERROR:  $unsetField requires 'input' to evaluate to type Object
+ERROR:  $unsetField needs 'input' to evaluate as an Object type

@@ -13,15 +13,15 @@ BEGIN
 END;
 $$;
 
-SELECT insert_one('db','regex_options', '{"a": "hregex New"}');
-SELECT insert_one('db','regex_options', '{"a": "regeX New"}');
-SELECT insert_one('db','regex_options', '{"a": "regeX\nNew"}');
-SELECT insert_one('db','regex_options', '{"a": "regex\nNew"}');
-SELECT insert_one('db','regex_options', '{"a": "regex_New"}');		
-SELECT insert_one('db','regex_options', '{"a": "hello\nregex\nNewLineStart"}');
-SELECT insert_one('db','regex_options', '{"a": "hello\nregex NewWord"}');
-SELECT insert_one('db','regex_options', '{"a": "hello\nregeX NewWord"}');
-SELECT insert_one('db','regex_options', '{"a": "hello\nregex New\nWord"}');
+SELECT insert_one('db','regex_options', '{"msg": "hpattern New"}');
+SELECT insert_one('db','regex_options', '{"msg": "pattX New"}');
+SELECT insert_one('db','regex_options', '{"msg": "pattX\nNew"}');
+SELECT insert_one('db','regex_options', '{"msg": "pattx\nNew"}');
+SELECT insert_one('db','regex_options', '{"msg": "pattx_New"}');
+SELECT insert_one('db','regex_options', '{"msg": "hello\npattx\nNewLineStart"}');
+SELECT insert_one('db','regex_options', '{"msg": "hello\npattx NewWord"}'); 
+SELECT insert_one('db','regex_options', '{"msg": "hello\npattx NewWord"}');
+SELECT insert_one('db','regex_options', '{"msg": "hello\npattX New\nWord"}');
 
 do $$
 DECLARE
@@ -36,44 +36,44 @@ $$;
 -- DROP PRIMARY KEY
 SELECT documentdb_distributed_test_helpers.drop_primary_key('db', 'regex_options');
 
-SELECT assert_count_regex_options(8, '{"a": {"$options": "ims", "$regex": "^regeX.New"}}');
-SELECT assert_count_regex_options(5, '{"a": {"$regex": "^regeX.New$", "$options": "mis"}}');
-SELECT assert_count_regex_options(8, '{"a": {"$regex": "^regeX.New",  "$options": "ims"}}');
+SELECT assert_count_regex_options(8, '{"msg": {"$options": "ims", "$regex": "^pattX.New"}}');
+SELECT assert_count_regex_options(5, '{"msg": {"$regex": "^pattX.New$", "$options": "mis"}}');
+SELECT assert_count_regex_options(8, '{"msg": {"$regex": "^pattX.New",  "$options": "ims"}}');
 
 -- With comment and space in pattern and without extended match flag (x)
-SELECT assert_count_regex_options(0, '{"a": {"$regex": "^regeX.N#COMMENT\n ew",  "$options": "ims"}}');
+SELECT assert_count_regex_options(0, '{"msg": {"$regex": "^pattX.N#COMMENT\n ew",  "$options": "ims"}}');
 
 -- With comment and space in pattern and with extended match flag (x)
-SELECT assert_count_regex_options(8, '{"a": {"$regex": "^regeX.N#COMMENT\n ew",  "$options": "ixms"}}');
+SELECT assert_count_regex_options(8, '{"msg": {"$regex": "^pattX.N#COMMENT\n ew",  "$options": "ixms"}}');
 
-SELECT assert_count_regex_options(1, '{"a": {"$regex": "^regeX.New",  "$options": ""}}');
-SELECT assert_count_regex_options(2, '{"a": {"$regex": "^regeX.New",  "$options": "i"}}');
+SELECT assert_count_regex_options(1, '{"msg": {"$regex": "^pattX.New",  "$options": ""}}');
+SELECT assert_count_regex_options(2, '{"msg": {"$regex": "^pattX.New",  "$options": "i"}}');
 
 -- . matches new line when s flag is set.
-SELECT assert_count_regex_options(2, '{"a": {"$regex": "^regeX.New",  "$options": "s"}}');
+SELECT assert_count_regex_options(2, '{"msg": {"$regex": "^pattX.New",  "$options": "s"}}');
 
 -- multiline match flag
-SELECT assert_count_regex_options(2, '{"a": {"$regex": "^regeX.New",  "$options": "m"}}');
+SELECT assert_count_regex_options(2, '{"msg": {"$regex": "^pattX.New",  "$options": "m"}}');
 
 -- . matches new line and case insensitive match
-SELECT assert_count_regex_options(4, '{"a": {"$regex": "^regeX.New",  "$options": "si"}}');
-SELECT assert_count_regex_options(5, '{"a": {"$regex": "^regeX.New",  "$options": "mi"}}');
-SELECT assert_count_regex_options(3, '{"a": {"$regex": "^regeX.New",  "$options": "ms"}}');
+SELECT assert_count_regex_options(4, '{"msg": {"$regex": "^pattX.New",  "$options": "si"}}');
+SELECT assert_count_regex_options(5, '{"msg": {"$regex": "^pattX.New",  "$options": "mi"}}');
+SELECT assert_count_regex_options(3, '{"msg": {"$regex": "^pattX.New",  "$options": "ms"}}');
 
 -- This will work as an implicit AND. TODO. To make the behavior same as from Mongo shell through GW : Mongo on Citus
--- SELECT assert_count_regex_options(1,'{"a": {"$regex": "hregex.new", "$eq": "hregex New", "$options": "i"}}');
+-- SELECT assert_count_regex_options(1,'{"msg": {"$regex": "hpattern.new", "$eq": "hpattern New", "$options": "i"}}');
 
 -- eq does not match
---SELECT assert_count_regex_options(0,'{"a": {"$regex": "hregex.new", "$eq": "hregexNew", "$options": "i"}}');
+--SELECT assert_count_regex_options(0,'{"msg": {"$regex": "hpattern.new", "$eq": "hpatternNew", "$options": "i"}}');
 
 -- Regex options does not make the document to match query spec.
---SELECT assert_count_regex_options(0,'{"a": {"$regex": "hregex.new", "$eq": "hregex New", "$options": ""}}');
+--SELECT assert_count_regex_options(0,'{"msg": {"$regex": "hpattern.new", "$eq": "hpattern New", "$options": ""}}');
 
 -- When there are duplicate keys, the last one of each will be considered.
-SELECT assert_count_regex_options(1,'{"a": {"$regex": "hregex.new", "$options": "i", "$regex": "^word$", "$options": "mi"}}');
+SELECT assert_count_regex_options(1,'{"msg": {"$regex": "hpattern.new", "$options": "i", "$regex": "^word$", "$options": "mi"}}');
 
 -- In continuation with the above tests: To ensure that the last regex options pair is really getting taken.
-SELECT assert_count_regex_options(0,'{"a": {"$regex": "hregex.new", "$options": "i", "$regex": "^word$", "$options": "i"}}');
+SELECT assert_count_regex_options(0,'{"msg": {"$regex": "hpattern.new", "$options": "i", "$regex": "^word$", "$options": "i"}}');
 
 -- This will error out because $options needed a $regex.
-SELECT document FROM collection('db','regex_options') WHERE document @@ '{"a": {"$options": "i"}}';
+SELECT document FROM collection('db','regex_options') WHERE document @@ '{"msg": {"$options": "i"}}';

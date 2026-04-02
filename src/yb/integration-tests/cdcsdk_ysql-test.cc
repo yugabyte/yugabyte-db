@@ -40,6 +40,8 @@
 
 DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_bool(ysql_mark_update_packed_row);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 namespace yb {
 
@@ -12845,12 +12847,103 @@ TEST_F(CDCSDKYsqlTest, TestOriginId) {
   cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
 }
 
+TEST_F(CDCSDKYsqlTest, TestOriginIdOnDMLRecords) {
+  ASSERT_OK(SetUpWithParams(1 /* rf */, 1 /* num_masters*/));
+  const auto kOrigin1 = "origin1";
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_create('$0');", kOrigin1));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Helper: check that all BEGIN, DML (INSERT/UPDATE/DELETE), and COMMIT records in the response
+  // carry the expected xrepl_origin_id.
+  auto verify_origin_id_on_all_records =
+      [](const GetChangesResponsePB& resp, uint32_t expected_origin_id) {
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          auto op = record.row_message().op();
+          if (op == RowMessage::BEGIN || op == RowMessage::INSERT || op == RowMessage::UPDATE ||
+              op == RowMessage::DELETE || op == RowMessage::COMMIT) {
+            if (expected_origin_id != 0) {
+              ASSERT_TRUE(record.row_message().has_xrepl_origin_id())
+                  << "Expected xrepl_origin_id on op=" << RowMessage::Op_Name(op);
+              ASSERT_EQ(record.row_message().xrepl_origin_id(), expected_origin_id)
+                  << "Wrong xrepl_origin_id on op=" << RowMessage::Op_Name(op);
+            } else {
+              // origin_id 0 means local - field should be absent or zero.
+              ASSERT_TRUE(!record.row_message().has_xrepl_origin_id() ||
+                          record.row_message().xrepl_origin_id() == 0)
+                  << "Expected no xrepl_origin_id on op=" << RowMessage::Op_Name(op);
+            }
+          }
+        }
+      };
+
+  // Insert a row without any replication origin and consume the records.
+  // These records should not carry any origin id.
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (0, 0)", kTableName));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
+  auto cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // --- Single-shard (autocommit) path ---
+  // INSERT with origin.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 100)", kTableName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // UPDATE with origin.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 200 WHERE $2 = 1", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // DELETE with origin.
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 1", kTableName, kKeyColumnName));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // --- Multi-shard (explicit transaction) path ---
+  ASSERT_OK(conn.FetchFormat("SELECT pg_replication_origin_session_setup('$0');", kOrigin1));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, 200)", kTableName));
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET $1 = 300 WHERE $2 = 2", kTableName, kValueColumnName, kKeyColumnName));
+  ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = 0", kTableName, kKeyColumnName));
+  ASSERT_OK(conn.Execute("COMMIT"));
+  ASSERT_OK(conn.Fetch("SELECT pg_replication_origin_session_reset()"));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 1));
+  cdc_sdk_checkpoint = change_resp.cdc_sdk_checkpoint();
+
+  // --- Local (no origin) path - verify origin_id is 0/absent ---
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (3, 300)", kTableName));
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &cdc_sdk_checkpoint));
+  ASSERT_NO_FATAL_FAILURE(verify_origin_id_on_all_records(change_resp, 0));
+}
+
 TEST_F(CDCSDKYsqlTest, TestUPAMNotStuckWithIndexInColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 15000;
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms) = 20000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
 
   ASSERT_OK(SetUpWithParams(1 /* replication_factor */, 1 /* num_masters */, true /* colocated */));
 
@@ -13243,6 +13336,95 @@ TEST_F(CDCSDKYsqlTest, TestDropTableDuringUpgradeFromDeletingMetadataToDroppedTa
       std::nullopt /* expected_dropped_table_ids */, master::SysCDCStreamEntryPB::ACTIVE,
       true /* include_catalog_tables */,
       "Timed out waiting for cleanup completion of stream metadata" /* timeout_msg */);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx ON $0(value_1 ASC)", kTableName));
+  // Wait for few seconds to let background task of catalog manager run.
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  auto index_table = ASSERT_RESULT(GetTable(
+      &test_cluster_, kNamespaceName, Format("$0_idx", kTableName), true /* verify_table_name */,
+      true /* exclude_system_tables */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> index_tablets;
+  ASSERT_OK(test_client()->GetTablets(index_table, 0, &index_tablets, nullptr));
+  ASSERT_EQ(index_tablets.size(), 1);
+  auto index_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), index_tablets[0].tablet_id()));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto tablet_stream_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({index_tablet_peer->tablet_id(), stream_id}));
+  ASSERT_FALSE(tablet_stream_entry.has_value());
+  ASSERT_FALSE(index_tablet_peer->is_under_cdc_sdk_replication());
+}
+
+TEST_F(CDCSDKYsqlTest, TestNoEntryAddedInCDCStateTableForIneligibleTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, Format("$0_1", kTableName), 1 /* num_tablets */));
+
+  auto stream_1 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_1"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_cdcsdk_stream_tables_without_primary_key) = true;
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, Format("$0_2", kTableName), 1 /* num_tablets */,
+      false /* add_primary_key */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_2_tablets;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &table_2_tablets, nullptr));
+  ASSERT_EQ(table_2_tablets.size(), 1);
+  auto table_2_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_2_tablets[0].tablet_id()));
+
+  auto cdc_state_table = MakeCDCStateTable(test_client());
+  auto table_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_1}));
+  ASSERT_FALSE(table_2_entry.has_value());
+  ASSERT_FALSE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+
+  auto stream_2 = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot("stream_2"));
+
+  auto table_3 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, Format("$0_3", kTableName), 1 /* num_tablets */,
+      false /* add_primary_key */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table_3_tablets;
+  ASSERT_OK(test_client()->GetTablets(table_3, 0, &table_3_tablets, nullptr));
+  ASSERT_EQ(table_3_tablets.size(), 1);
+  auto table_3_tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), table_3_tablets[0].tablet_id()));
+
+  table_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_2_tablet_peer->tablet_id(), stream_2}));
+  ASSERT_TRUE(table_2_entry.has_value());
+  ASSERT_TRUE(table_2_tablet_peer->is_under_cdc_sdk_replication());
+
+  auto table_3_stream_1_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_1}));
+  auto table_3_stream_2_entry =
+      ASSERT_RESULT(cdc_state_table.TryFetchEntry({table_3_tablet_peer->tablet_id(), stream_2}));
+  ASSERT_FALSE(table_3_stream_1_entry.has_value());
+  ASSERT_TRUE(table_3_stream_2_entry.has_value());
+  ASSERT_TRUE(table_3_tablet_peer->is_under_cdc_sdk_replication());
 }
 
 }  // namespace cdc

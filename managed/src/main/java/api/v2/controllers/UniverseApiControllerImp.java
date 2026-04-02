@@ -26,6 +26,7 @@ import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -313,5 +314,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
         .collectionUuid(collectionUUID)
         .nodesCleaned(nodesCleaned)
         .message(message);
+  }
+
+  @Override
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws Exception {
+    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
   }
 }

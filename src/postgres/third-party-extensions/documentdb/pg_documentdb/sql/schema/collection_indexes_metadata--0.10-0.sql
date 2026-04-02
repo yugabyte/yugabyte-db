@@ -6,11 +6,11 @@
  * , and make sure to add necessary constraints to index_spec_type "domain".
  */
 CREATE TYPE __API_CATALOG_SCHEMA__.index_spec_type_internal AS (
-    -- Mongo index name
+    -- Index name
     index_name text,
 
     --
-    -- index options start here
+    -- Index options start here
     --
 
     -- "key" document used when creating the index
@@ -50,7 +50,7 @@ CHECK ((VALUE).index_version IS NOT NULL AND
 CREATE SEQUENCE __API_CATALOG_SCHEMA__.collection_indexes_index_id_seq AS integer START WITH 1; -- let 0 mean invalid, see index.h/INVALID_INDEX_ID
 
 /*
- * i)  Maps Mongo indexes to __API_SCHEMA__ api index id's
+ * i)  Maps indexes to __API_SCHEMA__ api index id's
  * ii) Does book-keeping for index keys, options etc.
  */
 CREATE TABLE __API_CATALOG_SCHEMA__.collection_indexes (
@@ -58,10 +58,10 @@ CREATE TABLE __API_CATALOG_SCHEMA__.collection_indexes (
     -- __API_CATALOG_SCHEMA__.collections(database_name, collection_name)
     collection_id bigint not null,
 
-    -- Postgres side index id assigned to this Mongo index
+    -- Postgres side index id assigned to this document index
     index_id integer default __API_SCHEMA_INTERNAL__.__EXTENSION_OBJECT__(_get_next_collection_index_id)(),
 
-    -- Mongo index spec
+    -- Index spec
     index_spec __API_CATALOG_SCHEMA__.index_spec_type not null,
 
     -- The __API_SCHEMA__.create_indexes() command that attempted

@@ -7,8 +7,10 @@
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (COSTS OFF)'
 
 --
@@ -57,93 +59,93 @@ INSERT INTO feature_pk_split_desc
 --
 -- Full scan.
 --
-\set query 'SELECT * FROM feature_pk_split_desc'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc;'
+\i :iter_P2
 --
 -- Full scan with conditional operators.
 --
 -- Operator `=`
 SELECT $$
-SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3'
+:P SELECT * FROM feature_pk_split_desc WHERE col_text = 'partition 3';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Operator `IN`
 SELECT $$
-SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5')
+:P SELECT * FROM feature_pk_split_desc WHERE col_text IN ('partition 2', 'partition 5');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 -- Operator `<=`
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 10'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 10;'
+\i :iter_P2
 -- Operator `AND`
 SELECT $$
-SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10
+:P SELECT * FROM feature_pk_split_desc WHERE col_text >= 'partition 3' AND col_double <= 10;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 --
 -- Full scan with aggregate functions.
 --
-\set query 'SELECT COUNT(*) FROM feature_pk_split_desc'
-:explain1run1
-\set query 'SELECT MAX(col_integer) FROM feature_pk_split_desc'
-:explain1run1
-\set query 'SELECT MIN(col_varchar) FROM feature_pk_split_desc'
-:explain1run1
-\set query 'SELECT AVG(col_double) FROM feature_pk_split_desc'
-:explain1run1
+\set query ':P SELECT COUNT(*) FROM feature_pk_split_desc;'
+\i :iter_P2
+\set query ':P SELECT MAX(col_integer) FROM feature_pk_split_desc;'
+\i :iter_P2
+\set query ':P SELECT MIN(col_varchar) FROM feature_pk_split_desc;'
+\i :iter_P2
+\set query ':P SELECT AVG(col_double) FROM feature_pk_split_desc;'
+\i :iter_P2
 --
 -- Primary key scan.
 -- This work needs to be optimized.
 --
 SELECT $$
-SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a'
+:P SELECT * FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM feature_pk_split_desc
+:P SELECT * FROM feature_pk_split_desc
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
 		  col_varchar >= 'a' AND col_varchar <= 'n'
-	ORDER BY col_integer, col_varchar
+	ORDER BY col_integer, col_varchar;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a'
+:P SELECT COUNT(*) FROM feature_pk_split_desc WHERE col_integer = 50 AND col_varchar = 'a';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT COUNT(*) FROM feature_pk_split_desc
+:P SELECT COUNT(*) FROM feature_pk_split_desc
 	WHERE col_integer >= 500 AND col_integer <= 5000 AND
-		  col_varchar >= 'a' AND col_varchar <= 'n'
+		  col_varchar >= 'a' AND col_varchar <= 'n';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 --
 -- Secondary key scan.
 -- This work needs to be optimized.
 --
 -- Scan one tablet.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double < 2'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double < 2;'
+\i :iter_P2
 -- Scan two tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 5'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 5;'
+\i :iter_P2
 -- Scan three tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 8'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 8;'
+\i :iter_P2
 -- Scan four tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 11'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 11;'
+\i :iter_P2
 -- Scan five tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 14'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 14;'
+\i :iter_P2
 -- Scan six tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 17'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 17;'
+\i :iter_P2
 -- Scan all tablets.
-\set query 'SELECT * FROM feature_pk_split_desc WHERE col_double <= 100'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc WHERE col_double <= 100;'
+\i :iter_P2
 -- Index only scan.
-\set query 'SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8'
-:explain1run1
+\set query ':P SELECT col_double FROM feature_pk_split_desc WHERE col_double <= 8;'
+\i :iter_P2
 --
 -- Table that has min & max split values.
 -- * Using 3 splits: (1, MAX), (10, MIN), and (100, MIN).
@@ -185,14 +187,14 @@ INSERT INTO feature_pk_split_desc_min_max
 --
 -- All rows must be from partition 1: (nan) < PKey < (1, max)
 \set explain 'EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF)'
-\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer <= 1 ORDER BY col_integer DESC;'
+\i :iter_P2
 -- All rows must be from partition 2: (1, max) <= PKey < (10, min)
-\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer > 1 AND col_integer < 10 ORDER BY col_integer DESC;'
+\i :iter_P2
 -- All rows must be from partition3: (10, min) <= PKey < (100, min)
-\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 10 AND col_integer < 100 ORDER BY col_integer DESC;'
+\i :iter_P2
 -- All rows must be from partition 4: (100, min) <= PKey < (nan)
-\set query 'SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC'
-:explain1run1
+\set query ':P SELECT * FROM feature_pk_split_desc_min_max WHERE col_integer >= 100 ORDER BY col_integer DESC;'
+\i :iter_P2

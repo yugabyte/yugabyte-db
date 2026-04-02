@@ -1,24 +1,10 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)'
 --
 -- YB tests for lock batching
@@ -32,8 +18,10 @@ INSERT INTO yb_locks_t2 SELECT x, x + 1, x + 2, x + 3 FROM generate_series(1, 13
 CREATE TABLE yb_locks_tasc(k INT, PRIMARY KEY (k ASC));
 INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 -- Test plain (unlocked case).
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Index Scan using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -54,8 +42,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 (1 row)
 
 -- Test single-RPC select+lock (no LockRows node).
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -77,8 +67,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 (1 row)
 
 -- Test other types of locking.
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR SHARE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -99,8 +91,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
  5
 (1 row)
 
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR NO KEY UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -121,8 +115,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
  5
 (1 row)
 
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR KEY SHARE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -144,8 +140,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 (1 row)
 
 -- Test LockRows node (more RPCs), and scan is unlocked.
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
@@ -180,8 +178,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 (15 rows)
 
 -- Test NOWAIT (should batch)
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE NOWAIT'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE NOWAIT;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
@@ -216,8 +216,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 (15 rows)
 
 -- Test SKIP LOCKED (shouldn't batch)
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE SKIP LOCKED;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
@@ -254,8 +256,10 @@ INSERT INTO yb_locks_tasc SELECT i FROM generate_series(1, 3) AS i;
 -- Test different values of yb_explicit_row_locking_batch_size
 -- Disabled
 SET yb_explicit_row_locking_batch_size = 1;
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
@@ -294,8 +298,10 @@ SET yb_explicit_row_locking_batch_size = 0;
 ERROR:  0 is outside the valid range for parameter "yb_explicit_row_locking_batch_size" (1 .. 2147483647)
 -- Value greater than write buffer and maximum number of rows read in an RPC
 SET yb_explicit_row_locking_batch_size = 10000;
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  LockRows (actual rows=15 loops=1)
@@ -332,8 +338,10 @@ SET yb_explicit_row_locking_batch_size = 10000;
 -- Revert back to original recommended value
 SET yb_explicit_row_locking_batch_size = 1024;
 -- Test with multi-column primary key.
-\set query 'SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 AND k3 = 3 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -355,8 +363,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (1 row)
 
 -- Test with partial column set for primary key (should use LockRows).
-\set query 'SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2 WHERE k1 = 1 AND k2 = 2 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -378,8 +388,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (1 row)
 
 -- Test LockRows node is used for join.
-\set query 'SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  LockRows (actual rows=4 loops=1)
@@ -410,8 +422,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (4 rows)
 
 -- Test simple join with top-level locking
-\set query 'SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t JOIN yb_locks_t2 ON yb_locks_t.k = yb_locks_t2.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  LockRows (actual rows=2 loops=1)
@@ -441,8 +455,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (2 rows)
 
 -- Test join with leaf-level locking (sub-query)
-\set query 'SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_locks_t.k = z.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t JOIN (SELECT * FROM yb_locks_t2 FOR UPDATE) AS z ON yb_locks_t.k = z.k1 WHERE yb_locks_t.k > 0 AND yb_locks_t.k <= 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=2 loops=1)
@@ -473,8 +489,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (2 rows)
 
 -- Test when limit returns less than filtered query
-\set query 'SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE yb_locks_t.k < 6 FOR UPDATE LIMIT 3;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                          QUERY PLAN                         
 ------------------------------------------------------------
  Limit (actual rows=3 loops=1)
@@ -499,8 +517,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (3 rows)
 
 -- Test limit with a Sort plan node between LockRows and Scan node
-\set query 'SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t ORDER BY k LIMIT 13 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Limit (actual rows=13 loops=1)
@@ -537,8 +557,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (13 rows)
 
 -- Test when multiple limit nodes
-\set query 'SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1'
-:explain1run1
+\set query ':P SELECT * FROM (SELECT * FROM yb_locks_t LIMIT 13 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Hash Join (actual rows=3 loops=1)
@@ -574,8 +596,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (3 rows)
 
 -- Test when FOR UPDATE is supposed to acquire less locks than the limit (1 row on yb_locks_t, but all limited rows on yb_locks_t2)
-\set query 'SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 ORDER BY k1 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1 LIMIT 1'
-:explain1run1
+\set query ':P SELECT * FROM (SELECT * FROM yb_locks_t ORDER BY k LIMIT 10 FOR UPDATE) AS y JOIN (SELECT * FROM yb_locks_t2 ORDER BY k1 LIMIT 3 FOR UPDATE) AS z ON y.k = z.k1 LIMIT 1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Limit (actual rows=1 loops=1)
@@ -616,8 +640,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (1 row)
 
 -- Test with CTE subquery locking
-\set query 'WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte'
-:explain1run1
+\set query ':P WITH cte AS (SELECT * FROM yb_locks_t FOR UPDATE) SELECT * FROM cte;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                           QUERY PLAN                           
 ---------------------------------------------------------------
  CTE Scan on cte (actual rows=15 loops=1)
@@ -654,8 +680,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (15 rows)
 
 -- Test with multiple CTE subquery locking
-\set query 'WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2'
-:explain1run1
+\set query ':P WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Limit (actual rows=2 loops=1)
@@ -690,8 +718,10 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (2 rows)
 
 -- Test top level limit with multiple CTE subquery locking
-\set query 'WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2'
-:explain1run1
+\set query ':P WITH cte_yb_locks_t AS (SELECT * FROM yb_locks_t FOR UPDATE), cte_yb_locks_t2 AS (SELECT * FROM yb_locks_t2 FOR UPDATE) SELECT * FROM cte_yb_locks_t JOIN cte_yb_locks_t2 ON cte_yb_locks_t.k = cte_yb_locks_t2.k1 LIMIT 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Limit (actual rows=2 loops=1)
@@ -726,9 +756,11 @@ SET yb_explicit_row_locking_batch_size = 1024;
 (2 rows)
 
 -- Test LockRows node is used with ASC table when YB Sequential Scan is used.
-\set hint1 '/*+ SeqScan(yb_locks_tasc) */'
-\set query 'SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE'
-:explain1run1
+\set Q1 '/*+ SeqScan(yb_locks_tasc) */'
+\set query ':P :Q1 SELECT * FROM yb_locks_tasc WHERE k = 1 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                        
 ---------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -749,12 +781,13 @@ SET yb_explicit_row_locking_batch_size = 1024;
  1
 (1 row)
 
-\set hint1 ''
 -- In isolation level SERIALIZABLE, all locks are done during scans.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- Test same locking as for REPEATABLE READ (default isolation).
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
@@ -776,8 +809,10 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 (1 row)
 
 -- Test no LockRows node for sequential scan.
-\set query 'SELECT * FROM yb_locks_t FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  LockRows (no-op) (actual rows=15 loops=1)
@@ -812,8 +847,10 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 (15 rows)
 
 -- Test no LockRows node for join.
-\set query 'SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=4 loops=1)
@@ -845,9 +882,11 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 
 -- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.
 -- (No WHERE clause.)
-\set hint1 '/*+ SeqScan(yb_locks_tasc) */'
-\set query 'SELECT * FROM yb_locks_tasc FOR UPDATE'
-:explain1run1
+\set Q1 '/*+ SeqScan(yb_locks_tasc) */'
+\set query ':P :Q1 SELECT * FROM yb_locks_tasc FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  LockRows (no-op) (actual rows=3 loops=1)
@@ -869,10 +908,11 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
  3
 (3 rows)
 
-\set hint1 ''
 -- For an ASC table, should lock inline, with no LockRows node.
-\set query 'SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_tasc ORDER BY k FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=3 loops=1)
@@ -897,8 +937,10 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 COMMIT;
 -- Test with single-RPC select+lock turned off.
 SET yb_lock_pk_single_rpc TO OFF;
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -922,8 +964,10 @@ SET yb_lock_pk_single_rpc TO OFF;
 -- Test that with the yb_lock_pk_single_rpc off, SERIALIZABLE still locks during the scan
 -- (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
-\set query 'SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t WHERE k = 5 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
@@ -948,8 +992,10 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO ON;
 CREATE INDEX ON yb_locks_t2 (v);
 -- Test with an index. We use a LockRows node for an index.
-\set query 'SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -974,8 +1020,10 @@ CREATE INDEX ON yb_locks_t2 (v);
 (1 row)
 
 -- Test only the indexed column.
-\set query 'SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT v FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -1001,8 +1049,10 @@ CREATE INDEX ON yb_locks_t2 (v);
 
 -- Isolation level SERIALIZABLE still locks with the scan though (no LockRows).
 BEGIN ISOLATION LEVEL SERIALIZABLE;
-\set query 'SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE'
-:explain1run1
+\set query ':P SELECT * FROM yb_locks_t2 WHERE v = 4 FOR UPDATE;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
@@ -1119,15 +1169,16 @@ SET yb_lock_pk_single_rpc TO OFF;
 -- Store prepared plans right away.
 SET yb_test_planner_custom_plan_threshold to 1;
 PREPARE yb_locks_plan_rr(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDATE;
-\set query 'EXECUTE yb_locks_plan_rr(1)'
-:query;
+\set query 'EXECUTE yb_locks_plan_rr(1);'
+:query
  k 
 ---
  1
 (1 row)
 
 -- The $1 in the EXPLAIN output tells you it's a stored plan.
-:explain1
+\set query ':explain EXECUTE yb_locks_plan_rr(1);'
+:query
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  LockRows (actual rows=1 loops=1)
@@ -1145,7 +1196,10 @@ PREPARE yb_locks_plan_rr(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDAT
 
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 -- The LockRows node has a "no-op" annotation.
-:explain1run1
+\set query ':P EXECUTE yb_locks_plan_rr(1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  LockRows (no-op) (actual rows=1 loops=1)
@@ -1167,8 +1221,9 @@ BEGIN ISOLATION LEVEL SERIALIZABLE;
 (1 row)
 
 -- In JSON mode, the LockRows node has an "Executes" field set to false.
+\set query 'EXECUTE yb_locks_plan_rr(1);'
 EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF, FORMAT JSON)
-:query;
+:query
                   QUERY PLAN                   
 -----------------------------------------------
  [                                            +
@@ -1218,8 +1273,10 @@ COMMIT;
 SET yb_lock_pk_single_rpc TO ON;
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDATE;
-\set query 'EXECUTE yb_locks_plan_ser(1)'
-:explain1run1
+\set query ':P EXECUTE yb_locks_plan_ser(1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -1240,8 +1297,10 @@ PREPARE yb_locks_plan_ser(INT) AS SELECT * FROM yb_locks_t WHERE k = $1 FOR UPDA
 (1 row)
 
 COMMIT;
-\set query 'EXECUTE yb_locks_plan_ser(1)'
-:explain1run1
+\set query ':P EXECUTE yb_locks_plan_ser(1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t (actual rows=1 loops=1)
@@ -1265,8 +1324,10 @@ COMMIT;
 -- a LockRows node that functions in RR and RC.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 PREPARE yb_locks_plan_ser_all(INT) AS SELECT * FROM yb_locks_t FOR UPDATE;
-\set query 'EXECUTE yb_locks_plan_ser_all(1)'
-:explain1run1
+\set query ':P EXECUTE yb_locks_plan_ser_all(1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  LockRows (no-op) (actual rows=15 loops=1)

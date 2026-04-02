@@ -1973,6 +1973,7 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(yb_pushdown.quals);
 	READ_NODE_FIELD(yb_pushdown.colrefs);
 	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_INT_FIELD(yb_num_decoded_pk_cols);
 
 	READ_DONE();
 }

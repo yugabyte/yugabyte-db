@@ -259,6 +259,41 @@ class FrontierSchemaVersionUpdater {
   SchemaVersion max_schema_version_ = std::numeric_limits<SchemaVersion>::min();
 };
 
+class VectorIndexesUpdater {
+ public:
+  VectorIndexesUpdater(
+      DocVectorIndexesPtr indexes, SchemaPackingProvider& schema_packing_provider,
+      ConsensusFrontiers& frontiers, const StorageSet& apply_to_storages, HybridTime commit_ht,
+      std::reference_wrapper<IntraTxnWriteId> write_id, bool xcluster_target = false);
+
+  Status Feed(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
+  Status Complete();
+
+ private:
+  template <class Decoder>
+  Status FeedPackedRow(
+      rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value);
+
+  bool ApplyToVectorIndex(size_t index) const {
+    return apply_to_storages_.TestVectorIndex(index);
+  }
+
+  bool IntentApplyShouldUpdateVectorIndex(const DocVectorIndex& vector_index) const;
+
+  DocVectorIndexesPtr indexes_;
+  SchemaPackingProvider& schema_packing_provider_;
+  ConsensusFrontiers& frontiers_;
+  StorageSet apply_to_storages_;
+  const HybridTime commit_ht_;
+  const IntraTxnWriteId& write_id_;
+  const bool xcluster_target_;
+  // TODO(#30819 vector_index) Optimize memory management
+  std::vector<DocVectorIndexInsertEntries> batches_;
+  std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
+  SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
+  KeyBuffer schema_packing_table_prefix_;
+};
+
 using ApplyIntentsContextCompleteListener = boost::function<void(const ConsensusFrontiers&)>;
 
 class ApplyIntentsContext : public IntentsWriterContextBase,
@@ -270,7 +305,7 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
       HybridTime log_ht, HybridTime file_filter_ht, const OpId& apply_op_id,
       const KeyBounds* key_bounds, SchemaPackingProvider& schema_packing_provider,
       ConsensusFrontiers& frontiers, rocksdb::DB* intents_db,
-      const DocVectorIndexesPtr& vector_indexes, const StorageSet& apply_to_storages,
+      DocVectorIndexesPtr vector_indexes, const StorageSet& apply_to_storages,
       ApplyIntentsContextCompleteListener complete_listener);
 
   void Start(const std::optional<Slice>& first_key) override;
@@ -285,17 +320,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
 
  private:
   Result<bool> StoreApplyState(const Slice& key, rocksdb::DirectWriteHandler& handler);
-  Status ProcessVectorIndexes(rocksdb::DirectWriteHandler& handler, Slice key, Slice value);
-  template <class Decoder>
-  Status ProcessVectorIndexesForPackedRow(
-      rocksdb::DirectWriteHandler& handler, size_t prefix_size, Slice key, Slice value);
 
   bool ApplyToRegularDB() const {
     return apply_to_storages_.TestRegularDB();
-  }
-
-  bool ApplyToVectorIndex(size_t index) const {
-    return apply_to_storages_.TestVectorIndex(index);
   }
 
   const TabletId& tablet_id_;
@@ -306,14 +333,9 @@ class ApplyIntentsContext : public IntentsWriterContextBase,
   const HybridTime log_ht_;
   const OpId apply_op_id_;
   const KeyBounds* key_bounds_;
-  DocVectorIndexesPtr vector_indexes_;
   StorageSet apply_to_storages_;
-  // TODO(vector_index) Optimize memory management
-  std::vector<DocVectorIndexInsertEntries> vector_index_batches_;
+  VectorIndexesUpdater vector_indexes_updater_;
 
-  std::shared_ptr<const dockv::SchemaPacking> schema_packing_;
-  SchemaVersion schema_packing_version_ = std::numeric_limits<SchemaVersion>::max();
-  KeyBuffer schema_packing_table_prefix_;
   ApplyIntentsContextCompleteListener complete_listener_;
   rocksdb::DB* intents_db_;
 };
@@ -358,7 +380,8 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
       std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
       HybridTime batch_hybrid_time, rocksdb::DB* intents_db,
       rocksdb::WriteBatch* intents_write_batch, SchemaPackingProvider& schema_packing_provider,
-      ConsensusFrontiers& frontiers);
+      ConsensusFrontiers& frontiers, const DocVectorIndexesPtr& vector_indexes);
+
   bool Empty() const;
 
   Status Apply(rocksdb::DirectWriteHandler& handler) override;
@@ -367,29 +390,30 @@ class NonTransactionalBatchWriter : public rocksdb::DirectWriter,
   // Reads all stored external intents for provided transactions and prepares batches that will
   // apply them into regular db and remove from intents db.
   Status PrepareApplyExternalIntents(
-      ExternalTxnApplyState* apply_external_transactions, rocksdb::DirectWriteHandler& handler);
+      ExternalTxnApplyState& apply_external_transactions, rocksdb::DirectWriteHandler& handler);
 
   // Adds external pair to write batch.
   // Returns true if add was skipped because pair is a regular (non external) record.
   Result<bool> AddEntryToWriteBatch(
       const yb::docdb::LWKeyValuePairPB& kv_pair,
-      ExternalTxnApplyState* apply_external_transactions,
-      rocksdb::DirectWriteHandler& regular_write_handler, IntraTxnWriteId* write_id);
+      ExternalTxnApplyState& apply_external_transactions,
+      rocksdb::DirectWriteHandler& regular_write_handler,
+      IntraTxnWriteId& write_id);
 
   // Parse the merged external intent value, and write them to regular writer handler. Also updates
   // min/max schema version.
   // Returns true when the entire batch was applied, and false if some intents were skipped.
   Result<bool> PrepareApplyExternalIntentsBatch(
-      const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
+      Slice original_input_value, ExternalTxnApplyStateData& apply_data,
       rocksdb::DirectWriteHandler& regular_write_handler);
 
- private:
   const LWKeyValueWriteBatchPB& put_batch_;
   HybridTime write_hybrid_time_;
   HybridTime batch_hybrid_time_;
   BoundedRocksDbIterator intents_db_iter_;
   Slice intents_db_iter_upperbound_;
   rocksdb::WriteBatch* intents_write_batch_;
+  DocVectorIndexesPtr vector_indexes_;
 };
 
 // Context class for dumping intents records for a transaction.

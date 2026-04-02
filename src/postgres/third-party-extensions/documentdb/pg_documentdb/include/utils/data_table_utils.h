@@ -12,6 +12,7 @@
  #define DATA_TABLE_UTILS_H
 
 ArrayType * GetCollectionIds(void);
+ArrayType * GetCollectionIdsStartingFrom(uint64 startCollectionId);
 void AlterCreationTime(void);
 
 

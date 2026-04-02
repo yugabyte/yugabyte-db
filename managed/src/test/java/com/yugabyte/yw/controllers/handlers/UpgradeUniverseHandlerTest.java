@@ -3,13 +3,17 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,12 +46,15 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
@@ -1299,6 +1306,284 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
       CertsRotateParams capturedParams = paramsArgumentCaptor.getValue();
       assertEquals(existingRootCA, capturedParams.getClientRootCA());
     }
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgrade() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.ybSoftwareVersion = "2.21.0.0-b2";
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenAnswer(invocation -> invocation.getArgument(2));
+
+    UUID result = handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID);
+
+    assertEquals(taskUUID, result);
+    ArgumentCaptor<TaskType> taskTypeCaptor = ArgumentCaptor.forClass(TaskType.class);
+    ArgumentCaptor<SoftwareUpgradeParams> paramsCaptor =
+        ArgumentCaptor.forClass(SoftwareUpgradeParams.class);
+    ArgumentCaptor<UUID> uuidCaptor = ArgumentCaptor.forClass(UUID.class);
+    verify(mockCommissioner)
+        .submit(taskTypeCaptor.capture(), paramsCaptor.capture(), uuidCaptor.capture());
+    assertEquals(TaskType.SoftwareUpgradeYB, taskTypeCaptor.getValue());
+    assertEquals(u.getUniverseUUID(), paramsCaptor.getValue().getUniverseUUID());
+    assertEquals(taskUUID, uuidCaptor.getValue());
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsNonPausedTask() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Success);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWrongTaskType() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.GFlagsUpgrade, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("not a software upgrade task"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsUniverseNotPaused() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("not in Paused"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsTaskUUIDMismatch() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+    UUID otherTaskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = otherTaskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.resumeCanarySoftwareUpgrade(
+                    c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("does not match"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeRejectsWrongUniverse() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u1 = ModelFactory.createUniverse("Universe1", c.getId());
+    Universe u2 = ModelFactory.createUniverse("Universe2", c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u1.getUniverseUUID());
+    storedParams.clusters.add(u1.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe.saveDetails(
+        u1.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          details.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          details.updatingTaskUUID = taskUUID;
+          universe.setUniverseDetails(details);
+        });
+
+    PlatformServiceException e =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> handler.resumeCanarySoftwareUpgrade(c.getUuid(), u2.getUniverseUUID(), taskUUID));
+    assertEquals(400, e.getHttpStatus());
+    assertTrue(e.getMessage().contains("does not belong"));
+    verify(mockCommissioner, never()).submit(any(), any(), any(UUID.class));
+  }
+
+  @Test
+  public void testResumeCanarySoftwareUpgradeUpdatesCustomerTask() {
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    UUID taskUUID = UUID.randomUUID();
+
+    SoftwareUpgradeParams storedParams = new SoftwareUpgradeParams();
+    storedParams.setUniverseUUID(u.getUniverseUUID());
+    storedParams.clusters.add(u.getUniverseDetails().getPrimaryCluster());
+
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareUpgradeYB, null);
+    taskInfo.setUuid(taskUUID);
+    taskInfo.setTaskState(TaskInfo.State.Paused);
+    taskInfo.setTaskParams(Json.toJson(storedParams));
+    taskInfo.setOwner("test");
+    taskInfo.save();
+
+    Universe updatedUniverse =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              details.softwareUpgradeState =
+                  UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+              details.updatingTaskUUID = taskUUID;
+              universe.setUniverseDetails(details);
+            });
+
+    CustomerTask customerTask =
+        CustomerTask.create(
+            c,
+            updatedUniverse.getUniverseUUID(),
+            taskUUID,
+            CustomerTask.TargetType.Universe,
+            CustomerTask.TaskType.SoftwareUpgrade,
+            updatedUniverse.getName());
+    customerTask.save();
+
+    // Commissioner.submit(..., explicitTaskUuid) reuses the same task UUID (resume path).
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class), any(UUID.class)))
+        .thenAnswer(invocation -> invocation.getArgument(2));
+
+    UUID result =
+        handler.resumeCanarySoftwareUpgrade(
+            c.getUuid(), updatedUniverse.getUniverseUUID(), taskUUID);
+
+    assertEquals(taskUUID, result);
+    CustomerTask updatedTask = CustomerTask.findByTaskUUID(taskUUID);
+    assertNotNull(updatedTask);
+    assertEquals(updatedUniverse.getUniverseUUID(), updatedTask.getTargetUUID());
+    assertNull(updatedTask.getCompletionTime());
   }
 
   private Universe createKubernetesUniverse(Customer customer) {

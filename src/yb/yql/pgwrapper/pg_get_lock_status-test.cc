@@ -1189,7 +1189,8 @@ TEST_F(PgGetLockStatusTestRF3, PgLocksDuringTabletLeaderStepdown) {
       leader_ts = cluster_->mini_tablet_server((idx + 1) % cluster_->num_tablet_servers());
       TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
       LOG(INFO) << "Stepping down tablet " << leader_peer->tablet_id();
-      ASSERT_OK(StepDown(leader_peer, leader_ts->server()->permanent_uuid(), ForceStepDown::kTrue));
+      ASSERT_OK(TransferLeadership(
+          cluster_.get(), leader_peer->tablet_id(), leader_ts->server()->permanent_uuid()));
       LOG(INFO) << "Stepdown completed for tablet " << leader_peer->tablet_id();
     });
   }

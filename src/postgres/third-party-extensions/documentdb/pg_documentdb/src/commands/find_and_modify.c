@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/find_and_modify.c
+ * src/commands/find_and_modify.c
  *
  * Implementation of findAndModify command.
  *
@@ -25,8 +25,9 @@
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "utils/feature_counter.h"
+#include "utils/version_utils.h"
 #include "schema_validation/schema_validation.h"
-
+#include "operators/bson_expression.h"
 
 /* Represents bson message passed to a findAndModify command */
 typedef struct
@@ -35,19 +36,19 @@ typedef struct
 	char *collectionName;
 
 	/* "query" field */
-	pgbson *query;
+	bson_value_t *query;
 
 	/* "sort" field */
-	pgbson *sort;
+	bson_value_t *sort;
 
 	/* "remove" field */
 	bool remove;
 
 	/* "update" field */
-	pgbson *update;
+	bson_value_t *update;
 
 	/* "arrayFilters" field */
-	pgbson *arrayFilters;
+	bson_value_t *arrayFilters;
 
 	/*
 	 * "new" field
@@ -58,13 +59,16 @@ typedef struct
 	bool returnNewDocument;
 
 	/* "fields" field */
-	pgbson *returnFields;
+	bson_value_t *returnFields;
 
 	/* "upsert" field */
 	bool upsert;
 
 	/* "bypassDocumentValidation" field */
 	bool bypassDocumentValidation;
+
+	/* parsed variable spec */
+	bson_value_t variableSpec;
 } FindAndModifySpec;
 
 
@@ -126,6 +130,7 @@ static pgbson * BuildResponseMessage(FindAndModifyResult *result);
 extern bool SkipFailOnCollation;
 extern bool EnableBypassDocumentValidation;
 extern bool EnableSchemaValidation;
+extern bool EnableVariablesSupportForWriteCommands;
 
 /*
  * command_find_and_modify implements findAndModify command.
@@ -135,7 +140,7 @@ command_find_and_modify(PG_FUNCTION_ARGS)
 {
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errmsg("p_database_name cannot be NULL")));
+		ereport(ERROR, (errmsg("The parameter p_database_name must not be NULL")));
 	}
 	Datum databaseNameDatum = PG_GETARG_DATUM(0);
 
@@ -160,6 +165,7 @@ command_find_and_modify(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("return type must be a row type")));
 	}
 
+	ThrowIfServerOrTransactionReadOnly();
 	FindAndModifySpec spec = ParseFindAndModifyMessage(message);
 
 	Datum collectionNameDatum = CStringGetTextDatum(spec.collectionName);
@@ -191,11 +197,13 @@ command_find_and_modify(PG_FUNCTION_ARGS)
 			 * noop, but we still need to report errors due to invalid query
 			 * / update documents.
 			 */
-			ValidateQueryDocument(spec.query);
+			ValidateQueryDocumentValue(spec.query);
 
 			if (!spec.remove)
 			{
-				ValidateUpdateDocument(spec.update, spec.query, spec.arrayFilters);
+				const bson_value_t *variableSpec = NULL;
+				ValidateUpdateDocument(spec.update, spec.query, spec.arrayFilters,
+									   variableSpec);
 			}
 
 			FindAndModifyResult result = {
@@ -233,8 +241,11 @@ command_find_and_modify(PG_FUNCTION_ARGS)
 static FindAndModifySpec
 ParseFindAndModifyMessage(pgbson *message)
 {
+	bson_value_t let = { 0 };
 	FindAndModifySpec spec = { 0 };
 	spec.bypassDocumentValidation = false;
+	bool applyVariableSpec = EnableVariablesSupportForWriteCommands &&
+							 IsClusterVersionAtleast(DocDB_V0, 106, 0);
 
 	bson_iter_t messageIter;
 	PgbsonInitIterator(message, &messageIter);
@@ -244,14 +255,13 @@ ParseFindAndModifyMessage(pgbson *message)
 
 		bool knownField = true;
 
-		/* Mongo accepts findAndModify with both casings */
 		if (strcmp(key, "findAndModify") == 0 ||
 			strcmp(key, "findandmodify") == 0)
 		{
 			if (!BSON_ITER_HOLDS_UTF8(&messageIter))
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("collection name has invalid type %s",
+								errmsg("Collection name contains an invalid data type %s",
 									   BsonIterTypeName(&messageIter))));
 			}
 
@@ -259,7 +269,8 @@ ParseFindAndModifyMessage(pgbson *message)
 			if (strlen(spec.collectionName) == 0)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-								errmsg("Invalid empty namespace specified")));
+								errmsg(
+									"An invalid and empty namespace has been specified")));
 			}
 		}
 		else if (strcmp(key, "query") == 0)
@@ -267,7 +278,7 @@ ParseFindAndModifyMessage(pgbson *message)
 			if (EnsureTopLevelFieldTypeNullOk("findAndModify.query", &messageIter,
 											  BSON_TYPE_DOCUMENT))
 			{
-				spec.query = PgbsonInitFromIterDocumentValue(&messageIter);
+				spec.query = CreateBsonValueCopy(bson_iter_value(&messageIter));
 			}
 		}
 		else if (strcmp(key, "sort") == 0)
@@ -275,7 +286,7 @@ ParseFindAndModifyMessage(pgbson *message)
 			if (EnsureTopLevelFieldTypeNullOk("findAndModify.sort", &messageIter,
 											  BSON_TYPE_DOCUMENT))
 			{
-				spec.sort = PgbsonInitFromIterDocumentValue(&messageIter);
+				spec.sort = CreateBsonValueCopy(bson_iter_value(&messageIter));
 			}
 		}
 		else if (strcmp(key, "remove") == 0)
@@ -297,7 +308,7 @@ ParseFindAndModifyMessage(pgbson *message)
 			}
 
 			/* we keep update documents in projected form to preserve the type */
-			spec.update = BsonValueToDocumentPgbson(bson_iter_value(&messageIter));
+			spec.update = CreateBsonValueCopy(bson_iter_value(&messageIter));
 		}
 		else if (strcmp(key, "new") == 0)
 		{
@@ -313,7 +324,7 @@ ParseFindAndModifyMessage(pgbson *message)
 											  BSON_TYPE_DOCUMENT) &&
 				!IsBsonValueEmptyDocument(bson_iter_value(&messageIter)))
 			{
-				spec.returnFields = PgbsonInitFromIterDocumentValue(&messageIter);
+				spec.returnFields = CreateBsonValueCopy(bson_iter_value(&messageIter));
 			}
 		}
 		else if (strcmp(key, "upsert") == 0)
@@ -330,20 +341,25 @@ ParseFindAndModifyMessage(pgbson *message)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 								errmsg(
-									"Invalid parameter. expected an object (arrayFilters)")));
+									"Parameter provided is invalid; an object (arrayFilters) was expected.")));
 			}
 
 			EnsureTopLevelFieldType("findAndModify.arrayFields", &messageIter,
 									BSON_TYPE_ARRAY);
 
 			/* we keep arrayFilters in projected form to preserve the type */
-			spec.arrayFilters = BsonValueToDocumentPgbson(bson_iter_value(&messageIter));
+			spec.arrayFilters = CreateBsonValueCopy(bson_iter_value(&messageIter));
 		}
-		else if (!SkipFailOnCollation && strcmp(key, "collation") == 0)
+		else if (strcmp(key, "collation") == 0)
 		{
-			/* If Collation is not enabled, it is silently ignored */
-			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
-							errmsg("findAndModify.collation is not implemented yet")));
+			ReportFeatureUsage(FEATURE_COLLATION);
+
+			if (!SkipFailOnCollation)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+								errmsg(
+									"findAndModify.collation is not implemented yet")));
+			}
 		}
 		else if (strcmp(key, "maxTimeMS") == 0)
 		{
@@ -359,6 +375,22 @@ ParseFindAndModifyMessage(pgbson *message)
 									BSON_TYPE_BOOL);
 
 			spec.bypassDocumentValidation = bson_iter_bool(&messageIter);
+		}
+		else if (strcmp(key, "let") == 0)
+		{
+			ReportFeatureUsage(FEATURE_LET_TOP_LEVEL);
+			if (applyVariableSpec)
+			{
+				EnsureTopLevelFieldType("findAndModify.let", &messageIter,
+										BSON_TYPE_DOCUMENT);
+
+				let = *bson_iter_value(&messageIter);
+			}
+			else
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+								errmsg("findAndModify.let is not yet supported")));
+			}
 		}
 		else
 		{
@@ -376,7 +408,6 @@ ParseFindAndModifyMessage(pgbson *message)
 		 *  - comment
 		 *	- bypassDocumentValidation
 		 *  - collation
-		 *  - let
 		 *  - maxTimeMS
 		 */
 		if (IsCommonSpecIgnoredField(key))
@@ -399,8 +430,9 @@ ParseFindAndModifyMessage(pgbson *message)
 		}
 
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("BSON field 'findAndModify.%s' is an unknown "
-							   "field", key)));
+						errmsg(
+							"The BSON field 'findAndModify.%s' is not recognized as a valid field.",
+							key)));
 	}
 
 	if (spec.collectionName == NULL)
@@ -413,23 +445,23 @@ ParseFindAndModifyMessage(pgbson *message)
 		if (spec.update != NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Cannot specify both an update and "
-								   "remove=true")));
+							errmsg(
+								"It is not possible to specify both an update action and simultaneously set  "
+								"remove=true")));
 		}
 
 		if (spec.upsert)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Cannot specify both upsert=true and "
-								   "remove=true")));
+							errmsg("It is not allowed to set both upsert=true "
+								   "and remove=true simultaneously")));
 		}
 
 		if (spec.returnNewDocument)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Cannot specify both new=true and "
-								   "remove=true; 'remove' always returns "
-								   "the deleted document")));
+							errmsg(
+								"It is not allowed to set both new=true and remove=true simultaneously, as the 'remove' always returns the document that was deleted.")));
 		}
 	}
 	else
@@ -437,14 +469,25 @@ ParseFindAndModifyMessage(pgbson *message)
 		if (spec.update == NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Either an update or remove=true must be "
-								   "specified")));
+							errmsg("You must specify either an update action "
+								   "or set remove=true for proper execution")));
 		}
 	}
 
 	if (spec.query == NULL)
 	{
-		spec.query = PgbsonInitEmpty();
+		pgbson *emptyQuery = PgbsonInitEmpty();
+		spec.query = palloc(sizeof(bson_value_t));
+		*spec.query = ConvertPgbsonToBsonValue(emptyQuery);
+	}
+
+	if (applyVariableSpec)
+	{
+		bool isWriteCommand = true;
+		TimeSystemVariables *timeSysVars = NULL;
+		pgbson *parsedVariables = ParseAndGetTopLevelVariableSpec(&let, timeSysVars,
+																  isWriteCommand);
+		spec.variableSpec = ConvertPgbsonToBsonValue(parsedVariables);
 	}
 
 	return spec;
@@ -460,10 +503,14 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 						 text *transactionId)
 {
 	int64 shardKeyHash = 0;
-	bool hasShardKeyValueFilter = ComputeShardKeyHashForQuery(collection->shardKey,
-															  collection->collectionId,
-															  spec->query,
-															  &shardKeyHash);
+	bool shardKeyValueCollationAware = false;
+	bool hasShardKeyValueFilter =
+		ComputeShardKeyHashForQueryValue(collection->shardKey,
+										 collection->
+										 collectionId,
+										 spec->query,
+										 &shardKeyHash,
+										 &shardKeyValueCollationAware);
 
 	if (!hasShardKeyValueFilter)
 	{
@@ -478,7 +525,8 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 			.query = spec->query,
 			.returnFields = spec->returnFields,
 			.returnDeletedDocument = true,
-			.sort = spec->sort
+			.sort = spec->sort,
+			.variableSpec = &spec->variableSpec
 		};
 
 		DeleteOneResult deleteOneResult = { 0 };
@@ -489,7 +537,8 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 		if (deleteOneResult.isRowDeleted &&
 			deleteOneResult.resultDeletedDocument == NULL)
 		{
-			ereport(ERROR, (errmsg("couldn't return deleted document")));
+			ereport(ERROR, (errmsg(
+								"Failed to return the document that was previously deleted")));
 		}
 
 		FindAndModifyResult result = {
@@ -517,7 +566,8 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 							  UPDATE_RETURNS_OLD,
 			.returnFields = spec->returnFields,
 			.sort = spec->sort,
-			.update = spec->update
+			.update = spec->update,
+			.variableSpec = &spec->variableSpec
 		};
 
 		UpdateOneResult updateOneResult = { 0 };

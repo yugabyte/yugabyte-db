@@ -74,10 +74,18 @@ void od_config_init(od_config_t *config)
 
 void od_config_reload(od_config_t *current_config, od_config_t *new_config)
 {
+	/* YB: These are not thread safe, just kept here for ease of merge */
 	current_config->client_max_set = new_config->client_max_set;
 	current_config->client_max = new_config->client_max;
 	current_config->client_max_routing = new_config->client_max_routing;
 	current_config->server_login_retry = new_config->server_login_retry;
+
+	/* YB: Update log flags on config reload as well */
+	current_config->log_debug = new_config->log_debug;
+	current_config->log_query = new_config->log_query;
+	current_config->log_session = new_config->log_session;
+	current_config->log_stats = new_config->log_stats;
+	current_config->log_config = new_config->log_config;
 }
 
 static void od_config_listen_free(od_config_listen_t *);

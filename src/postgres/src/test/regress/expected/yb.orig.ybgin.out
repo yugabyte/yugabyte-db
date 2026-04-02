@@ -2,29 +2,12 @@
 -- Yugabyte-owned test for ybgin access method.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
-\i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (costs off)'
 -- Always choose index scan.
 SET enable_seqscan = off;
@@ -52,9 +35,11 @@ INSERT INTO vectors (v) VALUES
     (to_tsvector('simple', 'cc')); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Sort
@@ -71,9 +56,11 @@ $$ AS query \gset
 (3 rows)
 
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                      QUERY PLAN                      
 -----------------------------------------------------
  Sort
@@ -88,9 +75,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                       
 -------------------------------------------------------
  Sort
@@ -102,9 +91,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                        
 ---------------------------------------------------------
  Sort
@@ -116,9 +107,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Sort
@@ -135,9 +128,11 @@ $$ AS query \gset
 (3 rows)
 
 SELECT $$
-SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a')
+:P SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Aggregate
@@ -164,9 +159,11 @@ INSERT INTO arrays (a) VALUES
     ('{10, 20, 30}'); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Sort
@@ -178,9 +175,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 3.
 SELECT $$
-SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                   
 -----------------------------------------------
  Sort
@@ -196,9 +195,11 @@ $$ AS query \gset
 (2 rows)
 
 SELECT $$
-SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i
+:P SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Sort
@@ -210,9 +211,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: include-empty.
 SELECT $$
-SELECT * FROM arrays WHERE a = '{3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                   
 -----------------------------------------------
  Sort
@@ -227,9 +230,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT count(*) FROM arrays WHERE a = '{3}'
+:P SELECT count(*) FROM arrays WHERE a = '{3}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                   
 -----------------------------------------------
  Aggregate
@@ -256,9 +261,11 @@ INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2,4], "ccc":{"ddd":6}}, "eee":8}'); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                   
 -----------------------------------------------
  Sort
@@ -276,9 +283,11 @@ $$ AS query \gset
 (4 rows)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                   
 ------------------------------------------------
  Sort
@@ -290,9 +299,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT $$
-SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                   
 ------------------------------------------------
  Sort
@@ -307,9 +318,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                    
 --------------------------------------------------
  Sort
@@ -323,9 +336,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                         
 -----------------------------------------------------------
  Sort
@@ -340,9 +355,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort
@@ -357,9 +374,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Sort
@@ -371,9 +390,11 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT $$
-SELECT count(*) FROM jsonbs WHERE j ? 'aaa'
+:P SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                   
 -----------------------------------------------
  Aggregate
@@ -421,9 +442,11 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 (4 rows)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                         
 -----------------------------------------------------------
  Sort
@@ -438,9 +461,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort
@@ -455,9 +480,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Sort
@@ -493,9 +520,11 @@ CREATE INDEX ON expression USING ybgin (
 INSERT INTO expression VALUES
     (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 SELECT $$
-SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b']
+:P SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Aggregate
@@ -509,9 +538,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e'
+:P SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Aggregate
@@ -525,9 +556,11 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h'
+:P SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Aggregate
@@ -551,9 +584,9 @@ CREATE INDEX ON partial USING ybgin (j) WHERE a && ARRAY['f']; -- test ambuild
 INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 SELECT $$
-SELECT count(*) FROM partial WHERE v @@ 'b'
+:explain SELECT count(*) FROM partial WHERE v @@ 'b';
 $$ AS query \gset
-:explain1
+:query
                    QUERY PLAN                    
 -------------------------------------------------
  Finalize Aggregate
@@ -563,9 +596,11 @@ $$ AS query \gset
 (4 rows)
 
 SELECT $$
-SELECT count(*) FROM partial WHERE v @@ 'c'
+:P SELECT count(*) FROM partial WHERE v @@ 'c';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                      
 ------------------------------------------------------
  Aggregate
@@ -575,9 +610,9 @@ $$ AS query \gset
 ERROR:  unsupported ybgin index scan
 DETAIL:  ybgin index method does not support non-default search mode: everything.
 SELECT $$
-SELECT count(*) FROM partial WHERE a && ARRAY['e']
+:explain SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 $$ AS query \gset
-:explain1
+:query
               QUERY PLAN              
 --------------------------------------
  Aggregate
@@ -586,9 +621,11 @@ $$ AS query \gset
 (3 rows)
 
 SELECT $$
-SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}'
+:P SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Aggregate
@@ -602,9 +639,9 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")'
+:explain SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")';
 $$ AS query \gset
-:explain1
+:query
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Finalize Aggregate
@@ -614,9 +651,11 @@ $$ AS query \gset
 (4 rows)
 
 SELECT $$
-SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f']
+:P SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                          QUERY PLAN                         
 ------------------------------------------------------------
  Aggregate

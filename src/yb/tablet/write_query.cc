@@ -791,8 +791,15 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 }
 
 Status WriteQuery::ExecuteUnlock() {
+  const auto& lock_it = client_request_->pgsql_lock_batch().begin();
+  // Unlock all request could be different based on if the advisory lock table is still on
+  // older schema or the new schema where all columns are hashed. Hence, need to handle both.
+  //
+  // Older schema - unlock all has dbid populated, other range columns are left empty
+  // New schema - unlock all doesn't populate any columns
   bool unlock_all =
-      client_request_->pgsql_lock_batch().begin()->lock_id().lock_range_column_values_size() == 0;
+      lock_it->lock_id().lock_range_column_values().empty() &&
+      lock_it->lock_id().lock_partition_column_values_size() <= 1;
   if (unlock_all) {
     request().mutable_write_batch()->add_lock_pairs()->set_is_lock(false);
     return Status::OK();

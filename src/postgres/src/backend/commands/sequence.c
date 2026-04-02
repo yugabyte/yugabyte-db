@@ -878,6 +878,12 @@ nextval_internal(Oid relid, bool check_permissions)
 	if (!seqrel->rd_islocaltemp)
 		PreventCommandIfReadOnly("nextval()");
 
+	if (yb_read_time != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("nextval() is not allowed in a time travel session "
+						"(yb_read_time is set to nonzero)")));
+
 	/*
 	 * Forbid this during parallel operation because, to make it work, the
 	 * cooperating backends would need to share the backend-local cached
@@ -1397,6 +1403,12 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	/* read-only transactions may only modify temp sequences */
 	if (!seqrel->rd_islocaltemp)
 		PreventCommandIfReadOnly("setval()");
+
+	if (yb_read_time != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("setval() is not allowed in a time travel session "
+						"(yb_read_time is set to nonzero)")));
 
 	/*
 	 * Forbid this during parallel operation because, to make it work, the

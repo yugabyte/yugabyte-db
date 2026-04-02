@@ -1,0 +1,43 @@
+[package]
+name = "pg_documentdb_gw_host"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_pg_documentdb_gw_host"
+path = "./src/bin/pgrx_embed.rs"
+
+[features]
+default = ["pg16"]
+pg15 = ["pgrx/pg15" ]
+pg16 = ["pgrx/pg16" ]
+pg17 = ["pgrx/pg17" ]
+pg18 = ["pgrx/pg18" ]
+pg_test = []
+
+[dependencies]
+pgrx = { version ="=0.16.0", default-features = false }
+documentdb_gateway = { path = "../pg_documentdb_gw" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.dev]
+panic = "unwind"
+
+[lints.clippy]
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+
+[profile.release-with-symbols]
+inherits = "release"
+# Generates the minimal amount of debug info for backtraces with filename/line number info, but not anything else
+debug = "line-tables-only"
+opt-level = 3
+lto = "fat"
+codegen-units = 1

@@ -1,5 +1,5 @@
 /*
- * This function returns rows from an empty table that mimics a mongo data table
+ * This function returns rows from an empty table that mimics a documentdb collection data table
  * w.r.t. the data types of the columns.
  *
  * We need this to enable scenarios that require us to return an the equvalent of a

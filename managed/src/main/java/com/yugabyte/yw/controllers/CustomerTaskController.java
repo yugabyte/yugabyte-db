@@ -147,7 +147,7 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
-      taskData.userEmail = task.getUserEmail();
+      taskData.userEmail = getTaskUserEmail(task, taskInfo);
       if (taskProgress.has("details")) {
         taskData.details = taskProgress.get("details");
       } else {
@@ -178,6 +178,20 @@ public class CustomerTaskController extends AuthenticatedController {
       LOG.error("Error fetching task progress for {} : {}", task.getTaskUUID(), e);
       return null;
     }
+  }
+
+  private String getTaskUserEmail(CustomerTask task, TaskInfo taskInfo) {
+    String userEmail = task.getUserEmail();
+    if ((Strings.isNullOrEmpty(userEmail) || "Unknown".equals(userEmail))
+        && isKubernetesOperatorTask(taskInfo)) {
+      return CustomerTask.BACKGROUND_TASK_USER;
+    }
+    return userEmail;
+  }
+
+  private boolean isKubernetesOperatorTask(TaskInfo taskInfo) {
+    return taskInfo.getTaskParams() != null
+        && taskInfo.getTaskParams().hasNonNull("kubernetesResourceDetails");
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(Customer customer, UUID targetUUID) {

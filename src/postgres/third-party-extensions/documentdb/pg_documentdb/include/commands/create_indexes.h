@@ -19,43 +19,16 @@
 #include "operators/bson_expression.h"
 #include "vector/vector_spec.h"
 
+#define MAX_INDEX_OPTIONS_LENGTH 1500
+
 /*
- * Should be used together with MongoIndexBuildAborted errcode.
+ * Used with the ERRCODE_DOCUMENTDB_INDEXBUILDABORTED error code.
  */
 #define COLLIDX_CONCURRENTLY_DROPPED_RECREATED_ERRMSG \
 	"Index build failed :: caused by :: index or " \
 	"collection dropped/re-created concurrently"
 
 extern int32 MaxIndexesPerCollection;
-
-/*
- * Represents the type of index for a given path.
- * Treat this as a flags so that we can check for
- * plugins.
- */
-typedef enum MongoIndexKind
-{
-	/* Unknow / invalid index plugin */
-	MongoIndexKind_Unknown = 0x0,
-
-	/* Regular asc/desc index */
-	MongoIndexKind_Regular = 0x1,
-
-	/* Hashed index */
-	MongoIndexKind_Hashed = 0x2,
-
-	/* Geospatial 2D index */
-	MongoIndexKind_2d = 0x4,
-
-	/* Text search index */
-	MongoIndexKind_Text = 0x8,
-
-	/* Geospatial 2D index */
-	MongoIndexKind_2dsphere = 0x10,
-
-	/* A CosmosDB Indexing kind */
-	MongoIndexingKind_CosmosSearch = 0x20,
-} MongoIndexKind;
 
 
 typedef struct IndexDefKeyPath
@@ -68,11 +41,17 @@ typedef struct IndexDefKeyPath
 
 	/* Whether or not this specific key is a wildcard index */
 	bool isWildcard;
+
+	/* The sort direction: 1 for asc, -1 for desc. */
+	int sortDirection;
 } IndexDefKeyPath;
 
 
 typedef struct
 {
+	/* whether or not it's the _id style index */
+	bool isIdIndex;
+
 	/* Whether or not the index path has a wildcard */
 	bool isWildcard;
 
@@ -94,6 +73,12 @@ typedef struct
 	/* Whether or not the index path has 2dsphere index */
 	bool has2dsphereIndex;
 
+	/* Whether or not index path has descending indexes */
+	bool hasDescendingIndex;
+
+	/* Whether or not the key def can support the composite term. */
+	bool canSupportCompositeTerm;
+
 	/*
 	 * List of IndexDefKeyPath where each path represents a particular
 	 * field/path being indexed if it's not a wildcard index. For example,
@@ -104,8 +89,7 @@ typedef struct
 	 * when it is a wildcard index. Evenmore, keyPathList would be an empty
 	 * list if wildcard index is on whole document, i.e., doesn't have a
 	 * prefixing path. If it's a wildcard index with a prefixing path, then
-	 * keyPathList would contain a single element since Mongo doesn't allow
-	 * compound wildcard indexes.
+	 * keyPathList would contain a single element since compound wildcard indexes are not allowed.
 	 */
 	List *keyPathList;
 
@@ -123,7 +107,7 @@ typedef struct
 	/* represents value of "v" field */
 	int version;
 
-	/* represents sphere index version */
+	/* Indicates the version of the sphere index */
 	int sphereIndexVersion;
 
 	/* represents value of "key" field */
@@ -193,6 +177,21 @@ typedef struct
 
 	/* Feature flag to enable large index term. */
 	BoolIndexOption enableLargeIndexKeys;
+
+	/* Feature flag to enable the composite term index */
+	BoolIndexOption enableCompositeTerm;
+
+	/* Flag to indicate we should create the index as unique without the unique constraint being added to the table. Then we can transform it to unique iff an equivalent unique index exists. */
+	BoolIndexOption buildAsUnique;
+
+	/* Feature flag to enable the composite term index */
+	BoolIndexOption enableReducedWildcardTerms;
+
+	/*
+	 * Whether or not this index should be created as a blocking
+	 * index create. Default is off (concurrent).
+	 */
+	bool blocking;
 } IndexDef;
 
 /*
@@ -248,7 +247,8 @@ typedef struct
 
 bool IsCallCreateIndexesStmt(const Node *node);
 bool IsCallReIndexStmt(const Node *node);
-CreateIndexesArg ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg);
+CreateIndexesArg ParseCreateIndexesArg(Datum dbNameDatum, pgbson *arg,
+									   bool buildAsUniqueForPrepareUnique);
 CreateIndexesResult create_indexes_non_concurrently(Datum dbNameDatum,
 													CreateIndexesArg createIndexesArg,
 													bool skipCheckCollectionCreate,

@@ -6,8 +6,11 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -325,5 +328,43 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(false));
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  /**
+   * Verifies that when the universe has K8s-style node names, YSQL enabled, and isYsqlServer true
+   * on nodes, the upgrade creates WaitForServer(YSQLSERVER) tasks (see KubernetesTaskBase
+   * createKubernetesWaitForPodTasks around line 1325).
+   */
+  @Test
+  public void testGFlagUpgradeSingleAZWithYSQLCreatesWaitForYSQLServerTasks() {
+    setupUniverseK8sSingleAZWithYSQL(false, false);
+    gFlagsKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+
+    // WaitForServer(YSQLSERVER) calls ysqlQueryExecutor.executeQueryInNodeShell; stub success.
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
+            any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
+
+    KubernetesGFlagsUpgradeParams taskParams = new KubernetesGFlagsUpgradeParams();
+    taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    TaskInfo taskInfo = submitTask(taskParams);
+
+    assertEquals(Success, taskInfo.getTaskState());
+    long ysqlWaitCount =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.WaitForServer)
+            .filter(
+                t ->
+                    "YSQLSERVER"
+                        .equals(
+                            t.getTaskParams().has("serverType")
+                                ? t.getTaskParams().get("serverType").asText()
+                                : null))
+            .count();
+    assertTrue(
+        "Expected at least one WaitForServer(YSQLSERVER) task when YSQL is enabled and nodes have "
+            + "K8s names and isYsqlServer=true",
+        ysqlWaitCount >= 1);
   }
 }

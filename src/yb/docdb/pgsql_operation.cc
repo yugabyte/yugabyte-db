@@ -1029,7 +1029,7 @@ class PgsqlVectorFilter {
 
     reverse_mapping_reader_ = VERIFY_RESULT(
         data.vector_index->context().CreateReverseMappingReader(
-            data.read_operation_data.read_time));
+            data.read_operation_data.read_time, data.read_operation_data.statistics));
 
     return true;
   }
@@ -2696,7 +2696,8 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorLSMSearch(const PgVectorReadOpti
         .ef = options.hnsw_options().ef_search(),
         .filter = std::ref(filter),
       },
-      could_have_missing_entries
+      could_have_missing_entries,
+      data_.read_operation_data.statistics
   ));
   VLOG_WITH_FUNC(2) << "Search results: " << result.ToString();
 
@@ -3163,7 +3164,6 @@ Status PgsqlLockOperation::Init(
   auto range_components = VERIFY_RESULT(dockv::QLKeyColumnValuesToPrimitiveValues(
       request_.lock_id().lock_range_column_values(), schema,
       schema.num_hash_key_columns(), schema.num_range_key_columns()));
-  SCHECK(!hashed_components.empty(), InvalidArgument, "No hashed column values provided");
   doc_key_ = DocKey(
       schema, request_.hash_code(), std::move(hashed_components), std::move(range_components));
   encoded_doc_key_ = doc_key_.EncodeAsRefCntPrefix();

@@ -96,6 +96,33 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
         defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters, false, placementInfo));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    finishSetupUniverse(mockGetLeaderMaster, placementInfo);
+  }
+
+  protected void setupUniverse(
+      boolean setMasters,
+      UserIntent userIntent,
+      PlacementInfo placementInfo,
+      boolean mockGetLeaderMaster,
+      Universe.UniverseUpdater customUpdater) {
+    userIntent.replicationFactor = 3;
+    userIntent.masterGFlags = new HashMap<>();
+    userIntent.tserverGFlags = new HashMap<>();
+    userIntent.universeName = "demo-universe";
+    userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION_OLD;
+    defaultUniverse = createUniverse(defaultCustomer.getId());
+    config.put("KUBECONFIG", "test");
+    kubernetesProvider.setConfigMap(config);
+    kubernetesProvider.save();
+
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), customUpdater);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    finishSetupUniverse(
+        mockGetLeaderMaster,
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo);
+  }
+
+  private void finishSetupUniverse(boolean mockGetLeaderMaster, PlacementInfo placementInfo) {
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
@@ -165,6 +192,66 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
+  }
+
+  /**
+   * Sets up a universe with K8s-style node names (yb-tserver-0, etc.) and YSQL enabled so that
+   * upgrade tasks create WaitForServer(YSQLSERVER) when the node exists in the universe and
+   * isYsqlServer is true.
+   */
+  protected void setupUniverseK8sSingleAZWithYSQL(boolean setMasters, boolean mockGetLeaderMaster) {
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
+    UserIntent userIntent = getTestUserIntent(r, kubernetesProvider, i, 3);
+    userIntent.enableYSQL = true;
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 3, 3, true);
+    setupUniverse(
+        setMasters,
+        userIntent,
+        placementInfo,
+        mockGetLeaderMaster,
+        ApiUtils.mockUniverseUpdaterForK8sEdit(userIntent, NODE_PREFIX, setMasters, false));
+    String podsString =
+        "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.2\"}, \"spec\": {\"hostname\": \"yb-tserver-0\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.3\"}, \"spec\": {\"hostname\": \"yb-master-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.4\"}, \"spec\": {\"hostname\": \"yb-tserver-1\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.5\"}, \"spec\": {\"hostname\": \"yb-master-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}},"
+            + "{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
+            + "\"podIP\": \"1.2.3.6\"}, \"spec\": {\"hostname\": \"yb-tserver-2\"},"
+            + " \"metadata\": {\"namespace\": \""
+            + NODE_PREFIX
+            + "\"}}]}";
+    List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
+    when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
   }
 
   protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {

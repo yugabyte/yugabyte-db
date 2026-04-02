@@ -878,6 +878,14 @@ message RemoveTablesFromCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message XClusterFailoverRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message XClusterFailoverResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -1015,4 +1023,7 @@ service MasterReplication {
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);
+
+  rpc XClusterFailover(XClusterFailoverRequestPB)
+      returns (XClusterFailoverResponsePB);
 }

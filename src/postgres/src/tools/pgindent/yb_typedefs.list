@@ -215,6 +215,7 @@ YbTablegroupInfo
 YbTempNamespaceSuffixBuffer
 YbTerminatedQueriesBuffer
 YbTerminatedQuery
+YbTraceparentResult
 YbTruncateType
 YbTupleBitmap
 YbTupleCache
@@ -253,6 +254,8 @@ YbcMetricsInfo
 YbcObjectLockId
 YbcObjectLockMode
 YbcOrderingMode
+YbcOtelScope
+YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig
 YbcPgAtomicUint64

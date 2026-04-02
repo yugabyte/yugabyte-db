@@ -24,6 +24,8 @@
 #include "update/bson_update_common.h"
 #include "update/bson_update.h"
 #include "utils/fmgr_utils.h"
+#include "utils/type_cache.h"
+#include "utils/version_utils.h"
 #include "aggregation/bson_query.h"
 #include "commands/commands_common.h"
 
@@ -32,6 +34,9 @@
 
 CreateBsonUpdateTracker_HookType create_update_tracker_hook = NULL;
 BuildUpdateDescription_HookType build_update_description_hook = NULL;
+
+/* This GUC determines whether to use update_bson_document instead of the bson_update_document command. */
+extern bool EnableUpdateBsonDocument;
 
 /* TODO: This is a hack - in reality we should remove updateDesc and rewrite the query to be better */
 int NumBsonDocumentsUpdated = 0;
@@ -73,22 +78,29 @@ typedef struct
 	UpdateType updateType;
 } QueryProjectionContext;
 
+extern bool EnableVariablesSupportForWriteCommands;
+
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static void BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
-									pgbson *querySpec, pgbson *arrayFilters,
+static void BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata,
+									const bson_value_t *updateSpec,
+									const bson_value_t *querySpec, const
+									bson_value_t *arrayFilters,
+									const bson_value_t *variableSpec,
 									bool buildSourceDocOnUpsert);
 
-static pgbson * BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
+static pgbson * BsonUpdateDocumentCore(pgbson *sourceDocument, const
+									   bson_value_t *updateSpec,
 									   BsonUpdateMetadata *metadata);
 
-static pgbson * ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
+static pgbson * ProcessReplaceDocument(pgbson *sourceDoc, const bson_value_t *updateSpec,
 									   bool isUpsert);
 
-static pgbson * BuildBsonDocumentFromQuery(pgbson *sourceDoc, pgbson *querySpec,
+static pgbson * BuildBsonDocumentFromQuery(pgbson *sourceDoc, const
+										   bson_value_t *querySpec,
 										   UpdateType updateType);
 
 static void ProcessQueryProjectionValue(void *context, const char *path, const
@@ -118,13 +130,12 @@ ThrowIdPathModifiedError(void)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_IMMUTABLEFIELD),
 					errmsg(
-						"After applying the update, the (immutable) field '_id' was found to have been altered")));
+						"Cannot modify '_id' field as part of the operation")));
 }
 
 
 /*
- * Ensures that in Update Type Replacement the _id field in a write document conforms to the requirements of Mongo
- * Right.
+ * Ensures that after update the type of the _id field is not unexpected.
  */
 inline static void
 ValidateIdForUpdateTypeReplacement(const bson_value_t *idValue)
@@ -133,8 +144,7 @@ ValidateIdForUpdateTypeReplacement(const bson_value_t *idValue)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTSINGLEVALUEFIELD),
 						errmsg(
-							"After applying the update to the document, the (immutable) field"
-							" '_id' was found to be an array or array descendant.")));
+							"Cannot modify '_id' field to an array or array descendent as part of the operation.")));
 	}
 	ValidateIdField(idValue);
 }
@@ -163,6 +173,37 @@ PG_FUNCTION_INFO_V1(bson_update_returned_value);
 Datum
 bson_update_document(PG_FUNCTION_ARGS)
 {
+	/* Ensure correct return type. TODO: Remove this check after full migration to update_bson_document. */
+	TupleDesc tupleDescriptor = NULL;
+	bool callerIsUpdateBsonDocument = EnableUpdateBsonDocument &&
+									  IsClusterVersionAtleast(DocDB_V0, 109, 0);
+	if (callerIsUpdateBsonDocument)
+	{
+		Oid resultTypeId = InvalidOid;
+		if (get_call_result_type(fcinfo, &resultTypeId, &tupleDescriptor) !=
+			TYPEFUNC_SCALAR)
+		{
+			elog(ERROR, "return type must be a scalar type");
+		}
+
+		if (resultTypeId != BsonTypeId())
+		{
+			elog(ERROR, "return type must be a single bson value");
+		}
+	}
+	else
+	{
+		if (get_call_result_type(fcinfo, NULL, &tupleDescriptor) != TYPEFUNC_COMPOSITE)
+		{
+			elog(ERROR, "return type must be a row type");
+		}
+
+		if (tupleDescriptor->natts != 2)
+		{
+			elog(ERROR, "incorrect number of output arguments");
+		}
+	}
+
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
 	{
 		/* be on the safe side fwiw */
@@ -171,16 +212,43 @@ bson_update_document(PG_FUNCTION_ARGS)
 	}
 
 	pgbson *sourceDocument = PG_GETARG_PGBSON(0);
-	pgbson *updateSpec = PG_GETARG_PGBSON(1);
-	pgbson *querySpec = PG_GETARG_PGBSON(2);
-	pgbson *arrayFilters = PG_GETARG_MAYBE_NULL_PGBSON(3);
+	pgbson *updateSpecDoc = PG_GETARG_PGBSON(1);
+	pgbson *querySpecDoc = PG_GETARG_PGBSON(2);
+	pgbson *arrayFiltersDoc = PG_GETARG_MAYBE_NULL_PGBSON(3);
 
+	bson_value_t variableSpec = { 0 };
+	if (callerIsUpdateBsonDocument)
+	{
+		if (EnableVariablesSupportForWriteCommands && PG_NARGS() > 4 && !PG_ARGISNULL(4))
+		{
+			pgbson *variableSpecDoc = PG_GETARG_PGBSON(4);
+			variableSpec = ConvertPgbsonToBsonValue(variableSpecDoc);
+		}
+	}
+	else if (EnableVariablesSupportForWriteCommands && PG_NARGS() > 5 &&
+			 !PG_ARGISNULL(5))
+	{
+		pgbson *variableSpecDoc = PG_GETARG_PGBSON(5);
+		variableSpec = ConvertPgbsonToBsonValue(variableSpecDoc);
+	}
 
-	/* an empty document is treated as an upsert. */
+	pgbsonelement updateSpecElement;
+	PgbsonToSinglePgbsonElement(updateSpecDoc, &updateSpecElement);
+	bson_value_t querySpec = ConvertPgbsonToBsonValue(querySpecDoc);
+	pgbsonelement arrayFiltersBase = { 0 };
+	bson_value_t *arrayFilters = NULL;
+
+	if (arrayFiltersDoc != NULL)
+	{
+		PgbsonToSinglePgbsonElement(arrayFiltersDoc, &arrayFiltersBase);
+		arrayFilters = &arrayFiltersBase.bsonValue;
+	}
+
+	/* An empty document will be processed as an upsert operation. */
 	bool buildSourceDocOnUpsert = IsPgbsonEmptyDocument(sourceDocument);
 
 	/* Build any cacheable state for processing updates */
-	int stateArgPositions[3] = { 1, 2, 3 };
+	int stateArgPositions[4] = { 1, 2, 3, 4 };
 	BsonUpdateMetadata *metadata;
 
 	SetCachedFunctionStateMultiArgs(
@@ -189,33 +257,46 @@ bson_update_document(PG_FUNCTION_ARGS)
 		&stateArgPositions[0],
 		3,
 		BuildBsonUpdateMetadata,
-		updateSpec, querySpec, arrayFilters,
-		buildSourceDocOnUpsert);
+		&updateSpecElement.bsonValue, &querySpec, arrayFilters,
+		&variableSpec, buildSourceDocOnUpsert);
 
+	pgbson *document;
 	if (metadata == NULL)
 	{
-		ereport(ERROR, (errmsg(
-							"bson update should only be called with consts or params")));
+		BsonUpdateMetadata localMetadata = { 0 };
+		BuildBsonUpdateMetadata(&localMetadata, &updateSpecElement.bsonValue, &querySpec,
+								arrayFilters, &variableSpec, buildSourceDocOnUpsert);
+		document = BsonUpdateDocumentCore(sourceDocument, &updateSpecElement.bsonValue,
+										  &localMetadata);
+	}
+	else
+	{
+		document = BsonUpdateDocumentCore(sourceDocument,
+										  &updateSpecElement.bsonValue, metadata);
 	}
 
+	if (callerIsUpdateBsonDocument)
+	{
+		if (document != NULL)
+		{
+			NumBsonDocumentsUpdated++;
+			LastBsonUpdateReturnedNewValue = true;
+			PG_RETURN_POINTER(document);
+		}
+		else
+		{
+			/* No update is needed */
+			LastBsonUpdateReturnedNewValue = false;
+			PG_RETURN_NULL();
+		}
+	}
+
+	/* TODO : Remove below code once we move to update_bson_document udf completely */
 	/* Returns (newDocument bson, updateDesc bson) */
 	Datum values[2];
 	bool nulls[2];
 	memset(values, 0, sizeof(values));
 	memset(nulls, 0, sizeof(nulls));
-
-	TupleDesc tupleDescriptor = NULL;
-	if (get_call_result_type(fcinfo, NULL, &tupleDescriptor) != TYPEFUNC_COMPOSITE)
-	{
-		elog(ERROR, "return type must be a row type");
-	}
-
-	if (tupleDescriptor->natts != 2)
-	{
-		elog(ERROR, "incorrect number of output arguments");
-	}
-
-	pgbson *document = BsonUpdateDocumentCore(sourceDocument, updateSpec, metadata);
 
 	if (document != NULL)
 	{
@@ -255,12 +336,13 @@ bson_update_returned_value(PG_FUNCTION_ARGS)
  * can be used to validate given update document.
  */
 void
-ValidateUpdateDocument(pgbson *updateSpec, pgbson *querySpec, pgbson *arrayFilters)
+ValidateUpdateDocument(const bson_value_t *updateSpec, const bson_value_t *querySpec,
+					   const bson_value_t *arrayFilters, const bson_value_t *variableSpec)
 {
 	BsonUpdateMetadata metadata = { 0 };
 	bool buildSourceDocOnUpsert = false;
 	BuildBsonUpdateMetadata(&metadata, updateSpec, querySpec, arrayFilters,
-							buildSourceDocOnUpsert);
+							variableSpec, buildSourceDocOnUpsert);
 }
 
 
@@ -269,16 +351,17 @@ ValidateUpdateDocument(pgbson *updateSpec, pgbson *querySpec, pgbson *arrayFilte
  * returns NULL if no update is needed.
  */
 pgbson *
-BsonUpdateDocument(pgbson *sourceDocument, pgbson *updateSpec,
-				   pgbson *querySpec, pgbson *arrayFilters)
+BsonUpdateDocument(pgbson *sourceDocument, const bson_value_t *updateSpec,
+				   const bson_value_t *querySpec, const bson_value_t *arrayFilters,
+				   const bson_value_t *variableSpec)
 {
 	BsonUpdateMetadata metadata = { 0 };
 
-	/* an empty document is treated as an upsert. */
+	/* An empty document will be processed as an upsert operation. */
 	bool buildSourceDocOnUpsert = IsPgbsonEmptyDocument(sourceDocument);
 
 	BuildBsonUpdateMetadata(&metadata, updateSpec, querySpec, arrayFilters,
-							buildSourceDocOnUpsert);
+							variableSpec, buildSourceDocOnUpsert);
 	return BsonUpdateDocumentCore(sourceDocument, updateSpec, &metadata);
 }
 
@@ -294,13 +377,13 @@ BsonUpdateDocument(pgbson *sourceDocument, pgbson *updateSpec,
  * Returns NULL if update was a no-op.
  */
 pgbson *
-BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
+BsonUpdateDocumentCore(pgbson *sourceDocument, const bson_value_t *updateSpec,
 					   BsonUpdateMetadata *updateMetadata)
 {
 	bson_iter_t sourceDocumentIterator;
 	PgbsonInitIterator(sourceDocument, &sourceDocumentIterator);
 
-	/* an empty document is treated as an upsert. */
+	/* An empty document will be processed as an upsert operation. */
 	bool isUpsert = !bson_iter_next(&sourceDocumentIterator);
 
 	if (isUpsert)
@@ -367,7 +450,7 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_CHECK_VIOLATION), errmsg(
-								"Unrecognized update type %d",
+								"Update type %d not recognized",
 								updateMetadata->updateType)));
 			break;
 		}
@@ -396,9 +479,9 @@ BsonUpdateDocumentCore(pgbson *sourceDocument, pgbson *updateSpec,
  * into the metadata value provided.
  */
 static void
-BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
-						pgbson *querySpec, pgbson *arrayFilters,
-						bool buildSourceDocOnUpsert)
+BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, const bson_value_t *updateSpec,
+						const bson_value_t *querySpec, const bson_value_t *arrayFilters,
+						const bson_value_t *variableSpec, bool buildSourceDocOnUpsert)
 {
 	metadata->updateType = DetermineUpdateType(updateSpec);
 
@@ -417,17 +500,16 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 		{
 			if (arrayFilters != NULL)
 			{
-				pgbsonelement arrayFiltersElement = { 0 };
-				PgbsonToSinglePgbsonElement(arrayFilters, &arrayFiltersElement);
-				if (!IsBsonValueEmptyArray(&arrayFiltersElement.bsonValue))
+				if (!IsBsonValueEmptyArray(arrayFilters))
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 									errmsg(
-										"arrayFilters may not be specified for pipeline-style updates")));
+										"Specifying arrayFilters is not allowed when performing pipeline-style updates")));
 				}
 			}
 
-			metadata->aggregationState = GetAggregationPipelineUpdateState(updateSpec);
+			metadata->aggregationState = GetAggregationPipelineUpdateState(updateSpec,
+																		   variableSpec);
 			break;
 		}
 
@@ -442,12 +524,11 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 		case UpdateType_ReplaceDocument:
 		{
 			/* Simply validate the replace doc */
-			bson_iter_t updateIterator;
-			PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
-			if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
+			if (updateSpec->value_type != BSON_TYPE_DOCUMENT)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-									"Replace should be a document")));
+									"Expected value to contain 'document' type but found '%s' type",
+									BsonTypeName(updateSpec->value_type))));
 			}
 			break;
 		}
@@ -468,31 +549,23 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
  * Otherwise it's a replace.
  */
 UpdateType
-DetermineUpdateType(pgbson *updateSpec)
+DetermineUpdateType(const bson_value_t *updateSpec)
 {
-	bson_iter_t updateIterator;
 	bson_iter_t updateDocumentIterator;
 	bool isUpdateTypeReplacement = false;
 
-	if (!PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator))
-	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"Update should be specified")));
-	}
-
-	if (BSON_ITER_HOLDS_ARRAY(&updateIterator))
+	if (updateSpec->value_type == BSON_TYPE_ARRAY)
 	{
 		return UpdateType_AggregationPipeline;
 	}
-	else if (BSON_ITER_HOLDS_DOCUMENT(&updateIterator) &&
-			 bson_iter_recurse(&updateIterator, &updateDocumentIterator))
+	else if (updateSpec->value_type == BSON_TYPE_DOCUMENT)
 	{
+		BsonValueInitIterator(updateSpec, &updateDocumentIterator);
 		while (bson_iter_next(&updateDocumentIterator))
 		{
 			const char *path = bson_iter_key(&updateDocumentIterator);
 			uint32_t pathLength = bson_iter_key_len(&updateDocumentIterator);
 
-			/* found an operator. */
 			if (pathLength > 1 && path[0] == '$')
 			{
 				if (!isUpdateTypeReplacement)
@@ -503,8 +576,8 @@ DetermineUpdateType(pgbson *updateSpec)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARPREFIXEDFIELDNAME),
 									errmsg(
-										"The dollar ($) prefixed field '%s' in '%s' is not allowed in the context of an update's"
-										" replacement document. Consider using an aggregation pipeline with $replaceWith.",
+										"Field '%s' in path '%s' is not allowed when doing a replace operation. "
+										"Use $replaceWith aggregation stage instead",
 										path, path)));
 				}
 			}
@@ -532,23 +605,21 @@ DetermineUpdateType(pgbson *updateSpec)
  * from the filters into the target document.
  */
 static pgbson *
-ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
+ProcessReplaceDocument(pgbson *sourceDoc, const bson_value_t *updateSpec,
 					   bool isUpsert)
 {
 	bson_iter_t sourceDocIterator;
-	bson_iter_t updateIterator;
 	bson_iter_t replaceDocumentIterator;
 	pgbson_writer writer;
-	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
-	if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
+	if (updateSpec->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"Replace should be a document")));
+							"Expected value to contain 'document' type but found '%s' type",
+							BsonTypeName(updateSpec->value_type))));
 	}
 
-	uint32_t documentLength;
-	const uint8_t *documentBytes;
-	bson_iter_document(&updateIterator, &documentLength, &documentBytes);
+	uint32_t documentLength = updateSpec->value.v_doc.data_len;
+	const uint8_t *documentBytes = updateSpec->value.v_doc.data;
 
 	/* validate the replace document. */
 	ValidateInputBsonBytes(documentBytes,
@@ -652,13 +723,13 @@ ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
  * will be used in the upsert case as the initial document.
  */
 static pgbson *
-BuildBsonDocumentFromQuery(pgbson *sourceDoc, pgbson *querySpec,
+BuildBsonDocumentFromQuery(pgbson *sourceDoc, const bson_value_t *querySpec,
 						   UpdateType updateType)
 {
 	BsonIntermediatePathNode *root = MakeRootNode();
 
 	bson_iter_t queryDocIterator;
-	PgbsonInitIterator(querySpec, &queryDocIterator);
+	BsonValueInitIterator(querySpec, &queryDocIterator);
 	QueryProjectionContext context = { .root = root, .updateType = updateType };
 
 	bool isUpsert = true;
@@ -724,12 +795,12 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	bool isDocumentDottedIdField = strncmp(path, "_id.", 4) == 0;
 	bool isDocumentIdField = isDocumentDottedIdField || strcmp(path, "_id") == 0;
 
-	/* Native mongo gives an error when update type is replacement and querySpec has dotted id field */
+	/* Throw error when update type is replacement and querySpec has dotted id field */
 	if (isUpdateTypeReplacement && isDocumentDottedIdField)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTEXACTVALUEFIELD),
 						errmsg(
-							"field at '_id' must be exactly specified, field at sub-path '%s'found",
+							"Invalid path '%s'. Please specify the full '_id' field value instead of a sub-path",
 							path)));
 	}
 
@@ -737,7 +808,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NOTSINGLEVALUEFIELD),
 						errmsg(
-							"cannot infer query fields to set, path '%s' is matched twice",
+							"Unable to determine which query fields to set, as the path '%s' has been matched twice",
 							path)));
 	}
 }

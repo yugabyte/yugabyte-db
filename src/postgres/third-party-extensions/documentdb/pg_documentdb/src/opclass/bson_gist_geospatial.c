@@ -123,7 +123,7 @@ static bool GeonearRangeConsistent(PG_FUNCTION_ARGS);
 
 /*
  * bson_gist_geometry_2d_options is GIST index support function to specify the index option in serialized format
- * this is useful to store the mongo 2d indexes options e.g. min, max or the name of the index
+ * this is useful to store the 2d indexes options e.g. min, max or the name of the index
  * which is shown in the explain plans.
  */
 Datum
@@ -224,7 +224,7 @@ bson_gist_geometry_2d_compress(PG_FUNCTION_ARGS)
 	{
 		/* Out of bounds, throw error */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13027),
-						errmsg("point not in interval of [ %g, %g ]",
+						errmsg("Point lies outside the specified interval range [%g, %g]",
 							   minBound, maxBound)));
 	}
 
@@ -336,7 +336,7 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 
 		default:
 		{
-			/* We will never reach here but just in case. */
+			/* This point in the code should never be reached, but it is handled here just in case. */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
@@ -481,7 +481,7 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 
 /*
  * bson_gist_geography_options is GIST index support function to specify the index option in serialized format
- * this is useful to store the mongo 2dsphere indexes options name of the index
+ * this is useful to store the 2dsphere indexes options name of the index
  * which is shown in the explain plans.
  */
 Datum
@@ -659,7 +659,7 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 
 		default:
 		{
-			/* We will never reach here but just in case. */
+			/* This point in the code should never be reached, but it is handled here just in case. */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
@@ -850,8 +850,10 @@ SegmentizeQuery(IndexBsonGeospatialState *state)
 			}
 
 			Datum segment = SPI_datumTransfer(resultDatum,
-											  SPI_tuptable->tupdesc->attrs[0].attbyval,
-											  SPI_tuptable->tupdesc->attrs[0].attlen);
+											  TupleDescAttr(SPI_tuptable->tupdesc,
+															0)->attbyval,
+											  TupleDescAttr(SPI_tuptable->tupdesc,
+															0)->attlen);
 			MemoryContext spiContext = MemoryContextSwitchTo(current);
 			state->segments = lappend(state->segments, (void *) DatumGetPointer(segment));
 			MemoryContextSwitchTo(spiContext);

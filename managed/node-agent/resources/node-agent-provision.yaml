@@ -10,28 +10,21 @@ ynp:
   chrony_servers: []
 
   # User ID for the 'yugabyte' user.
-  # Specifies the UID to ensure consistency across nodes.
-  yb_user_id: 994
+  # Applies to new user creation only if the user does not already exist.
+  yb_user_id: 1004
   no_proxy_list: []
   # Indicates if the node is in an air-gapped environment (no internet access).
   # Set to 'true' if the node cannot access external networks.
   # Airgapped
   is_airgap: false
 
-  # Determines whether to use system-level systemd for service management.
-  # Set to 'true' to integrate with the system's init system.
-  use_system_level_systemd: false
-
-  # The IP address of the node.
+  # The bind IP address of the node.
   # Should be the address that other nodes will use to communicate.
   node_ip: 127.0.0.1
 
   # Temporary directory for provisioning tasks.
   # Used for storing temporary files during setup.
   tmp_directory: /tmp
-
-  # Install node_agent as part of provisioning.
-  is_install_node_agent: true
 
   # node_agent_port defaults to 9070
   # needs to also be updated in YBA using runtime config.
@@ -48,10 +41,6 @@ ynp:
   # Ref: https://github.com/aws/clock-bound
   is_configure_clockbound: false
 
-  configure_thp_settings: true
-
-  # YB Controller backup agent is disabled.
-  is_ybcontroller_disabled: false
 yba:
   # The base URL of the Yugabyte Anywhere instance.
   # Example: 'https://yba.example.com'.

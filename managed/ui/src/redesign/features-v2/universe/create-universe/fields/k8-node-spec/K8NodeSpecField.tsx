@@ -15,6 +15,10 @@ import {
   MASTER_K8_NODE_SPEC_FIELD,
   TSERVER_K8_NODE_SPEC_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import {
+  parsePositiveDecimalInput,
+  sanitizePositiveDecimalString
+} from '@app/redesign/features-v2/universe/create-universe/helpers/instanceNumericInput';
 
 const { Box } = mui;
 
@@ -30,7 +34,7 @@ export const K8NodeSpecField = ({
   provider
 }: K8NodeSpecFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
+  const { t } = useTranslation();
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
   const fieldValue = isMaster
@@ -57,23 +61,54 @@ export const K8NodeSpecField = ({
 
   const { minMemorySize, maxMemorySize } = getK8MemorySizeRange(providerRuntimeConfigs);
   const { minCPUCores, maxCPUCores } = getK8CPUCoresRange(providerRuntimeConfigs);
+  const minMem = Number(minMemorySize ?? 0);
+  const maxMem = Number(maxMemorySize ?? minMem);
+  const minCpu = Number(minCPUCores ?? 0);
+  const maxCpu = Number(maxCPUCores ?? minCpu);
+  const { memorySize: defaultMemRaw, CPUCores: defaultCpuRaw } =
+    getDefaultK8NodeSpec(providerRuntimeConfigs);
+  const defaultMem = Number(defaultMemRaw);
+  const defaultCpu = Number(defaultCpuRaw);
+
   const onNumCoresChanged = (value: any) => {
-    const decimalPaces = value?.split?.('.')[1]?.length ?? 0;
-    const numCores = decimalPaces > 2 ? Number(Number(value).toFixed(2)) : Number(value);
+    const raw = sanitizePositiveDecimalString(String(value));
+    const decimalPlaces = raw.split('.')[1]?.length ?? 0;
+    const fallbackCpu =
+      Number.isFinite(defaultCpu) && defaultCpu > 0
+        ? defaultCpu
+        : fieldValue?.cpuCoreCount && fieldValue.cpuCoreCount > 0
+          ? fieldValue.cpuCoreCount
+          : minCpu > 0
+            ? minCpu
+            : 1;
+    let numCores = parsePositiveDecimalInput(raw, fallbackCpu, minCpu, maxCpu);
+    if (decimalPlaces > 2) {
+      numCores = Number(numCores.toFixed(2));
+    }
     setValue(UPDATE_FIELD, {
       memoryGib: fieldValue?.memoryGib as number,
-      cpuCoreCount:
-        numCores > maxCPUCores ? maxCPUCores : numCores < minCPUCores ? minCPUCores : numCores
+      cpuCoreCount: numCores
     });
   };
 
   const onMemoryChanged = (value: any) => {
-    const decimalPaces = value?.split?.('.')[1]?.length ?? 0;
-    const memory = decimalPaces > 2 ? Number(value).toFixed(2) : Number(value);
+    const raw = sanitizePositiveDecimalString(String(value));
+    const decimalPlaces = raw.split('.')[1]?.length ?? 0;
+    const fallbackMem =
+      Number.isFinite(defaultMem) && defaultMem > 0
+        ? defaultMem
+        : fieldValue?.memoryGib && fieldValue.memoryGib > 0
+          ? fieldValue.memoryGib
+          : minMem > 0
+            ? minMem
+            : 1;
+    let memory = parsePositiveDecimalInput(raw, fallbackMem, minMem, maxMem);
+    if (decimalPlaces > 2) {
+      memory = Number(Number(memory).toFixed(2));
+    }
     setValue(UPDATE_FIELD, {
       cpuCoreCount: fieldValue?.cpuCoreCount as number,
-      memoryGib:
-        memory > maxMemorySize ? maxMemorySize : memory < minMemorySize ? minMemorySize : memory
+      memoryGib: memory
     });
   };
 
@@ -82,7 +117,7 @@ export const K8NodeSpecField = ({
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('createUniverseV2.validation.required', {
+        required: t('createUniverseV2.instanceSettings.validation.required', {
           field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
@@ -93,7 +128,7 @@ export const K8NodeSpecField = ({
               <Box flex={1}>
                 <YBInput
                   type="number"
-                  label={t('k8NumCores')}
+                  label={t('createUniverseV2.instanceSettings.k8NumCores')}
                   fullWidth
                   slotProps={{
                     htmlInput: {
@@ -112,7 +147,7 @@ export const K8NodeSpecField = ({
             <Box display="flex" flexDirection="column" mt={2}>
               <Box display="flex">
                 <Box>
-                  <YBLabel>{t('memory')}</YBLabel>
+                  <YBLabel>{t('createUniverseV2.instanceSettings.k8Memory')}</YBLabel>
                 </Box>
               </Box>
               <Box display="flex" width="100%">
@@ -142,7 +177,7 @@ export const K8NodeSpecField = ({
                     marginBottom: 1
                   })}
                 >
-                  {t('k8VolumeSizeUnit')}
+                  {t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')}
                 </Box>
               </Box>
             </Box>

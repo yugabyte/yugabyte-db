@@ -127,6 +127,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     // Create the certificate
     String configUUID = createCertificate(certificate, cuuid);
 
+    OperatorUtils.maybeAddYbaResourceId(certificate, UUID.fromString(configUUID), resourceClient);
+
     updateStatus(certificate, true, configUUID, "Certificate created successfully");
     log.info(
         "Successfully created YBCertificate {} with UUID: {}",
@@ -148,6 +150,11 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
       // Query YBA database to check if certificate with this label already exists
       CertificateInfo existingCert = CertificateInfo.get(customerUUID, certificateName);
+
+      // Ensure we have the YBA resource ID annotation.
+      if (existingCert != null) {
+        OperatorUtils.maybeAddYbaResourceId(certificate, existingCert.getUuid(), resourceClient);
+      }
       return existingCert != null;
     } catch (Exception e) {
       log.warn(

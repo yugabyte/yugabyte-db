@@ -46,6 +46,7 @@
 /* YB includes */
 #include "access/htup_details.h"
 #include "access/yb_scan.h"
+#include "catalog/pg_am.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -4200,7 +4201,8 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 									false,	/* is_bitmap_index_scan */
 									&local_quals, &remote_quals, &colrefs, NULL,
 									NULL,
-									planner_rt_fetch(scan_relid, root)->relid);
+									planner_rt_fetch(scan_relid, root)->relid,
+									NULL);
 	else
 		local_quals = extract_actual_clauses(scan_clauses, false);
 
@@ -4404,6 +4406,7 @@ create_indexscan_plan(PlannerInfo *root,
 		 * should still push down index clauses.
 		 */
 		bool		need_idx_remote;
+		Bitmapset  *decoded_pk_attnums = NULL;
 
 		if (bitmapindex)
 			need_idx_remote = true;
@@ -4423,6 +4426,18 @@ create_indexscan_plan(PlannerInfo *root,
 			need_idx_remote = !indexonly;
 
 		/*
+		 * YB: For index-only scans with decoded PK columns, build a set of
+		 * base-table attnums that DocDB cannot evaluate.
+		 */
+		if (indexonly && best_path->indexinfo->yb_num_decoded_pk_cols > 0)
+		{
+			IndexOptInfo *idxinfo = best_path->indexinfo;
+			int			phys_natts = idxinfo->ncolumns - idxinfo->yb_num_decoded_pk_cols;
+			for (int i = phys_natts; i < idxinfo->ncolumns; i++)
+				decoded_pk_attnums = bms_add_member(decoded_pk_attnums, idxinfo->indexkeys[i]);
+		}
+
+		/*
 		 * First, include other clauses from the bitmap branch (if any) as index
 		 * pushdowns. See the comment in build_paths_for_OR for more details.
 		 */
@@ -4433,7 +4448,8 @@ create_indexscan_plan(PlannerInfo *root,
 										NULL,	/* rel_remote_quals */
 										NULL,	/* rel_colrefs */
 										&idx_remote_quals, &idx_colrefs,
-										planner_rt_fetch(baserelid, root)->relid);
+										planner_rt_fetch(baserelid, root)->relid,
+										NULL);
 
 		/* Then, look at all remaining clauses for pushdown-able filters */
 		yb_extract_pushdown_clauses(qpqual,
@@ -4444,7 +4460,11 @@ create_indexscan_plan(PlannerInfo *root,
 									&rel_colrefs,
 									&idx_remote_quals,
 									&idx_colrefs,
-									planner_rt_fetch(baserelid, root)->relid);
+									planner_rt_fetch(baserelid, root)->relid,
+									decoded_pk_attnums);
+
+		if (decoded_pk_attnums)
+			bms_free(decoded_pk_attnums);
 	}
 	else
 		local_quals = extract_actual_clauses(qpqual, false);
@@ -4528,6 +4548,8 @@ create_indexscan_plan(PlannerInfo *root,
 
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		index_only_scan_plan->yb_num_decoded_pk_cols =
+			best_path->indexinfo->yb_num_decoded_pk_cols;
 		if (yb_saop_merge_info)
 			index_only_scan_plan->yb_saop_merge_info = yb_saop_merge_info;
 
@@ -4827,7 +4849,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 								&rel_remote_quals, &rel_colrefs,
 								NULL,	/* idx_remote_quals */
 								NULL,	/* idx_colrefs */
-								planner_rt_fetch(baserelid, root)->relid);
+								planner_rt_fetch(baserelid, root)->relid,
+								NULL);
 
 	YbPushdownExprs rel_pushdown = {rel_remote_quals, rel_colrefs};
 
@@ -4880,7 +4903,8 @@ create_yb_bitmap_scan_plan(PlannerInfo *root,
 								&fallback_remote_quals, &fallback_colrefs,
 								NULL,	/* idx_remote_quals */
 								NULL,	/* idx_colrefs */
-								planner_rt_fetch(baserelid, root)->relid);
+								planner_rt_fetch(baserelid, root)->relid,
+								NULL);
 
 	YbPushdownExprs fallback_pushdown = {fallback_remote_quals, fallback_colrefs};
 
@@ -5225,7 +5249,8 @@ create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 									false,	/* is_bitmap_index_scan */
 									&yb_local_quals, &yb_remote_quals,
 									&yb_colrefs, NULL, NULL,
-									planner_rt_fetch(scan_relid, root)->relid);
+									planner_rt_fetch(scan_relid, root)->relid,
+									NULL);
 	else
 		yb_local_quals = extract_actual_clauses(scan_clauses, false);
 

@@ -25,6 +25,23 @@
  */
 #define ERRCODE_INDEX_LOSTPATH MAKE_SQLSTATE('X', 'X', '0', '0', '3')
 
+/* Specific error code that tracks unredacted log messages in the server logs */
+#define UNREDACTED_LOG_CODE MAKE_SQLSTATE('M', 'Z', 'Z', 'Z', 'Z')
+
+typedef int (*format_log_hook)(const char *fmt, ...) pg_attribute_printf (1, 2);
+extern format_log_hook unredacted_log_emit_hook;
+
+#define errmsg_unredacted(...) \
+	(unredacted_log_emit_hook ? \
+	 (*unredacted_log_emit_hook)(__VA_ARGS__) : \
+	 errmsg_internal(__VA_ARGS__))
+
+
+/* Macro to log messages that are generally PII Safe in server logs */
+#define elog_unredacted(...) \
+	ereport(LOG_SERVER_ONLY, (errcode(UNREDACTED_LOG_CODE), errhidecontext(true), \
+							  errhidestmt(true), errmsg_unredacted(__VA_ARGS__)))
+
 /* Helper method that gets the error data from the current
  * memory context and flushes the error state. */
 static inline ErrorData *

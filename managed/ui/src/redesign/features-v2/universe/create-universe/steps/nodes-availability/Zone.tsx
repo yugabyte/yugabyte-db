@@ -91,6 +91,12 @@ export const Zone: FC<ZoneProps> = ({
 
   const availabilityZones = useWatch({ name: 'availabilityZones', control });
   const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
+  const selectedAzNames = new Set(
+    values(availabilityZones ?? {})
+      .flat()
+      .map((selectedZone) => selectedZone.name)
+      .filter(Boolean)
+  );
 
   const zonesCount = Object.keys(availabilityZones)?.reduce(
     (a, b) => a + availabilityZones[b].length,
@@ -167,7 +173,11 @@ export const Zone: FC<ZoneProps> = ({
             dataTestId="availability-zone-select"
           >
             {region.zones.map((zone) => (
-              <MenuItem key={zone.uuid} value={zone.name}>
+              <MenuItem
+                key={zone.uuid}
+                value={zone.name}
+                disabled={selectedAzNames.has(zone.name) && zone.name !== field.value?.name}
+              >
                 {zone.name}
               </MenuItem>
             ))}
@@ -256,7 +266,7 @@ export const Zone: FC<ZoneProps> = ({
         />
       )}
 
-      {isPrefferedAllowed &&
+      {resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE &&
         (selectedAzCountInRegion > 1 ? (
           <IconButton
             aria-label="Remove availability zone"

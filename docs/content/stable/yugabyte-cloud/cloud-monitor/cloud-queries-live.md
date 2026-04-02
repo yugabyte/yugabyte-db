@@ -8,11 +8,11 @@ menu:
   stable_yugabyte-cloud:
     identifier: cloud-queries-live
     parent: cloud-monitor
-    weight: 200
+    weight: 300
 type: docs
 ---
 
-Evaluate the performance of running queries on your cluster using the **Live Queries** on the cluster **Perf Advisor** tab. You can use this data to:
+Evaluate the performance of running queries on your cluster using the **Live Queries** on the cluster **Performance** tab. You can use this data to:
 
 - Visually identify relevant database operations.
 - Evaluate query execution times.

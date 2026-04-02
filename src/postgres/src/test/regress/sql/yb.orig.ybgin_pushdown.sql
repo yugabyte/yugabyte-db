@@ -3,8 +3,11 @@
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (costs off)'
 
 CREATE TABLE gin_pushdown(
     id varchar(64) not null,
@@ -23,76 +26,76 @@ INSERT INTO gin_pushdown
 
 -- Find rows using gin index
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}'
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Use pushdown filter
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9'
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status <> '9';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9'
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND status = '9';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Pushdown filter that may seem to be pushed with the index scan, however ybgin index
 -- does not store the indexed value, hence filter goes to the main relation
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"'
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"'
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Expression that does not refer any columns can go to the index.
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() > 2.0;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0
+:P SELECT * FROM gin_pushdown WHERE json_content @> '{"refs": [{"val":"9"}]}' AND random() < 2.0;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Find row using regular index
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9'
+:P SELECT * FROM gin_pushdown WHERE guid = '9';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Use pushdown filter
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9'
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND status <> '9';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9'
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND status = '9';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Pushdown filter that goes with the index scan, since json_content is included
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"'
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' <> '"9"';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"'
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND json_content->'refs'->0->'val' = '"9"';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Expression that does not refer any columns can go to the index.
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() > 2.0;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0
+:P SELECT * FROM gin_pushdown WHERE guid = '9' AND random() < 2.0;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Cleanup
 DROP TABLE gin_pushdown;

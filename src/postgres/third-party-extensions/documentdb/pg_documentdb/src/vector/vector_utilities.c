@@ -25,9 +25,11 @@
 #include "metadata/metadata_cache.h"
 #include "vector/bson_extract_vector.h"
 #include "vector/vector_common.h"
+#include "vector/vector_configs.h"
 #include "vector/vector_planner.h"
 #include "vector/vector_utilities.h"
 #include "vector/vector_spec.h"
+#include "utils/error_utils.h"
 
 
 /* --------------------------------------------------------- */
@@ -40,6 +42,13 @@
 
 static Expr * GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 														   FuncExpr *vectorCastFunc);
+
+static VectorIndexDistanceMetric GetDistanceMetricFromOpId(Oid similaritySearchOpId);
+static VectorIndexDistanceMetric GetDistanceMetricFromOpName(const
+															 char *similaritySearchOpName);
+
+static bool IsHalfVectorCastFunctionCore(FuncExpr *vectorCastFunc,
+										 bool logWarning);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -75,7 +84,7 @@ EvaluateMetaSearchScore(pgbson *document)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40218),
 						errmsg(
-							"query requires search score metadata, but it is not available")));
+							"Search score metadata is required for this query, but it is currently unavailable")));
 	}
 }
 
@@ -92,13 +101,12 @@ EvaluateMetaSearchScore(pgbson *document)
  *  b. If the number of rows is greater than 10K, the default efSearch is HNSW_DEFAULT_EF_SEARCH.
  */
 pgbson *
-CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
+CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath, pgbson *searchParamBson)
 {
 	IndexPath *indexPath = (IndexPath *) vectorSearchPath;
 	Oid indexRelam = indexPath->indexinfo->relam;
-	pgbson *searchParamBson = NULL;
 
-	/* Get rows in the index */
+	/* Read rows from the index*/
 	Cardinality indexRows = indexPath->indexinfo->tuples;
 	if (indexRows <= 1)
 	{
@@ -114,7 +122,7 @@ CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
 		if (indexRelation->rd_options != NULL)
 		{
 			searchParamBson = definition->calculateSearchParamBsonFunc(
-				indexRelation->rd_options, indexRows);
+				indexRelation->rd_options, indexRows, searchParamBson);
 		}
 
 		RelationClose(indexRelation);
@@ -136,6 +144,9 @@ CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
 
 /*
  * Generates the Index expression for the vector index column
+ * e.g.
+ *      CAST(API_CATALOG_SCHEMA_NAME.bson_extract_vector(document, 'vect'::text) AS public.vector(2000)) public.vector_l2_ops
+ *      CAST(API_CATALOG_SCHEMA_NAME.bson_extract_vector(document, 'vect'::text) AS public.halfvec(4000)) public.halfvec_l2_ops
  */
 char *
 GenerateVectorIndexExprStr(const char *keyPath,
@@ -144,34 +155,78 @@ GenerateVectorIndexExprStr(const char *keyPath,
 	StringInfo indexExprStr = makeStringInfo();
 
 	char *options;
-	switch (searchOptions->commonOptions.distanceMetric)
+	char *castVectorType;
+
+	if (searchOptions->commonOptions.compressionType == VectorIndexCompressionType_Half)
 	{
-		case VectorIndexDistanceMetric_IPDistance:
+		castVectorType = "halfvec";
+		switch (searchOptions->commonOptions.distanceMetric)
 		{
-			options = "vector_ip_ops";
-			break;
-		}
+			case VectorIndexDistanceMetric_IPDistance:
+			{
+				options = "halfvec_ip_ops";
+				break;
+			}
 
-		case VectorIndexDistanceMetric_CosineDistance:
-		{
-			options = "vector_cosine_ops";
-			break;
-		}
+			case VectorIndexDistanceMetric_CosineDistance:
+			{
+				options = "halfvec_cosine_ops";
+				break;
+			}
 
-		case VectorIndexDistanceMetric_L2Distance:
-		default:
+			case VectorIndexDistanceMetric_L2Distance:
+			default:
+			{
+				options = "halfvec_l2_ops";
+				break;
+			}
+		}
+	}
+	else
+	{
+		/* VectorIndexCompression_None */
+		castVectorType = "vector";
+		switch (searchOptions->commonOptions.distanceMetric)
 		{
-			options = "vector_l2_ops";
-			break;
+			case VectorIndexDistanceMetric_IPDistance:
+			{
+				options = "vector_ip_ops";
+				break;
+			}
+
+			case VectorIndexDistanceMetric_CosineDistance:
+			{
+				options = "vector_cosine_ops";
+				break;
+			}
+
+			case VectorIndexDistanceMetric_L2Distance:
+			default:
+			{
+				options = "vector_l2_ops";
+				break;
+			}
 		}
 	}
 
 	appendStringInfo(indexExprStr,
-					 "CAST(%s.bson_extract_vector(document, %s::text) AS public.vector(%d)) public.%s",
-					 ApiCatalogToApiInternalSchemaName, quote_literal_cstr(keyPath),
+					 "CAST(%s.bson_extract_vector(document, %s::text) AS public.%s(%d)) public.%s",
+					 ApiCatalogToApiInternalSchemaName,
+					 quote_literal_cstr(keyPath),
+					 castVectorType,
 					 searchOptions->commonOptions.numDimensions,
 					 options);
 	return indexExprStr->data;
+}
+
+
+/*
+ * Checks if the vector cast function is a cast to half vector.
+ */
+bool
+IsHalfVectorCastFunction(FuncExpr *vectorCastFunc)
+{
+	return IsHalfVectorCastFunctionCore(vectorCastFunc, false);
 }
 
 
@@ -181,7 +236,7 @@ GenerateVectorIndexExprStr(const char *keyPath,
  */
 bool
 IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
-					  FuncExpr **vectorExtractorFunc)
+					  FuncExpr **vectorCastFunc)
 {
 	if (indexRelation->rd_index->indnkeyatts != 1)
 	{
@@ -211,16 +266,24 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
 		return false;
 	}
 
-	FuncExpr *verctorCtrExpr = (FuncExpr *) linitial(indexprs);
-	if (verctorCtrExpr->funcid != VectorAsVectorFunctionOid())
+	FuncExpr *vectorCtrExpr = (FuncExpr *) linitial(indexprs);
+	bool logWarning = true;
+	if (vectorCtrExpr->funcid != VectorAsVectorFunctionOid() &&
+		!IsHalfVectorCastFunctionCore(vectorCtrExpr, logWarning))
 	{
 		/* Any other index with function expression is not valid vector index */
 		return false;
 	}
 
-	*vectorExtractorFunc = verctorCtrExpr;
+	/* public.vector(ApiCatalogSchemaName.bson_extract_vector(document, 'v'::text), 2000, true) */
+	/* public.vector_to_halfvec(ApiCatalogSchemaName.bson_extract_vector(document, 'v'::text), 4000, true) */
+	*vectorCastFunc = vectorCtrExpr;
+
+	/* First argument is extract vector function, ApiCatalogSchemaName.bson_extract_vector(document, 'v'::text) */
 	FuncExpr *vectorSimilarityIndexFuncExpr = (FuncExpr *) linitial(
-		verctorCtrExpr->args);                                                 /* First argument */
+		vectorCtrExpr->args);
+
+	/* Second argument is the vector path */
 	Expr *vectorSimilarityIndexPathExpr = (Expr *) lsecond(
 		vectorSimilarityIndexFuncExpr->args);
 	Assert(IsA(vectorSimilarityIndexPathExpr, Const));
@@ -246,15 +309,25 @@ IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
  *      vector(ApiCatalogSchema.bson_extract_vector('{ "vector" : [8.0, 1.0, 9.0], "k" : 2, "path" : "v"}', 'vector'), 3, true)
  */
 Expr *
-GenerateVectorSortExpr(const char *queryVectorPath,
+GenerateVectorSortExpr(VectorSearchOptions *vectorSearchOptions,
 					   FuncExpr *vectorCastFunc, Relation indexRelation,
-					   Node *documentExpr, Node *vectorQuerySpecNode,
-					   bool exactSearch)
+					   Node *documentExpr, Node *vectorQuerySpecNode)
 {
+	const char *queryVectorPath = vectorSearchOptions->searchPath;
 	Datum queryVectorPathDatum = CStringGetTextDatum(queryVectorPath);
 	Const *vectorSimilarityIndexPathConst = makeConst(
 		TEXTOID, -1, DEFAULT_COLLATION_OID, -1, queryVectorPathDatum,
 		false, false);
+
+	/* For the exact search, we don't use the vector index
+	 * so force the cast function to the full vector if it is a half vector */
+	if (vectorSearchOptions->exactSearch &&
+		IsHalfVectorCastFunction(vectorCastFunc))
+	{
+		/* copy the vector cast expr, change the function id to full vector */
+		vectorCastFunc = (FuncExpr *) copyObject(vectorCastFunc);
+		vectorCastFunc->funcid = VectorAsVectorFunctionOid();
+	}
 
 	/* ApiCatalogSchemaName.bson_extract_vector(document, 'elem') */
 	List *args = list_make2(documentExpr, vectorSimilarityIndexPathConst);
@@ -287,15 +360,28 @@ GenerateVectorSortExpr(const char *queryVectorPath,
 													righttype,
 													1);
 
-	if (exactSearch)
+	vectorSearchOptions->distanceMetric = GetDistanceMetricFromOpId(
+		similaritySearchOpOid);
+	if (vectorSearchOptions->distanceMetric == VectorIndexDistanceMetric_Unknown)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+						errmsg(
+							"unsupported vector search operator type")));
+	}
+
+	if (vectorSearchOptions->exactSearch)
 	{
 		/*
 		 * Use the underlying function of the similarity operator
 		 * To avoid vector search using vector index
 		 * e.g.
 		 *      the operator '<=>' with the function 'public.cosine_distance'.
+		 *
+		 * In exact search, we should always use the full vector function to calculate the distance
 		 */
-		Oid similarityFuncOid = get_opcode(similaritySearchOpOid);
+		Oid fullSimilarityOpOid = GetFullVectorOperatorId(
+			vectorSearchOptions->distanceMetric);
+		Oid similarityFuncOid = get_opcode(fullSimilarityOpOid);
 
 		FuncExpr *funcExpr = (FuncExpr *) makeFuncExpr(
 			similarityFuncOid, FLOAT8OID,
@@ -337,27 +423,49 @@ SetSearchParametersToGUC(Oid vectorAccessMethodOid, pgbson *searchParamBson)
 
 
 /*
- * This function set the default search parameters to inputState if the user did not specify
+ * This function returns the full vector operator id for the given distance metric.
  */
-void
-TrySetDefaultSearchParamForCustomScan(SearchQueryEvalData *querySearchData)
+Oid
+GetFullVectorOperatorId(VectorIndexDistanceMetric distanceMetric)
 {
-	pgbson *searchInput = NULL;
-	if (querySearchData->SearchParamBson != (Datum) 0)
+	switch (distanceMetric)
 	{
-		searchInput = DatumGetPgBson(querySearchData->SearchParamBson);
-	}
-
-	if (searchInput == NULL || IsPgbsonEmptyDocument(searchInput))
-	{
-		const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
-			querySearchData->VectorAccessMethodOid);
-		if (definition != NULL)
+		case VectorIndexDistanceMetric_CosineDistance:
 		{
-			querySearchData->SearchParamBson = PointerGetDatum(
-				definition->getDefaultSearchParamBsonFunc());
+			return VectorCosineSimilarityOperatorId();
+		}
+
+		case VectorIndexDistanceMetric_IPDistance:
+		{
+			return VectorIPSimilarityOperatorId();
+		}
+
+		case VectorIndexDistanceMetric_L2Distance:
+		{
+			return VectorL2SimilarityOperatorId();
+		}
+
+		default:
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
+							errmsg("Vector search distance type not supported")));
 		}
 	}
+
+	return InvalidOid;
+}
+
+
+/*
+ * The pgvector iterative scan is available from 0.7.0,
+ */
+bool
+IsPgvectorHalfVectorAvailable(void)
+{
+	/* public.vector_to_halfvec function is introduced in 0.7.0 */
+	/* so we can check the function is available or not to indicate the half vector is available */
+	bool missingOk = true;
+	return OidIsValid(VectorAsHalfVecFunctionOid(missingOk));
 }
 
 
@@ -401,4 +509,69 @@ GenerateVectorExractionExprFromQueryWithCast(Node *vectorQuerySpecNode,
 							  COERCE_EXPLICIT_CALL);
 
 	return vectorExractionFromQueryFuncWithCast;
+}
+
+
+static VectorIndexDistanceMetric
+GetDistanceMetricFromOpId(Oid similaritySearchOpId)
+{
+	const char *similaritySearchOpName = get_opname(similaritySearchOpId);
+	return GetDistanceMetricFromOpName(similaritySearchOpName);
+}
+
+
+static VectorIndexDistanceMetric
+GetDistanceMetricFromOpName(const char *similaritySearchOpName)
+{
+	if (similaritySearchOpName == NULL)
+	{
+		return VectorIndexDistanceMetric_Unknown;
+	}
+
+	if (strcmp(similaritySearchOpName, "<->") == 0)
+	{
+		return VectorIndexDistanceMetric_L2Distance;
+	}
+	else if (strcmp(similaritySearchOpName, "<=>") == 0)
+	{
+		return VectorIndexDistanceMetric_CosineDistance;
+	}
+	else if (strcmp(similaritySearchOpName, "<#>") == 0)
+	{
+		return VectorIndexDistanceMetric_IPDistance;
+	}
+	else
+	{
+		return VectorIndexDistanceMetric_Unknown;
+	}
+}
+
+
+/*
+ * Checks if the vector cast function is a cast to half vector.
+ * This is used to check if the vector index is a half vector index.
+ */
+static bool
+IsHalfVectorCastFunctionCore(FuncExpr *vectorCastFunc, bool logWarning)
+{
+	if (!IsPgvectorHalfVectorAvailable())
+	{
+		if (logWarning)
+		{
+			ereport(WARNING, (errmsg(
+								  "The half vector is not supported by pgvector, please check the version of pgvector")));
+		}
+		return false;
+	}
+
+	bool missingOk = false;
+	Oid halfVectorCastFuncOid = VectorAsHalfVecFunctionOid(missingOk);
+
+	if (vectorCastFunc != NULL &&
+		vectorCastFunc->funcid == halfVectorCastFuncOid)
+	{
+		return true;
+	}
+
+	return false;
 }

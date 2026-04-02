@@ -22,7 +22,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,6 +29,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -122,7 +122,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       log.debug("Comprehensive prechecks are disabled, skipping.");
       return;
     }
-
+    // On the first try, we only want to check the nodes that are being added.
+    // On retry, some nodes might have transitioned into some other state.
+    Collection<NodeDetails> nodesToCheck =
+        isFirstTry() ? taskParams().nodeDetailsSet : universe.getNodes();
+    createCheckDuplicateInstances(universe, nodesToCheck);
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
     if (liveNodes.isEmpty()) {
       log.debug("No live nodes found, skipping comprehensive prechecks.");
@@ -549,7 +553,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           SubTaskGroupType.UpdatingGFlags,
           false,
           true,
-          (x) -> UniverseTaskParams.DEFAULT_SLEEP_AFTER_RESTART_MS);
+          (serverType) ->
+              serverType == ServerType.MASTER
+                  ? confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterMasterRestartMs)
+                  : confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterTServerRestartMs));
     }
   }
 

@@ -35,7 +35,7 @@ import { assignRegionsAZNodeByReplicationFactor } from '../../CreateUniverseUtil
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
-    i18n: { changeLanguage: () => new Promise(() => {}) }
+    i18n: { changeLanguage: () => new Promise(() => { }) }
   }),
   Trans: ({
     children,
@@ -211,7 +211,7 @@ describe('NodesAvailabilitySchema', () => {
     expect(() =>
       schema.validateSync({
         availabilityZones: makeAvailabilityZonesThreeRegionsPreferredGap(),
-        nodeCountPerAz: 1,
+
         useDedicatedNodes: false
       } as any)
     ).toThrow();
@@ -225,7 +225,6 @@ describe('NodesAvailabilitySchema', () => {
     expect(() =>
       schema.validateSync({
         availabilityZones: makeAvailabilityZonesPreferredGapRf1NodeLevel('r0'),
-        nodeCountPerAz: 1,
         useDedicatedNodes: false
       } as any)
     ).toThrow();
@@ -245,7 +244,7 @@ describe('NodesAvailabilitySchema', () => {
             { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 2 }
           ]
         },
-        nodeCountPerAz: 1,
+
         useDedicatedNodes: false
       } as any)
     ).not.toThrow();
@@ -265,13 +264,13 @@ describe('NodesAvailabilitySchema', () => {
             { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 3 }
           ]
         },
-        nodeCountPerAz: 1,
+
         useDedicatedNodes: false
       } as any)
     ).toThrow();
   });
 
-  it('rejects NODE_LEVEL when more than one AZ is configured', () => {
+  it('accepts NODE_LEVEL guided when multiple AZs are within RF-1 cap', () => {
     const schema = NodesAvailabilitySchema({
       ...minimalResilience,
       [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
@@ -281,11 +280,54 @@ describe('NodesAvailabilitySchema', () => {
       schema.validateSync({
         availabilityZones: {
           r0: [
-            { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
-            { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 0 }
+            { name: 'Z0', uuid: 'u-0', nodeCount: 2, preffered: 0 },
+            { name: 'Z1', uuid: 'u-1', nodeCount: 2, preffered: 1 }
           ]
         },
-        nodeCountPerAz: 1,
+
+        useDedicatedNodes: false
+      } as any)
+    ).not.toThrow();
+  });
+
+  it('rejects NODE_LEVEL guided when AZ count exceeds RF-1 cap', () => {
+    const schema = NodesAvailabilitySchema({
+      ...minimalResilience,
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+      [RESILIENCE_FACTOR]: 1,
+      [REGIONS_FIELD]: [{ code: 'r0', name: 'R0', uuid: 'R0', latitude: 0, longitude: 0, zones: [] }] as any
+    });
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [
+            { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
+            { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 },
+            { name: 'Z2', uuid: 'u-2', nodeCount: 1, preffered: 2 }
+          ]
+        },
+
+        useDedicatedNodes: false
+      } as any)
+    ).toThrow();
+  });
+
+  it('rejects NODE_LEVEL when more than one region has availability zones', () => {
+    const schema = NodesAvailabilitySchema({
+      ...minimalResilience,
+      [FAULT_TOLERANCE_TYPE]: FaultToleranceType.NODE_LEVEL,
+      [REGIONS_FIELD]: [
+        { code: 'r0', name: 'R0', uuid: 'R0', latitude: 0, longitude: 0, zones: [] },
+        { code: 'r1', name: 'R1', uuid: 'R1', latitude: 0, longitude: 0, zones: [] }
+      ] as any
+    });
+    expect(() =>
+      schema.validateSync({
+        availabilityZones: {
+          r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }],
+          r1: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 }]
+        },
+
         useDedicatedNodes: false
       } as any)
     ).toThrow();
@@ -396,8 +438,7 @@ describe('NodesAvailability', () => {
                 { name: 'Z2', uuid: 'u2', nodeCount: 1, preffered: 2 }
               ]
             },
-            useDedicatedNodes: false,
-            nodeCountPerAz: 1
+            useDedicatedNodes: false
           }
         })
       );
@@ -457,8 +498,7 @@ describe('NodesAvailability', () => {
           regions: [makeRegion('r0', 1)],
           nodesAvailabilitySettings: {
             availabilityZones: makeAvailabilityZonesWithNodeCount('r0', 2),
-            useDedicatedNodes: false,
-            nodeCountPerAz: 1
+            useDedicatedNodes: false
           }
         })
       );
@@ -514,8 +554,7 @@ describe('NodesAvailability', () => {
           regions: [makeRegion('r0', 1)],
           nodesAvailabilitySettings: {
             availabilityZones: makeAvailabilityZonesWithNodeCount('r0', 2),
-            useDedicatedNodes: true,
-            nodeCountPerAz: 1
+            useDedicatedNodes: true
           }
         })
       );
@@ -524,16 +563,58 @@ describe('NodesAvailability', () => {
       });
     });
 
-    it('shows nodeLevelOneRegionOneAz when NODE_LEVEL has more than one AZ', async () => {
+    it('shows no nodeLevel error for NODE_LEVEL with two AZs when under RF-1 cap', async () => {
       renderNodesAndTriggerNext(
         getContextValue({
           faultToleranceType: FaultToleranceType.NODE_LEVEL,
           resilienceFactor: 1,
           regions: [makeRegion('r0', 2)],
           nodesAvailabilitySettings: {
-            availabilityZones: makeValidAvailabilityZonesForRegion('r0', 2),
-            useDedicatedNodes: false,
-            nodeCountPerAz: 1
+            availabilityZones: {
+              r0: [
+                { name: 'Z0', uuid: 'u-0', nodeCount: 2, preffered: 0 },
+                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 }
+              ]
+            },
+            useDedicatedNodes: false
+          }
+        })
+      );
+      await waitFor(() => {
+        expect(screen.queryByText('errMsg.nodeLevelAzTooMany')).not.toBeInTheDocument();
+        expect(screen.queryByText('errMsg.nodeLevelOneRegionOneAz')).not.toBeInTheDocument();
+      });
+    });
+
+    it('shows nodeLevelAzTooMany when NODE_LEVEL has more AZs than RF-1 allows', async () => {
+      renderNodesAndTriggerNext(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.NODE_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3)],
+          nodesAvailabilitySettings: {
+            availabilityZones: makeValidAvailabilityZonesForRegion('r0', 3),
+            useDedicatedNodes: false
+          }
+        })
+      );
+      await waitFor(() => {
+        expect(screen.getByText('errMsg.nodeLevelAzTooMany')).toBeInTheDocument();
+      });
+    });
+
+    it('shows nodeLevelOneRegionOneAz when NODE_LEVEL has zones in multiple regions', async () => {
+      renderNodesAndTriggerNext(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.NODE_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 1), makeRegion('r1', 1)],
+          nodesAvailabilitySettings: {
+            availabilityZones: {
+              r0: [{ name: 'Z0', uuid: 'u-0', nodeCount: 3, preffered: 0 }],
+              r1: [{ name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 }]
+            },
+            useDedicatedNodes: false
           }
         })
       );
@@ -565,8 +646,7 @@ describe('NodesAvailability', () => {
           regions: [makeRegion('r0', 2)],
           nodesAvailabilitySettings: {
             availabilityZones: makeValidAvailabilityZonesForRegion('r0', 2),
-            useDedicatedNodes: false,
-            nodeCountPerAz: 1
+            useDedicatedNodes: false
           }
         })
       );
@@ -617,8 +697,7 @@ describe('NodesAvailability', () => {
                 { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 2 }
               ]
             },
-            useDedicatedNodes: false,
-            nodeCountPerAz: 1
+            useDedicatedNodes: false
           }
         })
       );
@@ -664,6 +743,38 @@ describe('NodesAvailability', () => {
       expect(nodeInputs).toHaveLength(2);
       expect(within(nodeInputs[0]).getByRole('spinbutton')).toBeDisabled();
       expect(within(nodeInputs[1]).getByRole('spinbutton')).toBeDisabled();
+    });
+  });
+
+  describe('AZ name uniqueness in selector', () => {
+    it('disables AZ names that are already selected in another row', async () => {
+      renderNodes(
+        getContextValue({
+          faultToleranceType: FaultToleranceType.AZ_LEVEL,
+          resilienceFactor: 1,
+          regions: [makeRegion('r0', 3)],
+          nodesAvailabilitySettings: {
+            availabilityZones: {
+              r0: [
+                { name: 'Z0', uuid: 'u-0', nodeCount: 1, preffered: 0 },
+                { name: 'Z1', uuid: 'u-1', nodeCount: 1, preffered: 1 }
+              ]
+            },
+            nodeCountPerAz: 1,
+            useDedicatedNodes: false
+          } as any
+        })
+      );
+
+      const azSelects = screen.getAllByLabelText('Availability Zone');
+      fireEvent.mouseDown(azSelects[1]);
+
+      const listbox = await screen.findByRole('listbox');
+      const selectedElsewhereOption = within(listbox).getByRole('option', { name: 'Z0' });
+      const currentSelectionOption = within(listbox).getByRole('option', { name: 'Z1' });
+
+      expect(selectedElsewhereOption).toHaveAttribute('aria-disabled', 'true');
+      expect(currentSelectionOption).not.toHaveAttribute('aria-disabled', 'true');
     });
   });
 });

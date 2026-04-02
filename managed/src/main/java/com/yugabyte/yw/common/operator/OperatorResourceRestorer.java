@@ -150,6 +150,9 @@ public class OperatorResourceRestorer {
     String name = resource.getMetadata().getName();
     String ns = resource.getMetadata().getNamespace();
 
+    // Set the resource version to null so it gets updated automatically by k8s.
+    resource.getMetadata().setResourceVersion(null);
+
     HasMetadata existing = getExistingResource(client, resource, ns);
 
     if (existing == null) {

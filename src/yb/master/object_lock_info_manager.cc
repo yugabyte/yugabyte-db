@@ -683,6 +683,14 @@ std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::ts_local_loc
   return impl_->ts_local_lock_manager();
 }
 
+TSDescriptorVector ObjectLockInfoManager::GetAllTSDescriptorsWithALiveLease() const {
+  return impl_->GetAllTSDescriptorsWithALiveLease();
+}
+
+bool ObjectLockInfoManager::TabletServerHasLiveLease(const std::string& ts_uuid) const {
+  return impl_->TabletServerHasLiveLease(ts_uuid);
+}
+
 std::shared_ptr<tserver::TSLocalLockManager> ObjectLockInfoManager::TEST_ts_local_lock_manager() {
   return impl_->TEST_ts_local_lock_manager();
 }

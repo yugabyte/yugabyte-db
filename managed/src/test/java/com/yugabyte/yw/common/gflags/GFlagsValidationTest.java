@@ -2,13 +2,16 @@
 
 package com.yugabyte.yw.common.gflags;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.io.IOException;
@@ -21,13 +24,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import junitparams.JUnitParamsRunner;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -172,15 +173,10 @@ public class GFlagsValidationTest extends FakeDBApplication {
             GFlagsValidation.MASTER_GFLAG_FILE_NAME, GFlagsValidation.TSERVER_GFLAG_FILE_NAME);
     createGFlagFiles(releasesPath, version, requiredFiles);
 
-    Field versionLocksField = GFlagsValidation.class.getDeclaredField("versionLocks");
-    versionLocksField.setAccessible(true);
-    ConcurrentHashMap<String, ReentrantLock> versionLocks =
-        (ConcurrentHashMap<String, ReentrantLock>) versionLocksField.get(gFlagsValidation);
-
-    ReentrantLock lock = new ReentrantLock();
-    lock.lock();
-    versionLocks.put(version, lock);
-
+    Field versionKeyLockField = GFlagsValidation.class.getDeclaredField("versionKeyLock");
+    versionKeyLockField.setAccessible(true);
+    KeyLock<String> versionKeyLock = (KeyLock<String>) versionKeyLockField.get(gFlagsValidation);
+    versionKeyLock.acquireLock(version);
     CountDownLatch threadStarted = new CountDownLatch(1);
     CountDownLatch threadCompleted = new CountDownLatch(1);
 
@@ -202,9 +198,9 @@ public class GFlagsValidationTest extends FakeDBApplication {
     assertFalse(
         "Thread should be blocked on the version lock",
         threadCompleted.await(500, TimeUnit.MILLISECONDS));
-    assertTrue(lock.hasQueuedThreads());
+    assertTrue(versionKeyLock.hasQueuedThreads());
 
-    lock.unlock();
+    versionKeyLock.releaseLock(version);
 
     assertTrue(
         "Thread should complete after lock is released",

@@ -4,7 +4,7 @@ SET citus.next_shard_id TO 455000;
 SET documentdb.next_collection_id TO 4550;
 SET documentdb.next_collection_index_id TO 4550;
 
-SELECT documentdb_api.drop_collection('db','setWindowFields');
+SELECT 1 from documentdb_api.drop_collection('db','setWindowFields');
 
 -- Add error and validation tests for setWindowFields stage
 
@@ -136,12 +136,12 @@ SELECT documentdb_api.insert_one('db','setWindowFields_sharded','{ "_id": 3, "a"
 SELECT documentdb_api.shard_collection('db', 'setWindowFields_sharded', '{"a": "hashed"}', false);
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$cost", "output": {"total": { "$sum": 1}}}}]}');
+    '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$cost", "output": {"total": { "$sum": 1}}}}, {"$sort": { "a": 1, "_id": 1 }}]}');
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$cost", "output": {"total": { "$sum": 1}}}}]}'); -- different partitionby, not pushed to shards
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
-    '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$a", "output": {"total": { "$sum": 1}}}}]}');
+    '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$a", "output": {"total": { "$sum": 1}}}}, { "$sort" : {"a" : 1, "_id" : 1}}]}');
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields_sharded", "pipeline":  [{"$setWindowFields": { "partitionBy": "$a", "output": {"total": { "$sum": 1}}}}]}'); -- same partitioBy as shardkey, pushed to shards
 
@@ -212,7 +212,7 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$sum": 1, "window": {"range": [-5, 5], "unit": "minute"}}}}}]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$sum": 1, "window": {"range": [-5, 5], "unit": "day"}}}}}]}');
--- current in range doesn't mean current row its always the first peer which has same sort by value. This differs from MongoDB
+-- "CURRENT ROW" in a range frame does not always refer to the current physical row; it refers to the first peer with the same sort key value.
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$sum": 1, "window": {"range": ["current", "current"], "unit": "day"}}}}}]}');
 
@@ -612,12 +612,12 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 
 -- shard collection
 SELECT documentdb_api.shard_collection('db', 'window_col', '{ "type": "hashed" }', false);
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", -1]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": { "documents": ["unbounded", -1]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": {"_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": {"documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": { "date": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": {"date": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": {"documents": ["unbounded", "current"]}}}}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", -1]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": { "documents": ["unbounded", -1]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": {"_id": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": {"documents": ["unbounded", "current"]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": { "date": 1}, "output": {"covariancePop": { "$covariancePop": ["$x", "$y"], "window": { "documents": ["unbounded", "current"]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": {"date": 1}, "output": {"covarianceSamp": { "$covarianceSamp": ["$x", "$y"], "window": {"documents": ["unbounded", "current"]}}}}}, {"$sort": { "type": 1, "_id": 1 }}]}');
 
 -----------------------------------------------------------
 -- $rank accumulator tests
@@ -1312,11 +1312,11 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 
 -- shard collection
 SELECT documentdb_api.shard_collection('db', 'window_stddev_col', '{ "type": "hashed" }', false);
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", -1]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": {"_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": "$num", "window": {"documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": { "date": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", "current"]}}}}}]}');
-SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": {"date": 1}, "output": {"stdDevSamp": { "$stdDevSamp": "$num", "window": {"documents": ["unbounded", "current"]}}}}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", -1]}}}}}, {"$sort" : {"type" : 1, "_id" : 1}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": { "_id": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", "current"]}}}}}, {"$sort" : {"type" : 1, "_id" : 1}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": "$type", "sortBy": {"_id": 1}, "output": {"stdDevSamp": { "$stdDevSamp": "$num", "window": {"documents": ["unbounded", "current"]}}}}}, {"$sort" : {"type" : 1, "_id" : 1}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": { "date": 1}, "output": {"stdDevPop": { "$stdDevPop": "$num", "window": { "documents": ["unbounded", "current"]}}}}}, {"$sort" : {"type" : 1, "_id" : 1}}]}');
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "window_stddev_col", "pipeline":  [{"$setWindowFields": {"partitionBy": { "$cond": [{ "$eq": [{ "$mod": ["$_id", 2] }, 0] }, "even", "odd"] }, "sortBy": {"date": 1}, "output": {"stdDevSamp": { "$stdDevSamp": "$num", "window": {"documents": ["unbounded", "current"]}}}}}, {"$sort" : {"type" : 1, "_id" : 1}}]}');
 
 
 -----------------------------------------------------------
@@ -1596,7 +1596,7 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$min": "$quantity", "window": {"range": [-5, 5], "unit": "minute"}}}}}]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$min": "$quantity", "window": {"range": [-5, 5], "unit": "day"}}}}}]}');
--- current in range doesn't mean current row its always the first peer which has same sort by value. This differs from MongoDB
+-- "CURRENT ROW" in a range frame does not always refer to the current physical row; it refers to the first peer with the same sort key value.
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$max": "$quantity", "window": {"range": ["current", "current"], "unit": "day"}}}}}]}');
 
@@ -1657,6 +1657,17 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$max": "$quantity", "window": {"range": [-5, 5], "unit": "minute"}}}}}]}');
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$max": "$quantity", "window": {"range": [-5, 5], "unit": "day"}}}}}]}');
--- current in range doesn't mean current row its always the first peer which has same sort by value. This differs from MongoDB
+-- "CURRENT ROW" in a range frame does not always refer to the current physical row; it refers to the first peer with the same sort key value.
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"totalInGroup": { "$max": "$quantity", "window": {"range": ["current", "current"], "unit": "day"}}}}}]}');
+
+
+-- Tests for $last
+
+SELECT documentdb_api.insert_one('db','lastSetWindowFields','{ "_id": 1, "storeId": 1, "area": "Delhi", "company": "ABC Cares", "lastUpdated": { "$date" : { "$numberLong" : "1756720800000" } }, "status": "open" }', NULL);
+SELECT documentdb_api.insert_one('db','lastSetWindowFields','{ "_id": 2, "storeId": 2, "area": "Mumbai", "company": "ABC Cares", "lastUpdated": { "$date" : { "$numberLong" : "1756902000000" } }, "status": "closed" }', NULL);
+SELECT documentdb_api.insert_one('db','lastSetWindowFields','{ "_id": 3, "storeId": 3, "area": "Kolkata", "company": "ABC Cares", "lastUpdated": { "$date" : { "$numberLong" : "1757086200000" } }, "status": "open" }', NULL);
+SELECT documentdb_api.insert_one('db','lastSetWindowFields','{ "_id": 4, "storeId": 4, "area": "Chennai", "company": "ABC Cares", "lastUpdated": { "$date" : { "$numberLong" : "1757235600000" } }, "status": "open" }', NULL);
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db',
+    '{ "aggregate": "lastSetWindowFields", "pipeline":[{"$match":{"company":{"$in":["ABC Cares"]}}}, {"$setWindowFields": {"partitionBy":"$company","sortBy": {"lastUpdated": {"$numberInt" : "1" } }, "output" : { "lastUpdatedDateForStore" : { "$last" : "$lastUpdated", "window" : { "documents" : [ "current", "unbounded" ] } } } } } ]}');

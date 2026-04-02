@@ -20,9 +20,11 @@ public class BackupScheduleToggleParams {
   @ApiModelProperty(
       value =
           "Run a full or incremental backup if required when resuming a stopped schedule. When"
-              + " false (default), the full backup will instead run at its normally scheduled"
-              + " time.")
-  public boolean runImmediateBackupOnResume = false;
+              + " false, the full backup will instead run at its normally scheduled"
+              + " time. When true, the full backup will run immediately, and then the schedule will"
+              + " continue as normal. If not specified, the value is determined by the"
+              + " yb.backup.run_immediate_backup_on_resume runtime config.")
+  public Boolean runImmediateBackupOnResume;
 
   public void verifyScheduleToggle(Schedule.State currentScheduleState) {
     if (currentScheduleState == this.status) {

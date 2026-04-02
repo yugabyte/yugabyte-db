@@ -930,6 +930,11 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
   return num_successive_merges;
 }
 
+const yb::storage::UserFrontiers* MemTable::Frontiers() const {
+  CHECK(immutable_.load());
+  return frontiers_.get();
+}
+
 yb::storage::UserFrontierPtr MemTable::GetFrontier(yb::storage::UpdateUserValueType type) const {
   std::lock_guard l(frontiers_mutex_);
   if (!frontiers_) {
@@ -944,6 +949,15 @@ yb::storage::UserFrontierPtr MemTable::GetFrontier(yb::storage::UpdateUserValueT
   }
 
   FATAL_INVALID_ENUM_VALUE(yb::storage::UpdateUserValueType, type);
+}
+
+UserFrontierRange MemTable::GetFrontiers() const {
+  std::lock_guard l(frontiers_mutex_);
+  if (!frontiers_) {
+    return UserFrontierRange{};
+  }
+
+  return UserFrontierRange{frontiers_->Smallest().Clone(), frontiers_->Largest().Clone()};
 }
 
 void MemTableRep::Get(const LookupKey& k, void* callback_args,

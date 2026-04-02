@@ -75,12 +75,7 @@ export const EARField: FC<EARProps> = ({ disabled }) => {
               name={KMS_FIELD}
               control={control}
               rules={{
-                required:
-                  !disabled && encryptionEnabled
-                    ? (t('createUniverseV2.validation.required', {
-                        field: t('createUniverseV2.securitySettings.earField.kmsConfig')
-                      }) as string)
-                    : ''
+                required: !disabled && encryptionEnabled ? 'This field is required' : ''
               }}
               render={({ field, fieldState }) => {
                 const value = kmsConfigs.find((i) => i.metadata.configUUID === field.value) ?? '';

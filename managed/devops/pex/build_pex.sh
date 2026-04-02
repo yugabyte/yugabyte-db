@@ -50,6 +50,9 @@ function generateMultiPlatformPex {
 function repairPexWheels {
     pexFile=$POINTER
     unzip $pexFile -d pexEnv
+    find . -type f \( -name "*.key" -o -name "*.pem" \) \
+        \( -path "*/slapdtest/certs/*" -o -path "*/httplib2/tests/tls/*" \) \
+        -delete 2>/dev/null || true
     cd pexEnv/.deps
     mkdir extractedWheels
     for whl in *; do
@@ -112,6 +115,10 @@ function reconstructPex {
     rm -rf wheelhouse
     cd /code/pex/
     rm -rf pexEnv.pex
+    cd ..
+    find . -type f \( -name "*.key" -o -name "*.pem" \) \
+        \( -path "*/slapdtest/certs/*" -o -path "*/httplib2/tests/tls/*" \) -delete
+    cd /code/pex
 
 }
 

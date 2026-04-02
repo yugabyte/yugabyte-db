@@ -4,38 +4,38 @@ SET citus.next_shard_id TO 70000;
 SET documentdb.next_collection_id TO 7000;
 SET documentdb.next_collection_index_id TO 7000;
 -- Insert data
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 1, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 1, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 2, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 2, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 3, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 3, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 4, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 4, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 5, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 5, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 6, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -47,14 +47,14 @@ SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds"
 -- especially if only a small number of rows are requested.
 -- https://www.postgresql.org/docs/current/tsm-system-rows.html
 -- Sample with cursor for unsharded collection not supported - use persisted cursor
-SELECT * FROM documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
-                                                                                                              cursorpage                                                                                                              |                                                                                                    continuation                                                                                                    | persistconnection |  cursorid  
+SELECT * FROM documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
+                                                                                                                cursorpage                                                                                                                 |                                                                                                    continuation                                                                                                    | persistconnection |  cursorid  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.sample", "firstBatch" : [ { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" }, "sn" : NOW_SYS_VARIABLE } | t                 | 4294967294
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.sampleTest", "firstBatch" : [ { "product" : "beer", "unitPrice" : { "$numberInt" : "1" }, "stock" : { "$numberInt" : "1" } } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" }, "sn" : NOW_SYS_VARIABLE } | t                 | 4294967294
 (1 row)
 
 -- Shard orders collection on item 
-SELECT documentdb_api.shard_collection('db','sample', '{"item":"hashed"}', false);
+SELECT documentdb_api.shard_collection('db','sampleTest', '{"product":"hashed"}', false);
  shard_collection 
 ---------------------------------------------------------------------
  
@@ -63,16 +63,16 @@ SELECT documentdb_api.shard_collection('db','sample', '{"item":"hashed"}', false
 -- If the collection is sharded, have to call TABLESAMPLE SYSTEM_ROWS(n) LIMIT n
 -- SYSTEM_ROWS(n) may always be optimal, but important, as one but all shards may be 
 -- emptty. If we use SYSTEM_ROWS(<n), we might have to go back to get more data.
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
-                                           document                                            
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
+                                            document                                            
 ---------------------------------------------------------------------
- { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } }
- { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } }
- { "item" : "almonds", "price" : { "$numberInt" : "1" }, "quantity" : { "$numberInt" : "1" } }
+ { "product" : "beer", "unitPrice" : { "$numberInt" : "1" }, "stock" : { "$numberInt" : "1" } }
+ { "product" : "beer", "unitPrice" : { "$numberInt" : "1" }, "stock" : { "$numberInt" : "1" } }
+ { "product" : "beer", "unitPrice" : { "$numberInt" : "1" }, "stock" : { "$numberInt" : "1" } }
 (3 rows)
 
 SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
+EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
 $Q$);
                              mask_plan_id_from_distributed_subplan                              
 ---------------------------------------------------------------------

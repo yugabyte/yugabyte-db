@@ -2422,7 +2422,7 @@
       "includeYugabyteVersions": "Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog",
       "addLinuxVersion": "Add Linux Version",
       "editLinuxVersion": "Edit Linux Version",
-      "viewLinuxVersion": "View Linux Version", 
+      "viewLinuxVersion": "View Linux Version",
       "linuxVersionCatalog": "Linux Version Catalog",
       "linuxVersions": "Linux versions",
       "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
@@ -3497,6 +3497,8 @@
         "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
+        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges tocomplete this step.",
+        "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
         "databaseVersion": "Database Version",
         "databaseVersionPlaceholder": "Select Database Version",
         "errMsg": {
@@ -3602,7 +3604,8 @@
           "nodes": "Nodes",
           "nodesPerAz": "Nodes per Availability Zone",
           "nodesTserverPerAz": "Nodes (T-Server) per Availability Zone",
-          "totalNodes": "Total Nodes"
+          "totalNodes": "Total Nodes",
+          "totalNodesTserver": "Total Nodes (Tserver)"
         },
         "availabilityZones": {
           "title": "Availability Zones and Nodes",
@@ -3610,7 +3613,8 @@
           "add_button": "Add Availability Zone",
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
-            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.",
+            "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
+            "addAvailabilityZoneDisabledNodeLevel": "Node-level resilience allows at most {{max_az}} availability zones.Remove an availability zone before adding.",
             "regionNoMoreAz": "This region has only {{count}} availability zones.",
             "guidedNodeCount": "To set up a cluster with different node counts per availability zone, switch to <b>Expert Mode</b> in the previous step (Regions).",
             "learnMore": "Learn more"
@@ -3623,7 +3627,7 @@
         "dedicatedNodes": {
           "toggle": "Allocate dedicated nodes to master servers",
           "disabledToolip": "you need atleast {{nodeCount}} nodes to enable this option",
-          "title": "Master Node Placement (Optional)",
+          "title": "Advanced Configurations",
           "helpText": "Optimize performance by allocating dedicated resources for metadata operations.",
           "helpTextLink": "<b>Note!</b> This will increase the number nodes in your cluster.  <a>Learn more.</a>",
           "helpText1": "Improve metadata and cluster coordination capacity by placing master servers on dedicated nodes.",
@@ -3655,7 +3659,7 @@
           "title": "YugabyteDB 101",
           "rfFactor": "What is Replication Factor?",
           "rfFactorAns": "YugabyteDB replicates data across fault domains (which, depending on the deployment, could be nodes, availability zones, or regions) in order to tolerate faults. The replication factor (RF) is the number of copies of data in a YugabyteDB cluster.",
-          "learn": "<a>Learn more about Replication Factor .</a>"
+          "learn": "<a>Learn more about Replication Factor.</a>"
         },
         "prefferedInfoModal": {
           "title": "YugabyteDB 101",
@@ -3670,7 +3674,8 @@
           "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
           "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
           "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
-          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires <b>one region</b> with <b>one availability zone</b>. Remove extra zones or regions.",
+          "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
+          "nodeLevelAzTooMany": "<b>Invalid configuration:</b> Node-level resilience allows at most <b>{{max_az}} availability zones</b> (replication factor minus one). You have selected <b>{{availability_zone}}</b>. Remove zones to proceed.",
           "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
           "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps."
@@ -3694,6 +3699,9 @@
         "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
         "ebs": "EBS Type",
         "instanceType": "Instance Type",
+        "ephemeralStorageWarning": "Selected storage type is local (ephemeral). If a node is stopped, rebooted, or fails, the data on its disk is wiped. <1>Learn more</1>",
+        "premiumv2StorageHelper": "Selected storage type is not available in all regions. If any of the regions you have selected don't support the storage type, the deployment will fail.",
+        "hyperdiskStorageHelper": "Selected storage type is not supported by all instance types. Using an unsupported combination will cause deployment to fail. <1>Learn more</1>",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
         "useSpotInstance": "Use Spot Instances",
@@ -3701,6 +3709,7 @@
         "kmsConfigPlaceHolder": "Select Configuration",
         "provisionedIopsPerNode": "Provisioned IOPS / Node ",
         "provisionedThroughputPerNode": "Provisioned Throughput / Node",
+        "provisionedThroughputPerPod": "Provisioned Throughput / Pod",
         "ssd": "Storage Type (SSD)",
         "useTimeSync": "Use {{provider}} Time Sync",
         "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
@@ -3761,6 +3770,7 @@
       },
       "securitySettings": {
         "publicIPTitle": "Public IP assignment",
+        "networkAcessTitle": "Network Access",
         "eitTitle": "Encryption in Transit Settings",
         "earTitle": "Encryption at Rest Settings",
         "publicIPField": {
@@ -3779,22 +3789,49 @@
           "selectRootCert": "Select Root Certificate",
           "rootCertificatePlaceHolder": "Select",
           "genSelfSignedCert": "Generate Self Signed Certificate",
-          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption"
-        }
+          "enableBothEncryption": "Enable Node to Node and Client-to-Node Encryption",
+          "eitLabel": "Enable Encryption in Transit",
+          "nodeToNodeLabel": "<strong>Node-to-Node</strong> Encryption",
+          "clientToNodeLabel": "<strong>Client-to-Node</strong> Encryption",
+          "certTypeLabel": "Certificate Type",
+          "selfGenerated": "Use system-generated (self-signed) certificate",
+          "customManaged": "Use customer-managed certificate"
+        },
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
       },
       "proxySettings": {
         "header": "Proxy Configuration",
+        "validation": {
+          "required": "Required",
+          "selectAtLeastOneProxyType": "You must select at least one proxy server type.",
+          "httpsUrlInvalid": "Invalid endpoint. URL must start with  “https://”",
+          "httpUrlInvalid": "Invalid endpoint. URL must start with  “http://”",
+          "bypassRequired": "Required",
+          "bypassInvalidEntries": "Remove invalid entries",
+          "bypassUrlNotAllowed": "Invalid entry",
+          "bypassInvalidEntry": "Invalid entry",
+          "globalNextError": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
+        },
+        "proxyServerType": {
+          "heading": "Proxy Server Type",
+          "subheading": "Select at least one proxy server type."
+        },
+        "bypassProxySection": {
+          "toggleLabel": "Bypass Proxy List (Optional)",
+          "tooltip": "List of domains/IPs that should bypass the proxy."
+        },
         "enableProxyServer": {
           "toggleLabel": "Enable Proxy Server",
           "toggleHelper": "Configure web proxies as gateways for traffic from your database nodes.",
           "learnMore": "Learn more",
           "secureWebProxyLabel": "Secure Web Proxy (HTTPS)",
-          "serverLabel": "Server",
+          "secureWebProxyEndpoint": "Secure Proxy Server Endpoint (HTTPS)",
           "serverPlaceholder": "https://proxy.example.com",
           "webServerPlacehoder": "http://proxy.example.com",
           "portLabel": "Port",
           "portPlaceholder": "8080",
           "webProxy": "Web Proxy (HTTP)",
+          "webProxyLabel": "Web Proxy Server Endpoint (HTTP)",
           "byPassProxy": "Bypass Proxy List",
           "byPassListPlaceholder": "example.com:8080",
           "byPassHelper": "Separate multiple values by pressing <b>Enter, Space,</b> or <b>Comma</b>."
@@ -3856,6 +3893,14 @@
         "totalStorage": "Total Storage",
         "universe": "Universe",
         "universeTotal": "Universe Total"
+      },
+      "validation": {
+        "confirmPassword": "Passwords should match",
+        "fieldRequired": "This field is required",
+        "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
+        "required": "{{field}} is required",
+        "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes",
+        "alertMsg": "<strong>Invalid Configuration!</strong> Review the highlighted fields before proceeding."
       }
     },
     "geoPartition": {

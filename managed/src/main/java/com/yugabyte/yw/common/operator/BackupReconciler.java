@@ -91,6 +91,10 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
   public void onAdd(Backup backup) {
     BackupStatus status = backup.getStatus();
     if (status != null) {
+      if (status.getResourceUUID() != null && !status.getResourceUUID().isEmpty()) {
+        UUID backupUUID = UUID.fromString(status.getResourceUUID());
+        OperatorUtils.maybeAddYbaResourceId(backup, backupUUID, resourceClient);
+      }
       // We don't need to do a retry because the backup state machine will take care of it.
       // Even in the case of failure, we expect customer to create a new backup CR.
       log.info("Early return because we already started this backup once");

@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
@@ -4370,6 +4371,60 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createTask(CheckTabletsMovementAvailableForNode.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
+        });
+  }
+
+  /**
+   * Check if any of the given nodes has or may have a duplicate instance in the cloud.
+   *
+   * @param universe the universe.
+   * @param nodes the nodes to check.
+   * @return the subtask group with the check tasks.
+   */
+  protected SubTaskGroup createCheckDuplicateInstances(
+      Universe universe, Collection<NodeDetails> nodes) {
+    // Cache cloud types for clusters to avoid multiple provider lookups.
+    final Map<UUID, CloudType> cloudTypes = new HashMap<>();
+    return doInPrecheckSubTaskGroup(
+        "CheckDuplicateInstances",
+        subTaskGroup -> {
+          for (NodeDetails node : nodes) {
+            Cluster cluster = universe.getCluster(node.placementUuid);
+            CloudType cloudType =
+                cloudTypes.computeIfAbsent(
+                    node.placementUuid,
+                    k ->
+                        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider))
+                            .getCloudCode());
+            if (!cloudType.isPublicCloud()) {
+              log.debug(
+                  "Skipping duplicate instance check for non-CSP node {} in cluster {}",
+                  node.nodeName,
+                  cluster.uuid);
+              continue;
+            }
+            UserIntent userIntent =
+                universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+            if (userIntent == null) {
+              log.warn(
+                  "User intent is null for cluster {}. Skipping duplicate instance check for node"
+                      + " {}",
+                  cluster.uuid,
+                  node.nodeName);
+              continue;
+            }
+            CheckDuplicateInstance.Params params = new CheckDuplicateInstance.Params();
+            params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+            params.azUuid = node.azUuid;
+            params.placementUuid = node.placementUuid;
+            params.nodeName = node.nodeName;
+            params.nodeUuid = node.nodeUuid;
+            params.nodeState = node.state;
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            CheckDuplicateInstance task = createTask(CheckDuplicateInstance.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
         });
   }
 }

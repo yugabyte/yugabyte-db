@@ -260,7 +260,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,
@@ -287,7 +287,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
               .rollMaxBatchSize(getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize))
-              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
               .build(),
           null /* ysqlMajorVersionUpgradeState */,
           null /* rootCAUUID */,

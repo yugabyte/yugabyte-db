@@ -20,7 +20,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    ,true
 );
 
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_2', 'my_idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_2', 'my_idx_1');
 
 CALL documentdb_api.drop_indexes(
   'mydb',
@@ -31,7 +31,7 @@ CALL documentdb_api.drop_indexes(
 );
 
 SELECT count(*)=0 AS index_does_not_exist
-FROM documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_2', 'my_idx_1');
+FROM documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_2', 'my_idx_1');
 
 -- test 2
 
@@ -48,7 +48,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    true
 );
 
-SELECT documentdb_indexes.index_name, documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_2', documentdb_indexes.index_name)
+SELECT documentdb_indexes.index_name, documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_2', documentdb_indexes.index_name)
 FROM (VALUES ('my_idx_1'), ('my_idx_2'), ('my_idx_3')) documentdb_indexes(index_name)
 ORDER BY documentdb_indexes.index_name;
 
@@ -81,7 +81,7 @@ CALL documentdb_api.drop_indexes(
 );
 
 SELECT count(*)=0 AS index_does_not_exist FROM (
-    SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_2', documentdb_indexes.index_name)
+    SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_2', documentdb_indexes.index_name)
     FROM (VALUES ('my_idx_1'), ('my_idx_2'), ('my_idx_3')) documentdb_indexes(index_name)
 ) q;
 

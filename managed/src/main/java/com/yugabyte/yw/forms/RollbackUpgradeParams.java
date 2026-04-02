@@ -37,6 +37,7 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
       ImmutableSet.of(
           SoftwareUpgradeState.PreFinalize,
           SoftwareUpgradeState.Ready,
+          SoftwareUpgradeState.Paused,
           SoftwareUpgradeState.UpgradeFailed,
           SoftwareUpgradeState.RollbackFailed);
 

@@ -92,13 +92,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
 SELECT collection_id AS collid FROM documentdb_api_catalog.collections
 WHERE collection_name = 'bsonquery' AND database_name = 'db' \gset
 \d documentdb_data.documents_:collid
-                   Table "documentdb_data.documents_10980"
-     Column      |           Type           | Collation | Nullable | Default 
+                 Table "documentdb_data.documents_10980"
+     Column      |         Type         | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | documentdb_core.bson     |           | not null | 
- document        | documentdb_core.bson     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint               |           | not null | 
+ object_id       | documentdb_core.bson |           | not null | 
+ document        | documentdb_core.bson |           | not null | 
 Indexes:
     "collection_pk_10980" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_10981" documentdb_rum (document bson_rum_single_path_ops (path='a.b', tl='2699')) WHERE document #>= '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery
@@ -127,18 +126,16 @@ SET LOCAL seq_page_cost TO 100;
 SET LOCAL documentdb.forceUseIndexIfAvailable to true;
 -- should push down to pfe index since types match
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
-                                                                                                        QUERY PLAN                                                                                                        
+                                                    QUERY PLAN                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_2
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_2 on documents_10980_10980001 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
                          document                          
@@ -166,18 +163,16 @@ SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document
 
 -- should push to $exists pfe index using minkey
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
-                                                                                                              QUERY PLAN                                                                                                              
+                                                    QUERY PLAN                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_1
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_1 on documents_10980_10980001 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
                          document                          
@@ -205,18 +200,16 @@ SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document
 
 -- should push to pfe index when $ne is present
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
-                                                                                                                                                                 QUERY PLAN                                                                                                                                                                 
+                                                  QUERY PLAN                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bson))
-               ->  Bitmap Index Scan on my_idx_3
-(9 rows)
+         ->  Index Scan using my_idx_3 on documents_10980_10980001 collection
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
                                                  document                                                 
@@ -319,18 +312,16 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonqu
 -- test PFE pushdown for $in 
 -- can push down
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$in" : [ 1, 2, 3 ] } }';
-                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+                                                                                        QUERY PLAN                                                                                        
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_1
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_1 on documents_10980_10980001 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::documentdb_core.bson)
+(7 rows)
 
 -- cannot push down (fails PFE)
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "aaa", "aa1" ] } }';
@@ -359,32 +350,28 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonqu
 
 -- can push down
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "ccc", "bbb" ] } }';
-                                                                                                              QUERY PLAN                                                                                                               
+                                                           QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_2
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_2 on documents_10980_10980001 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "ccc", "bbb" ] }'::documentdb_core.bson)
+(7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$in" : [ "abc", "bbb" ] } }';
-                                                                                                              QUERY PLAN                                                                                                               
+                                                           QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_2
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_2 on documents_10980_10980001 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.c" : [ "abc", "bbb" ] }'::documentdb_core.bson)
+(7 rows)
 
 -- cannot push down
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 2 ] } }';
@@ -437,18 +424,16 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonqu
 
 -- can push down
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.e": { "$in" : [ 1, 1, 1 ] }, "a.f": { "$in": [ 1, 1 ]} }';
-                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                   
+                                                                                                                                                              QUERY PLAN                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980001 collection
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_3
-                     Index Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
-(9 rows)
+         ->  Index Scan using my_idx_3 on documents_10980_10980001 collection
+               Index Cond: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a.e" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) '{ "a.f" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }'::documentdb_core.bson))
+(7 rows)
 
 ROLLBACK;
 -- shard the collection
@@ -464,18 +449,16 @@ SET LOCAL seq_page_cost TO 100;
 SET LOCAL documentdb.forceUseIndexIfAvailable to true;
 -- should push down to pfe index since types match
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
-                                                                                                        QUERY PLAN                                                                                                        
+                                                    QUERY PLAN                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.c" : "abc" }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_2
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_2 on documents_10980_10980016 documents_10980
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.c" : "c" }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.c": { "$gte" :  "c" }}';
                          document                          
@@ -503,18 +486,16 @@ SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document
 
 -- should push to $exists pfe index using minkey
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
-                                                                                                              QUERY PLAN                                                                                                              
+                                                    QUERY PLAN                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::documentdb_core.bsonquery))
-               ->  Bitmap Index Scan on my_idx_1
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using my_idx_1 on documents_10980_10980016 documents_10980
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@>=) '{ "a.b" : "a" }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a.b": { "$gte" :  "a" }}';
                          document                          
@@ -542,18 +523,16 @@ SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document
 
 -- should push to pfe index when $ne is present
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
-                                                                                                                                                                 QUERY PLAN                                                                                                                                                                 
+                                                  QUERY PLAN                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 8
    Tasks Shown: One of 8
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_10980_10980016 documents_10980
-               Recheck Cond: ((document OPERATOR(documentdb_api_catalog.#=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery) AND (document OPERATOR(documentdb_api_catalog.#=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bsonquery))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.e" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@=) '{ "a.f" : { "$numberInt" : "1" } }'::documentdb_core.bson))
-               ->  Bitmap Index Scan on my_idx_3
-(9 rows)
+         ->  Index Scan using my_idx_3 on documents_10980_10980016 documents_10980
+               Filter: (document OPERATOR(documentdb_api_catalog.@!=) '{ "a" : null }'::documentdb_core.bson)
+(7 rows)
 
 SELECT document FROM documentdb_api.collection('db', 'bsonquery') WHERE document @@ '{ "a": { "$ne" :  null }, "a.e": 1, "a.f": 1}';
                                                  document                                                 

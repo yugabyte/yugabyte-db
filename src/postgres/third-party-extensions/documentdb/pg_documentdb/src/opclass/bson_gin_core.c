@@ -30,6 +30,7 @@
 #include "opclass/bson_gin_private.h"
 #include "opclass/bson_gin_index_mgmt.h"
 #include "opclass/bson_gin_index_term.h"
+#include "opclass/bson_gin_index_types_core.h"
 #include "io/bson_core.h"
 #include "aggregation/bson_query_common.h"
 #include "query/bson_compare.h"
@@ -195,7 +196,11 @@ static Datum * GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch,
 										   const void *indexOptions,
 										   const IndexTermCreateMetadata *metadata);
 static bson_value_t GetLowerBoundForLessThan(bson_type_t inputBsonType);
-
+static void GenerateTermPath(bson_iter_t *bsonIter, const char *basePath,
+							 uint32_t basePathLength, bool inArrayContext,
+							 bool isArrayTerm, GenerateTermsContext *context,
+							 bool isCheckForArrayTermsWithNestedDocument,
+							 StringInfo pathStringInfo);
 
 /*
  * returns true if the index is a wildcard index
@@ -298,7 +303,7 @@ HandleConsistentGreaterLessEquals(Datum *queryKeys, bool *check, bool *recheck,
 	 */
 	BsonIndexTerm equalityTerm;
 	InitializeBsonIndexTerm(DatumGetByteaPP(queryKeys[1]), &equalityTerm);
-	*recheck = !check[0] && equalityTerm.isIndexTermTruncated;
+	*recheck = !check[0] && IsIndexTermTruncated(&equalityTerm);
 
 	/* A row matches if it's $gt/$lt OR $eq */
 	return check[0] || check[1];
@@ -364,15 +369,17 @@ HandleConsistentExists(bool *check, bool *recheck, const DollarExistsQueryData *
  */
 void
 GenerateSinglePathTermsCore(pgbson *bson, GenerateTermsContext *context,
+							GinEntryPathData *pathData,
 							BsonGinSinglePathOptions *singlePathOptions)
 {
 	context->options = (void *) singlePathOptions;
 	context->traverseOptionsFunc = &GetSinglePathIndexTraverseOption;
 	context->generateNotFoundTerm = singlePathOptions->generateNotFoundTerm;
-	context->termMetadata = GetIndexTermMetadata(singlePathOptions);
+	pathData->useReducedWildcardTerms =
+		singlePathOptions->isWildcard && singlePathOptions->useReducedWildcardTerms;
 
 	bool addRootTerm = true;
-	GenerateTerms(bson, context, addRootTerm);
+	GenerateTerms(bson, context, pathData, addRootTerm);
 }
 
 
@@ -382,6 +389,7 @@ GenerateSinglePathTermsCore(pgbson *bson, GenerateTermsContext *context,
  */
 void
 GenerateWildcardPathTermsCore(pgbson *bson, GenerateTermsContext *context,
+							  GinEntryPathData *pathData,
 							  BsonGinWildcardProjectionPathOptions *wildcardOptions)
 {
 	context->options = (void *) wildcardOptions;
@@ -389,10 +397,9 @@ GenerateWildcardPathTermsCore(pgbson *bson, GenerateTermsContext *context,
 
 	/* Wildcard indexes always do not generate the not-found term */
 	context->generateNotFoundTerm = false;
-	context->termMetadata = GetIndexTermMetadata(wildcardOptions);
 
 	bool addRootTerm = true;
-	GenerateTerms(bson, context, addRootTerm);
+	GenerateTerms(bson, context, pathData, addRootTerm);
 }
 
 
@@ -495,7 +502,8 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 					  int32_t numKeys,
 					  bool *recheck,
 					  Datum *queryKeys,
-					  bytea *indexClassOptions)
+					  bytea *indexClassOptions,
+					  bool isPreconsistent)
 {
 	switch (strategy)
 	{
@@ -531,9 +539,18 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 		case BSON_INDEX_STRATEGY_DOLLAR_RANGE:
 		{
 			*recheck = false;
+			DollarRangeValues *rangeValues = (DollarRangeValues *) extra_data[0];
+			if (rangeValues->params.isFullScan)
+			{
+				return check[0] || check[1];
+			}
+
 			if (numKeys == 2)
 			{
-				/* no truncation */
+				/* no truncation - recheck if it *only* matched the array term. This case we can't tell if it's
+				 * a match due to array of array term.
+				 */
+				*recheck = check[1] && !check[0];
 				return check[0] || check[1];
 			}
 
@@ -687,6 +704,18 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 				(DollarArrayOpQueryData *) (extra_data[numKeys]);
 
 			*recheck = false;
+			if (!isPreconsistent &&
+				!queryData->arrayHasNull &&
+				!queryData->arrayHasRegex &&
+				!queryData->arrayHasTruncation)
+			{
+				/* If there's no truncation, nulls or regex we would only
+				 * be called here if one of hte $in terms matched and we
+				 * can trust the index.
+				 */
+				return true;
+			}
+
 			bool result = false;
 			for (int i = 0; i < queryData->inTermCount; i++)
 			{
@@ -752,7 +781,7 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 			}
 			else
 			{
-				if (indexTerm.isIndexTermTruncated)
+				if (IsIndexTermTruncated(&indexTerm))
 				{
 					/* If the $ne is on a truncated term, we can't be totally
 					 * sure.
@@ -923,6 +952,7 @@ GinBsonExtractQueryUniqueIndexTerms(PG_FUNCTION_ARGS)
 	int32 *nentries = (int32 *) PG_GETARG_POINTER(1);
 
 	GenerateTermsContext context = { 0 };
+	GinEntryPathData pathData = { 0 };
 	if (!PG_HAS_OPCLASS_OPTIONS())
 	{
 		ereport(ERROR, (errmsg("Index does not have options")));
@@ -933,13 +963,13 @@ GinBsonExtractQueryUniqueIndexTerms(PG_FUNCTION_ARGS)
 	context.options = (void *) options;
 	context.traverseOptionsFunc = &GetSinglePathIndexTraverseOption;
 	context.generateNotFoundTerm = options->generateNotFoundTerm;
-	context.termMetadata = GetIndexTermMetadata(options);
+	pathData.termMetadata = GetIndexTermMetadata(options);
 
 	bool addRootTerm = false;
-	GenerateTerms(query, &context, addRootTerm);
-	*nentries = context.totalTermCount;
+	GenerateTerms(query, &context, &pathData, addRootTerm);
+	*nentries = pathData.terms.index;
 
-	return context.terms.entries;
+	return pathData.terms.entries;
 }
 
 
@@ -1021,14 +1051,14 @@ GinBsonComparePartialOrderBy(BsonIndexTerm *queryValue,
  * in its array of terms.
  */
 inline static void
-EnsureTermCapacity(GenerateTermsContext *context, int32_t required)
+EnsureTermCapacity(GinEntrySet *context, int32_t required)
 {
 	int32_t requiredTotal = context->index + required;
-	if (context->terms.entryCapacity < requiredTotal)
+	if (context->entryCapacity < requiredTotal)
 	{
-		context->terms.entries = repalloc(context->terms.entries, sizeof(Datum) *
-										  requiredTotal);
-		context->terms.entryCapacity = requiredTotal;
+		context->entries = repalloc(context->entries, sizeof(Datum) *
+									requiredTotal);
+		context->entryCapacity = requiredTotal;
 	}
 }
 
@@ -1038,11 +1068,104 @@ EnsureTermCapacity(GenerateTermsContext *context, int32_t required)
  * sufficient capacity to add the term in.
  */
 inline static void
-AddTerm(GenerateTermsContext *context, Datum term)
+AddTerm(GinEntrySet *context, Datum term)
 {
 	EnsureTermCapacity(context, 1);
-	context->terms.entries[context->index] = term;
+	context->entries[context->index] = term;
 	context->index++;
+}
+
+
+static GinEntryPathData *
+GetPathDataDefault(void *state, int index)
+{
+	if (index == 0)
+	{
+		return (GinEntryPathData *) state;
+	}
+
+	return NULL;
+}
+
+
+static bool
+IsRecursivePathMatch(void *state, int index)
+{
+	return false;
+}
+
+
+static int
+GetCurrentRecursivePaths(void *state)
+{
+	return 0;
+}
+
+
+void
+GenerateTermsForPath(pgbson *bson, GenerateTermsContext *context)
+{
+	bson_iter_t bsonIterator;
+	Assert(context->pathDataState != NULL);
+	Assert(context->getPathDataFunc != NULL);
+
+	/* now walk the entries and insert the terms */
+	PgbsonInitIterator(bson, &bsonIterator);
+
+	/* Initialize with minimum capacity */
+	/* provision 1 root term + 1 value term/not-found term */
+	for (int i = 0; i < context->maxPaths; i++)
+	{
+		GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState, i);
+
+		pathData->terms.entries = palloc0(sizeof(Datum) * 2);
+		pathData->terms.entryCapacity = 2;
+		pathData->terms.index = 0;
+		pathData->coreTermsCount = 0;
+		pathData->hasTruncatedTerms = false;
+		pathData->hasArrayAncestors = false;
+		pathData->hasArrayValues = false;
+	}
+
+	bool inArrayContext = false;
+	bool isArrayTerm = false;
+	bool isCheckForArrayTermsWithNestedDocument = false;
+	GenerateTermsCore(&bsonIterator, "", 0, inArrayContext,
+					  isArrayTerm, context,
+					  isCheckForArrayTermsWithNestedDocument);
+
+
+	for (int i = 0; i < context->maxPaths; i++)
+	{
+		GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState, i);
+		pathData->coreTermsCount = pathData->terms.index;
+		bool hasNoTerms = pathData->coreTermsCount == 0;
+
+		/* Add the path not found term if necessary
+		 * we do this for back compat only when the index used the legacy not found term
+		 */
+		if (hasNoTerms && context->generateNotFoundTerm)
+		{
+			AddTerm(&pathData->terms, GeneratePathUndefinedTerm(context->options));
+		}
+
+		if (pathData->generatePathBasedUndefinedTerms)
+		{
+			if (hasNoTerms)
+			{
+				/* Add the path not exists value term */
+				AddTerm(&pathData->terms, GenerateValueUndefinedTerm(
+							&pathData->termMetadata));
+			}
+
+			if (pathData->hasArrayPartialTermExistence)
+			{
+				/* Add the path not exists value term for array ancestors */
+				AddTerm(&pathData->terms, GenerateValueMaybeUndefinedTerm(
+							&pathData->termMetadata));
+			}
+		}
+	}
 }
 
 
@@ -1053,67 +1176,462 @@ AddTerm(GenerateTermsContext *context, Datum term)
  * the terms necessary.
  */
 void
-GenerateTerms(pgbson *bson, GenerateTermsContext *context, bool addRootTerm)
+GenerateTerms(pgbson *bson, GenerateTermsContext *context, GinEntryPathData *pathData,
+			  bool addRootTerm)
 {
-	bson_iter_t bsonIterator;
+	context->pathDataState = pathData;
+	context->getPathDataFunc = GetPathDataDefault;
+	context->isRecursivePathMatch = IsRecursivePathMatch;
+	context->currentRecursivePathIndex = GetCurrentRecursivePaths;
+	context->maxPaths = 1;
 
-	/* now walk the entries and insert the terms */
-	PgbsonInitIterator(bson, &bsonIterator);
-
-	/* Initialize with minimum capacity */
-	/* provision 1 root term + 1 value term/not-found term */
-	context->terms.entries = palloc0(sizeof(Datum) * 2);
-	context->terms.entryCapacity = 2;
-	context->hasTruncatedTerms = false;
-	context->hasArrayAncestors = false;
-
-	int32_t initialIndex = context->index;
-
-	bool inArrayContext = false;
-	bool isArrayTerm = false;
-	bool isCheckForArrayTermsWithNestedDocument = false;
-	GenerateTermsCore(&bsonIterator, "", 0, inArrayContext,
-					  isArrayTerm, context,
-					  isCheckForArrayTermsWithNestedDocument);
-
-	bool hasNoTerms = context->index == initialIndex;
-
-	/* Add the path not found term if necessary
-	 * we do this for back compat only when the index used the legacy not found term
-	 */
-	if (hasNoTerms && context->generateNotFoundTerm)
-	{
-		AddTerm(context, GeneratePathUndefinedTerm(context->options));
-	}
-
+	GenerateTermsForPath(bson, context);
+	bool hasTerms = pathData->coreTermsCount > 0;
 	if (addRootTerm)
 	{
 		/* GUC to preserve back-compat behavior. */
 		if (!EnableGenerateNonExistsTerm)
 		{
-			AddTerm(context, GenerateRootTerm(&context->termMetadata));
+			AddTerm(&pathData->terms, GenerateRootTerm(
+						&pathData->termMetadata));
 		}
-		else if (!hasNoTerms)
+		else if (hasTerms)
 		{
-			AddTerm(context, GenerateRootExistsTerm(&context->termMetadata));
+			AddTerm(&pathData->terms, GenerateRootExistsTerm(
+						&pathData->termMetadata));
 		}
 		else
 		{
-			AddTerm(context, GenerateRootNonExistsTerm(&context->termMetadata));
+			AddTerm(&pathData->terms, GenerateRootNonExistsTerm(
+						&pathData->termMetadata));
 		}
 
-		if (context->hasTruncatedTerms)
+		if (pathData->hasTruncatedTerms)
 		{
-			AddTerm(context, GenerateRootTruncatedTerm(&context->termMetadata));
+			AddTerm(&pathData->terms, GenerateRootTruncatedTerm(
+						&pathData->termMetadata));
 		}
 
-		if (context->hasArrayAncestors)
+		if (pathData->hasArrayAncestors)
 		{
-			AddTerm(context, GenerateRootMultiKeyTerm(&context->termMetadata));
+			AddTerm(&pathData->terms, GenerateRootMultiKeyTerm(
+						&pathData->termMetadata));
+		}
+	}
+}
+
+
+static void
+GenerateArrayPath(bson_iter_t *bsonIter, const char *pathToInsert,
+				  uint32_t pathtoInsertLength, bool inArrayContext,
+				  bool isArrayTerm, GenerateTermsContext *context,
+				  bool isCheckForArrayTermsWithNestedDocument,
+				  bool isPathMatchedRecursively)
+{
+	check_stack_depth();
+	CHECK_FOR_INTERRUPTS();
+
+	bson_iter_t containerIter;
+	if (!bson_iter_recurse(bsonIter, &containerIter))
+	{
+		return;
+	}
+
+	/* Count the array terms - to pre-allocate the term Datum pointers */
+	const bson_value_t *arrayValue = bson_iter_value(bsonIter);
+	int32_t arrayCapacityEstimate = Max(1, (int) log2(arrayValue->value.v_doc.data_len));
+
+	StringInfoData pathBuilderBuffer = { 0 };
+	initStringInfo(&pathBuilderBuffer);
+	bool useReducedWildcardTerms = true;
+	int32_t termCount[INDEX_MAX_KEYS] = { 0 };
+	bool recursiveMatchStatus[INDEX_MAX_KEYS] = { 0 };
+	int32_t numRecursiveMatches = 0;
+	int32_t currentRecursivePathCount = context->currentRecursivePathIndex(
+		context->pathDataState);
+	bool considerNestedDocumentTerms = context->enableCompositeReducedCorrelatedTerms &&
+									   context->updateCorrelatedTermPaths != NULL &&
+									   context->maxPaths > 1;
+	for (int i = 0; i < context->maxPaths; i++)
+	{
+		GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState, i);
+		termCount[i] = pathData->terms.index;
+		recursiveMatchStatus[i] = context->enableCompositeReducedCorrelatedTerms &&
+								  context->isRecursivePathMatch(context->pathDataState,
+																i);
+		numRecursiveMatches += recursiveMatchStatus[i] ? 1 : 0;
+
+		/* TODO: Handle wildcard and non-wildcard composite indexes:
+		 * in the scenario where we have { a.$**: 1, b: 1, c: 1}
+		 * we need this to only apply to the wildcard term being generated.
+		 */
+		useReducedWildcardTerms = useReducedWildcardTerms &&
+								  pathData->useReducedWildcardTerms;
+		EnsureTermCapacity(&pathData->terms, arrayCapacityEstimate);
+	}
+
+	/* Only consider this path if there's > 1 matches in an array path (otherwise they're all linearly
+	 * independent index terms anyway)
+	 */
+	considerNestedDocumentTerms = considerNestedDocumentTerms && numRecursiveMatches > 1;
+
+	bool someArrayPathsHaveTerms[INDEX_MAX_KEYS] = { 0 };
+	bool someArrayPathsHaveNoTerms[INDEX_MAX_KEYS] = { 0 };
+	while (bson_iter_next(&containerIter))
+	{
+		bson_iter_t containerCopy = containerIter;
+		bool inArrayContextInner = true;
+		bool isArrayTermInner = false;
+		bool isCheckForArrayTermsWithNestedDocumentInner = false;
+
+		/* For wildcard indexes if there's a match, any path that is a.0, a.2 etc
+		 * can also be reached from 'a'.
+		 * Consequently we can skip generating terms for the path.
+		 * The one exception is if we have arrays of arrays. To descend into
+		 * the child array, we still need the parent array path
+		 * i.e. for a [ [ { b: 10 } ] ] we need to generate a.0.b
+		 */
+		if (useReducedWildcardTerms &&
+			isPathMatchedRecursively && !inArrayContext)
+		{
+			if (BSON_ITER_HOLDS_ARRAY(&containerIter))
+			{
+				GenerateTermPath(&containerIter, pathToInsert, pathtoInsertLength,
+								 inArrayContextInner, isArrayTermInner, context,
+								 isCheckForArrayTermsWithNestedDocumentInner,
+								 &pathBuilderBuffer);
+			}
+		}
+		else
+		{
+			GenerateTermPath(&containerIter, pathToInsert, pathtoInsertLength,
+							 inArrayContextInner, isArrayTermInner, context,
+							 isCheckForArrayTermsWithNestedDocumentInner,
+							 &pathBuilderBuffer);
+		}
+
+		/*
+		 * for array of arrays, having document inside it. We will generate parent path terms *
+		 * if below recursive call get triggerd with isCheckForArrayTermsWithNestedDocument set to true then we will check that
+		 * array of array has document inside it , for document we will generate parent path term.
+		 *
+		 * e.g, a: [[{b: 10}]]  => is suppose to genrate a.0.b :10 as one of the path term because array of array has document inside it.
+		 */
+		inArrayContextInner = true;
+		isArrayTermInner = true;
+		isCheckForArrayTermsWithNestedDocumentInner = inArrayContext &&
+													  !context->
+													  skipGenerateTopLevelArrayTerm;
+		GenerateTermPath(&containerCopy, pathToInsert, pathtoInsertLength,
+						 inArrayContextInner, isArrayTermInner, context,
+						 isCheckForArrayTermsWithNestedDocumentInner,
+						 &pathBuilderBuffer);
+
+		bool someArrayPathsHaveTermsOuter = false;
+		int32_t originalTermCount[INDEX_MAX_KEYS] = { 0 };
+		for (int i = 0; i < context->maxPaths; i++)
+		{
+			GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState,
+																  i);
+			if (pathData->terms.index > termCount[i])
+			{
+				someArrayPathsHaveTermsOuter = true;
+				someArrayPathsHaveTerms[i] = true;
+			}
+			else
+			{
+				someArrayPathsHaveNoTerms[i] = true;
+			}
+
+			/* Reset for next iteration of array */
+			originalTermCount[i] = termCount[i];
+			termCount[i] = context->getPathDataFunc(context->pathDataState,
+													i)->terms.index;
+		}
+
+		if (context->enableCompositeReducedCorrelatedTerms &&
+			context->currentRecursivePathIndex(context->pathDataState) ==
+			currentRecursivePathCount &&
+			considerNestedDocumentTerms && someArrayPathsHaveTermsOuter &&
+			context->updateCorrelatedTermPaths)
+		{
+			/* We have multiple terms with a recursive match this means we should treat these terms
+			 * generated as a correlated in terms of terms
+			 */
+			context->updateCorrelatedTermPaths(context->pathDataState, originalTermCount,
+											   recursiveMatchStatus);
+		}
+
+		currentRecursivePathCount = context->currentRecursivePathIndex(
+			context->pathDataState);
+	}
+
+	for (int i = 0; i < context->maxPaths; i++)
+	{
+		GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState, i);
+		if (someArrayPathsHaveTerms[i])
+		{
+			pathData->hasArrayValues = true;
+		}
+
+		/* Track that these arrays have partial term existence */
+		if (someArrayPathsHaveTerms[i] && someArrayPathsHaveNoTerms[i])
+		{
+			pathData->hasArrayPartialTermExistence = true;
 		}
 	}
 
-	context->totalTermCount = context->index;
+	if (pathBuilderBuffer.data != NULL)
+	{
+		pfree(pathBuilderBuffer.data);
+	}
+}
+
+
+static void
+NotifyHasArrayAncestors(GenerateTermsContext *context, int pathIndex)
+{
+	context->getPathDataFunc(context->pathDataState,
+							 pathIndex)->hasArrayAncestors = true;
+}
+
+
+static void
+GenerateTermPath(bson_iter_t *bsonIter, const char *basePath,
+				 uint32_t basePathLength, bool inArrayContext,
+				 bool isArrayTerm, GenerateTermsContext *context,
+				 bool isCheckForArrayTermsWithNestedDocument,
+				 StringInfo pathStringInfo)
+{
+	const char *pathToInsert;
+	uint32_t pathtoInsertLength;
+
+	/* if array of array has not document inside it , we will not be generating parent path term */
+	if (isCheckForArrayTermsWithNestedDocument && !BSON_ITER_HOLDS_DOCUMENT(bsonIter))
+	{
+		return;
+	}
+
+	if (isArrayTerm)
+	{
+		/* if isArrayTerm is true (because we're inside an array context and we're generating */
+		/* and we're building the non array-index based terms, then just use the base path) */
+		/* this is because we can filter on array entries based on the array index (a.b.0 / a.b.1) */
+		/* or simply on the array path itself (a.b) */
+		pathToInsert = basePath;
+		pathtoInsertLength = basePathLength;
+	}
+	else if (basePathLength == 0)
+	{
+		/* if we're at the root, simply use the field path. */
+		pathToInsert = bson_iter_key(bsonIter);
+		pathtoInsertLength = bson_iter_key_len(bsonIter);
+	}
+	else
+	{
+		/* otherwise build the path to insert. We use 'base.field' for the path */
+		/* since dot paths are illegal in field names. */
+		uint32_t fieldPathLength = bson_iter_key_len(bsonIter);
+		uint32_t pathToInsertAllocLength;
+
+		/* the length includes the two fields + the extra dot. */
+		pathtoInsertLength = fieldPathLength + basePathLength + 1;
+
+		/* need one more character for the \0 */
+		pathToInsertAllocLength = pathtoInsertLength + 1;
+
+		if (pathStringInfo->len == 0)
+		{
+			/* if there's no temp buffer create one */
+			enlargeStringInfo(pathStringInfo, pathToInsertAllocLength);
+		}
+		else if (pathStringInfo->len < (int) pathToInsertAllocLength)
+		{
+			/* if there's not enough space in the temp buffer, realloc to ensure enough length. */
+			enlargeStringInfo(pathStringInfo, pathToInsertAllocLength);
+		}
+
+		/* construct <basePath>.<current key> string */
+		memcpy(pathStringInfo->data, basePath, basePathLength);
+		pathStringInfo->data[basePathLength] = '.';
+		memcpy(&pathStringInfo->data[basePathLength + 1], bson_iter_key(bsonIter),
+			   fieldPathLength);
+		pathStringInfo->data[pathtoInsertLength] = 0;
+
+		pathToInsert = pathStringInfo->data;
+	}
+
+	/* query whether or not to index the specific path given the options. */
+	int32_t pathIndex = 0;
+	IndexTraverseOption option = context->traverseOptionsFunc(context->options,
+															  pathToInsert,
+															  pathtoInsertLength,
+															  bson_iter_type(
+																  bsonIter),
+															  &pathIndex);
+	switch (option)
+	{
+		case IndexTraverse_Invalid:
+		{
+			/* path is invalid (e.g. index is for 'a.b' inclusive, and the current path is 'c') */
+			return;
+		}
+
+		case IndexTraverse_Recurse:
+		{
+			/* path is invalid, but may have valid descendants (e.g. index is for 'a.b.c' inclusive, */
+			/* and the current path is 'a.b') */
+			if (inArrayContext || BSON_ITER_HOLDS_ARRAY(bsonIter))
+			{
+				/* Mark the path as having array ancestors leading to the index path */
+				NotifyHasArrayAncestors(context, pathIndex);
+			}
+
+			break;
+		}
+
+		case IndexTraverse_MatchAndRecurse:
+		case IndexTraverse_Match:
+		{
+			/*
+			 * if array of array has document inside it, we will be iterating document and generating parent path term
+			 * not the term directly with value of document.
+			 * e.g, a:[[{b:1}]] -> we will be generating a.0.b : 1 but not generating a.0 : {b:1}
+			 */
+			if (isCheckForArrayTermsWithNestedDocument)
+			{
+				break;
+			}
+
+			/* path is valid and a match */
+			bson_type_t type = bson_iter_type(bsonIter);
+
+			/* Construct the { <path> : <typecode> <value> } BSON and add it to index entries */
+			pgbsonelement element = { 0 };
+			element.path = pathToInsert;
+			element.pathLength = pathtoInsertLength;
+			element.bsonValue = *bson_iter_value(bsonIter);
+
+			if (context->skipGenerateTopLevelArrayTerm &&
+				element.bsonValue.value_type == BSON_TYPE_ARRAY && !isArrayTerm)
+			{
+				/*
+				 * If this is an empty array, mark it as *literal* undefined so
+				 * it doesn't show up as a non-exists term. Otherwise skip it.
+				 */
+				if (IsBsonValueEmptyArray(&element.bsonValue))
+				{
+					element.bsonValue.value_type = BSON_TYPE_UNDEFINED;
+				}
+				else
+				{
+					/* Skip the top level array term */
+					break;
+				}
+			}
+
+			GinEntryPathData *pathData = context->getPathDataFunc(context->pathDataState,
+																  pathIndex);
+			if (pathData->skipGenerateTopLevelDocumentTerm &&
+				element.bsonValue.value_type == BSON_TYPE_DOCUMENT &&
+				option == IndexTraverse_MatchAndRecurse)
+			{
+				/* Skip the top level document term */
+				if (!IsBsonValueEmptyDocument(&element.bsonValue))
+				{
+					break;
+				}
+			}
+
+			BsonCompressableIndexTermSerialized serializedTerm =
+				SerializeBsonIndexTermWithCompression(
+					&element, &pathData->termMetadata);
+			AddTerm(&pathData->terms, serializedTerm.indexTermDatum);
+			if (serializedTerm.isIndexTermTruncated)
+			{
+				pathData->hasTruncatedTerms = true;
+			}
+
+			if (context->generateNotFoundTerm &&
+				!context->skipGeneratedPathUndefinedTermOnLiteralNull &&
+				(type == BSON_TYPE_NULL || type == BSON_TYPE_UNDEFINED))
+			{
+				/* In this case, we also generate the undefined term */
+				AddTerm(&pathData->terms, GeneratePathUndefinedTerm(
+							context->options));
+			}
+
+			break;
+		}
+
+		default:
+		{
+			ereport(ERROR, (errmsg("Unknown prefix match on index %d", option)));
+			break;
+		}
+	}
+
+	if (BSON_ITER_HOLDS_DOCUMENT(bsonIter))
+	{
+		bool shouldIndexDocument = true;
+		if (inArrayContext &&
+			(option == IndexTraverse_Match ||
+			 option == IndexTraverse_MatchAndRecurse))
+		{
+			/* Mark the path as having array ancestors leading to the index path */
+			NotifyHasArrayAncestors(context, pathIndex);
+		}
+
+		/*
+		 * If we're not dealing with arrays, and the document was an exact match
+		 * that is, it's just a child document of a path that matched, we don't need
+		 * recurse into the document since all child document paths will simply generate
+		 * paths that will not match.
+		 */
+		if (!inArrayContext && option == IndexTraverse_Match)
+		{
+			shouldIndexDocument = false;
+		}
+
+		bson_iter_t containerIter;
+		if (shouldIndexDocument && bson_iter_recurse(bsonIter, &containerIter))
+		{
+			bool inArrayContextInner = false;
+			bool isArrayTermInner = false;
+			bool isCheckForArrayTermsWithNestedDocumentInner = false;
+			GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
+							  inArrayContextInner, isArrayTermInner,
+							  context, isCheckForArrayTermsWithNestedDocumentInner);
+		}
+	}
+
+	/* if we're already recursing because of an array's parent path term, */
+	/* then we don't recurse into nested arrays. */
+	/* if we're not in that case, we recurse down to produce inner terms of arrays. */
+	if (!isArrayTerm)
+	{
+		if (BSON_ITER_HOLDS_ARRAY(bsonIter))
+		{
+			/*
+			 * Only recurse into arrays if it's a recursive match. e.g.
+			 * if the match is on an exact path "a", then all of the terms generated below
+			 * if it's not the arrayTerm is a.0, a.1, a.2 which means it'll never match "a".
+			 * If the path is "matchAndRecurse", then traverse down.
+			 */
+			if (inArrayContext &&
+				option == IndexTraverse_MatchAndRecurse)
+			{
+				/* Mark the path as having array ancestors leading to the index path */
+				NotifyHasArrayAncestors(context, pathIndex);
+			}
+
+			bool isPathMatchedRecursively = option == IndexTraverse_MatchAndRecurse;
+			GenerateArrayPath(bsonIter, pathToInsert, pathtoInsertLength,
+							  inArrayContext, isArrayTerm, context,
+							  isCheckForArrayTermsWithNestedDocument,
+							  isPathMatchedRecursively);
+		}
+	}
 }
 
 
@@ -1137,222 +1655,21 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 				  bool isArrayTerm, GenerateTermsContext *context,
 				  bool isCheckForArrayTermsWithNestedDocument)
 {
-	char *pathBuilderBuffer = NULL;
-	uint32_t pathBuilderBufferLength = 0;
+	StringInfoData pathBuilderBuffer = { 0 };
+	initStringInfo(&pathBuilderBuffer);
 	check_stack_depth();
 	CHECK_FOR_INTERRUPTS();
 	while (bson_iter_next(bsonIter))
 	{
-		const char *pathToInsert;
-		uint32_t pathtoInsertLength;
-
-		/* if array of array has not document inside it , we will not be generating parent path term */
-		if (isCheckForArrayTermsWithNestedDocument && !BSON_ITER_HOLDS_DOCUMENT(bsonIter))
-		{
-			continue;
-		}
-
-		if (isArrayTerm)
-		{
-			/* if isArrayTerm is true (because we're inside an array context and we're generating */
-			/* and we're building the non array-index based terms, then just use the base path) */
-			/* this is because mongo can filter on array entries based on the array index (a.b.0 / a.b.1) */
-			/* or simply on the array path itself (a.b) */
-			pathToInsert = basePath;
-			pathtoInsertLength = basePathLength;
-		}
-		else if (basePathLength == 0)
-		{
-			/* if we're at the root, simply use the field path. */
-			pathToInsert = bson_iter_key(bsonIter);
-			pathtoInsertLength = bson_iter_key_len(bsonIter);
-		}
-		else
-		{
-			/* otherwise build the path to insert. We use 'base.field' for the path */
-			/* since dot paths are illegal in mongo for field names. */
-			uint32_t fieldPathLength = bson_iter_key_len(bsonIter);
-			uint32_t pathToInsertAllocLength;
-
-			/* the length includes the two fields + the extra dot. */
-			pathtoInsertLength = fieldPathLength + basePathLength + 1;
-
-			/* need one more character for the \0 */
-			pathToInsertAllocLength = pathtoInsertLength + 1;
-
-			if (pathBuilderBufferLength == 0)
-			{
-				/* if there's no temp buffer create one */
-				pathBuilderBuffer = (char *) palloc(pathToInsertAllocLength);
-				pathBuilderBufferLength = pathToInsertAllocLength;
-			}
-			else if (pathBuilderBufferLength < pathToInsertAllocLength)
-			{
-				/* if there's not enough space in the temp buffer, realloc to ensure enough length. */
-				pathBuilderBuffer = (char *) repalloc(pathBuilderBuffer,
-													  pathToInsertAllocLength);
-				pathBuilderBufferLength = pathToInsertAllocLength;
-			}
-
-			/* construct <basePath>.<current key> string */
-			memcpy(pathBuilderBuffer, basePath, basePathLength);
-			pathBuilderBuffer[basePathLength] = '.';
-			memcpy(&pathBuilderBuffer[basePathLength + 1], bson_iter_key(bsonIter),
-				   fieldPathLength);
-			pathBuilderBuffer[pathtoInsertLength] = 0;
-
-			pathToInsert = pathBuilderBuffer;
-		}
-
-		/* query whether or not to index the specific path given the options. */
-		IndexTraverseOption option = context->traverseOptionsFunc(context->options,
-																  pathToInsert,
-																  pathtoInsertLength,
-																  bson_iter_type(
-																	  bsonIter));
-		switch (option)
-		{
-			case IndexTraverse_Invalid:
-			{
-				/* path is invalid (e.g. index is for 'a.b' inclusive, and the current path is 'c') */
-				continue;
-			}
-
-			case IndexTraverse_Recurse:
-			{
-				/* path is invalid, but may have valid descendants (e.g. index is for 'a.b.c' inclusive, */
-				/* and the current path is 'a.b') */
-				if (inArrayContext || BSON_ITER_HOLDS_ARRAY(bsonIter))
-				{
-					/* Mark the path as having array ancestors leading to the index path */
-					context->hasArrayAncestors = true;
-				}
-
-				break;
-			}
-
-			case IndexTraverse_Match:
-			{
-				/*
-				 * if array of array has document inside it, we will be iterating document and generating parent path term
-				 * not the term directly with value of document.
-				 * e.g, a:[[{b:1}]] -> we will be generating a.0.b : 1 but not generating a.0 : {b:1}
-				 */
-				if (isCheckForArrayTermsWithNestedDocument)
-				{
-					break;
-				}
-
-				/* path is valid and a match */
-				bson_type_t type = bson_iter_type(bsonIter);
-
-				/* Construct the { <path> : <typecode> <value> } BSON and add it to index entries */
-				pgbsonelement element = { 0 };
-				element.path = pathToInsert;
-				element.pathLength = pathtoInsertLength;
-				element.bsonValue = *bson_iter_value(bsonIter);
-				BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(
-					&element, &context->termMetadata);
-				AddTerm(context, PointerGetDatum(
-							serializedTerm.indexTermVal));
-				if (serializedTerm.isIndexTermTruncated)
-				{
-					context->hasTruncatedTerms = true;
-				}
-
-				if (context->generateNotFoundTerm &&
-					(type == BSON_TYPE_NULL || type == BSON_TYPE_UNDEFINED))
-				{
-					/* In this case, we also generate the undefined term */
-					AddTerm(context, GeneratePathUndefinedTerm(
-								context->options));
-				}
-
-				break;
-			}
-
-			default:
-			{
-				ereport(ERROR, (errmsg("Unknown prefix match on index %d", option)));
-				break;
-			}
-		}
-
-		if (BSON_ITER_HOLDS_DOCUMENT(bsonIter))
-		{
-			if (inArrayContext && option == IndexTraverse_Match)
-			{
-				/* Mark the path as having array ancestors leading to the index path */
-				context->hasArrayAncestors = true;
-			}
-
-			bson_iter_t containerIter;
-			if (bson_iter_recurse(bsonIter, &containerIter))
-			{
-				bool inArrayContextInner = false;
-				bool isArrayTermInner = false;
-				bool isCheckForArrayTermsWithNestedDocumentInner = false;
-				GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
-								  inArrayContextInner, isArrayTermInner,
-								  context, isCheckForArrayTermsWithNestedDocumentInner);
-			}
-		}
-
-		/* if we're already recursing because of an array's parent path term, */
-		/* then we don't recurse into nested arrays. */
-		/* if we're not in that case, we recurse down to produce inner terms of arrays. */
-		if (!isArrayTerm)
-		{
-			if (BSON_ITER_HOLDS_ARRAY(bsonIter))
-			{
-				if (inArrayContext && option == IndexTraverse_Match)
-				{
-					/* Mark the path as having array ancestors leading to the index path */
-					context->hasArrayAncestors = true;
-				}
-
-				bson_iter_t containerIter;
-
-				/* Count the array terms - to pre-allocate the term Datum pointers */
-				int32_t arrayCount = BsonDocumentValueCountKeys(bson_iter_value(
-																	bsonIter));
-				EnsureTermCapacity(context, arrayCount);
-
-				if (bson_iter_recurse(bsonIter, &containerIter))
-				{
-					bool inArrayContextInner = true;
-					bool isArrayTermInner = false;
-					bool isCheckForArrayTermsWithNestedDocumentInner = false;
-					GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
-									  inArrayContextInner, isArrayTermInner,
-									  context,
-									  isCheckForArrayTermsWithNestedDocumentInner);
-				}
-
-				/*
-				 * for array of arrays, having document inside it. We will generate parent path terms *
-				 * if below recursive call get triggerd with isCheckForArrayTermsWithNestedDocument set to true then we will check that
-				 * array of array has document inside it , for document we will generate parent path term.
-				 *
-				 * e.g, a: [[{b: 10}]]  => is suppose to genrate a.0.b :10 as one of the path term because array of array has document inside it.
-				 */
-				if (bson_iter_recurse(bsonIter, &containerIter))
-				{
-					bool inArrayContextInner = true;
-					bool isArrayTermInner = true;
-					bool isCheckForArrayTermsWithNestedDocumentInner = inArrayContext;
-					GenerateTermsCore(&containerIter, pathToInsert, pathtoInsertLength,
-									  inArrayContextInner, isArrayTermInner,
-									  context,
-									  isCheckForArrayTermsWithNestedDocumentInner);
-				}
-			}
-		}
+		GenerateTermPath(bsonIter, basePath, basePathLength,
+						 inArrayContext, isArrayTerm, context,
+						 isCheckForArrayTermsWithNestedDocument,
+						 &pathBuilderBuffer);
 	}
 
-	if (pathBuilderBuffer != NULL)
+	if (pathBuilderBuffer.data != NULL)
 	{
-		pfree(pathBuilderBuffer);
+		pfree(pathBuilderBuffer.data);
 	}
 }
 
@@ -1548,20 +1865,10 @@ GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
 static Datum *
 GinBsonExtractQueryEqual(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Datum *entries;
-	pgbsonelement filterElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
-	}
+	pgbsonelement filterElement = args->filterElement;
 
 	if (filterElement.bsonValue.value_type == BSON_TYPE_NULL)
 	{
@@ -1591,34 +1898,24 @@ GinBsonExtractQueryEqual(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
-	pgbsonelement filterElement;
+	pgbsonelement filterElement = args->filterElement;
 	Datum *entries;
 
 	*partialmatch = (bool *) palloc(sizeof(bool) * 3);
 	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 3);
 
 	/* add query address to extra_data for all entries so that we can use positional array from query during partial comparison*/
-	(*extra_data)[0] = (Pointer) query;
-	(*extra_data)[1] = (Pointer) query;
+	pgbson *reconstructedQuery = PgbsonElementToPgbson(&filterElement);
+	(*extra_data)[0] = (Pointer) reconstructedQuery;
+	(*extra_data)[1] = (Pointer) reconstructedQuery;
 
 	/* Enable partial match for all entries*/
 	(*partialmatch)[0] = true;
 	(*partialmatch)[1] = true;
 	(*partialmatch)[2] = false;
-
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
-	}
 
 	/* lowest possible values can be lowest of type double or binary */
 	/* we are assuming (decimal128(nan) == double(nan)) < all possible numbers */
@@ -1651,24 +1948,39 @@ static Datum *
 GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 {
 	/* query: document @<> { "path": [ "min": MINVALUE, "max": MAXVALUE ] } */
-	pgbson *filter = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 
-	pgbsonelement filterElement;
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(filter, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(filter, &filterElement); /* TODO: collation index support */
-	}
+	pgbsonelement filterElement = args->filterElement;
 	DollarRangeValues *rangeValues = palloc0(sizeof(DollarRangeValues));
 
-	DollarRangeParams *params = ParseQueryDollarRange(filter);
+	DollarRangeParams *params = ParseQueryDollarRange(&filterElement);
 	rangeValues->params = *params;
+
+
+	*nentries = 2;
+	*partialmatch = (bool *) palloc(sizeof(bool) * 4);
+	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 4);
+	Pointer *extraDataArray = *extra_data;
+
+	Datum *entries = (Datum *) palloc(sizeof(Datum) * 4);
+
+	/* Special case, handle full scan of the index here */
+	if (params->isFullScan)
+	{
+		/* We generate 2 terms here - root exists term + root non-exists term */
+		*nentries = 2;
+		entries[0] = GenerateRootExistsTerm(&args->termMetadata);
+		(*partialmatch)[0] = false;
+		extraDataArray[0] = (Pointer) rangeValues;
+
+		entries[1] = GenerateRootNonExistsTerm(&args->termMetadata);
+		(*partialmatch)[1] = false;
+		extraDataArray[1] = (Pointer) rangeValues;
+		return entries;
+	}
+
 
 	pgbsonelement maxElement =
 	{
@@ -1689,13 +2001,6 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 	BsonIndexTermSerialized minSerialized = SerializeBsonIndexTerm(&minElement,
 																   &args->termMetadata);
 	rangeValues->minValueIndexTerm = minSerialized.indexTermVal;
-
-	*nentries = 2;
-	*partialmatch = (bool *) palloc(sizeof(bool) * 4);
-	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 4);
-	Pointer *extraDataArray = *extra_data;
-
-	Datum *entries = (Datum *) palloc(sizeof(Datum) * 4);
 
 	/* The first index term is a range scan from "MINVALUE" to "MAXVALUE"
 	 * We use the same ComparePartial for LessThan so we generate the terms identically.
@@ -1763,19 +2068,10 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	Datum *entries = (Datum *) palloc(sizeof(Datum) * 6);
 
-	pgbsonelement element;
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &element);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
-	}
+	pgbsonelement element = args->filterElement;
 
 	if (element.bsonValue.value_type == BSON_TYPE_NULL)
 	{
@@ -1831,20 +2127,11 @@ GenerateNegationTerms(Datum *entries, int nextIndex,
 static Datum *
 GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args, bool isNegation)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Datum *entries;
 
-	pgbsonelement element;
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &element);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
-	}
+	pgbsonelement element = args->filterElement;
 	if (element.bsonValue.value_type == BSON_TYPE_NULL)
 	{
 		/* special case for $gte: null */
@@ -1898,21 +2185,11 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args, bool isNegation)
 static Datum *
 GinBsonExtractQueryGreater(BsonExtractQueryArgs *args, bool isNegation)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Datum *entries;
 
-	pgbsonelement element;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &element);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
-	}
+	pgbsonelement element = args->filterElement;
 
 	int numTerms = isNegation ? 5 : 2;
 	entries = (Datum *) palloc(sizeof(Datum) * numTerms);
@@ -1946,20 +2223,11 @@ GinBsonExtractQueryGreater(BsonExtractQueryArgs *args, bool isNegation)
 static Datum *
 GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args, bool isNegation)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	Datum *entries;
-	pgbsonelement documentElement;
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
-	}
+	pgbsonelement documentElement = args->filterElement;
 
 	/* Clone it for now */
 	pgbsonelement queryElement = documentElement;
@@ -2027,21 +2295,11 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args, bool isNegation)
 static Datum *
 GinBsonExtractQueryLess(BsonExtractQueryArgs *args, bool isNegation)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	Datum *entries;
-	pgbsonelement documentElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
-	}
+	pgbsonelement documentElement = args->filterElement;
 
 	/* Clone it for now */
 	pgbsonelement queryElement = documentElement;
@@ -2141,27 +2399,17 @@ AddNullArrayOpTerms(Datum *entries, int index,
 static Datum *
 GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 {
-	pgbson *inArray = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	int32_t inArraySize = 0, index = 0;
 	Datum *entries;
-	pgbsonelement queryElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(inArray, &queryElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(inArray, &queryElement); /* TODO: collation index support */
-	}
+	pgbsonelement queryElement = args->filterElement;
 
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"$in should have an array of values")));
+							"$in must contain an array of values")));
 	}
 
 	bson_iter_t arrayIter;
@@ -2279,27 +2527,18 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 {
-	pgbson *inArray = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	int32_t termCount, index;
 	Datum *entries;
-	pgbsonelement queryElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(inArray, &queryElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(inArray, &queryElement); /* TODO: collation index support */
-	}
+	pgbsonelement queryElement = args->filterElement;
 
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"$in needs an array")));
+							"Expected 'array' type for $in but found '%s' type",
+							BsonTypeName(queryElement.bsonValue.value_type))));
 	}
 
 	bson_iter_t arrayIter;
@@ -2432,26 +2671,16 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
-	pgbsonelement queryElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &queryElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &queryElement); /* TODO: collation index support */
-	}
+	pgbsonelement queryElement = args->filterElement;
 
 	if ((queryElement.bsonValue.value_type != BSON_TYPE_UTF8) &&
 		(queryElement.bsonValue.value_type != BSON_TYPE_REGEX))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"$regex has to be a string")));
+							"$regex must be provided with a string value")));
 	}
 
 	int32_t numEntries = 2;
@@ -2531,26 +2760,16 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryMod(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 
 	Datum *entries;
 	pgbsonelement documentElement;
-	pgbsonelement filterElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
-	}
+	pgbsonelement filterElement = args->filterElement;
 
 	*extra_data = (Pointer *) palloc(sizeof(Pointer));
-	**extra_data = (Pointer) query;
+	**extra_data = (Pointer) PgbsonElementToPgbson(&filterElement);
 
 	/* find all values starting at mininum value. */
 	documentElement.path = filterElement.path;
@@ -2580,17 +2799,7 @@ GinBsonExtractQueryMod(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
-	pgbsonelement filterElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
-	}
+	pgbsonelement filterElement = args->filterElement;
 
 	bool existsPositiveMatch = true;
 
@@ -2716,25 +2925,15 @@ GenerateExistsEqualityTerms(int32 *nentries, bool **partialmatch, Pointer **extr
 static Datum *
 GinBsonExtractQuerySize(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	Datum *entries = (Datum *) palloc(sizeof(Datum));
-	pgbsonelement documentElement;
+	pgbsonelement documentElement = args->filterElement;
 
 	*partialmatch = (bool *) palloc(sizeof(bool));
 	*nentries = 1;
 	**partialmatch = true;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
-	}
 
 	/* store the query value in extra data - this allows us to compute upper bound using */
 	/* this extra value. */
@@ -2757,21 +2956,11 @@ GinBsonExtractQuerySize(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	Datum *entries = (Datum *) palloc(sizeof(Datum));
-	pgbsonelement documentElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
-	}
+	pgbsonelement documentElement = args->filterElement;
 
 	/* we only generate 1 term - minKey for the path. */
 	/* note that we can't simply use the minValue of the type */
@@ -2780,6 +2969,7 @@ GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 	/* and int32, int64 etc are ordered together by value. */
 	/* We can optimize this further, but for now we just use minValue. */
 	*partialmatch = (bool *) palloc(sizeof(bool));
+	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 1);
 	*nentries = 1;
 	**partialmatch = true;
 
@@ -2808,29 +2998,18 @@ GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 
 	/* now allocate the structure containing the integer type codes */
 	Datum *extraDataPtr = (Datum *) palloc(sizeof(Datum) * (numTerms + 1));
-
-	*extra_data = (Pointer *) &extraDataPtr;
+	**extra_data = (Pointer) extraDataPtr;
 
 	/* The array is represented as a length N followed by N type values */
 	/*  <int32_t length> <int32_t type> <int32_t type> ... */
-	*extraDataPtr = Int32GetDatum(numTerms);
+	extraDataPtr[0] = Int32GetDatum(numTerms);
 
 	/* add the type codes as extra data. */
 	int index = 1;
 	if (documentElement.bsonValue.value_type == BSON_TYPE_UTF8)
 	{
 		const char *typeNameStr = documentElement.bsonValue.value.v_utf8.str;
-		bson_type_t type;
-		if (strcmp(typeNameStr, "number") == 0)
-		{
-			/* Since $type on index only validates sort order, int32 is sufficient */
-			type = BSON_TYPE_INT32;
-		}
-		else
-		{
-			type = BsonTypeFromName(typeNameStr);
-		}
-
+		bson_type_t type = GetBsonTypeNameFromStringForDollarType(typeNameStr);
 		extraDataPtr[index++] = Int32GetDatum((int32_t) type);
 	}
 	/**
@@ -2914,20 +3093,10 @@ GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 static Datum *
 GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
-	pgbsonelement filterElement;
-
-	if (EnableCollation)
-	{
-		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
-	}
-	else
-	{
-		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
-	}
+	pgbsonelement filterElement = args->filterElement;
 
 	if (filterElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
@@ -3380,7 +3549,7 @@ GinBsonComparePartialBitsWiseOperator(BsonIndexTerm *queryValue,
 	}
 	else
 	{
-		if (compareValue->isIndexTermTruncated)
+		if (IsIndexTermTruncated(compareValue))
 		{
 			/* If it's truncated, mark it as a match and let the runtime deal with it */
 			return 0;
@@ -3530,7 +3699,7 @@ GinBsonComparePartialDollarRange(DollarRangeValues *rangeValues,
 
 			/* The min may also be met if the min term is truncated for a > Min */
 			if (!rangeValues->params.isMinInclusive && minCmp == 0 &&
-				minValueIndexTerm.isIndexTermTruncated)
+				IsIndexTermTruncated(&minValueIndexTerm))
 			{
 				isMinConditionMet = true;
 			}
@@ -3558,7 +3727,7 @@ GinBsonComparePartialDollarRange(DollarRangeValues *rangeValues,
 
 			/* The max may also be met if the max term is truncated for a < Max */
 			if (!rangeValues->params.isMaxInclusive && maxCmp == 0 &&
-				maxValueIndexTerm.isIndexTermTruncated)
+				IsIndexTermTruncated(&maxValueIndexTerm))
 			{
 				isMaxConditionMet = true;
 			}
@@ -3683,7 +3852,7 @@ GinBsonComparePartialRegex(BsonIndexTerm *queryValue, BsonIndexTerm *compareValu
 		/* we can stop iterating more. */
 		return 1;
 	}
-	else if (compareValue->isIndexTermTruncated)
+	else if (IsIndexTermTruncated(compareValue))
 	{
 		/* Don't compare truncated terms in the index */
 		return -1;
@@ -3812,7 +3981,7 @@ GinBsonComparePartialSize(BsonIndexTerm *queryValue, BsonIndexTerm *compareValue
 		}
 
 		/* If it's truncated: */
-		if (compareValue->isIndexTermTruncated)
+		if (IsIndexTermTruncated(compareValue))
 		{
 			/* If we're already greater than the required size, we don't need to go
 			 * to the runtime. e.g. if { $size: 1} and we counted 2 elements in the
@@ -3846,7 +4015,7 @@ GinBsonComparePartialType(BsonIndexTerm *queryValue, BsonIndexTerm *compareValue
 	{
 		/* The array is represented as a length N followed by N type values */
 		/*  <int32_t length> <int32_t type> <int32_t type> ... */
-		int32_t arrayLength = DatumGetInt32(*typeArray);
+		int32_t arrayLength = DatumGetInt32(typeArray[0]);
 		typeArray++;
 		for (int i = 0; i < arrayLength; i++)
 		{

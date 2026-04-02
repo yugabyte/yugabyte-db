@@ -56,6 +56,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
@@ -1108,6 +1109,58 @@ public class UpgradeUniverseHandler {
 
   private static String booleanToStr(boolean toggle) {
     return toggle ? "ON" : "OFF";
+  }
+
+  /**
+   * Resumes a paused canary software upgrade task. Re-submits the same task UUID without deleting
+   * existing subtasks so the task continues from the remaining work.
+   */
+  public UUID resumeCanarySoftwareUpgrade(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskInfo.getTaskState() != TaskInfo.State.Paused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Task is not in Paused state. Only paused canary upgrade tasks can be resumed.");
+    }
+    TaskType taskType = taskInfo.getTaskType();
+    if (taskType != TaskType.SoftwareUpgradeYB
+        && taskType != TaskType.SoftwareKubernetesUpgradeYB) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Task is not a software upgrade task. Only SoftwareUpgradeYB or"
+              + " SoftwareKubernetesUpgradeYB can be resumed.");
+    }
+    SoftwareUpgradeParams params =
+        Json.fromJson(taskInfo.getTaskParams(), SoftwareUpgradeParams.class);
+    if (!universeUUID.equals(params.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Task does not belong to the specified universe.");
+    }
+    if (universe.getUniverseDetails().softwareUpgradeState
+        != UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe is not in Paused software upgrade state.");
+    }
+    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Task does not match the universe's updating task.");
+    }
+    params.setPreviousTaskUUID(taskUUID);
+    params.expectedUniverseVersion = -1;
+    UUID newTaskUUID = commissioner.submit(taskType, params, taskUUID);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
+    if (customerTask != null) {
+      customerTask.updateTaskUUID(newTaskUUID);
+      customerTask.resetCompletionTime();
+    }
+    log.info(
+        "Resumed canary software upgrade task {} (new task {}) for universe {}.",
+        taskUUID,
+        newTaskUUID,
+        universe.getUniverseUUID());
+    return newTaskUUID;
   }
 
   /**

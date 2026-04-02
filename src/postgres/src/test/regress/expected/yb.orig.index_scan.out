@@ -1,24 +1,10 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (COSTS OFF)'
 -- Test primary key ordering
 CREATE TABLE pk_asc(k int, v int, PRIMARY KEY(k ASC));
@@ -31,8 +17,10 @@ SELECT * FROM pk_asc;
  30 | 3
 (3 rows)
 
-\set query 'SELECT * FROM pk_asc ORDER BY k'
-:explain1run1
+\set query ':P SELECT * FROM pk_asc ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                QUERY PLAN               
 ----------------------------------------
  Index Scan using pk_asc_pkey on pk_asc
@@ -45,8 +33,10 @@ SELECT * FROM pk_asc;
  30 | 3
 (3 rows)
 
-\set query 'SELECT * FROM pk_asc ORDER BY k DESC'
-:explain1run1
+\set query ':P SELECT * FROM pk_asc ORDER BY k DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan Backward using pk_asc_pkey on pk_asc
@@ -59,8 +49,10 @@ SELECT * FROM pk_asc;
  10 | 1
 (3 rows)
 
-\set query 'SELECT * FROM pk_asc ORDER BY k NULLS FIRST'
-:explain1run1
+\set query ':P SELECT * FROM pk_asc ORDER BY k NULLS FIRST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
         QUERY PLAN         
 ---------------------------
  Sort
@@ -85,8 +77,10 @@ SELECT * FROM pk_desc;
  10 | 11
 (3 rows)
 
-\set query 'SELECT * FROM pk_desc ORDER BY k'
-:explain1run1
+\set query ':P SELECT * FROM pk_desc ORDER BY k;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
         QUERY PLAN         
 ---------------------------
  Sort
@@ -101,8 +95,10 @@ SELECT * FROM pk_desc;
  30 | 13
 (3 rows)
 
-\set query 'SELECT * FROM pk_desc ORDER BY k DESC'
-:explain1run1
+\set query ':P SELECT * FROM pk_desc ORDER BY k DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
         QUERY PLAN         
 ---------------------------
  Sort
@@ -117,8 +113,10 @@ SELECT * FROM pk_desc;
  10 | 11
 (3 rows)
 
-\set query 'SELECT * FROM pk_desc ORDER BY k NULLS FIRST'
-:explain1run1
+\set query ':P SELECT * FROM pk_desc ORDER BY k NULLS FIRST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan Backward using pk_desc_pkey on pk_desc
@@ -149,8 +147,10 @@ SELECT k FROM pk_desc WHERE k < 30 AND k > 10;
 RESET yb_test_skip_binding_scan_keys;
 CREATE TABLE  pk_multi(h int, r int, v text, PRIMARY KEY(h, r DESC));
 INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(1, 3, '1-3');
-\set query 'SELECT * FROM pk_multi WHERE h = 1'
-:explain1run1
+\set query ':P SELECT * FROM pk_multi WHERE h = 1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                  QUERY PLAN                 
 --------------------------------------------
  Index Scan using pk_multi_pkey on pk_multi
@@ -166,9 +166,11 @@ INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(
 (4 rows)
 
 -- We should still get correct results even if hash key is unset
-\set hint1 '/*+IndexScan(pk_multi pk_multi_pkey)*/'
-\set query 'SELECT * FROM pk_multi WHERE r IN (5,3,9,2)'
-:explain1run1
+\set Q1 '/*+IndexScan(pk_multi pk_multi_pkey)*/'
+\set query ':P :Q1 SELECT * FROM pk_multi WHERE r IN (5,3,9,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using pk_multi_pkey on pk_multi
@@ -181,9 +183,10 @@ INSERT INTO pk_multi(h, r, v) VALUES (1, 0, '1-0'),(1, 1, '1-1'),(1, 2, '1-2'),(
  1 | 2 | 1-2
 (2 rows)
 
-\set hint1 ''
-\set query 'SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_multi WHERE yb_hash_code(h) = yb_hash_code(1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                  QUERY PLAN                 
 --------------------------------------------
  Index Scan using pk_multi_pkey on pk_multi
@@ -225,8 +228,10 @@ RESET yb_test_skip_binding_scan_keys;
 CREATE TABLE usc_asc(k int, v int);
 CREATE UNIQUE INDEX ON usc_asc(v ASC NULLS FIRST);
 INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
-\set query 'SELECT * FROM usc_asc ORDER BY v'
-:explain1run1
+\set query ':P SELECT * FROM usc_asc ORDER BY v;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
         QUERY PLAN         
 ---------------------------
  Sort
@@ -243,8 +248,10 @@ INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
  44 |   
 (5 rows)
 
-\set query 'SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST'
-:explain1run1
+\set query ':P SELECT * FROM usc_asc ORDER BY v DESC NULLS LAST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Scan Backward using usc_asc_v_idx on usc_asc
@@ -259,8 +266,10 @@ INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
  44 |   
 (5 rows)
 
-\set query 'SELECT * FROM usc_asc ORDER BY v NULLS FIRST'
-:explain1run1
+\set query ':P SELECT * FROM usc_asc ORDER BY v NULLS FIRST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                 QUERY PLAN                 
 -------------------------------------------
  Index Scan using usc_asc_v_idx on usc_asc
@@ -278,8 +287,10 @@ INSERT INTO usc_asc VALUES (44, NULL),(22, 20),(33, 30),(11, 10),(44, NULL);
 CREATE TABLE usc_multi_asc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON usc_multi_asc(k, r ASC NULLS FIRST);
 INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
-\set query 'SELECT * FROM usc_multi_asc WHERE k = 1'
-:explain1run1
+\set query ':P SELECT * FROM usc_multi_asc WHERE k = 1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                        
 ---------------------------------------------------------
  Index Scan using usc_multi_asc_k_r_idx on usc_multi_asc
@@ -297,8 +308,10 @@ INSERT INTO usc_multi_asc(k, r, v) VALUES (1, 10, 1),(1, NULL, 2),(1, 20, 3);
 CREATE TABLE sc_desc(k int, v int);
 CREATE INDEX ON sc_desc(v DESC NULLS LAST);
 INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
-\set query 'SELECT * FROM sc_desc ORDER BY v'
-:explain1run1
+\set query ':P SELECT * FROM sc_desc ORDER BY v;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
         QUERY PLAN         
 ---------------------------
  Sort
@@ -315,8 +328,10 @@ INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
  4 |   
 (5 rows)
 
-\set query 'SELECT * FROM sc_desc ORDER BY v DESC NULLS LAST'
-:explain1run1
+\set query ':P SELECT * FROM sc_desc ORDER BY v DESC NULLS LAST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                 QUERY PLAN                 
 -------------------------------------------
  Index Scan using sc_desc_v_idx on sc_desc
@@ -331,8 +346,10 @@ INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
  4 |   
 (5 rows)
 
-\set query 'SELECT * FROM sc_desc ORDER BY v NULLS FIRST'
-:explain1run1
+\set query ':P SELECT * FROM sc_desc ORDER BY v NULLS FIRST;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Scan Backward using sc_desc_v_idx on sc_desc
@@ -350,8 +367,10 @@ INSERT INTO sc_desc VALUES (4, NULL),(2, 20),(3, 30),(1, 10),(4, NULL);
 CREATE TABLE sc_multi_desc(k int, r int, v int) SPLIT INTO 1 TABLETS;
 CREATE INDEX ON sc_multi_desc(k, r DESC);
 INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(1, 20, 3);
-\set query 'SELECT * FROM sc_multi_desc WHERE k = 1'
-:explain1run1
+\set query ':P SELECT * FROM sc_multi_desc WHERE k = 1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                        
 ---------------------------------------------------------
  Index Scan using sc_multi_desc_k_r_idx on sc_multi_desc
@@ -368,8 +387,10 @@ INSERT INTO sc_multi_desc(k, r, v) VALUES (1, 10, 10),(1, 10, 10),(1, NULL, 2),(
 
 -- Testing for the case in issue #12481
 CREATE INDEX range_ind ON sc_multi_desc(v ASC, r ASC);
-\set query 'SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null'
-:explain1run1
+\set query ':P SELECT v,r FROM sc_multi_desc WHERE v IN (2,4) and r is null;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Only Scan using range_ind on sc_multi_desc
@@ -510,8 +531,10 @@ SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < null;
 (0 rows)
 
 -- IS NULL should be pushed down and return the expected result.
-\set query 'SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null'
-:explain1run1
+\set query ':P SELECT * FROM sc_desc_nl WHERE h = 1 AND r IS null;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan using sc_desc_nl_h_r_idx on sc_desc_nl
@@ -523,8 +546,10 @@ SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r < null;
  1 |   | 6
 (1 row)
 
-\set query 'SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null'
-:explain1run1
+\set query ':P SELECT * FROM sc_desc_nl WHERE yb_hash_code(h) = yb_hash_code(1) AND r IS null;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Scan using sc_desc_nl_h_r_idx on sc_desc_nl
@@ -583,8 +608,10 @@ select * from test;
   3 |    3 |    3 |    3 |    3 |    3 | Cc   |    3 |   99
 (6 rows)
 
-\set query 'select * from test where col9 = 88'
-:explain1run1
+\set query ':P select * from test where col9 = 88;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
             QUERY PLAN             
 -----------------------------------
  Index Scan using idx_col9 on test
@@ -595,8 +622,10 @@ select * from test;
   6 |    6 |    6 |    6 |    6 |    6 | Ff   |    6 |   88
 (1 row)
 
-\set query 'select * from test where col9 = 99'
-:explain1run1
+\set query ':P select * from test where col9 = 99;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
           QUERY PLAN           
 -------------------------------
  Seq Scan on test
@@ -613,9 +642,11 @@ select * from test;
 -- testing index on expressions
 create index idx_col7 ON test(col7);
 SELECT $$
-select * from test where col7 = 'Dd'
+:P select * from test where col7 = 'Dd';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
             QUERY PLAN             
 -----------------------------------
  Index Scan using idx_col7 on test
@@ -628,9 +659,9 @@ $$ AS query \gset
 (1 row)
 
 SELECT $$
-select * from test where lower(col7) = 'dd'
+:explain select * from test where lower(col7) = 'dd';
 $$ AS query \gset
-:explain1
+:query
                       QUERY PLAN                      
 ------------------------------------------------------
  Seq Scan on test
@@ -641,9 +672,11 @@ drop index idx_col7;
 create index idx_col7 ON test(lower(col7));
 update test set col7='DdD' where pk=4;
 SELECT $$
-select * from test where lower(col7) = lower('DdD')
+:P select * from test where lower(col7) = lower('DdD');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan using idx_col7 on test
@@ -669,8 +702,10 @@ select * from test;
 -- testing multi-column indices
 create index idx_col4_idx_col5_idx_col6 on test(col4, col5, col6);
 update test set col4=112 where pk=1;
-\set query 'SELECT * FROM test WHERE col4 = 112'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col4 = 112;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                      QUERY PLAN                      
 -----------------------------------------------------
  Index Scan using idx_col4_idx_col5_idx_col6 on test
@@ -683,8 +718,10 @@ update test set col4=112 where pk=1;
 (1 row)
 
 update test set col4=222, col5=223 where pk=2;
-\set query 'SELECT * FROM test WHERE col4 = 222 and col5 = 223'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col4 = 222 and col5 = 223;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
             QUERY PLAN             
 -----------------------------------
  Index Scan using idx_col5 on test
@@ -698,8 +735,10 @@ update test set col4=222, col5=223 where pk=2;
 (1 row)
 
 update test set col4=232, col5=345, col6=456 where pk=3;
-\set query 'SELECT * FROM test WHERE col4 = 232 and col5 = 345 and col6 = 456'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col4 = 232 and col5 = 345 and col6 = 456;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Scan using idx_col4_idx_col5_idx_col6 on test
@@ -711,8 +750,10 @@ update test set col4=232, col5=345, col6=456 where pk=3;
   3 |    3 |    3 |  232 |  345 |  456 | Cc   |    3 |   99
 (1 row)
 
-\set query 'SELECT * FROM test WHERE col5 = 345'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col5 = 345;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
             QUERY PLAN             
 -----------------------------------
  Index Scan using idx_col5 on test
@@ -725,8 +766,10 @@ update test set col4=232, col5=345, col6=456 where pk=3;
 (1 row)
 
 update test set col5=444, col6=35 where pk=4;
-\set query 'SELECT * FROM test WHERE col5 = 444 and col6 = 35'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col5 = 444 and col6 = 35;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
              QUERY PLAN              
 -------------------------------------
  Index Scan using idx_col5 on test
@@ -740,8 +783,10 @@ update test set col5=444, col6=35 where pk=4;
 (1 row)
 
 update test set col6=5554 where pk=5;
-\set query 'SELECT * FROM test WHERE col6 = 5554'
-:explain1run1
+\set query ':P SELECT * FROM test WHERE col6 = 5554;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
            QUERY PLAN            
 ---------------------------------
  Seq Scan on test
@@ -755,8 +800,10 @@ update test set col6=5554 where pk=5;
 
 -- test index only scan with non-target column refs in qual (github issue #9176)
 -- baseline, col5 is in target columns
-\set query 'SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0'
-:explain1run1
+\set query ':P SELECT col4, col5 FROM test WHERE col4 = 232 and col5 % 3 = 0;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Only Scan using idx_col4_idx_col5_idx_col6 on test
@@ -770,8 +817,10 @@ update test set col6=5554 where pk=5;
 (1 row)
 
 -- same lines are expected without col5 in the target list
-\set query 'SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0'
-:explain1run1
+\set query ':P SELECT col4 FROM test WHERE col4 = 232 and col5 % 3 = 0;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                        
 ----------------------------------------------------------
  Index Only Scan using idx_col4_idx_col5_idx_col6 on test
@@ -788,9 +837,11 @@ update test set col6=5554 where pk=5;
 -- no request should be sent to DocDB
 \set explain 'EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)'
 SELECT $$
-SELECT * FROM test WHERE col3 = ANY('{}')
+:P SELECT * FROM test WHERE col3 = ANY('{}');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan using idx_col3 on test (actual rows=0 loops=1)
@@ -802,9 +853,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT * FROM test WHERE col3 = ANY('{NULL}')
+:P SELECT * FROM test WHERE col3 = ANY('{NULL}');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan using idx_col3 on test (actual rows=0 loops=1)
@@ -816,9 +869,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT col3 FROM test WHERE col3 = ANY('{NULL}')
+:P SELECT col3 FROM test WHERE col3 = ANY('{NULL}');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Index Only Scan using idx_col3 on test (actual rows=0 loops=1)
@@ -831,9 +886,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}')
+:P SELECT * FROM test WHERE col3 = ANY('{NULL, NULL}');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                         
 -----------------------------------------------------------
  Index Scan using idx_col3 on test (actual rows=0 loops=1)
@@ -859,8 +916,10 @@ select * from test;
 (6 rows)
 
 \set explain 'EXPLAIN (COSTS OFF)'
-\set query 'select * from test where pk=17'
-:explain1run1
+\set query ':P select * from test where pk=17;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
              QUERY PLAN             
 ------------------------------------
  Index Scan using test_pkey on test
@@ -872,8 +931,10 @@ select * from test;
  17 |    1 |   11 |  112 |    1 |    1 | Aa   |    1 |   99
 (1 row)
 
-\set query 'select * from test where pk=25'
-:explain1run1
+\set query ':P select * from test where pk=25;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
              QUERY PLAN             
 ------------------------------------
  Index Scan using test_pkey on test
@@ -897,8 +958,10 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM test WHERE c
 -- test index scan where the column type does not match value type
 CREATE TABLE pk_real(c0 REAL, PRIMARY KEY(c0 asc));
 INSERT INTO pk_real(c0) VALUES(0.4);
-\set query 'SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0))'
-:explain1run1
+\set query ':P SELECT ALL pk_real.c0 FROM pk_real WHERE ((0.6)>(pk_real.c0));'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                  
 ----------------------------------------------
  Index Scan using pk_real_pkey on pk_real
@@ -911,8 +974,10 @@ INSERT INTO pk_real(c0) VALUES(0.4);
 (1 row)
 
 -- 0.4::FLOAT4 is not equal to 0.4::DOUBLE PRECISION
-\set query 'SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4])'
-:explain1run1
+\set query ':P SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = ANY(ARRAY[0.6, 0.4]);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                          QUERY PLAN                         
 ------------------------------------------------------------
  Index Scan using pk_real_pkey on pk_real
@@ -925,8 +990,10 @@ INSERT INTO pk_real(c0) VALUES(0.4);
 
 INSERT INTO pk_real(c0) VALUES(0.5);
 -- 0.5::FLOAT4 is equal to 0.5::DOUBLE PRECISION
-\set query 'SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5'
-:explain1run1
+\set query ':P SELECT ALL pk_real.c0 FROM pk_real WHERE pk_real.c0 = 0.5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                   QUERY PLAN                  
 ----------------------------------------------
  Index Scan using pk_real_pkey on pk_real
@@ -940,8 +1007,10 @@ INSERT INTO pk_real(c0) VALUES(0.5);
 
 CREATE TABLE pk_smallint(c0 SMALLINT, PRIMARY KEY(c0 asc));
 INSERT INTO pk_smallint VALUES(123), (-123);
-\set query 'SELECT c0 FROM pk_smallint WHERE (65568 > c0)'
-:explain1run1
+\set query ':P SELECT c0 FROM pk_smallint WHERE (65568 > c0);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using pk_smallint_pkey on pk_smallint
@@ -954,8 +1023,10 @@ INSERT INTO pk_smallint VALUES(123), (-123);
   123
 (2 rows)
 
-\set query 'SELECT c0 FROM pk_smallint WHERE (c0 > -65539)'
-:explain1run1
+\set query ':P SELECT c0 FROM pk_smallint WHERE (c0 > -65539);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                    
 --------------------------------------------------
  Index Scan using pk_smallint_pkey on pk_smallint
@@ -968,8 +1039,10 @@ INSERT INTO pk_smallint VALUES(123), (-123);
   123
 (2 rows)
 
-\set query 'SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]))'
-:explain1run1
+\set query ':P SELECT c0 FROM pk_smallint WHERE (c0 = ANY(ARRAY[-65539, 65568]));'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                       
 --------------------------------------------------------
  Index Scan using pk_smallint_pkey on pk_smallint
@@ -1106,8 +1179,10 @@ SELECT * FROM pk_int WHERE c0 > ALL(ARRAY[3, 4]);
 CREATE TABLE pk_range_int_asc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
 \set explain 'EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)'
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=67 loops=1)
@@ -1185,8 +1260,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   2 |  3 |  2 | 67
 (67 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, v, r3) <= (2,3,60,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=64 loops=1)
@@ -1263,8 +1340,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   2 |  2 |  4 | 64
 (64 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) < (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) < (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=66 loops=1)
@@ -1341,8 +1420,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   2 |  3 |  1 | 66
 (66 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=92 loops=1)
@@ -1445,8 +1526,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   3 |  3 |  2 | 92
 (92 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=34 loops=1)
@@ -1491,8 +1574,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   5 |  0 |  0 | 125
 (34 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) > (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) > (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=33 loops=1)
@@ -1536,8 +1621,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   5 |  0 |  0 | 125
 (33 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=25 loops=1)
@@ -1573,8 +1660,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   2 |  4 |  4 | 74
 (25 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=2 loops=1)
@@ -1587,8 +1676,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   1 |  3 |  2 | 42
 (2 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,1,5) AND (r1, r2, r3) <= (1,4,5) ORDER BY r1 DESC, r2 DESC, r3 DESC'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) >= (1,1,5) AND (r1, r2, r3) <= (1,4,5) ORDER BY r1 DESC, r2 DESC, r3 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan Backward using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=15 loops=1)
@@ -1614,8 +1705,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   1 |  2 |  0 | 35
 (15 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) = (1,6,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) = (1,6,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
@@ -1626,8 +1719,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=49 loops=1)
@@ -1687,8 +1782,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   1 |  4 |  4 | 49
 (49 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                                QUERY PLAN                                                                                               
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
@@ -1699,8 +1796,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r2, r3) <= (1,1,5) AND (r1, r2, r3) > (1,2,3) AND v IS NOT NULL;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=0 loops=1)
@@ -1712,8 +1811,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=4 loops=1)
@@ -1729,8 +1830,10 @@ INSERT INTO pk_range_int_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_seri
   1 |  2 |  3 | 38
 (4 rows)
 
-\set query 'SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_asc_pkey on pk_range_int_asc (actual rows=1 loops=1)
@@ -1746,8 +1849,10 @@ DROP TABLE pk_range_int_asc;
 -- test row comparison expressions where we have differing column orderings
 CREATE TABLE pk_range_asc_desc_asc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 asc, r2 desc, r3 asc));
 INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) <= (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) <= (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=67 loops=1)
@@ -1826,8 +1931,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   2 |  0 |  4 | 54
 (67 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, v, r3) <= (2,3,60,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, v, r3) <= (2,3,60,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=64 loops=1)
@@ -1905,8 +2012,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   2 |  0 |  4 | 54
 (64 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=76 loops=1)
@@ -1994,8 +2103,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   5 |  0 |  0 | 125
 (76 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) > (8,7,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) > (8,7,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=0 loops=1)
@@ -2006,8 +2117,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=37 loops=1)
@@ -2056,8 +2169,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   3 |  0 |  4 | 79
 (37 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                               
 --------------------------------------------------------------------------------------------------------
  Index Scan Backward using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=37 loops=1)
@@ -2106,8 +2221,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   2 |  4 |  0 | 70
 (37 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=4 loops=1)
@@ -2123,8 +2240,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
   1 |  2 |  3 | 38
 (4 rows)
 
-\set query 'SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_asc_desc_asc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_asc_desc_asc_pkey on pk_range_asc_desc_asc (actual rows=1 loops=1)
@@ -2139,8 +2258,10 @@ INSERT INTO pk_range_asc_desc_asc SELECT i/25, (i/5) % 5, i % 5, i FROM generate
 DROP TABLE pk_range_asc_desc_asc;
 CREATE TABLE pk_range_desc_asc_desc (r1 BIGINT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 desc, r2 asc, r3 desc));
 INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) <= (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) <= (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=67 loops=1)
@@ -2219,8 +2340,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   0 |  4 |  0 | 20
 (67 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, v, r3) <= (2,3,60,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=64 loops=1)
@@ -2298,8 +2421,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   0 |  4 |  0 | 20
 (64 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=76 loops=1)
@@ -2387,8 +2512,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   2 |  4 |  0 |  70
 (76 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=37 loops=1)
@@ -2437,8 +2564,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   2 |  4 |  0 | 70
 (37 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r2, r3) >= (1,7,2) AND (r1, r2, r3) <= (3,2,1) ORDER BY r1 DESC, r2 ASC, r3 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=37 loops=1)
@@ -2487,8 +2616,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   2 |  4 |  0 | 70
 (37 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=4 loops=1)
@@ -2504,8 +2635,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
   1 |  2 |  0 | 35
 (4 rows)
 
-\set query 'SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_desc_asc_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_desc_asc_desc_pkey on pk_range_desc_asc_desc (actual rows=1 loops=1)
@@ -2520,8 +2653,10 @@ INSERT INTO pk_range_desc_asc_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generat
 DROP TABLE pk_range_desc_asc_desc;
 CREATE TABLE pk_range_int_desc (r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 desc, r2 desc, r3 desc));
 INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=67 loops=1)
@@ -2599,8 +2734,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   0 |  0 |  1 |  1
 (67 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, v, r3) <= (2,3,60,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, v, r3) <= (2,3,60,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=64 loops=1)
@@ -2677,8 +2814,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   0 |  0 |  1 |  1
 (64 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) < (2,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) < (2,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=66 loops=1)
@@ -2755,8 +2894,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   0 |  0 |  1 |  1
 (66 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=92 loops=1)
@@ -2859,8 +3000,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   0 |  0 |  1 |  1
 (92 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=34 loops=1)
@@ -2905,8 +3048,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   3 |  3 |  2 |  92
 (34 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) > (3,3,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) > (3,3,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=33 loops=1)
@@ -2950,8 +3095,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   3 |  3 |  3 |  93
 (33 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (2,4,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=25 loops=1)
@@ -2987,8 +3134,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   2 |  0 |  0 | 50
 (25 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,2,3) AND (r1, r2, r3) <= (1,3,2) AND r3 IN (3,2,6);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                           QUERY PLAN                                                           
 -------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=2 loops=1)
@@ -3001,8 +3150,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   1 |  2 |  3 | 38
 (2 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (1,6,5) ORDER BY r1 ASC, r2 ASC, r3 ASC'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) >= (1,4,5) AND (r1, r2, r3) <= (1,6,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                           
 -----------------------------------------------------------------------------------------------
  Index Scan Backward using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
@@ -3013,8 +3164,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) = (1,6,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) = (1,6,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
@@ -3025,8 +3178,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,6,5) AND (r1,r2,r3) < (1,6,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=49 loops=1)
@@ -3086,8 +3241,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   0 |  0 |  1 |  1
 (49 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r2, r3) <= (1,1,5) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) > (1,2,3) AND (r1,r2,r3) < (1,2,4) AND (r1,r2,r3) >= (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                                QUERY PLAN                                                                                               
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=0 loops=1)
@@ -3098,8 +3255,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 ----+----+----+---
 (0 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=4 loops=1)
@@ -3115,8 +3274,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   1 |  2 |  0 | 35
 (4 rows)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE (r1, r3) <= (1,3) AND (r1,r2) < (1,3) AND (r1,r2) >= (1,2) AND (r1,r2,r3) = (1,2,3);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_desc_pkey on pk_range_int_desc (actual rows=1 loops=1)
@@ -3128,8 +3289,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   1 |  2 |  3 | 38
 (1 row)
 
-\set query 'SELECT * FROM pk_range_int_desc WHERE r2 IN (1,3,5) ORDER BY r1 DESC, r2 DESC LIMIT 10'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_desc WHERE r2 IN (1,3,5) ORDER BY r1 DESC, r2 DESC LIMIT 10;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Limit (actual rows=10 loops=1)
@@ -3154,8 +3317,10 @@ INSERT INTO pk_range_int_desc SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
 DROP TABLE pk_range_int_desc;
 CREATE TABLE pk_range_int_text (r1 INT, r2 TEXT, r3 BIGINT, v INT, PRIMARY KEY(r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i % 5, i FROM generate_series(1, 125) AS i;
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (2,''ab2''::text,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (2,''ab2''::text,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=49 loops=1)
@@ -3215,8 +3380,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   1 | abc4 |  4 | 49
 (49 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, v, r3) <= (2,''abc3''::text,60,1)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, v, r3) <= (2,''abc3''::text,60,1);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=64 loops=1)
@@ -3293,8 +3460,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   2 | abc2 |  4 | 64
 (64 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) < (2,''abc3''::text,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) < (2,''abc3''::text,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=66 loops=1)
@@ -3371,8 +3540,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   2 | abc3 |  1 | 66
 (66 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (3,''abb3''::text,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) <= (3,''abb3''::text,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=74 loops=1)
@@ -3457,8 +3628,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   2 | abc4 |  4 | 74
 (74 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (3,''abc3''::text,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (3,''abc3''::text,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=34 loops=1)
@@ -3503,8 +3676,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   5 | abc0 |  0 | 125
 (34 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) > (3,''abc3''::text,2)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) > (3,''abc3''::text,2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=33 loops=1)
@@ -3548,8 +3723,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   5 | abc0 |  0 | 125
 (33 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''abc4''::text,5) AND (r1, r2, r3) <= (2,''abc4''::text,5)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''abc4''::text,5) AND (r1, r2, r3) <= (2,''abc4''::text,5);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                   QUERY PLAN                                                   
 ---------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=25 loops=1)
@@ -3585,8 +3762,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   2 | abc4 |  4 | 74
 (25 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''abc2''::text,3) AND (r1, r2, r3) <= (1,''abc3''::text,2) AND r3 IN (3,2,6)'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''abc2''::text,3) AND (r1, r2, r3) <= (1,''abc3''::text,2) AND r3 IN (3,2,6);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                      QUERY PLAN                                                                     
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=2 loops=1)
@@ -3599,8 +3778,10 @@ INSERT INTO pk_range_int_text SELECT i/25, concat('abc', ((i/5) % 5)::TEXT), i %
   1 | abc3 |  2 | 42
 (2 rows)
 
-\set query 'SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''ab''::text,5) AND (r1, r2, r3) <= (1,''abcd''::text,5) ORDER BY r1 ASC, r2 ASC, r3 ASC'
-:explain1run1
+\set query ':P SELECT * FROM pk_range_int_text WHERE (r1, r2, r3) >= (1,''ab''::text,5) AND (r1, r2, r3) <= (1,''abcd''::text,5) ORDER BY r1 ASC, r2 ASC, r3 ASC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Index Scan using pk_range_int_text_pkey on pk_range_int_text (actual rows=25 loops=1)
@@ -3640,8 +3821,10 @@ DROP TABLE pk_range_int_text;
 CREATE TABLE null_test(a int, b int);
 CREATE INDEX ON null_test(a asc, b asc);
 INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
-\set query 'SELECT * FROM null_test WHERE (a,b) >= (9, 8)'
-:explain1run1
+\set query ':P SELECT * FROM null_test WHERE (a,b) >= (9, 8);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=2 loops=1)
@@ -3656,8 +3839,10 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9
 (2 rows)
 
-\set query 'SELECT * FROM null_test WHERE (a,b) <= (9, 8)'
-:explain1run1
+\set query ':P SELECT * FROM null_test WHERE (a,b) <= (9, 8);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=1 loops=1)
@@ -3670,8 +3855,10 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  9 | 8
 (1 row)
 
-\set query 'SELECT * FROM null_test WHERE (a,b) <= (9, 8)'
-:explain1run1
+\set query ':P SELECT * FROM null_test WHERE (a,b) <= (9, 8);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=1 loops=1)
@@ -3684,8 +3871,10 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  9 | 8
 (1 row)
 
-\set query 'SELECT * FROM null_test WHERE (a,b) >= (8, 9)'
-:explain1run1
+\set query ':P SELECT * FROM null_test WHERE (a,b) >= (8, 9);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
@@ -3700,9 +3889,11 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9
 (3 rows)
 
-\set query 'SELECT * FROM null_test WHERE (a,b) >= (8, 9)'
-\set hint1 '/*+ IndexOnlyScan(null_test) */'
-:explain1run1
+\set query ':P SELECT * FROM null_test WHERE (a,b) >= (8, 9);'
+\set Q1 '/*+ IndexOnlyScan(null_test) */'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
@@ -3717,8 +3908,10 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9
 (3 rows)
 
-\set query 'SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL)'
-:explain1run1
+\set query ':P :Q1 SELECT * FROM null_test WHERE a > 8 OR (a = 8 AND b >= NULL);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Index Only Scan using null_test_a_b_idx on null_test (actual rows=3 loops=1)
@@ -3733,10 +3926,11 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9
 (3 rows)
 
-\set hint1 ''
-\set query 'SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b)'
-\set hint1 '/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */'
-:explain1run1
+\set query ':P :Q1 SELECT * FROM null_test t1 JOIN null_test t2 ON (t1.a, t1.b) >= (t2.a, t2.b);'
+\set Q1 '/*+ Set(enable_material OFF) Leading((t1 t2)) IndexOnlyScan(t1) IndexOnlyScan(t2) */'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -3755,8 +3949,10 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9 | 10 | 9
 (4 rows)
 
-\set query 'SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b)'
-:explain1run1
+\set query ':P :Q1 SELECT * FROM null_test t1 JOIN null_test t2 ON t1.a > t2.a OR (t1.a = t2.a AND t1.b >= t2.b);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -3776,14 +3972,15 @@ INSERT INTO null_test VALUES (NULL, 9), (9, NULL), (9,8), (10,9);
  10 | 9 | 10 | 9
 (4 rows)
 
-\set hint1 ''
 DROP TABLE null_test;
 -- make sure row comparisons don't operate on hash keys yet
 CREATE TABLE pk_hash_range_int (h int, r1 int, r2 int, r3 int, PRIMARY KEY(h hash, r1 asc, r2 asc, r3 asc));
 INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_series(1, 125) AS i;
-\set hint1 '/*+ IndexScan(pk_hash_range_int) */'
-\set query 'SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2)'
-:explain1run1
+\set Q1 '/*+ IndexScan(pk_hash_range_int) */'
+\set query ':P :Q1 SELECT * FROM pk_hash_range_int WHERE (r1, r2) <= (3, 2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_hash_range_int_pkey on pk_hash_range_int (actual rows=90 loops=1)
@@ -3885,8 +4082,10 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
  3 |  3 |  2 |  92
 (90 rows)
 
-\set query 'SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2'
-:explain1run1
+\set query ':P :Q1 SELECT * FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Index Scan using pk_hash_range_int_pkey on pk_hash_range_int (actual rows=15 loops=1)
@@ -3912,8 +4111,10 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
  1 |  2 |  4 | 39
 (15 rows)
 
-\set query 'SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2'
-:explain1run1
+\set query ':P :Q1 SELECT sum(r1) FROM pk_hash_range_int WHERE h = 1 AND (r1, r2) <= (3, 2) AND r1 <= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -3926,7 +4127,6 @@ INSERT INTO pk_hash_range_int SELECT i/25, (i/5) % 5, i % 5, i FROM generate_ser
   15
 (1 row)
 
-\set hint1 ''
 DROP TABLE pk_hash_range_int;
 -- Test index SPLIT AT with INCLUDE clause
 CREATE TABLE test_tbl (
@@ -3938,8 +4138,10 @@ CREATE INDEX test_idx on test_tbl(
   b ASC
 ) INCLUDE (a) SPLIT AT VALUES ((1));
 INSERT INTO test_tbl VALUES (1, 2),(2, 1),(4, 3),(5, 4);
-\set query 'SELECT a, b FROM test_tbl WHERE a = 4'
-:explain1run1
+\set query ':P SELECT a, b FROM test_tbl WHERE a = 4;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Scan using test_tbl_pkey on test_tbl (actual rows=1 loops=1)
@@ -3951,8 +4153,10 @@ INSERT INTO test_tbl VALUES (1, 2),(2, 1),(4, 3),(5, 4);
  4 | 3
 (1 row)
 
-\set query 'SELECT a, b FROM test_tbl WHERE b = 4'
-:explain1run1
+\set query ':P SELECT a, b FROM test_tbl WHERE b = 4;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Index Only Scan using test_idx on test_tbl (actual rows=1 loops=1)
@@ -4022,8 +4226,10 @@ insert into sample values (1,1);
 insert into sample values (1,2);
 insert into sample values (2,1);
 \set explain 'EXPLAIN (COSTS OFF)'
-\set query 'select * from sample where b < 2 and b >= 2'
-:explain1run1
+\set query ':P select * from sample where b < 2 and b >= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                QUERY PLAN               
 ----------------------------------------
  Index Scan using sample_pkey on sample
@@ -4034,8 +4240,10 @@ insert into sample values (2,1);
 ---+---
 (0 rows)
 
-\set query 'select * from sample where b >= 2 and b < 2'
-:explain1run1
+\set query ':P select * from sample where b >= 2 and b < 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                QUERY PLAN               
 ----------------------------------------
  Index Scan using sample_pkey on sample
@@ -4046,8 +4254,10 @@ insert into sample values (2,1);
 ---+---
 (0 rows)
 
-\set query 'select * from sample where b < 2 and b >= 2'
-:explain1run1
+\set query ':P select * from sample where b < 2 and b >= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                QUERY PLAN               
 ----------------------------------------
  Index Scan using sample_pkey on sample
@@ -4058,8 +4268,10 @@ insert into sample values (2,1);
 ---+---
 (0 rows)
 
-\set query 'select * from sample where b <= 2 and b < 2 and b >= 2'
-:explain1run1
+\set query ':P select * from sample where b <= 2 and b < 2 and b >= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                     QUERY PLAN                     
 ---------------------------------------------------
  Index Scan using sample_pkey on sample
@@ -4070,8 +4282,10 @@ insert into sample values (2,1);
 ---+---
 (0 rows)
 
-\set query 'select * from sample where b <= 2 and b >= 2'
-:explain1run1
+\set query ':P select * from sample where b <= 2 and b >= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                QUERY PLAN               
 ----------------------------------------
  Index Scan using sample_pkey on sample
@@ -4083,8 +4297,10 @@ insert into sample values (2,1);
  1 | 2
 (1 row)
 
-\set query 'select * from sample where b <= 3 and b <= 2 and b >= 2'
-:explain1run1
+\set query ':P select * from sample where b <= 3 and b <= 2 and b >= 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                      QUERY PLAN                     
 ----------------------------------------------------
  Index Scan using sample_pkey on sample
@@ -4110,11 +4326,13 @@ select * from t1;
   1 | {"c3": 1, "c4": 1}
 (2 rows)
 
-\set hint1 '/*+IndexScan(t1 t1_idx)*/'
+\set Q1 '/*+IndexScan(t1 t1_idx)*/'
 SELECT $$
-select * from t1 where (c2->>'c3') = '4'
+:P :Q1 select * from t1 where (c2->>'c3') = '4';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using t1_idx on t1
@@ -4126,9 +4344,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-select * from t1 where (c2->>'c4') = '4'
+:P :Q1 select * from t1 where (c2->>'c4') = '4';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using t1_idx on t1
@@ -4140,9 +4360,11 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4'
+:P :Q1 select * from t1 where (c2->>'c3') = '4' and (c2->>'c4') = '4';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                        
 -----------------------------------------------------------------------------------------
  Index Scan using t1_idx on t1
@@ -4153,7 +4375,6 @@ $$ AS query \gset
 ----+----
 (0 rows)
 
-\set hint1 ''
 drop table t1;
 create table sample(a int, primary key(a asc));
 insert into sample values (0);
@@ -4183,8 +4404,10 @@ create index on t1(k1, k2, v1);
 -- NOTE: this GUC cannot be set using pg_hint_plan Set(...) because it is
 -- currently used during execution, not just planning.
 SET yb_test_skip_binding_scan_keys = true;
-\set query 'select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2)'
-:explain1run1
+\set query ':P select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Index Scan using t1_k1_k2_v1_idx on t1
@@ -4203,9 +4426,11 @@ insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000000', '202
 insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 1, 'bar');
 insert into t1 (a, b, y, z) values ('00000000-0000-0000-0000-000000000001', '2021-01-01 00:00:00', 2, 'foo');
 SELECT $$
-select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz')
+:P select * from t1 where (b, a) >= ('2021-01-01 00:00:00', '00000000-0000-0000-0000-000000000001') and (y, z) >= (2, 'baz');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                     QUERY PLAN                                                                                     
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using t1_pkey on t1
@@ -4223,11 +4448,13 @@ create table simple (i int);
 create index on simple(i, i asc);
 insert into simple values (1);
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)'
-\set hint1 '/*+ IndexOnlyScan(simple) */'
+\set Q1 '/*+ IndexOnlyScan(simple) */'
 SELECT $$
-SELECT 'a' FROM simple WHERE i < 5
+:P :Q1 SELECT 'a' FROM simple WHERE i < 5;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Index Only Scan using simple_i_i1_idx on simple (actual rows=1 loops=1)
@@ -4240,11 +4467,12 @@ $$ AS query \gset
  a
 (1 row)
 
-\set hint1 ''
 -- GHI #26713 IndexOnlyScan recheck - selecting an aggregate
-\set hint1 '/*+ IndexOnlyScan(simple) */'
-\set query 'SELECT COUNT(*) FROM simple WHERE i < 5'
-:explain1run1
+\set Q1 '/*+ IndexOnlyScan(simple) */'
+\set query ':P :Q1 SELECT COUNT(*) FROM simple WHERE i < 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Aggregate (actual rows=1 loops=1)
@@ -4258,11 +4486,12 @@ $$ AS query \gset
      1
 (1 row)
 
-\set hint1 ''
 -- GHI #26705 IndexOnlyScan recheck - selecting nothing from the table
-\set hint1 '/*+ IndexOnlyScan(s2) */'
-\set query 'SELECT s1.* FROM simple s1, simple s2 WHERE s2.i < 5'
-:explain1run1
+\set Q1 '/*+ IndexOnlyScan(s2) */'
+\set query ':P :Q1 SELECT s1.* FROM simple s1, simple s2 WHERE s2.i < 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)
@@ -4278,7 +4507,6 @@ $$ AS query \gset
  1
 (1 row)
 
-\set hint1 ''
 -- set a size limit. this indicates the size of the response
 set yb_fetch_row_limit = 0;
 set yb_fetch_size_limit = '3kB';

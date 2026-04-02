@@ -13,12 +13,15 @@ import api.v2.models.ClusterNetworkingSpec.EnableExposingServiceEnum;
 import api.v2.models.ClusterNodeSpec;
 import api.v2.models.ClusterProviderEditSpec;
 import api.v2.models.ClusterProviderSpec;
+import api.v2.models.ClusterResizeNodeSpec;
+import api.v2.models.ClusterResizeStorageSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.ClusterStorageSpec;
 import api.v2.models.ClusterStorageSpec.StorageTypeEnum;
 import api.v2.models.NodeProxyConfig;
 import api.v2.models.PerProcessNodeSpec;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -280,6 +283,20 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent toV1UserIntentFromUniverseResizeNodesCluster(
+      UniverseResizeNodesCluster source, @MappingTarget UserIntent userIntent) {
+    if (source == null) {
+      return userIntent;
+    }
+    if (userIntent == null) {
+      userIntent = new UniverseDefinitionTaskParams.UserIntent();
+    }
+
+    fillUserIntentFromClusterResizeNodeSpec(source.getNodeSpec(), userIntent);
+    userIntent.specificGFlags = v1SpecificGFlagsFromClusterGFlags(source.getGflags());
+    return userIntent;
+  }
+
   default UserIntent overwriteUserIntentFromClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget UserIntent userIntent) {
     if (clusterAddSpec == null) {
@@ -370,6 +387,7 @@ public interface UserIntentMapper {
                 UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
                 if (overrides == null) {
                   overrides = new UserIntentOverrides();
+                  overrides.setAzOverrides(new HashMap<UUID, AZOverrides>());
                   userIntent.setUserIntentOverrides(overrides);
                 }
                 AZOverrides azOverrides = new AZOverrides();
@@ -396,7 +414,197 @@ public interface UserIntentMapper {
     return userIntent;
   }
 
+  default UserIntent fillUserIntentFromClusterResizeNodeSpec(
+      ClusterResizeNodeSpec clusterResizeNodeSpec, UserIntent userIntent) {
+    if (clusterResizeNodeSpec == null) {
+      return userIntent;
+    }
+    if (clusterResizeNodeSpec.getInstanceType() != null) {
+      userIntent.instanceType = clusterResizeNodeSpec.getInstanceType();
+    }
+    if (clusterResizeNodeSpec.getStorageSpec() != null) {
+      DeviceInfo incoming = resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getStorageSpec());
+      if (userIntent.deviceInfo == null) {
+        userIntent.deviceInfo = incoming;
+      } else {
+        userIntent.deviceInfo.mergeDeviceInfo(incoming);
+      }
+    }
+    if (clusterResizeNodeSpec.getCgroupSize() != null) {
+      userIntent.setCgroupSize(clusterResizeNodeSpec.getCgroupSize());
+    }
+    if (clusterResizeNodeSpec.getK8sMasterResourceSpec() != null) {
+      userIntent.masterK8SNodeResourceSpec =
+          toV1K8SNodeResourceSpec(clusterResizeNodeSpec.getK8sMasterResourceSpec());
+    }
+    if (clusterResizeNodeSpec.getK8sTserverResourceSpec() != null) {
+      userIntent.tserverK8SNodeResourceSpec =
+          toV1K8SNodeResourceSpec(clusterResizeNodeSpec.getK8sTserverResourceSpec());
+    }
+
+    // fill user intent overrides
+    if (clusterResizeNodeSpec.getMaster() != null) {
+      UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+      if (overrides == null) {
+        overrides = new UserIntentOverrides();
+        userIntent.setUserIntentOverrides(overrides);
+      }
+      boolean hasChanges = false;
+      PerProcessDetails masterOverrides = new PerProcessDetails();
+      if (clusterResizeNodeSpec.getMaster().getInstanceType() != null) {
+        masterOverrides.setInstanceType(clusterResizeNodeSpec.getMaster().getInstanceType());
+        hasChanges = true;
+      }
+      if (clusterResizeNodeSpec.getMaster().getStorageSpec() != null) {
+        DeviceInfo incoming =
+            resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getMaster().getStorageSpec());
+        if (masterOverrides.getDeviceInfo() == null) {
+          masterOverrides.setDeviceInfo(incoming);
+        } else {
+          masterOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+        }
+        hasChanges = true;
+      }
+      if (hasChanges) {
+        Map<ServerType, PerProcessDetails> perProcess = overrides.getPerProcess();
+        if (perProcess == null) {
+          perProcess = new HashMap<>();
+          overrides.setPerProcess(perProcess);
+        }
+        PerProcessDetails existingMasterOverrides =
+            perProcess.getOrDefault(ServerType.MASTER, new PerProcessDetails());
+        existingMasterOverrides.mergeWith(masterOverrides);
+        perProcess.put(ServerType.MASTER, existingMasterOverrides);
+      }
+    }
+    if (clusterResizeNodeSpec.getTserver() != null) {
+      UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+      if (overrides == null) {
+        overrides = new UserIntentOverrides();
+        userIntent.setUserIntentOverrides(overrides);
+      }
+      PerProcessDetails tserverOverrides = new PerProcessDetails();
+      boolean hasChanges = false;
+      if (clusterResizeNodeSpec.getTserver().getInstanceType() != null) {
+        tserverOverrides.setInstanceType(clusterResizeNodeSpec.getTserver().getInstanceType());
+        hasChanges = true;
+      }
+      if (clusterResizeNodeSpec.getTserver().getStorageSpec() != null) {
+        DeviceInfo incoming =
+            resizeStorageSpecToDeviceInfo(clusterResizeNodeSpec.getTserver().getStorageSpec());
+        if (tserverOverrides.getDeviceInfo() == null) {
+          tserverOverrides.setDeviceInfo(incoming);
+        } else {
+          tserverOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+        }
+        hasChanges = true;
+      }
+      if (hasChanges) {
+        Map<ServerType, PerProcessDetails> perProcess = overrides.getPerProcess();
+        if (perProcess == null) {
+          perProcess = new HashMap<>();
+          overrides.setPerProcess(perProcess);
+        }
+        PerProcessDetails existingTserverOverrides =
+            perProcess.getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+        existingTserverOverrides.mergeWith(tserverOverrides);
+        perProcess.put(ServerType.TSERVER, existingTserverOverrides);
+      }
+    }
+    if (clusterResizeNodeSpec.getAzNodeSpec() != null) {
+      clusterResizeNodeSpec
+          .getAzNodeSpec()
+          .forEach(
+              (azUuid, azNode) -> {
+                UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+                if (overrides == null) {
+                  overrides = new UserIntentOverrides();
+                  overrides.setAzOverrides(new HashMap<UUID, AZOverrides>());
+                  userIntent.setUserIntentOverrides(overrides);
+                }
+                boolean hasAzOverride = false;
+                AZOverrides azOverrides =
+                    overrides
+                        .getAzOverrides()
+                        .getOrDefault(UUID.fromString(azUuid), new AZOverrides());
+                if (azNode.getInstanceType() != null) {
+                  azOverrides.setInstanceType(azNode.getInstanceType());
+                  hasAzOverride = true;
+                }
+                if (azNode.getStorageSpec() != null) {
+                  DeviceInfo incoming = resizeStorageSpecToDeviceInfo(azNode.getStorageSpec());
+                  if (azOverrides.getDeviceInfo() == null) {
+                    azOverrides.setDeviceInfo(incoming);
+                  } else {
+                    azOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+                  }
+                  hasAzOverride = true;
+                }
+                if (azNode.getCgroupSize() != null) {
+                  azOverrides.setCgroupSize(azNode.getCgroupSize());
+                  hasAzOverride = true;
+                }
+                if (azNode.getMaster() != null) {
+                  PerProcessDetails masterOverrides =
+                      azOverrides
+                          .getPerProcess()
+                          .getOrDefault(ServerType.MASTER, new PerProcessDetails());
+                  boolean hasChanges = false;
+                  if (azNode.getMaster().getInstanceType() != null) {
+                    masterOverrides.setInstanceType(azNode.getMaster().getInstanceType());
+                    hasChanges = true;
+                  }
+                  if (azNode.getMaster().getStorageSpec() != null) {
+                    DeviceInfo incoming =
+                        resizeStorageSpecToDeviceInfo(azNode.getMaster().getStorageSpec());
+                    if (masterOverrides.getDeviceInfo() == null) {
+                      masterOverrides.setDeviceInfo(incoming);
+                    } else {
+                      masterOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+                    }
+                    hasChanges = true;
+                  }
+                  if (hasChanges) {
+                    azOverrides.getPerProcess().put(ServerType.MASTER, masterOverrides);
+                    hasAzOverride = true;
+                  }
+                }
+                if (azNode.getTserver() != null) {
+                  PerProcessDetails tserverOverrides =
+                      azOverrides
+                          .getPerProcess()
+                          .getOrDefault(ServerType.TSERVER, new PerProcessDetails());
+                  boolean hasChanges = false;
+                  if (azNode.getTserver().getInstanceType() != null) {
+                    tserverOverrides.setInstanceType(azNode.getTserver().getInstanceType());
+                    hasChanges = true;
+                  }
+                  if (azNode.getTserver().getStorageSpec() != null) {
+                    DeviceInfo incoming =
+                        resizeStorageSpecToDeviceInfo(azNode.getTserver().getStorageSpec());
+                    if (tserverOverrides.getDeviceInfo() == null) {
+                      tserverOverrides.setDeviceInfo(incoming);
+                    } else {
+                      tserverOverrides.getDeviceInfo().mergeDeviceInfo(incoming);
+                    }
+                    hasChanges = true;
+                  }
+                  if (hasChanges) {
+                    azOverrides.getPerProcess().put(ServerType.TSERVER, tserverOverrides);
+                    hasAzOverride = true;
+                  }
+                }
+                if (hasAzOverride) {
+                  overrides.getAzOverrides().put(UUID.fromString(azUuid), azOverrides);
+                }
+              });
+    }
+    return userIntent;
+  }
+
   DeviceInfo storageSpecToDeviceInfo(ClusterStorageSpec storageSpec);
+
+  DeviceInfo resizeStorageSpecToDeviceInfo(ClusterResizeStorageSpec storageSpec);
 
   @Mapping(target = "kmsConfigUUID", source = "kmsConfigUuid")
   com.yugabyte.yw.models.helpers.CloudVolumeEncryption toV1CloudVolumeEncryption(

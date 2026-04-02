@@ -34,81 +34,68 @@ SELECT * FROM bson_dollar_project('{"_id": 4, "a": 1}', '{"result": { "$mergeObj
 SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"isArray": {"$isArray": "$a.b"}}]}}');
 SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"b": [{"$literal": "$b"}]}]}}');
 SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"b": [{"$literal": "$b"}, "$a"]}]}}');
--- 
--- These tests are commented out as the $mergeObjects is not ready
+
 -- -- expressions that evaluate to non objects are not valid
---ERROR:  $mergeObjects requires object inputs, but input 1 is of type int
 SELECT * FROM bson_dollar_project('{"_id": 4, "a": 1}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
---ERROR:  $mergeObjects requires object inputs, but input "string" is of type string
 SELECT * FROM bson_dollar_project('{"_id": 4, "a": "string"}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
---ERROR:  $mergeObjects requires object inputs, but input true is of type bool
 SELECT * FROM bson_dollar_project('{"_id": 4, "a": true}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
---ERROR:  $mergeObjects requires object inputs, but input 2 is of type double
 SELECT * FROM bson_dollar_project('{"_id": 4, "a": 2.0}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
---ERROR:  $mergeObjects requires object inputs, but input 6 is of type int
 SELECT * FROM bson_dollar_project('{"_id": 4, "a": 2.0}', '{"result": { "$mergeObjects": [{"$add": [1, 2, 3]}]}}');
 
--- SELECT * FROM bson_dollar_project('{"_id": 4, "a": {"b": 2.0}}', '{"result": { "$mergeObjects": [{"$literal": "$a"}]}}');
--- ERROR:  $mergeObjects requires object inputs, but input "$a" is of type string
-
 -- $setField operator
--- Function add/remove tests ------------------------------------------------------
 -- $setField should be given an Object no array
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": {"$setField": [ "field", "input", "value" ]}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": {"$setField": [ "field", "input", "value" ]}}}');
 -- Extra param called thing gives an error
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "thing": "g", "field": "g", "input": "$$ROOT", "value": "gvalue" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "thing": "a", "field": "a", "input": "$$ROOT", "value": "newValue" } }]}}');
 
 -- All required args -and- input param of field is a number
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "field": 123, "input": "$$ROOT", "value": "gvalue" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": 123, "input": "$$ROOT", "value": "newValue" } }]}}');
 -- All required args -and- input: $$ROOT
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "field": "g", "input": "$$ROOT", "value": "gvalue" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "input": "$$ROOT", "value": "newValue" } }]}}');
 -- Missing param input
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "field": "g", "value": "gvalue" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "value": "newValue" } }]}}');
 -- Missing param field
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "input": "$$ROOT", "value": "gvalue" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "input": "$$ROOT", "value": "newValue" } }]}}');
 -- Missing param value
-SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": { "field": "g", "input": "$$ROOT" } }]}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "input": "$$ROOT" } }]}}');
 -- Wrong type for field, must be a string not null or bool
--- ERROR:  Missing 'input' parameter to $setField
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [ { "$literal": "b"}, {"$setField": { "field": true, "value": "REMOVE" } }]}}');
--- ERROR:  Missing 'input' parameter to $setField
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [ { "$literal": "b"}, {"$setField": { "field": null, "value": "REMOVE" } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [ { "$literal": "b"}, {"$setField": { "field": true, "value": "REMOVE" } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [ { "$literal": "b"}, {"$setField": { "field": null, "value": "REMOVE" } }]}}');
 
--- Function add/remove tests ------------------------------------------------------
--- The next item should add  "$x.y.z" : "gvalue" to the input doc {"scott":"dawson"}
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"scott":"dawson"}, "value": "gvalue" } }]}}');
+-- The next item should add  "$x.y.z" : "newValue" to the input doc {"a":"b"}
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "newValue" } }]}}');
 
 -- Not yet implemented fully for $$REMOVE
--- SELECT * FROM bson_dollar_project('{}', '{"result": { "level11": [{"$setField": {"field": "g", "input": "$$ROOT", "value": "$$REMOVE" } }]}}');
+-- SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": {"field": "a", "input": "$$ROOT", "value": "$$REMOVE" } }]}}');
 
--- here we test the "value" as magic value $$REMOVE as value, that should remove "scott" from the input, using $literal as means to give field name. Field not present
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"scott":"dawson"}, "value": "$$REMOVE" } }]}}');
--- here we test the "value" as magic $$REMOVE as part of the value, that should not remove "scott" from the input, using $literal as means to give field name. Field not present
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"scott":"dawson"}, "value": "no$$REMOVE" } }]}}');
--- here we test the "value" as magic $$REMOVE that should remove "scott" from the input, using $literal as means to give field name. Field *is* present.
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": {"$literal" : "scott"}, "input": {"scott":"dawson"}, "value": "$$REMOVE" } }]}}');
--- here we test the "value" as magic $$REMOVE that should remove "scott" from the input.  Same as prev test w/o using $literal operator.
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": {"scott":"dawson"}, "value": "$$REMOVE" } }]}}');
+-- here we test the "value" as magic value $$REMOVE as value, that should remove "baz" from the input, using $literal as means to give field name. Field not present
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
+-- here we test the "value" as magic $$REMOVE as part of the value, that should not remove "baz" from the input, using $literal as means to give field name. Field not present
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "no$$REMOVE" } }]}}');
+-- here we test the "value" as magic $$REMOVE that should remove "baz" from the input, using $literal as means to give field name. Field *is* present.
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "baz"}, "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
+-- here we test the "value" as magic $$REMOVE that should remove "baz" from the input.  Same as prev test w/o using $literal operator.
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
 -- here we test the "value" as a empty document
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": {"scott":"dawson"}, "value": {} } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": {} } }]}}');
 -- here we test the "value" as a document with 1 item
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": {"scott":"dawson"}, "value": { "x" : "y"} } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": { "x" : "y"} } }]}}');
 
 -- Not yet implemented, fully for $$ROOT
--- here we use $$ROOT in probably wrong "value" field, should pick up the record { "d1": {"green": "g"}} as the value of the new field
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": {"scott":"dawson"}, "value": "$$ROOT" } }]}}');
+-- here we use $$ROOT in probably wrong "value" field, should pick up the record { "d1": {"val": "a"}} as the value of the new field
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": "$$ROOT" } }]}}');
 
--- here we use $$ROOT that pickups the { "d1": {"green": "g"}} and should add "scott" : "dawson"
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": "$$ROOT", "value": "dawson" } }]}}');
+-- here we use $$ROOT that pickups the { "d1": {"val": "a"}} and should add "baz" : "foooooo"
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": "$$ROOT", "value": "foooooo" } }]}}');
 
 -- Check that we can use dot path like $$ROOT.d1:
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": "$$ROOT.d1", "value": "dawson" } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": "$$ROOT.d1", "value": "foooooo" } }]}}');
 
 -- Check that we can use dot path like $$REMOVE in a non $setField context
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$concat": "$$REMOVE" } ]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$concat": "$$REMOVE" } ]}}');
 
 -- Inject a null as "input", via "input"
-SELECT * FROM bson_dollar_project('{ "d1": {"green": "g"}}', '{"result": { "level11": [{"$setField": { "field": "scott", "input": null, "value": "dawson" } }]}}');
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": null, "value": "foooooo" } }]}}');
 
 -- insert where we overwrite the tail.
 SELECT * FROM bson_dollar_project('{"a1": { "b": 1, "c": 1, "d": 1 }, "b1": { "d": 2, "e": 3 } }', '{"result": { "$mergeObjects": [ "$a1", "$b1" ]}}');

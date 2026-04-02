@@ -64,6 +64,7 @@ set(PGGATE_SRCS
     pg_value.cc
     pg_ybctid_reader.cc
     pg_global_view_read.cc
+    ybc_dist_trace.cc
     ybc_gflags.cc
     ybc_pg_shared_mem.cc
     ybc_pggate.cc)

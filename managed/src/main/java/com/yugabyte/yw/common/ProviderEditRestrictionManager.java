@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -27,10 +28,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
@@ -47,7 +45,7 @@ public class ProviderEditRestrictionManager {
       EnumSet.of(TaskInfo.State.Initializing, TaskInfo.State.Running, TaskInfo.State.Created);
 
   private final RuntimeConfGetter runtimeConfGetter;
-  private final Map<UUID, ReentrantLock> providerLocks = new ConcurrentHashMap<>();
+  private final KeyLock<UUID> providerLocks = new KeyLock<>();
   private final Map<UUID, UUID> editTaskIdByProvider = new ConcurrentHashMap<>();
   private final Multimap<UUID, UUID> inUseTaskIdsByProvider =
       Multimaps.newSetMultimap(new ConcurrentHashMap<>(), ConcurrentHashMap::newKeySet);
@@ -243,13 +241,7 @@ public class ProviderEditRestrictionManager {
   private void doInProviderLock(UUID providerUUID, Runnable runnable) {
     log.debug(
         "Trying to do provider {} lock with timeout {}", providerUUID, getLockTimeoutMillis());
-    Lock providerLock = getProviderLock(providerUUID);
-    boolean locked = false;
-    try {
-      locked = providerLock.tryLock(getLockTimeoutMillis(), TimeUnit.MILLISECONDS);
-    } catch (InterruptedException e) {
-      log.warn("Interrupted while waiting for lock", e);
-    }
+    boolean locked = providerLocks.tryLock(providerUUID);
     if (!locked) {
       throw new PlatformServiceException(
           Http.Status.CONFLICT, "Unable to lock provider " + providerUUID);
@@ -259,21 +251,17 @@ public class ProviderEditRestrictionManager {
       garbageCollectTasks(providerUUID);
       runnable.run();
     } finally {
-      providerLock.unlock();
+      providerLocks.releaseLock(providerUUID);
       log.debug("Released provider {} lock", providerUUID);
     }
-  }
-
-  private Lock getProviderLock(UUID providerUUID) {
-    return providerLocks.computeIfAbsent(providerUUID, (pid) -> new ReentrantLock());
   }
 
   private boolean checkIfTaskIsActive(UUID taskUUID) {
     if (taskUUID == null) {
       return false;
     }
-    TaskInfo taskInfo = TaskInfo.get(taskUUID); // Don't need exception if no task.
-    return taskInfo != null && ACTIVE_STATES.contains(taskInfo.getTaskState());
+    Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
+    return optional.isPresent() && ACTIVE_STATES.contains(optional.get().getTaskState());
   }
 
   protected boolean isEnabled() {

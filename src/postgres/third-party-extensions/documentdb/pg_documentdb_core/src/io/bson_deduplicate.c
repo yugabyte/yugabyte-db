@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_deduplicate.c
+ * src/io/bson_deduplicate.c
  *
  * Implementation of field deduplication operation for bson documents.
  *

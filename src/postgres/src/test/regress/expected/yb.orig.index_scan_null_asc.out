@@ -10,35 +10,21 @@ CREATE INDEX i_nulltest_ba ON nulltest (b ASC, a ASC);
 \i :filename
 -- Queries for the null scan key tests
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)'
 SET client_min_messages = DEBUG1;
 \set YB_DISABLE_ERROR_PREFIX on
 SET yb_bnl_batch_size to 1;
 -- Should return empty results (actual rows=0)
 -- The plans should not show any "Recheck"
-\set hint1 '/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */'
-\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x'
-:explain1
+\set Q1 '/*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */'
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a = t2.x;'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -51,8 +37,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: (a = t2.x)
 (7 rows)
 
-\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x'
-:explain1
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -65,8 +51,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: (a <= t2.x)
 (7 rows)
 
-\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2'
-:explain1
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -79,8 +65,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
 (7 rows)
 
-\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y)'
-:explain1
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) = (t2.x, t2.y);'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
@@ -93,8 +79,8 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Index Cond: ((b = t2.y) AND (a = t2.x))
 (7 rows)
 
-\set query 'SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y)'
-:explain1
+\set query ':explain :Q1 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);'
+:query
 DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
@@ -108,10 +94,12 @@ DEBUG:  skipping a scan due to unsatisfiable condition
          Filter: (ROW(a, b) <= ROW(t2.x, t2.y))
 (8 rows)
 
-\set hint1 '/*+ IndexScan(t1) */'
-\set hint2 '/*+ IndexScan(t1 i_nulltest_ba) */'
-\set query 'SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1)'
-:explain2
+\set Q1 '/*+ IndexScan(t1) */'
+\set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query ':explain :Q SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
 DEBUG:  skipping a scan due to unsatisfiable condition
                               QUERY PLAN                              
 ----------------------------------------------------------------------
@@ -127,8 +115,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
    Index Cond: (ROW(a, b) <= ROW(NULL::integer, 1))
 (2 rows)
 
-\set query 'SELECT a FROM nulltest t1 WHERE a IN (null, null)'
-:explain2
+\set query ':explain :Q SELECT a FROM nulltest t1 WHERE a IN (null, null);'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
@@ -142,10 +132,13 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 (2 rows)
 
 -- Should return 1s
-\set hint1 '/*+ IndexScan(t1) */'
-\set hint2 '/*+ IndexScan(t1 i_nulltest_ba) */'
-\set query 'SELECT a FROM nulltest t1 WHERE a IN (null, 1)'
-:explain2run2
+\set Q1 '/*+ IndexScan(t1) */'
+\set Q2 '/*+ IndexScan(t1 i_nulltest_ba) */'
+\set query ':P :Q SELECT a FROM nulltest t1 WHERE a IN (null, 1);'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -183,8 +176,10 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 (2 rows)
 
 /*+ IndexScan(t1) */
-\set query 'SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null)'
-:explain2run2
+\set query ':P :Q SELECT a FROM nulltest t1 WHERE (a, b) <= (2, null);'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)
@@ -224,9 +219,12 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 (2 rows)
 
 -- Should return nulls
-\set hint1 '/*+ IndexScan(t1) */'
-\set query 'SELECT a FROM nulltest t1 WHERE a IS NULL'
-:explain1run1
+\set Q1 '/*+ IndexScan(t1) */'
+\set query ':P :Q1 SELECT a FROM nulltest t1 WHERE a IS NULL;'
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=2 loops=1)

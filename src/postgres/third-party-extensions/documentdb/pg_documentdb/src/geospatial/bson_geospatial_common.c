@@ -67,7 +67,8 @@ static bool GeographyValidateTopLevelField(pgbsonelement *element, const
 										   StringView *filterPath,
 										   void *state);
 static bool ContinueProcessIntermediateArray(void *state, const
-											 bson_value_t *value);
+											 bson_value_t *value, bool
+											 isArrayIndexSearch);
 static bool BsonValueAddLegacyPointDatum(const bson_value_t *value,
 										 ProcessCommonGeospatialState *state,
 										 bool *isNull);
@@ -92,7 +93,9 @@ static const TraverseBsonExecutionFuncs ProcessLegacyCoordinates = {
 	.SetTraverseResult = NULL,
 	.VisitArrayField = NULL,
 	.VisitTopLevelField = LegacyPointVisitTopLevelField,
-	.SetIntermediateArrayIndex = NULL
+	.SetIntermediateArrayIndex = NULL,
+	.HandleIntermediateArrayPathNotFound = NULL,
+	.SetIntermediateArrayStartEnd = NULL,
 };
 
 /*
@@ -103,7 +106,9 @@ static const TraverseBsonExecutionFuncs ProcessGeography = {
 	.SetTraverseResult = NULL,
 	.VisitArrayField = NULL,
 	.VisitTopLevelField = GeographyVisitTopLevelField,
-	.SetIntermediateArrayIndex = NULL
+	.SetIntermediateArrayIndex = NULL,
+	.HandleIntermediateArrayPathNotFound = NULL,
+	.SetIntermediateArrayStartEnd = NULL,
 };
 
 
@@ -115,7 +120,9 @@ static const TraverseBsonExecutionFuncs ValidateGeography = {
 	.SetTraverseResult = NULL,
 	.VisitArrayField = NULL,
 	.VisitTopLevelField = GeographyValidateTopLevelField,
-	.SetIntermediateArrayIndex = NULL
+	.SetIntermediateArrayIndex = NULL,
+	.HandleIntermediateArrayPathNotFound = NULL,
+	.SetIntermediateArrayStartEnd = NULL,
 };
 
 
@@ -359,7 +366,7 @@ LegacyPointVisitTopLevelField(pgbsonelement *element, const StringView *filterPa
 	}
 	else if (IsBsonValueEmptyArray(value) || IsBsonValueEmptyDocument(value))
 	{
-		/* Empty array or object */
+		/* Array or object is empty */
 		return false;
 	}
 
@@ -479,9 +486,12 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
 			throwError, (
 				errcode(ERRCODE_DOCUMENTDB_LOCATION16804),
-				errmsg("location object expected, location array not in correct format"),
+				errmsg(
+					"Expected 'array' or 'document' type but found '%s' type",
+					BsonTypeName(value->value_type)),
 				errdetail_log(
-					"location object expected, location array not in correct format")));
+					"Expected 'array' or 'document' type but found '%s' type",
+					BsonTypeName(value->value_type))));
 	}
 
 	if (IsBsonValueEmptyArray(value) || IsBsonValueEmptyDocument(value))
@@ -551,8 +561,8 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 		if (index == 1 && validCoordinates[0] == PointProcessType_Valid)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION13068),
-							errmsg("geo field only has 1 element"),
-							errdetail_log("geo field only has 1 element")));
+							errmsg("Geo field contains only one element"),
+							errdetail_log("Geo field contains only one element")));
 		}
 
 		/* If any point is invalid do further checks */
@@ -566,10 +576,10 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
 			{
 				ereport(ERROR, (
 							errcode(ERRCODE_DOCUMENTDB_LOCATION13026),
-							errmsg("geo values must be "
-								   "'legacy coordinate pairs' for 2d indexes"),
-							errdetail_log("geo values must be "
-										  "'legacy coordinate pairs' for 2d indexes")));
+							errmsg(
+								"Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes."),
+							errdetail_log(
+								"Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.")));
 			}
 
 			/* For any other single point validation this error if any invalid point.
@@ -616,7 +626,8 @@ BsonValueAddLegacyPointDatum(const bson_value_t *value,
  * Continue always for intermediate arrays to find all possible points
  */
 static bool
-ContinueProcessIntermediateArray(void *state, const bson_value_t *value)
+ContinueProcessIntermediateArray(void *state, const bson_value_t *value,
+								 bool isArrayIndexSearch)
 {
 	ProcessCommonGeospatialState *processState = (ProcessCommonGeospatialState *) state;
 
@@ -687,17 +698,19 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 		RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
 			throwError, (
 				errcode(GEO_ERROR_CODE(processState->errorCtxt)),
-				errmsg("%sgeo element must be an array or object: %s : %s",
-					   GEO_ERROR_PREFIX(processState->errorCtxt),
-					   element->path, BsonValueToJsonForLogging(value)),
-				errdetail_log("%sgeo element must be an array or object but found: %s",
-							  GEO_HINT_PREFIX(processState->errorCtxt),
-							  BsonTypeName(value->value_type))));
+				errmsg(
+					"The %sgeo element should be provided as either an array or an object: %s : %s",
+					GEO_ERROR_PREFIX(processState->errorCtxt),
+					element->path, BsonValueToJsonForLogging(value)),
+				errdetail_log(
+					"The %sgeo element should be provided as either an array or an object, but found: %s",
+					GEO_HINT_PREFIX(processState->errorCtxt),
+					BsonTypeName(value->value_type))));
 	}
 
 	/*
 	 * First parse this as Legacy
-	 * Second if not successful Try to parse this as GeoJson, some mongo validations are just ignored by Postigs,
+	 * Second if not successful Try to parse this as GeoJson, some validations are just ignored by Postigs,
 	 * we have our custom parser to accomodate these.
 	 * e.g of such cases:
 	 * 1- [10, "text"] - Point like this is treated as valid in Postgis after converting "text" to 0.
@@ -706,7 +719,7 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 	 *    Ref: https://json-c.github.io/json-c/json-c-0.10/doc/html/json__object_8h.html
 	 *
 	 * 2- GeoJson type "Point" can also be defined as a document {x: 10, y: 10} which is not GeoJson standard
-	 *    but mongo supports it
+	 *    but we need to support it
 	 *
 	 * 3- Bson document can have different number types e.g. Decimal which will not be recognized by Postgis in
 	 *    Json format
@@ -783,9 +796,9 @@ GeographyVisitTopLevelField(pgbsonelement *element, const
 			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
 				throwError, (
 					errcode(GEO_ERROR_CODE(processState->errorCtxt)),
-					errmsg("%scan't index geometry with strict winding order",
+					errmsg("%s cannot index geometry due to strict winding order",
 						   GEO_ERROR_PREFIX(processState->errorCtxt)),
-					errdetail_log("%scan't index geometry with strict winding order",
+					errdetail_log("%s cannot index geometry due to strict winding order",
 								  GEO_HINT_PREFIX(processState->errorCtxt))));
 		}
 
@@ -881,7 +894,7 @@ _2dsphereIndexErrorPrefix(const pgbson *document)
 {
 	bson_iter_t iterator;
 	StringInfo prependErrorMsg = makeStringInfo();
-	appendStringInfo(prependErrorMsg, "Can't extract geo keys ");
+	appendStringInfo(prependErrorMsg, "Failed to retrieve geo keys ");
 	if (PgbsonInitIteratorAtPath(document, "_id", &iterator))
 	{
 		/* Append only the _id so that in case of failure, clients can identify the errorneous documents */
@@ -899,7 +912,7 @@ _2dsphereIndexErrorPrefix(const pgbson *document)
 static const char *
 _2dsphereIndexErrorHintPrefix(const pgbson *ignore)
 {
-	return pstrdup("Can't extract geo keys ");
+	return pstrdup("Failed to retrieve geo keys ");
 }
 
 

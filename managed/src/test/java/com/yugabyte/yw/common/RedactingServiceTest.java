@@ -79,7 +79,7 @@ public class RedactingServiceTest {
     // Test the specific case from the logs where ycql_ldap_bind_passwd appears in double-escaped
     // JSON
     String doubleEscapedJson =
-        "\"universeDetailsJson\":\"{\\\"platformVersion\\\":\\\"2.27.0.0-PRE_RELEASE\\\",\\\"tserverGFlags\\\":{\\\"ycql_ldap_bind_passwd\\\":\\\"password321\\\",\\\"ysql_hba_conf_csv\\\":\\\"\\\\\\\"ldapbinddn=admint\\\\\\\",\\\\\\\"ldapbindpasswd=REDACTED\\\\\\\",\\\\\\\"ldapBindPassword=REDACTED\\\\\\\"\\\"}}\"";
+        "\"universeDetailsJson\":\"{\\\"tserverGFlags\\\":{\\\"ycql_ldap_bind_passwd\\\":\\\"password321\\\",\\\"ysql_hba_conf_csv\\\":\\\"\\\\\\\"ldapbinddn=admint\\\\\\\",\\\\\\\"ldapbindpasswd=REDACTED\\\\\\\",\\\\\\\"ldapBindPassword=REDACTED\\\\\\\"\\\"}}\"";
 
     String redacted = RedactingService.redactSensitiveInfoInString(doubleEscapedJson);
 
@@ -177,7 +177,7 @@ public class RedactingServiceTest {
   public void testSupportBundleUniverseDetailsJsonRedaction() {
     // Test the exact format from support bundle logs
     String universeDetailsJson =
-        "{\"platformVersion\":\"2.27.0.0-PRE_RELEASE\",\"tserverGFlags\":{\"ycql_ldap_bind_passwd\":\"password1\",\"ysql_hba_conf_csv\":\"\\\"ldapbinddn=admint\\\",\\\"ldapbindpasswd=REDACTED\\\",\\\"ldapBindPassword=REDACTED\\\"\"}}";
+        "{\"tserverGFlags\":{\"ycql_ldap_bind_passwd\":\"password1\",\"ysql_hba_conf_csv\":\"\\\"ldapbinddn=admint\\\",\\\"ldapbindpasswd=REDACTED\\\",\\\"ldapBindPassword=REDACTED\\\"\"}}";
 
     // Test as a JSON field value
     String jsonWithUniverseDetails =

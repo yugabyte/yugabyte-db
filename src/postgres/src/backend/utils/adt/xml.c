@@ -1849,6 +1849,7 @@ xml_errorHandler(void *data, PgXmlErrorPtr error)
 				xmlerrcxt->err_occurred)
 				return;
 			/* fall through */
+			yb_switch_fallthrough();
 
 		case XML_FROM_NONE:
 		case XML_FROM_MEMORY:

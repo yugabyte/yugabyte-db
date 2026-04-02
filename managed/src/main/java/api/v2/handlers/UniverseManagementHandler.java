@@ -86,6 +86,7 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -459,6 +460,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .backups(backups)
               .customerConfigs(customerConfigs)
               .ybReleaseMetadata(release != null ? release.toImportExportRelease() : null)
+              .yugawareProperty(Json.toJson(YugawareProperty.getAll()))
               .oldPlatformPaths(platformPaths)
               .skipReleases(detachUniverseSpec.getSkipReleases())
               .build();
@@ -518,14 +520,21 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             String.valueOf(
                 configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
             "-");
-    String srcVersion =
-        StringUtils.substringBefore(
-            attachDetachSpec.getUniverse().getUniverseDetails().getPlatformVersion(), "-");
-    if (!srcVersion.equalsIgnoreCase(destVersion)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Software versions do not match, please attach to a platform with software version: "
-              + srcVersion);
+    String rawSourceVersion = attachDetachSpec.resolveSourceYbaSoftwareVersionForAttach();
+    if (StringUtils.isBlank(rawSourceVersion)) {
+      log.warn(
+          "Could not determine source YBA software version from attach bundle yugaware_property"
+              + " (SoftwareVersion or YugawareMetadata); cannot validate platform version match.");
+    } else {
+      String srcVersion = StringUtils.substringBefore(rawSourceVersion, "-");
+      if (!srcVersion.equalsIgnoreCase(destVersion)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Software versions do not match, please attach to a platform with software version: "
+                + srcVersion
+                + ", current YBA version: "
+                + destVersion);
+      }
     }
     attachDetachSpec.save(
         platformPaths, releaseManager, swamperHelper, configHelper, ysqlQueryExecutor, confGetter);

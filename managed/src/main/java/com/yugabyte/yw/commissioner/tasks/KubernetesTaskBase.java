@@ -1414,6 +1414,21 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createWaitForServersTasks(nodeList, serverType)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+        // Only wait for YSQLSERVER when the node exists in the universe (so WaitForServer can
+        // resolve it), has isYsqlServer true, and YSQL is enabled. Partition nodeList is built from
+        // getKubernetesNodeName() so node names may not match universe nodes in some test setups.
+        if (serverType.equals(ServerType.TSERVER) && !nodeList.isEmpty()) {
+          NodeDetails universeNode = getUniverse().getNode(nodeList.iterator().next().nodeName);
+          boolean waitForYsql =
+              universeNode != null
+                  && universeNode.isYsqlServer
+                  && getUniverse().getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
+          if (waitForYsql) {
+            createWaitForServersTasks(nodeList, ServerType.YSQLSERVER, getUniverse())
+                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+          }
+        }
+
         addParallelTasks(
             nodeList,
             node -> getWaitForServerReadyTask(node, serverType),
