@@ -6922,14 +6922,15 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"yb_read_time", PGC_SUSET, CLIENT_CONN_STATEMENT,
+		{"yb_read_time", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Allows querying the database as of a point in time in the past."
 						 " Takes a unix timestamp in microseconds."
 						 " Zero means reading data as of current time."),
 			gettext_noop("User should set this variable with caution. Currently, it can"
 						 " only read old data without schema changes. In other words, it should not be"
 						 " set to a timestamp before a DDL operation has been performed."
-						 " Write-DML or DDL queries are not allowed while this variable is set.")
+						 " Write-DML or DDL queries are not allowed while this variable is set."),
+			GUC_DISALLOW_IN_FILE
 		},
 		&yb_read_time_string,
 		"0",
