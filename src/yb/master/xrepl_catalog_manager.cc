@@ -1540,7 +1540,8 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream_info = entry.second;
-      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id) {
+      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
+          IsTableEligibleForCDCSDKStream(table, table->LockForRead(), /*check_schema=*/true)) {
         streams.emplace_back(stream_info);
       }
     }
