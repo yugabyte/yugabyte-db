@@ -67,6 +67,10 @@ bool YBCIsDistTraceEnabled() {
   return dist_trace::IsDistTraceEnabled();
 }
 
+bool YBCIsDistTraceActive() {
+  return YBCIsDistTraceEnabled() && !YBCIsOtelScopeStackEmpty();
+}
+
 bool YBCIsTraceParentValidAndRemote(const char* traceparent) {
   auto span_context = dist_trace::GetTraceparentSpanContext(traceparent);
   return dist_trace::IsSpanContextValidAndRemote(span_context);
@@ -145,6 +149,11 @@ void YBCDistTraceStartSpan(const char* op_name) {
 }
 
 void YBCDistTraceSetCurrSpanAttrUint64(const char* key, uint64_t value) {
+  DCHECK(!YBCIsOtelScopeStackEmpty());
+  DCHECK_NOTNULL(OtelScopeStack().top().second)->SetAttribute(key, value);
+}
+
+void YBCDistTraceSetCurrSpanAttrStr(const char* key, const char* value) {
   DCHECK(!YBCIsOtelScopeStackEmpty());
   DCHECK_NOTNULL(OtelScopeStack().top().second)->SetAttribute(key, value);
 }
