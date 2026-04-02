@@ -14,7 +14,7 @@ type: docs
 
 Use Anomalies to monitor your cluster for performance anomalies - whether with the database or applications.
 
-Anomalies is only available for clusters running v2024.2 and later.
+Anomalies is only available for clusters running YugabyteDB v2024.2 and later.
 
 {{< note title="Tech Preview" >}}
 
@@ -54,24 +54,20 @@ Connections Uneven
 
 ### Tablet anomalies
 
-Large Tablet
-: One or more tablets in a table are significantly larger than the average of other tablets, possibly causing uneven compactions or query times. In this case the tablet should probably be split.
-
-Redundant Index
-: A redundant index was found. These can add write overhead and bloat memory use.
-
-Uneven Tablet IO
-: Significantly more read/write requests to the table are being sent to only a few tablets, compared to the average. May indicate shard-level skew or a hot shard.
-
-Unused Index
-: An unused index was found. These can add write overhead and bloat memory use.
-
-Use Range Index
-: A HASH index was found where RANGE index would be more suitable. Schema mismatch can cause poor performance for range queries.
+| <div style="width:125px">Anomaly</div> | Description |
+| :------ | :---------- |
+| Large Tablet | One or more tablets in a table are significantly larger than the average of other tablets, possibly causing uneven compactions or query times. In this case the tablet should probably be split. |
+| Redundant Index | A redundant index was found. These can add write overhead and bloat memory use. |
+| Uneven Tablet IO | Significantly more read/write requests to the table are being sent to only a few tablets, compared to the average. May indicate shard-level skew or a hot shard. |
+| Unused Index | An unused index was found. These can add write overhead and bloat memory use. |
+| Use Range Index | A HASH index was found where RANGE index would be more suitable. Schema mismatch can cause poor performance for range queries. |
 
 ### Node anomalies
 
-#### Slow IO
+{{<table>}}
+| <div style="width:125px">Anomaly</div> | Description |
+| :------ | :---------- |
+| Slow IO |
 
 Triggered when IO wait time is greater than 90%, or IO queue depth is more than 10.
 
@@ -82,11 +78,10 @@ Next steps:
 - Investigate top queries by IO time
 - Check storage layer latency
 
-#### Uneven Data
+|
+| Uneven Data | Table data is spread unevenly across the nodes. |
 
-Table data is spread unevenly across the nodes.
-
-#### Uneven CPU
+| Uneven CPU |
 
 CPU use is unbalanced across the nodes. Triggered when a node's CPU is >80% and >50% above the cluster average.
 
@@ -94,22 +89,23 @@ Solutions:
 
 - Add CPU cores
 - Optimize or redistribute heavy SQL workloads
-
-#### Uneven IO
+|
+| Uneven IO |
 
 The read and write distribution is unbalanced across the nodes. Triggered when a node has >10% skew in read/write ops or query activity.
 
 Often caused by hash distribution issues or application connection imbalance.
-
-#### Uneven SQL
-
-SQL queries are spread unevenly across the nodes.
+|
+| Uneven SQL | SQL queries are spread unevenly across the nodes. |
+{{</table>}}
 
 ### SQL anomalies
 
-#### SQL Latency
-
-This is triggered when latency doubles for a query that previously ran >20ms and >0.2 execs/sec.
+{{<table>}}
+| <div style="width:125px">Anomaly</div> | Description |
+| :------ | :---------- |
+| SQL Latency |
+Triggered when latency doubles for a query that previously ran >20ms and >0.2 execs/sec.
 
 Possible causes include:
 
@@ -123,9 +119,8 @@ Investigation steps:
 - Check if overall cluster load changed
 - Drill into the anomaly and compare SQL and storage events
 - Run EXPLAIN ANALYZE to check execution plan
-
-#### Catalog Reads
-
+|
+| Catalog Reads |
 Triggered when more than 50% of wait time is due to Catalog Read waits.
 
 Causes:
@@ -138,15 +133,16 @@ Solutions:
 - Use a connection pool or manager
 - Pre-cache target tables using `ysql_catalog_preload_additional_table_list`
 - Enable prepared statements for repeated queries
-
-#### Locks
-
+|
+| Locks |
 Triggered when significant time is spent waiting for locks.
 
 Solutions:
 
 - Identify blocking sessions and terminate if needed
 - Investigate application logic for unnecessary locking
+|
+{{</table>}}
 
 ## Root cause analysis
 
