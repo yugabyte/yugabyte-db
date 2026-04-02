@@ -1394,15 +1394,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           GFlagsUtil.mergeCSVs(
               combinedPGConfCSV, GFlagsUtil.getYsqlPgConfCsv(queryLogConfig), true);
       tserverGFlags.put(GFlagsUtil.YSQL_PG_CONF_CSV, combinedPGConfCSV);
+      // removing query log export for 2026.1.0
+      // overrides.put(
+      //     "otelCollector",
+      //     otelCollectorConfigGenerator.getOtelHelmValues(
+      //         auditLogConfig,
+      //         GFlagsUtil.getLogLinePrefix(
+      //             primaryClusterIntent.queryLogConfig,
+      //             tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
+      //         primaryClusterIntent.ybSoftwareVersion));
       overrides.put(
           "otelCollector",
           otelCollectorConfigGenerator.getOtelHelmValues(
               auditLogConfig,
-              queryLogConfig,
               GFlagsUtil.getLogLinePrefix(
                   primaryClusterIntent.queryLogConfig,
-                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
-              primaryClusterIntent.ybSoftwareVersion));
+                  tserverGFlags.get(GFlagsUtil.YSQL_PG_CONF_CSV))));
     }
 
     if (!tserverGFlags.isEmpty()) {
