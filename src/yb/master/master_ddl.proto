@@ -852,8 +852,12 @@ message ReleaseObjectLocksGlobalRequestPB {
   optional fixed64 apply_after_hybrid_time = 5;
   optional fixed64 propagated_hybrid_time = 6;
   reserved 7; // ASH metadata is now passed in RequestHeader PB
-  // Should generally not be used. Only used by yb-admin to manually
-  // clear out locks (that may have leaked).
+
+  // Used in global object release path and also by yb-admin to manually clear out locks
+  // (that may have been leaked). If the transaction is still being tracked by the
+  // ddl verifier, will wait for the verifier to finish and then release the locks. In
+  // case the deadline is hit before the ddl verifier state is cleared, an error is
+  // returned deferring the release of object locks to the ddl verifier.
   optional bool wait_for_completion = 8;
   repeated docdb.ObjectLockPB object_locks = 9;
 }

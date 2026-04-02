@@ -46,6 +46,7 @@ DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_allow_wait_for_alter_table_to_finish);
 DECLARE_bool(TEST_check_broadcast_address);
+DECLARE_bool(TEST_make_global_lock_release_async);
 
 DECLARE_string(TEST_block_alter_table);
 
@@ -60,6 +61,7 @@ DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_int32(pg_client_extra_timeout_ms);
 DECLARE_bool(TEST_olm_serve_redundant_lock);
+DECLARE_uint64(TEST_delay_release_locks_ms);
 
 using namespace std::literals;
 
@@ -470,6 +472,7 @@ TEST_F(PgObjectLocksTestRF1, ExclusiveLocksRemovedAfterDocDBSchemaChange) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_report_ysql_ddl_txn_status_to_master) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_wait_for_alter_table_to_finish) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_make_global_lock_release_async) = true;
 
   yb::SyncPoint::GetInstance()->LoadDependency({
     {"ExclusiveLocksRemovedAfterDocDBSchemaChange", "DoReleaseObjectLocksIfNecessary"}});
@@ -579,6 +582,53 @@ class PgObjectLocksTest : public LibPqTestBase {
     LOG(INFO) << "Verifying new conns go through";
     auto conn4 = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts2));
     ASSERT_OK(conn4.Fetch("SELECT * FROM t1"));
+  }
+
+  void testSyncReleaseForGlobalLocksAndDdls() {
+    auto* ts1 = cluster_->tablet_server(0);
+    auto* ts2 = cluster_->tablet_server(1);
+
+    constexpr auto kRole = "test_role";
+    constexpr auto kTable = "test_table";
+
+    auto admin_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTs(*ts1));
+    const auto db_name =
+        ASSERT_RESULT(admin_conn.FetchRow<std::string>("SELECT current_database()"));
+
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTable));
+    ASSERT_OK(admin_conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 10)", kTable));
+    ASSERT_OK(admin_conn.ExecuteFormat("CREATE ROLE $0 LOGIN", kRole));
+    ASSERT_OK(admin_conn.ExecuteFormat(
+        "GRANT CONNECT ON DATABASE $0 TO $1",
+        PqEscapeIdentifier(db_name),
+        PqEscapeIdentifier(kRole)));
+    ASSERT_OK(admin_conn.ExecuteFormat("GRANT USAGE ON SCHEMA public TO $0", kRole));
+    ASSERT_OK(admin_conn.ExecuteFormat(
+        "GRANT ALL PRIVILEGES ON TABLE $0 TO $1", kTable, kRole));
+
+    auto role_conn = ASSERT_RESULT(LibPqTestBase::ConnectToTsAsUser(*ts2, kRole));
+    ASSERT_OK(role_conn.FetchMatrix(
+        Format("SELECT * FROM $0 WHERE k = 1", kTable), 1 /* rows */, 2 /* columns */));
+
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "true"));
+
+    // Delay the release of locks, so that the test fails if lock release is made async.
+    ASSERT_OK(cluster_->SetFlagOnTServers("TEST_delay_release_locks_ms", "3000"));
+    ASSERT_OK(admin_conn.ExecuteFormat("REVOKE ALL PRIVILEGES ON TABLE $0 FROM $1", kTable, kRole));
+
+    ASSERT_NOK_STR_CONTAINS(
+        role_conn.FetchMatrix(
+            Format("SELECT * FROM $0 WHERE k = 1", kTable), 1 /* rows */, 2 /* columns */),
+        "permission denied");
+
+    ASSERT_OK(cluster_->SetFlag(
+        ts2,
+        "TEST_tserver_disable_catalog_refresh_on_heartbeat",
+        "false"));
+    ASSERT_OK(cluster_->SetFlagOnTServers("TEST_delay_release_locks_ms", "0"));
   }
 
   virtual bool EnableTransactionalDdl() const {
@@ -1194,6 +1244,10 @@ TEST_F(PgObjectLocksTest, TestGlobalReleaseForFailedDdlsBeforeMetadataIsSet) {
   ASSERT_OK(conn1.CommitTransaction());
 }
 
+TEST_F(PgObjectLocksTest, TestSyncReleaseForGlobalLocksAndDdls) {
+  testSyncReleaseForGlobalLocksAndDdls();
+}
+
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
 class PgObjecLocksTestOutOfOrderMessageHandling
@@ -1669,6 +1723,21 @@ TEST_F(PgObjectLocksFastpathTest, TestSimple) {
 
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
   ASSERT_NE(LastOwner(), txn_id);
+}
+
+class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    PgObjectLocksTest::UpdateMiniClusterOptions(opts);
+    opts->extra_tserver_flags.emplace_back(
+        "--ysql_pg_conf_csv=yb_enable_concurrent_ddl=true");
+  }
+};
+
+TEST_F_EX(
+    PgObjectLocksTest, TestConcurrentDdlSyncReleaseForGlobalLocksAndDdls,
+    PgObjectLocksWithConcurrentDdl) {
+  testSyncReleaseForGlobalLocksAndDdls();
 }
 
 }  // namespace yb::pgwrapper
