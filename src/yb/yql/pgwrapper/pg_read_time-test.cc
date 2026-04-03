@@ -883,4 +883,51 @@ TEST_F(PgReadTimeTest, CheckDeferredReadAfterCommitVisibility) {
   ASSERT_OK(ResetMaxBatchSize(&conn));
 }
 
+// Test that yb_read_time cannot be persisted via ALTER DATABASE SET, ALTER ROLE SET,
+// or ysql_pg_conf_csv, and that any user can SET it in a session (PGC_USERSET).
+TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // yb_read_time should be settable in a session (PGC_USERSET).
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  // SET LOCAL (transaction-scoped) should also work.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("SET LOCAL yb_read_time TO $0", t1));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // A non-superuser should be able to SET yb_read_time in their session.
+  ASSERT_OK(conn.Execute("CREATE ROLE test_user LOGIN"));
+  {
+    auto user_conn = ASSERT_RESULT(PGConnBuilder({
+        .host = pg_host_port().host(),
+        .port = pg_host_port().port(),
+        .dbname = "yugabyte",
+        .user = "test_user"
+    }).Connect());
+    ASSERT_OK(user_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+    ASSERT_OK(user_conn.Execute("SET yb_read_time TO 0"));
+  }
+
+  // ALTER DATABASE SET yb_read_time should fail.
+  auto status = conn.ExecuteFormat(
+      "ALTER DATABASE yugabyte SET yb_read_time TO '$0'", t1);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "yb_read_time can only be set within a session");
+
+  // ALTER ROLE SET yb_read_time should fail.
+  status = conn.Execute("ALTER ROLE ALL SET yb_read_time TO '1000'");
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "yb_read_time can only be set within a session");
+
+  // Resetting to default via ALTER DATABASE/ROLE should still succeed (value_ull == 0).
+  ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_read_time TO '0'"));
+  ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte RESET yb_read_time"));
+
+  ASSERT_OK(conn.Execute("DROP ROLE test_user"));
+}
+
 } // namespace yb::pgwrapper
