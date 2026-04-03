@@ -118,19 +118,5 @@ done
     fi
 {% endif %}
 
-{% if is_install_node_agent == 'True' %}
-installer_script="{{ ynp_dir }}/../../bin/node-agent-installer.sh"
-if [ ! -f "$installer_script" ]; then
-    # For backward compatibility when backported.
-    # Remove me later.
-    installer_script="{{ ynp_dir }}/../node-agent-installer.sh"
-fi
-# Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
-# can read the binary in restricted environment.
-mkdir -p {{ yb_home_dir }}/.install
-cp "$installer_script" {{ yb_home_dir }}/.install
-chown -R {{ yb_user }}:{{ yb_user }} {{ yb_home_dir }}/.install
-{% endif %}
-
 # Ensure the permissions for yb_home_dir are 750
 chmod 750 "{{ yb_home_dir }}"
