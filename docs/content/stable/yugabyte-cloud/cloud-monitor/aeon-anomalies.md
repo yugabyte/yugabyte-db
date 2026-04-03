@@ -25,6 +25,8 @@ The Anomalies view continuously samples cluster activity every second using the 
 
 For each detected anomaly, you can drill down to view a root cause analysis page with actionable next steps, explore detailed supporting data, and understand the underlying cause.
 
+To view the raw metrics used for anomaly detection, navigate to [Performance>Cluster Load](../monitor-load/).
+
 Anomalies is only available for clusters running YugabyteDB v2024.2 and later.
 
 {{< note title="Tech Preview" >}}

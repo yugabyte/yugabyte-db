@@ -14,7 +14,7 @@ menu:
 type: docs
 ---
 
-Monitor your cluster load using the **Cluster Load** dashboard. The dashboard displays data from the [Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) in the **Cluster Load Overview** chart. (This is also the primary data source used for the [automatic anomaly detection](../aeon-anomalies/).) Use this view to answer the question _Was the system overloaded, and why_.
+Monitor your cluster load using the **Cluster Load** dashboard. The dashboard displays data from the [Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/) in the **Cluster Load Overview** chart. (This is also the primary data source used for [anomaly detection](../aeon-anomalies/).) Use this view to answer the question _Was the system overloaded, and why_.
 
 The dashboard shows the status of your cluster at a glance:
 
