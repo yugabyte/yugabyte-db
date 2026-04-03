@@ -10,6 +10,13 @@ There may be some exceptions where appropriate such as `collate.icu.utf8.sql` an
 
 The primary build entry point is `yb_build.sh` at the repository root.
 
+The first build takes approximately 20 minutes. Incremental builds are much faster.
+
+Always pipe build output to a temp file so you can inspect errors without rebuilding:
+```bash
+./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc 2>&1 | tee /tmp/yb-build.log
+```
+
 Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
 
 Add these `yb_build.sh` options to reduce build time:
