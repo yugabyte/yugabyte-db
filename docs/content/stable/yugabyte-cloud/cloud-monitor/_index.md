@@ -42,7 +42,7 @@ Monitor database and cluster performance in real time. Access performance monito
 
 ### Detect anomalies
 
-Detect performance anomalies on the **Perf Advisor** tab. [Perf Advisor](aeon-anomalies/) shows potential performance impacting anomalies. Use this view to answer the question _When did problems occur, and what changed at that time_.
+Detect performance anomalies on the **Perf Advisor** tab. [Anomalies](aeon-anomalies/) shows potential performance impacting anomalies and allows you to drill down and perform root cause analysis. Use this view to answer the question _When did problems occur, and what changed at that time_.
 
 ### Integrations
 

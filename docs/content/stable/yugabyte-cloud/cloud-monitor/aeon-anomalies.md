@@ -16,6 +16,15 @@ type: docs
 
 Use Anomalies to monitor your cluster for performance anomalies - whether with the database or applications.
 
+The Anomalies view continuously samples cluster activity every second using the [Active Session History](../../launch-and-manage/monitor-and-alert/active-session-history-monitor/), and correlates it with query-level data from pg_stat_statements to automatically identify anomalies, including:
+
+- hot tablets starving other shards
+- hot nodes with disproportionate CPU, query load, or I/O
+- lock contention issues cascading through your application
+- a query whose latency has quietly doubled
+
+For each detected anomaly, you can drill down to view a root cause analysis page to explore detailed supporting data and understand the underlying cause.
+
 Anomalies is only available for clusters running YugabyteDB v2024.2 and later.
 
 {{< note title="Tech Preview" >}}
