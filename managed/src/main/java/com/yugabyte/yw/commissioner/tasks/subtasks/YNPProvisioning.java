@@ -72,10 +72,13 @@ public class YNPProvisioning extends AbstractTaskBase {
       NodeDetails node,
       Provider provider,
       String outputFilePath,
-      Path nodeAgentHome) {
+      Path nodeAgentHome,
+      UserIntent userIntent) {
 
     ObjectMapper mapper = new ObjectMapper();
-    UserIntent userIntent = universe.getCluster(node.placementUuid).userIntent;
+    if (userIntent == null) {
+      userIntent = universe.getCluster(node.placementUuid).userIntent;
+    }
 
     try {
       ObjectNode rootNode = mapper.createObjectNode();
@@ -242,7 +245,8 @@ public class YNPProvisioning extends AbstractTaskBase {
             .toString();
     String tmpDirectory =
         fileHelperService.createTempFile(node.cloudInfo.private_ip + "-", ".json").toString();
-    generateProvisionConfig(universe, node, provider, tmpDirectory, nodeAgentHomePath);
+    generateProvisionConfig(
+        universe, node, provider, tmpDirectory, nodeAgentHomePath, taskParams().userIntent);
     nodeUniverseManager.uploadFileToNode(
         node, universe, tmpDirectory, targetConfigPath, "755", shellContext);
     // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
