@@ -913,15 +913,14 @@ TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
   }
 
   // ALTER DATABASE SET yb_read_time should fail.
-  auto status = conn.ExecuteFormat(
-      "ALTER DATABASE yugabyte SET yb_read_time TO '$0'", t1);
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "yb_read_time can only be set within a session");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.ExecuteFormat("ALTER DATABASE yugabyte SET yb_read_time TO '$0'", t1),
+      "yb_read_time can only be set within a session");
 
   // ALTER ROLE SET yb_read_time should fail.
-  status = conn.Execute("ALTER ROLE ALL SET yb_read_time TO '1000'");
-  ASSERT_NOK(status);
-  ASSERT_STR_CONTAINS(status.ToString(), "yb_read_time can only be set within a session");
+  ASSERT_NOK_STR_CONTAINS(
+      conn.Execute("ALTER ROLE ALL SET yb_read_time TO '1000'"),
+      "yb_read_time can only be set within a session");
 
   // Resetting to default via ALTER DATABASE/ROLE should still succeed (value_ull == 0).
   ASSERT_OK(conn.Execute("ALTER DATABASE yugabyte SET yb_read_time TO '0'"));
