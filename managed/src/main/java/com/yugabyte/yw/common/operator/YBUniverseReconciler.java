@@ -504,11 +504,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
               ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
       UserIntent newReadReplicaIntent = null;
       if (ybUniverse.getSpec().getReadReplica() != null) {
-        newReadReplicaIntent =
-            getReadReplicaUserIntent(
-                universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-                ybUniverse,
-                cust.getUuid());
+        UserIntent currIntent =
+            CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+                : newPrimaryIntent;
+        newReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
       }
       if (operatorUtils.universeAndSpecMismatch(
           cust, universe, ybUniverse, newPrimaryIntent, newReadReplicaIntent)) {
@@ -605,11 +605,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             ybUniverse, cust.getUuid(), false, getProvider(ybUniverse, cust.getUuid()));
     UserIntent newReadReplicaIntent = null;
     if (ybUniverse.getSpec().getReadReplica() != null) {
-      newReadReplicaIntent =
-          getReadReplicaUserIntent(
-              u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-              ybUniverse,
-              cust.getUuid());
+      UserIntent currIntent =
+          CollectionUtils.isNotEmpty(u.getUniverseDetails().getReadOnlyClusters())
+              ? u.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+              : newPrimaryIntent;
+      newReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
     }
     TaskType prevTaskType = taskInfo.getTaskType();
     try {
@@ -713,11 +713,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     UserIntent incomingReadReplicaIntent = null;
     if (ybUniverse.getSpec().getReadReplica() != null) {
-      incomingReadReplicaIntent =
-          getReadReplicaUserIntent(
-              universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent,
-              ybUniverse,
-              cust.getUuid());
+      UserIntent currIntent =
+          CollectionUtils.isNotEmpty(universe.getUniverseDetails().getReadOnlyClusters())
+              ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent
+              : incomingIntent;
+      incomingReadReplicaIntent = getReadReplicaUserIntent(currIntent, ybUniverse, cust.getUuid());
     }
 
     KubernetesResourceDetails k8ResourceDetails =
