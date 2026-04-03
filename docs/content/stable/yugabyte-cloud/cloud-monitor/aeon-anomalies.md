@@ -169,14 +169,14 @@ The following sections provide examples of typical anomaly RCAs.
 
 ### Hot Tablet
 
-The Hot Tablet Anomaly identifies tablets in a table that are receiving significantly more activity than others. In a distributed database, performance is highest when load is evenly distributed. When a single tablet receives most of the traffic, it becomes a bottleneck and limits overall throughput.
+The Hot Tablet anomaly identifies tablets in a table that are receiving significantly more activity than others. In a distributed database, performance is highest when load is evenly distributed. When a single tablet receives most of the traffic, it becomes a bottleneck and limits overall throughput.
 
 This usually indicates an opportunity to improve either:
 
 - how queries access the data, or
 - the partitioning strategy of the table or index
 
-The RCA has two sections.
+![Hot Tablet anomaly](/images/yb-cloud/managed-monitor-anomalies-tablet.png)
 
 The top section lists all tablets for the object and ranks them by activity. Each tablet is shown with a colored bar representing its relative load. In this example, the first tablet handles nearly all the activity, while the others have little to none, clearly indicating imbalance.
 
@@ -186,6 +186,8 @@ The bottom section shows the queries accessing the hot tablet, ranked by how muc
 
 The Hot Node RCA highlights when one or more nodes are handling a disproportionate amount of activity compared to the rest of the cluster. In a distributed database, performance is best when load is evenly distributed across all nodes.
 
+![Hot Node anomaly](/images/yb-cloud/managed-monitor-anomalies-node.png)
+
 The top graph shows activity across nodes over time. In this example, the light blue line indicates a node with significantly higher CPU load than the others, signaling an imbalance.
 
 Below the graph is a list of nodes, with each node's relative CPU load shown as a green bar so that you can identify which nodes are overloaded at a glance.
@@ -194,11 +196,18 @@ You can expand each node by clicking the plus icon to see the SQL statements run
 
 ### SQL Latency
 
-There are three types of SQL anomalies detected.
-
 An SQL latency anomaly is triggered when:
 
-- A query spends more than 50% of its execution time waiting on locks or catalog reads.
-- A query's latency increases by 2× or more compared to its baseline.
+- A query spends more than 50% of its execution time waiting on catalog reads.
+- A query spends more than 50% of its execution time waiting on locks.
+- A query's latency increases by 2x or more compared to its baseline.
 
-When an anomaly is detected, it is surfaced in the UI. Clicking on the anomaly takes you to a detailed SQL page for further investigation.
+Any of these can indicate candidates for [query tuning](../../../launch-and-manage/monitor-and-alert/query-tuning/).
+
+![SQL Latency anomaly](/images/yb-cloud/managed-monitor-anomalies-sql.png)
+
+SQL latency RCAs show:
+
+- The cluster load for the problem query.
+- Metrics related to the query: query latency, RPS, and rows.
+- A table listing the tables and tablets accessed by the query.
