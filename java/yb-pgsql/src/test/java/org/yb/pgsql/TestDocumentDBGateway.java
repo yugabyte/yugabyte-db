@@ -134,9 +134,9 @@ public class TestDocumentDBGateway extends BasePgSQLTest {
       public void checkServerTrusted(X509Certificate[] certs, String authType) {}
     }}, new java.security.SecureRandom());
 
-    String connectionString = String.format(
-        "mongodb://%s:%s@%s:%d/?tls=true&authMechanism=SCRAM-SHA-256",
-        DEFAULT_PG_USER, DEFAULT_PG_PASS, host, BASE_GATEWAY_PORT);
+    // Auth is disabled by default (ysql_documentdb_enable_auth=false), so connect without
+    // credentials.
+    String connectionString = String.format("mongodb://%s:%d/?tls=true", host, BASE_GATEWAY_PORT);
 
     MongoClientSettings settings = MongoClientSettings.builder()
         .applyConnectionString(new ConnectionString(connectionString))
@@ -205,9 +205,9 @@ public class TestDocumentDBGateway extends BasePgSQLTest {
         }}, new java.security.SecureRandom());
 
         String connStr = String.format(
-            "mongodb://%s:%s@%s:%d/?tls=true&authMechanism=SCRAM-SHA-256"
+            "mongodb://%s:%d/?tls=true"
                 + "&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000",
-            DEFAULT_PG_USER, DEFAULT_PG_PASS, host, port);
+            host, port);
 
         MongoClientSettings s = MongoClientSettings.builder()
             .applyConnectionString(new ConnectionString(connStr))
