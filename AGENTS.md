@@ -22,9 +22,9 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 | `architecture/` | Internal design documents and architecture specs |
 | `troubleshoot/` | Troubleshooting framework backend and UI |
 
-### Build Prerequisites
+### Build Prerequisites for Claude Code
 
-Before building YugabyteDB, install the following dependencies:
+Before building YugabyteDB in a Claude Code session, install the following dependencies:
 
 - **CMake >= 3.31** — Ubuntu 24.04's default apt package is too old (3.28). Install via pip:
   ```bash
