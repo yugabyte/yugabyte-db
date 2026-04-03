@@ -28,13 +28,6 @@ sudo locale-gen en_US.UTF-8
 
 The primary build entry point is `yb_build.sh` at the repository root.
 
-The first build takes approximately 20 minutes. Incremental builds are much faster.
-
-Always pipe build output to a temp file so you can inspect errors without rebuilding:
-```bash
-./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc 2>&1 | tee /tmp/yb-build.log
-```
-
 Reuse existing build compiler/type if available (see `build/latest` symlink); default to `release` otherwise.
 
 Add these `yb_build.sh` options to reduce build time:
@@ -43,6 +36,13 @@ Add these `yb_build.sh` options to reduce build time:
 - Skip pg_parquet build (`--skip-pg-parquet`) unless you need it.
 - Skip odyssey build (`--no-odyssey`) unless you need it.
 - Skip YBC build (`--no-ybc`) unless you need it.
+
+The first build takes approximately 20 minutes. Incremental builds are much faster.
+
+Always pipe build output to a temp file so you can inspect errors without rebuilding:
+```bash
+./yb_build.sh release daemons initdb --sj --skip-pg-parquet --no-odyssey --no-ybc 2>&1 | tee /tmp/yb-build.log
+```
 
 Pitfalls when doing incremental build:
 - The `initdb` cmake target may not be built when specified in the same `yb_build.sh` command as test options.
