@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.DetachedNodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiResponse;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -68,6 +67,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http;
@@ -203,6 +203,29 @@ public class NodeInstanceController extends AuthenticatedController {
       // Swallow the exception so that user can see other node details.
       return "";
     }
+  }
+
+  /**
+   * GET endpoint for Node instances.
+   *
+   * @param customerUuid the customer UUID
+   * @param nodeIp the node IP address/FQDN (optional)
+   * @return JSON response with Node data
+   */
+  @ApiOperation(
+      value = "List all node instances of a customer",
+      response = NodeInstance.class,
+      nickname = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result listByCustomer(UUID customerUuid, @Nullable String nodeIp) {
+    Customer.getOrBadRequest(customerUuid);
+    List<NodeInstance> instances = NodeInstance.listByCustomer(customerUuid, nodeIp);
+    return PlatformResults.withData(instances);
   }
 
   /**
@@ -475,7 +498,7 @@ public class NodeInstanceController extends AuthenticatedController {
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
       log.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();

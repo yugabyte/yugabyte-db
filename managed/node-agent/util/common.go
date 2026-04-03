@@ -99,6 +99,9 @@ const (
 	// JWT claims.
 	JwtClaimsExpiryKey  = "exp"
 	JwtClaimsSessionKey = "ses"
+
+	// GlobalRuntimeScopeUuid is the UUID for global scope for runtime configs.
+	GlobalRuntimeConfigScopeUuid = "00000000-0000-0000-0000-000000000000"
 )
 
 const (
@@ -155,6 +158,11 @@ func ExtractBaseURL(value string) (string, error) {
 	return baseUrl, nil
 }
 
+// Returns the platform endpoint for fetching runtime config for a given key in the scope.
+func RuntimeConfigEndpoint(cuuid string, scopeUuid string, key string) string {
+	return fmt.Sprintf("/api/customers/%s/runtime_config/%s/key/%s", cuuid, scopeUuid, key)
+}
+
 // Returns the platform endpoint for fetching providers.
 func PlatformGetProvidersEndpoint(cuuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers", cuuid)
@@ -163,6 +171,11 @@ func PlatformGetProvidersEndpoint(cuuid string) string {
 // Returns the platform endpoint for fetching the provider.
 func PlatformGetProviderEndpoint(cuuid, puuid string) string {
 	return fmt.Sprintf("/api/customers/%s/providers/%s", cuuid, puuid)
+}
+
+// Returns the platform endpoint for fetching the provider by name.
+func PlatformGetProviderByNameEndpoint(cuuid, name string) string {
+	return fmt.Sprintf("/api/customers/%s/providers?name=%s", cuuid, name)
 }
 
 // Returns the platform endpoint for fetching Users.
@@ -229,6 +242,16 @@ func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instanceType st
 // and adding node instance to the platform.
 func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes", cuuid, azid)
+}
+
+// Returns the platform endpoint for fetching node instances.
+func PlatformGetNodeInstancesEndpoint(cuuid string, puuid string) string {
+	return fmt.Sprintf("/api/customers/%s/providers/%s/nodes/list", cuuid, puuid)
+}
+
+// Returns the platform endpoint for fetching provider by node IP.
+func PlatformGetNodeInstanceByIpEndpoint(cuuid string, nodeIp string) string {
+	return fmt.Sprintf("/api/customers/%s/nodes?nodeIp=%s", cuuid, nodeIp)
 }
 
 // Returns the platform endpoint for validating the node configs.

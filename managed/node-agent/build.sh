@@ -228,32 +228,46 @@ format() {
     popd
 }
 
+run_test() {
+    local dir=$1
+    pushd "$project_dir"
+    echo "Running tests in ${dir}..."
+    set +e
+    go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
+    status=$?
+    set -e
+    popd
+    return $status
+}
+
 run_tests() {
     local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
     pushd "$project_dir"
-    for dir in */ ; do
-        # Remove trailing slash.
-        dir=$(echo "${dir}" | sed 's/\/$//')
-        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
-            echo "Skipping directory ${dir}"
-            continue
+    if [ -n "$testone_path" ]; then
+        run_test "$testone_path"
+        if [ $? -ne 0 ]; then
+            failed_tests+=("$testone_path")
         fi
-        if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
-            echo "Skipping directory ${dir} for testone"
-            continue
-        fi
-        echo "Running tests in ${dir}..."
-        set +e
-        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
-        status=$?
-        if [ $status -ne 0 ]; then
-            echo "Tests failed for $dir"
-            failed_tests+=("$dir")
-        fi
-        set -e
-    done
+    else
+        for dir in */ ; do
+            # Remove trailing slash.
+            dir=$(echo "${dir}" | sed 's/\/$//')
+            if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+                echo "Skipping directory ${dir}"
+                continue
+            fi
+            if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
+                echo "Skipping directory ${dir} for testone"
+                continue
+            fi
+            run_test "$dir"
+            if [ $? -ne 0 ]; then
+                failed_tests+=("$dir")
+            fi
+        done
+    fi
     popd
     if [ ${#failed_tests[@]} -ne 0 ]; then
         echo "Failed tests: ${failed_tests[*]}"
