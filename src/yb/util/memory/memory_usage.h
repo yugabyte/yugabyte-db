@@ -61,20 +61,21 @@ typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::ty
 
 constexpr const auto kStdStringInternalCapacity = 22;
 
-#if defined(__linux__)
-
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   const auto capacity = value.capacity();
   if (capacity <= kStdStringInternalCapacity) {
     return 0;
   } else {
+#if defined(__linux__)
     // gperftools tcmalloc allocates 16*n bytes for std::string capacity from [16*(n - 1); 16*n - 1].
     // 48 bytes for capacity in [32; 47], 64 bytes for capacity in [48; 63] and so on...
     return (capacity + 16) & ~(size_t(0xf));
+#else
+    // macOS system allocator: allocates exactly capacity + 1 bytes.
+    return capacity + 1;
+#endif
   }
 }
-
-#endif // defined(__linux__)
 
 #elif (__GNUC__ >= 9 && __GNUC__ < 11)
 
@@ -91,10 +92,6 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
 
 constexpr const auto kStdStringInternalCapacity = 15;
 
-#endif // defined(__clang__)
-
-#if !defined(__linux__) && !(__GNUC__ >= 9 && __GNUC__ < 11)
-
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   const auto capacity = value.capacity();
   if (capacity <= kStdStringInternalCapacity) {
@@ -104,7 +101,7 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   }
 }
 
-#endif
+#endif // defined(__clang__)
 
 template <class T>
 typename boost::enable_if<boost::is_base_of<google::protobuf::Message, T>, std::size_t>::type
