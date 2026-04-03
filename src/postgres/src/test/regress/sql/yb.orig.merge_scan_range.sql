@@ -1,13 +1,13 @@
 --
--- See yb_saop_merge_schedule for details about the test.
+-- See yb_merge_scan_schedule for details about the test.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/data/explainrun_merge_scan.sql'
 \i :filename
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
@@ -44,12 +44,12 @@
 :explain2run2
 
 -- sort, IN
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r1, n, r2, r3 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r1, n LIMIT 5'
 :explain2
 
 -- _, IN, sort...
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2
 
@@ -62,7 +62,7 @@
 :explain2run2
 
 -- IN/=, sort...
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r1, r2, r3, r4, r5, n FROM r5n WHERE r1 = 2 AND r1 IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2run2
 
@@ -107,7 +107,7 @@
 :explain2run2
 
 -- Not-IN, sort...
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 NOT IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
@@ -116,12 +116,12 @@
 :explain2run2
 
 -- >ANY, sort...
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- >=ALL, sort...
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 >= ALL (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
@@ -130,7 +130,7 @@
 :explain2run2
 
 -- =, sort, IN, sort
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r1, r2, r4, n, r3 FROM r5n WHERE r1 = 2 AND r3 IN (0, 1, 2, 3, 4, 5) ORDER BY r2, r4, n LIMIT 5'
 :explain2
 
@@ -143,7 +143,7 @@
 :explain2run2
 
 -- IN equivalence to first key non-sort column
--- TODO(#29030): this should use SAOP merge.
+-- TODO(#29030): this should use merge scan.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (7, 8, 9) AND r2 = r1 ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2run2
 
@@ -168,12 +168,12 @@
 :explain2run2
 
 -- =-var equivalence prefix
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r4, r5, n, r3, r1, r2 FROM r5n WHERE r3 IN (7, 8, 9) AND r1 = r2 ORDER BY r4, r5, n LIMIT 5'
 :explain2
 
 -- =-var equivalence suffix
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (7, 8, 9) AND r2 = r3 ORDER BY r4, r5, n LIMIT 5'
 :explain2
 
@@ -182,7 +182,7 @@
 :explain2run2
 
 -- Another OR clause
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND (r1 IN (0, 1, 2) OR r1 = 2 OR r1 IN (1, 2, 3)) ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2
 
@@ -191,37 +191,37 @@
 :explain2run2
 
 -- Cross-type SAOP: incompatible type
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[0, 2, 4, 6, 8]::float[]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- Typecasted LHS
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1::text = ANY (ARRAY[0, 2, 4, 6, 8]::text[]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- ArrayExpr containing FuncExpr
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- ArrayExpr containing OpExpr
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 100 + random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- ArrayExpr containing Param
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, (SELECT count(*) FROM r5n)) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- Row IN without constant table
--- TODO(#29032): this should use SAOP merge.
+-- TODO(#29032): this should use merge scan.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE (r1, r2) IN ((1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2run2
 
 -- Row IN with constant table
--- TODO(#29032): this should use SAOP merge.
+-- TODO(#29032): this should use merge scan.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE row(r1, r2) IN (values (1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2run2
 
@@ -239,20 +239,20 @@
 :explain2run2
 
 -- Only NULLs in IN
--- Third hint is to use SAOP merge as the second hint ends up using sort.
+-- Third hint is to use merge scan as the second hint ends up using sort.
 -- TODO(#29073): after culling array, maybe the third hint should not use SAOP
 -- merge.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (null, null, null) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-\set hint3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
 
 -- Empty array
--- Third hint is to use SAOP merge as the second hint ends up using sort.
+-- Third hint is to use merge scan as the second hint ends up using sort.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain3run3
 
 -- Non-const in RHS (like var ref)
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
@@ -261,27 +261,27 @@
 :explain2run2
 
 -- Single IN hitting limit
--- SAOP merge should not be used.
-\set on '/*+Set(yb_max_saop_merge_streams 5)*/'
+-- Merge scan should not be used.
+\set on '/*+Set(yb_max_merge_scan_streams 5)*/'
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- Double IN hitting limit
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5, n LIMIT 5'
 :explain2
 
 -- Triple IN hitting limit before realizing limit could be satisfied with 0x
 -- multiplier.
--- Third hint is to encourage use of SAOP merge like other similar empty array
+-- Third hint is to encourage use of merge scan like other similar empty array
 -- test cases.
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) AND r3 = ANY(''{}'') ORDER BY r4, r5, n LIMIT 5'
-\set hint3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 5)*/'
+\set hint3 '/*+Set(enable_sort off) Set(yb_max_merge_scan_streams 5)*/'
 :explain3
 
 -- Triple IN avoiding limit because of 0x multiplier.
--- Third hint is to use SAOP merge as the second hint ends up using sort.
+-- Third hint is to use merge scan as the second hint ends up using sort.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 = ANY(''{}'') AND r3 IN (6, 8) ORDER BY r4, r5, n LIMIT 5'
 :explain3run3
 
@@ -291,17 +291,17 @@
 :explain2run2
 
 -- Duplicates in IN
--- TODO(#29073): after culling array, this should use SAOP merge.
+-- TODO(#29073): after culling array, this should use merge scan.
 \set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1, 1, 2, 3, 3, 4, 5, 5, 5, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5'
 :explain2run2
 
 -- (Reset the limit change)
-\set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+\set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 
--- #30096: SAOP merge shouldn't be used in a parallel scan.
+-- #30096: Merge scan shouldn't be used in a parallel scan.
 \set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
-\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
-\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 0)*/'
+\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_merge_scan_streams 64)*/'
 :explain4
 
 -- Same thing with backwards scan.
@@ -321,12 +321,12 @@ SPLIT AT VALUES (
     (3));
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
 -- No limit
--- TODO(#29078): this likely should use SAOP merge.
+-- TODO(#29078): this likely should use merge scan.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5'
 :explain2
 
@@ -349,15 +349,15 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
--- Secondary index scan VS SAOP merge PK scan
+-- Secondary index scan VS merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5'
 :explain2run2
 
--- SAOP merge secondary index scan VS SAOP merge PK scan
+-- Merge secondary index scan VS merge PK scan
 -- Third hint is to use the secondary index as the second hint ends up using
 -- the PK index.
 \set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) ORDER BY r3, r4, r5, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_r2_r3_r4_r5_idx) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+IndexScan(r5n r5n_r2_r3_r4_r5_idx) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
 
 -- (Drop this index)
@@ -469,7 +469,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) LIMIT 5'
 :explain2
 
@@ -499,7 +499,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
@@ -522,7 +522,7 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 
--- Secondary index only scan VS SAOP merge PK scan
+-- Secondary index only scan VS merge PK scan
 \set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5'
 :explain2run2
 
@@ -542,7 +542,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5'
 :explain2
 
@@ -558,18 +558,18 @@ SPLIT AT VALUES (
 \set query 'SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), 1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5'
 :explain2run2
 
--- Secondary index scan VS SAOP merge PK scan
+-- Secondary index scan VS merge PK scan
 -- Third hint is to use the PK index as the second hint ends up using the
 -- expression index.
 \set query 'SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
 
--- SAOP merge secondary index scan VS SAOP merge PK scan
+-- Merge secondary index scan VS merge PK scan
 -- Third hint is to use the PK index as the second hint ends up using the
 -- expression index.
 \set query 'SELECT r2, r3, r4, n, r1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE r1 IN (1, 2, 3, 4) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (1, 2, 3, 4) ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
 
 -- (Drop this index)
@@ -615,7 +615,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
@@ -628,7 +628,7 @@ SPLIT AT VALUES (
 :explain2run2
 
 -- Forward scan (v2)
--- SAOP merge is not used.
+-- Merge scan is not used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), r2 DESC, n LIMIT 5'
 :explain2
 
@@ -637,7 +637,7 @@ SPLIT AT VALUES (
 :explain2run2
 
 -- Backward scan (v2)
--- SAOP merge is not used.
+-- Merge scan is not used.
 \set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5'
 :explain2
 
@@ -646,7 +646,7 @@ SPLIT AT VALUES (
 :explain2run2
 
 -- Targets (v2)
--- SAOP merge is not used.
+-- Merge scan is not used.
 \set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5'
 :explain2
 
@@ -669,8 +669,8 @@ BEGIN
 END $$;
 
 SELECT get_explain_property(hint || 'SELECT * FROM r5n WHERE r1 IN (1, 2, 3) ORDER BY r2', property)
-FROM unnest(ARRAY['/*+Set(yb_max_saop_merge_streams 0)*/',
-                  '/*+Set(yb_max_saop_merge_streams 64)*/']) AS hint,
+FROM unnest(ARRAY['/*+Set(yb_max_merge_scan_streams 0)*/',
+                  '/*+Set(yb_max_merge_scan_streams 64)*/']) AS hint,
      unnest(ARRAY['Merge Sort Key',
                   'Merge Stream Key',
                   'Merge Streams',

@@ -50,7 +50,7 @@ extern IndexPath *create_index_path(PlannerInfo *root,
 									Relids required_outer,
 									double loop_count,
 									bool partial_path,
-									List *yb_saop_merge_saop_cols);
+									List *yb_merge_scan_saop_cols);
 extern BitmapHeapPath *create_bitmap_heap_path(PlannerInfo *root,
 											   RelOptInfo *rel,
 											   Path *bitmapqual,

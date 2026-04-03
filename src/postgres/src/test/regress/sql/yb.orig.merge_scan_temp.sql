@@ -1,9 +1,9 @@
 --
--- See yb_saop_merge_schedule for details about the test.
+-- See yb_merge_scan_schedule for details about the test.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/data/explainrun_merge_scan.sql'
 \i :filename
 
 CREATE TEMP TABLE tmp (
@@ -17,7 +17,7 @@ CREATE TEMP TABLE tmp (
 INSERT INTO tmp SELECT r1, r2, r3, r4, r5 FROM r5n;
 
 -- Temp table
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 SET enable_bitmapscan = off;
 \set query 'SELECT * FROM tmp WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5'
 :explain2

@@ -30,7 +30,7 @@
 
 /* YB includes */
 #include "access/sysattr.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -554,8 +554,8 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
  *
- * YB: 'yb_saop_merge_saop_cols' is an out-param.  List of
- * YbSaopMergeSaopColInfo.  If NULL is passed, disallow SAOP merge.  Otherwise,
+ * YB: 'yb_merge_scan_saop_cols' is an out-param.  List of
+ * YbMergeScanSaopColInfo.  If NULL is passed, disallow merge scan.  Otherwise,
  * an empty list should be passed.
  */
 List *
@@ -563,13 +563,13 @@ build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_saop_merge_saop_cols)
+					 List **yb_merge_scan_saop_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
 	int			i;
 	int			yb_distinct_prefixlen;
-	int			yb_saop_merge_cardinality = 1;
+	int			yb_merge_scan_cardinality = 1;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -581,7 +581,7 @@ build_index_pathkeys(PlannerInfo *root,
 	yb_distinct_prefixlen = *yb_distinct_nkeys;
 	*yb_distinct_nkeys = yb_distinct_prefixlen == 0 ? 0 : -1;
 
-	Assert(!yb_saop_merge_saop_cols || *yb_saop_merge_saop_cols == NIL);
+	Assert(!yb_merge_scan_saop_cols || *yb_merge_scan_saop_cols == NIL);
 
 	i = 0;
 	foreach(lc, index->indextlist)
@@ -634,16 +634,16 @@ build_index_pathkeys(PlannerInfo *root,
 
 		/*
 		 * YB: Index keys part of scalar array operations may be eligible for
-		 * SAOP merge, in which case we can continue to examine lower-order
+		 * merge scan, in which case we can continue to examine lower-order
 		 * index columns.  Disqualify from consideration if the index key is
 		 * part of a redundant EC or a pure sort EC (i.e. a sort EC that is not
 		 * equivalent to another column).
 		 */
 		if (!(cpathkey && (EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) ||
 						   cpathkey->pk_eclass->ec_sortref != 0)) &&
-			yb_indexcol_can_saop_merge(root, index, indexkey, i,
-									   &yb_saop_merge_cardinality,
-									   yb_saop_merge_saop_cols))
+			yb_indexcol_can_merge_scan(root, index, indexkey, i,
+									   &yb_merge_scan_cardinality,
+									   yb_merge_scan_saop_cols))
 		{
 			/* Do nothing */
 		}

@@ -51,7 +51,7 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_catalog_version.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "optimizer/ybplan.h"
 #include "pg_yb_utils.h"
 #include "utils/fmgroids.h"
@@ -4501,13 +4501,13 @@ create_indexscan_plan(PlannerInfo *root,
 		}
 	}
 
-	YbSaopMergeInfo *yb_saop_merge_info = NULL;
+	YbMergeScanInfo *yb_merge_scan_info = NULL;
 
-	if (best_path->yb_index_path_info.saop_merge_saop_cols)
+	if (best_path->yb_index_path_info.merge_scan_saop_cols)
 	{
-		yb_saop_merge_info = makeNode(YbSaopMergeInfo);
-		yb_saop_merge_info->saop_cols =
-			best_path->yb_index_path_info.saop_merge_saop_cols;
+		yb_merge_scan_info = makeNode(YbMergeScanInfo);
+		yb_merge_scan_info->saop_cols =
+			best_path->yb_index_path_info.merge_scan_saop_cols;
 	}
 
 	/* Finally ready to build the plan node */
@@ -4528,8 +4528,8 @@ create_indexscan_plan(PlannerInfo *root,
 
 		index_only_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
-		if (yb_saop_merge_info)
-			index_only_scan_plan->yb_saop_merge_info = yb_saop_merge_info;
+		if (yb_merge_scan_info)
+			index_only_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_only_scan_plan;
 	}
@@ -4556,23 +4556,23 @@ create_indexscan_plan(PlannerInfo *root,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
-		if (yb_saop_merge_info)
-			index_scan_plan->yb_saop_merge_info = yb_saop_merge_info;
+		if (yb_merge_scan_info)
+			index_scan_plan->yb_merge_scan_info = yb_merge_scan_info;
 
 		scan_plan = (Scan *) index_scan_plan;
 	}
 
-	if (yb_saop_merge_info)
+	if (yb_merge_scan_info)
 	{
 		Bitmapset  *yb_saop_col_idxs = NULL;
 		ListCell   *yb_lc;
-		YbSortInfo *yb_sort_info = yb_saop_merge_info->sort_cols =
+		YbSortInfo *yb_sort_info = yb_merge_scan_info->sort_cols =
 			makeNode(YbSortInfo);
 
-		foreach(yb_lc, yb_saop_merge_info->saop_cols)
+		foreach(yb_lc, yb_merge_scan_info->saop_cols)
 		{
-			YbSaopMergeSaopColInfo *yb_saop_col_info =
-				lfirst_node(YbSaopMergeSaopColInfo, yb_lc);
+			YbMergeScanSaopColInfo *yb_saop_col_info =
+				lfirst_node(YbMergeScanSaopColInfo, yb_lc);
 
 			yb_saop_col_idxs = bms_add_member(yb_saop_col_idxs,
 											  yb_saop_col_info->indexcol);
@@ -5077,7 +5077,7 @@ create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
 		/* then convert to a bitmap indexscan */
 		if (ipath->indexinfo->rel->is_yb_relation)
 		{
-			Assert(!iscan->yb_saop_merge_info);
+			Assert(!iscan->yb_merge_scan_info);
 			iscan->yb_plan_info.estimated_docdb_result_width =
 				ipath->ybctid_width;
 
@@ -6991,19 +6991,19 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 
 	/*
 	 * YB: Besides indexclauses, there could be derived clauses in
-	 * yb_index_path_info.saop_merge_saop_cols.  Add these to ..._indexquals as
+	 * yb_index_path_info.merge_scan_saop_cols.  Add these to ..._indexquals as
 	 * well.
 	 */
-	foreach(lc, index_path->yb_index_path_info.saop_merge_saop_cols)
+	foreach(lc, index_path->yb_index_path_info.merge_scan_saop_cols)
 	{
-		YbSaopMergeSaopColInfo *info = lfirst_node(YbSaopMergeSaopColInfo, lc);
+		YbMergeScanSaopColInfo *info = lfirst_node(YbMergeScanSaopColInfo, lc);
 
 		if (info->derived)
 		{
 			Node	   *clause;
 
 			stripped_indexquals = lappend(stripped_indexquals, info->saop);
-			/* For now, row-array-compare SAOP merge is not supported. */
+			/* For now, row-array-compare merge scan is not supported. */
 			clause = fix_indexqual_clause(root, index, info->indexcol,
 										  (Node *) info->saop,
 										  list_make1_int(info->indexcol));

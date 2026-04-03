@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
- * yb_saop_merge.c
- *	  Utilities for SAOP merge
+ * yb_merge_scan.c
+ *	  Utilities for merge scan
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -18,7 +18,7 @@
  * under the License.
  *
  * IDENTIFICATION
- *	  src/backend/optimizer/util/yb_saop_merge.c
+ *	  src/backend/optimizer/util/yb_merge_scan.c
  *
  *-------------------------------------------------------------------------
  */
@@ -32,7 +32,7 @@
 #include "common/int.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/paths.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
@@ -43,7 +43,7 @@
 
 /* GUC options */
 bool		yb_enable_derived_saops;
-int			yb_max_saop_merge_streams;
+int			yb_max_merge_scan_streams;
 
 /*
  * Whether the given clause is an eligible SAOP.  Eligibility details are in
@@ -267,41 +267,41 @@ ybDeriveSaopFromVar(Var *var,
 }
 
 /*
- * Whether this index column is able to be part of SAOP merge.  If true, find
+ * Whether this index column is able to be part of merge scan.  If true, find
  * the best SAOP (best meaning having the smallest cardinality), and fill
- * in/out params saop_merge_cardinality and saop_merge_saop_cols.
+ * in/out params merge_scan_cardinality and merge_scan_saop_cols.
  */
 bool
-yb_indexcol_can_saop_merge(PlannerInfo *root,
+yb_indexcol_can_merge_scan(PlannerInfo *root,
 						   IndexOptInfo *index,
 						   Expr *expr,
 						   int indexcol,
-						   int *saop_merge_cardinality,
-						   List **saop_merge_saop_cols)
+						   int *merge_scan_cardinality,
+						   List **merge_scan_saop_cols)
 {
 	ListCell   *lc;
 	int			best_num_elems = -1;
 	ScalarArrayOpExpr *best_saop;
-	YbSaopMergeSaopColInfo *saop_col_info;
+	YbMergeScanSaopColInfo *saop_col_info;
 
 	/*
 	 * Abort if any of the following hold:
-	 * - the caller disables SAOP merge (in/out param saop_merge_saop_cols is
+	 * - the caller disables merge scan (in/out param merge_scan_saop_cols is
 	 *   NULL)
-	 * - the session disables SAOP merge (GUC yb_max_saop_merge_streams is 0 or
+	 * - the session disables merge scan (GUC yb_max_merge_scan_streams is 0 or
 	 *   yb_enable_base_scans_cost_model is false)
-	 * - SAOP merge is not supported for this relation (not a YB relation)
+	 * - merge scan is not supported for this relation (not a YB relation)
 	 */
-	if (!(saop_merge_saop_cols &&
-		  yb_max_saop_merge_streams > 0 && yb_enable_base_scans_cost_model &&
+	if (!(merge_scan_saop_cols &&
+		  yb_max_merge_scan_streams > 0 && yb_enable_base_scans_cost_model &&
 		  index->rel->is_yb_relation))
 		return false;
 
 	/* If same expr already used in saop_cols, then redundant */
-	foreach(lc, *saop_merge_saop_cols)
+	foreach(lc, *merge_scan_saop_cols)
 	{
-		YbSaopMergeSaopColInfo *old_saop_col_info =
-			lfirst_node(YbSaopMergeSaopColInfo, lc);
+		YbMergeScanSaopColInfo *old_saop_col_info =
+			lfirst_node(YbMergeScanSaopColInfo, lc);
 		Expr	   *old_lhs = linitial(old_saop_col_info->saop->args);
 
 		if (equal(expr, old_lhs))
@@ -338,7 +338,7 @@ yb_indexcol_can_saop_merge(PlannerInfo *root,
 			best_saop = (ScalarArrayOpExpr *) rinfo->clause;
 
 			/* Optimization when the cardinality can't get better than zero. */
-			if (best_num_elems == 0 || *saop_merge_cardinality == 0)
+			if (best_num_elems == 0 || *merge_scan_cardinality == 0)
 				break;
 		}
 	}
@@ -361,21 +361,21 @@ yb_indexcol_can_saop_merge(PlannerInfo *root,
 		return false;
 
 	/*
-	 * Fill out param saop_merge_cardinality.  Abort upon hitting the
+	 * Fill out param merge_scan_cardinality.  Abort upon hitting the
 	 * cardinality limit.
 	 */
-	if (unlikely(pg_mul_s32_overflow(*saop_merge_cardinality, best_num_elems,
-									 saop_merge_cardinality)) ||
-		*saop_merge_cardinality > yb_max_saop_merge_streams)
+	if (unlikely(pg_mul_s32_overflow(*merge_scan_cardinality, best_num_elems,
+									 merge_scan_cardinality)) ||
+		*merge_scan_cardinality > yb_max_merge_scan_streams)
 		return false;
 
-	/* Fill out param saop_merge_saop_cols. */
-	saop_col_info = makeNode(YbSaopMergeSaopColInfo);
+	/* Fill out param merge_scan_saop_cols. */
+	saop_col_info = makeNode(YbMergeScanSaopColInfo);
 	saop_col_info->saop = best_saop;
 	saop_col_info->indexcol = indexcol;
 	saop_col_info->num_elems = best_num_elems;
 	saop_col_info->derived = derived;
-	*saop_merge_saop_cols = lappend(*saop_merge_saop_cols, saop_col_info);
+	*merge_scan_saop_cols = lappend(*merge_scan_saop_cols, saop_col_info);
 	return true;
 }
 

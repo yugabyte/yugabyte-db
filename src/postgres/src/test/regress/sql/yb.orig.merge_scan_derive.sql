@@ -1,13 +1,13 @@
 --
--- Test YB's automatic insertion of SAOP cond.
+-- Test YB's automatic insertion of scalar-array-op conditions for merge scan.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/data/explainrun_merge_scan.sql'
 \i :filename
 
-\set off '/*+Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 0)*/'
-\set on '/*+Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 64)*/'
+\set off '/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 0)*/'
+\set on '/*+Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 
 SET yb_enable_derived_saops = true;
 
@@ -16,7 +16,7 @@ SET yb_enable_derived_saops = true;
 --
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM bkt_tbl'
 :explain2
 
@@ -58,7 +58,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No limit
--- TODO(#29078): this likely should use SAOP merge.
+-- TODO(#29078): this likely should use merge scan.
 \set query 'SELECT * FROM bkt_tbl ORDER BY r3, r2, r1'
 :explain2
 
@@ -83,7 +83,7 @@ SPLIT AT VALUES (
     (3));
 
 -- No limit
--- TODO(#29078): this likely should use SAOP merge.
+-- TODO(#29078): this likely should use merge scan.
 \set query 'SELECT * FROM r5n ORDER BY r2, r3'
 :explain2
 
@@ -100,12 +100,12 @@ SPLIT AT VALUES (
 :explain2run2
 
 -- Expression bound to constant
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT yb_hash_code(r2, r3, r4) % 3, r2, r3, n FROM r5n WHERE yb_hash_code(r2, r3, r4) % 3 = 1 ORDER BY r2, r3, n LIMIT 5'
 :explain2
 
 -- Range filter; no ORDER BY
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM r5n WHERE r2 > 1 LIMIT 5'
 :explain2
 
@@ -126,7 +126,7 @@ SPLIT AT VALUES (
     (3));
 
 -- Expression in sort, so not derived
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5'
 :explain2
 
@@ -137,7 +137,7 @@ SPLIT AT VALUES (
 -- Derived
 -- Third hint is to use the expression index.
 \set query 'SELECT r1, r3, r4, n FROM r5n WHERE r1 = 1 ORDER BY r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+IndexScan(r5n r5n_r1_expr_r3_r4_idx) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 :explain3run3
 
 -- Following queries send various numbers of requests/scan various number of
@@ -210,12 +210,12 @@ SPLIT AT VALUES (
 
 -- 2-hop =-const equivalence
 -- Third hint is to show that when a JOIN doesn't care about the ordering of
--- the index scan, SAOP merge is not used.
--- Fourth hint is to show SAOP merge in a merge join.
--- Fifth hint is to show SAOP merge in the inner side of a merge join.
--- TODO(#29030): fifth hint should use SAOP merge.
+-- the index scan, Merge scan is not used.
+-- Fourth hint is to show merge scan in a merge join.
+-- Fifth hint is to show merge scan in the inner side of a merge join.
+-- TODO(#29030): fifth hint should use merge scan.
 \set query 'SELECT DISTINCT ON (r5n.r3, r5n.r4) parent.p1, r5n.r2, r5n.r3, parent.r3, r5n.n, parent.n FROM r5n JOIN parent ON r5n.r3 = parent.r3 WHERE parent.p1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5'
-\set hint3 '/*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 64)*/'
-\set hint4 '/*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 64)*/'
-\set hint5 '/*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_saop_merge_streams 64)*/'
+\set hint3 '/*+Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
+\set hint4 '/*+MergeJoin(parent r5n) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
+\set hint5 '/*+MergeJoin(parent r5n) Leading((parent r5n)) Set(enable_parallel_append off) Set(yb_max_merge_scan_streams 64)*/'
 :explain5

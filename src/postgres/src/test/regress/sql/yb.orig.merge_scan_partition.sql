@@ -1,13 +1,13 @@
 --
--- See yb_saop_merge_schedule for details about the test.
+-- See yb_merge_scan_schedule for details about the test.
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/data/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/data/explainrun_merge_scan.sql'
 \i :filename
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM parent WHERE r1 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 
@@ -25,7 +25,7 @@
 CREATE INDEX ON parent (p2 ASC, r2, p1, r3, r1);
 
 -- No order
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query 'SELECT * FROM parent WHERE p2 IN (0, 1, 2, 3) LIMIT 5'
 :explain2
 

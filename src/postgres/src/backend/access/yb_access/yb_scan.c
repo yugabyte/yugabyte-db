@@ -2157,31 +2157,31 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 		length_of_key = YbGetLengthOfKey(&ybScan->keys[i]);
 		ScanKey		key = ybScan->keys[i];
 
-		/* Prioritize binding SAOPs that are pinned by SAOP merge. */
+		/* Prioritize binding SAOPs that are pinned by merge scan. */
 		if (YbIsSearchArray(key))
 		{
 			Datum		this_array_const;
 			ListCell   *lc;
-			YbSaopMergeInfo *yb_saop_merge_info = NULL;
+			YbMergeScanInfo *yb_merge_scan_info = NULL;
 
 			this_array_const = YbGetArrayConst(&ybScan->keys[i]);
 
 			if (scan)
 			{
 				if (IsA(scan, IndexScan))
-					yb_saop_merge_info =
-						((IndexScan *) scan)->yb_saop_merge_info;
+					yb_merge_scan_info =
+						((IndexScan *) scan)->yb_merge_scan_info;
 				else if (IsA(scan, IndexOnlyScan))
-					yb_saop_merge_info =
-						((IndexOnlyScan *) scan)->yb_saop_merge_info;
+					yb_merge_scan_info =
+						((IndexOnlyScan *) scan)->yb_merge_scan_info;
 			}
 
-			if (yb_saop_merge_info)
+			if (yb_merge_scan_info)
 			{
-				foreach(lc, yb_saop_merge_info->saop_cols)
+				foreach(lc, yb_merge_scan_info->saop_cols)
 				{
 					ScalarArrayOpExpr *pinned_saop =
-						((YbSaopMergeSaopColInfo *) lfirst(lc))->saop;
+						((YbMergeScanSaopColInfo *) lfirst(lc))->saop;
 					Datum		pinned_array_const =
 						((Const *) lsecond(pinned_saop->args))->constvalue;
 
@@ -3176,9 +3176,9 @@ YbApplyMergeSortKeys(YbScanDesc ybScan, Scan *pg_scan_plan)
 	{
 		IndexScan  *plan = (IndexScan *) pg_scan_plan;
 
-		if (plan->yb_saop_merge_info)
+		if (plan->yb_merge_scan_info)
 		{
-			sort_info = plan->yb_saop_merge_info->sort_cols;
+			sort_info = plan->yb_merge_scan_info->sort_cols;
 			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
 			reverse = ScanDirectionIsBackward(plan->indexorderdir);
 			/*
@@ -3201,9 +3201,9 @@ YbApplyMergeSortKeys(YbScanDesc ybScan, Scan *pg_scan_plan)
 	{
 		IndexOnlyScan *plan = (IndexOnlyScan *) pg_scan_plan;
 
-		if (plan->yb_saop_merge_info)
+		if (plan->yb_merge_scan_info)
 		{
-			sort_info = plan->yb_saop_merge_info->sort_cols;
+			sort_info = plan->yb_merge_scan_info->sort_cols;
 			Assert(!ScanDirectionIsNoMovement(plan->indexorderdir));
 			reverse = ScanDirectionIsBackward(plan->indexorderdir);
 		}
@@ -4182,8 +4182,8 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 					startup_cost, total_cost,
 					path->indexinfo->reltablespace);
 
-	/* SAOP merge index scans should not be possible in non-CBO mode. */
-	Assert(!path->yb_index_path_info.saop_merge_saop_cols);
+	/* Merge scan should not be possible in non-CBO mode. */
+	Assert(!path->yb_index_path_info.merge_scan_saop_cols);
 
 	if (!yb_enable_optimizer_statistics)
 	{

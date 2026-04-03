@@ -120,6 +120,8 @@ YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
 YbLsmBuildState
+YbMergeScanInfo
+YbMergeScanSaopColInfo
 YbNLBatchStatus
 YbNLBucketInfo
 YbNameToOidMapEntry
@@ -181,8 +183,6 @@ YbRowBounds
 YbRunWithPrefetcherContext
 YbSample
 YbSampleData
-YbSaopMergeInfo
-YbSaopMergeSaopColInfo
 YbScanDesc
 YbScanDescData
 YbScanPlan
