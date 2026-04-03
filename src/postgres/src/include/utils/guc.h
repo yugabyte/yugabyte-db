@@ -243,6 +243,8 @@ typedef enum
  */
 #define GUC_RUNTIME_COMPUTED  0x200000
 #define GUC_ALLOW_IN_PARALLEL 0x400000	/* allow setting in parallel mode */
+#define GUC_YB_DISALLOW_IN_DB_ROLE_SETTING 0x800000	/* YB: can't set via ALTER
+													 * DATABASE/ROLE SET */
 
 #define GUC_UNIT				(GUC_UNIT_MEMORY | GUC_UNIT_TIME)
 
