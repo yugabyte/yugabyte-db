@@ -22,24 +22,6 @@ For agents that want to deploy, configure and run YugabyteDB refer to instructio
 | `architecture/` | Internal design documents and architecture specs |
 | `troubleshoot/` | Troubleshooting framework backend and UI |
 
-### Build Prerequisites for Claude Code
-
-Before building YugabyteDB in a Claude Code session, install the following dependencies:
-
-- **CMake >= 3.31** — Ubuntu 24.04's default apt package is too old (3.28). Install via pip:
-  ```bash
-  pip3 install 'cmake>=3.31'
-  ```
-- **rsync**
-- **gettext**
-- **en_US.UTF-8 locale** — required by `initdb`; minimal containers often lack it
-
-On Ubuntu/Debian:
-```bash
-sudo apt-get install -y rsync gettext
-sudo locale-gen en_US.UTF-8
-```
-
 ### Coding and Development
 
 When working on DB code (`src/`), refer to `src/AGENTS.md` for build and test guidance
