@@ -4101,18 +4101,18 @@ _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *nod
 }
 
 static void
-_outYbSaopMergeInfo(StringInfo str, const YbSaopMergeInfo *node)
+_outYbMergeScanInfo(StringInfo str, const YbMergeScanInfo *node)
 {
-	WRITE_NODE_TYPE("YBSAOPMERGEINFO");
+	WRITE_NODE_TYPE("YBMERGESCANINFO");
 
 	WRITE_NODE_FIELD(saop_cols);
 	WRITE_NODE_FIELD(sort_cols);
 }
 
 static void
-_outYbSaopMergeSaopColInfo(StringInfo str, const YbSaopMergeSaopColInfo *node)
+_outYbMergeScanSaopColInfo(StringInfo str, const YbMergeScanSaopColInfo *node)
 {
-	WRITE_NODE_TYPE("YBSAOPMERGESAOPCOLINFO");
+	WRITE_NODE_TYPE("YBMERGESCANSAOPCOLINFO");
 
 	WRITE_NODE_FIELD(saop);
 	WRITE_INT_FIELD(indexcol);
@@ -4869,11 +4869,11 @@ outNode(StringInfo str, const void *obj)
 			case T_YbUpdateAffectedEntities:
 				_outYbUpdateAffectedEntities(str, obj);
 				break;
-			case T_YbSaopMergeInfo:
-				_outYbSaopMergeInfo(str, obj);
+			case T_YbMergeScanInfo:
+				_outYbMergeScanInfo(str, obj);
 				break;
-			case T_YbSaopMergeSaopColInfo:
-				_outYbSaopMergeSaopColInfo(str, obj);
+			case T_YbMergeScanSaopColInfo:
+				_outYbMergeScanSaopColInfo(str, obj);
 				break;
 			case T_YbSortInfo:
 				_outYbSortInfo(str, obj);

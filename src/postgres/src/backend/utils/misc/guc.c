@@ -122,7 +122,7 @@
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
 #include "utils/spccache.h"
@@ -3100,7 +3100,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("If true, derives additional scalar array operation "
 						 "conditions from table constraints and adds them to "
 						 "queries to improve performance."),
-			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			gettext_noop("Has no impact in case yb_max_merge_scan_streams is 0."),
 			GUC_EXPLAIN
 		},
 		&yb_enable_derived_saops,
@@ -6006,18 +6006,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"yb_max_merge_scan_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
-						 "scalar array operation merge."),
+						 "merge scan."),
 			gettext_noop("For YB LSM index scans, when multiple "
-						 "SAOP-mergeable scalar array operations are "
-						 "involved, they are added to SAOP merge until their "
-						 "cartesian product's cardinality reaches this limit. "
-						 "Scalar array operation merge is per index scan, and "
+						 "merge-scan-eligible scalar array operations are "
+						 "involved, they are combined until their cartesian "
+						 "product's cardinality reaches this limit. "
+						 "Merge scan is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
 						 "to 0 to disable."),
 		},
-		&yb_max_saop_merge_streams,
+		&yb_max_merge_scan_streams,
 		0, 0, 1024,
 		NULL, NULL, NULL
 	},
@@ -7874,6 +7874,7 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_enable_parallel_append", "enable_parallel_append",
+	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
 	NULL
 };
 

@@ -21,7 +21,7 @@ import org.yb.YBTestRunner;
  * Runs the pg_regress test suite on YB code.
  */
 @RunWith(value=YBTestRunner.class)
-public class TestPgRegressSaopMerge extends BasePgRegressTest {
+public class TestPgRegressMergeScan extends BasePgRegressTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 300;
@@ -37,6 +37,6 @@ public class TestPgRegressSaopMerge extends BasePgRegressTest {
 
   @Test
   public void schedule() throws Exception {
-    runPgRegressTest("yb_saop_merge_schedule");
+    runPgRegressTest("yb_merge_scan_schedule");
   }
 }

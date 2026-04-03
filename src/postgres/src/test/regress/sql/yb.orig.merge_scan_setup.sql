@@ -1,7 +1,8 @@
 --
--- See yb_saop_merge_schedule for details about the test.
+-- See yb_merge_scan_schedule for details about the test.
 -- This is the setup to load the data used in tests later in the schedule.
 --
+
 --
 -- Range
 --
@@ -30,10 +31,6 @@ WITH g(i) AS (
     WHERE yb_hash_code(a.i, b.i, c.i, d.i, e.i) / 65535::float < 0.05
     RETURNING 1
 ) SELECT count(*) FROM rows;
- count 
--------
-  5048
-(1 row)
 
 --
 -- Hash
@@ -48,9 +45,11 @@ CREATE TABLE h3r2n (
     PRIMARY KEY ((h1, h2, h3) HASH, r1, r2))
 SPLIT INTO 9 TABLETS;
 INSERT INTO h3r2n (h1, h2, h3, r1, r2) SELECT r1, r2, r3, r4, r5 FROM r5n;
+
 --
 -- TODO(#9958): when btree_gin is supported, test it.
 --
+
 --
 -- Partitioned table
 --
@@ -110,6 +109,7 @@ ALTER TABLE child1 ATTACH PARTITION child1b FOR VALUES FROM (5, 2) TO (maxvalue,
 ALTER TABLE parent ATTACH PARTITION child2 FOR VALUES FROM (3, 6) TO (7, 4);
 ALTER TABLE parent ATTACH PARTITION child3 FOR VALUES FROM (7, 4) TO (9, 10);
 INSERT INTO parent (r1, r2, r3, p1, p2) SELECT r1, r2, r3, r4, r5 FROM r5n;
+
 --
 -- Bucketed PK
 --
@@ -131,15 +131,18 @@ SPLIT AT VALUES (
     (2, 2, 2, 2, 2),
     (3));
 INSERT INTO bkt_tbl (r1, r2, r3, r4, r5) SELECT r1, r2, r3, r4, r5 FROM r5n;
+
 --
 -- Analyze
 --
 ANALYZE r5n, h3r2n, parent, bkt_tbl;
+
 --
 -- Colocated
 --
 CREATE DATABASE co WITH colocation = true;
 \c co
+
 CREATE TABLE r5n (
     n int GENERATED ALWAYS AS ((r1 + r2 * 10 + r3 * 100 + r4 * 1000 + r5 * 10000)::int) STORED,
     r5 float8,
@@ -157,9 +160,6 @@ WITH g(i) AS (
     WHERE yb_hash_code(a.i, b.i, c.i, d.i, e.i) / 65535::float < 0.05
     RETURNING 1
 ) SELECT count(*) FROM rows;
- count 
--------
-  5048
-(1 row)
 
 ANALYZE r5n;
+

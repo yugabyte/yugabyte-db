@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
- * yb_saop_merge.h
- *	  Utilities for SAOP merge
+ * yb_merge_scan.h
+ *	  Utilities for merge scan
  *
  * Copyright (c) YugabyteDB, Inc.
  *
@@ -17,7 +17,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  *
- * src/include/optimizer/yb_saop_merge.h
+ * src/include/optimizer/yb_merge_scan.h
  *
  *-------------------------------------------------------------------------
  */
@@ -32,14 +32,14 @@
 
 /* GUC options */
 extern PGDLLIMPORT bool yb_enable_derived_saops;
-extern PGDLLIMPORT int yb_max_saop_merge_streams;
+extern PGDLLIMPORT int yb_max_merge_scan_streams;
 
-extern bool yb_indexcol_can_saop_merge(PlannerInfo *root,
+extern bool yb_indexcol_can_merge_scan(PlannerInfo *root,
 									   IndexOptInfo *index,
 									   Expr *expr,
 									   int indexcol,
-									   int *saop_merge_cardinality,
-									   List **saop_merge_saop_cols);
+									   int *merge_scan_cardinality,
+									   List **merge_scan_saop_cols);
 
 extern void yb_get_sort_info_from_pathkeys(List *tlist,
 										   List *pathkeys,

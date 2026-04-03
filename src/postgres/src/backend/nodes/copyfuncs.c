@@ -5373,10 +5373,10 @@ _copyYbSkippableEntities(const YbSkippableEntities *from)
 	return newnode;
 }
 
-static YbSaopMergeInfo *
-_copyYbSaopMergeInfo(const YbSaopMergeInfo *from)
+static YbMergeScanInfo *
+_copyYbMergeScanInfo(const YbMergeScanInfo *from)
 {
-	YbSaopMergeInfo *newnode = makeNode(YbSaopMergeInfo);
+	YbMergeScanInfo *newnode = makeNode(YbMergeScanInfo);
 
 	COPY_NODE_FIELD(saop_cols);
 	COPY_NODE_FIELD(sort_cols);
@@ -5384,10 +5384,10 @@ _copyYbSaopMergeInfo(const YbSaopMergeInfo *from)
 	return newnode;
 }
 
-static YbSaopMergeSaopColInfo *
-_copyYbSaopMergeSaopColInfo(const YbSaopMergeSaopColInfo *from)
+static YbMergeScanSaopColInfo *
+_copyYbMergeScanSaopColInfo(const YbMergeScanSaopColInfo *from)
 {
-	YbSaopMergeSaopColInfo *newnode = makeNode(YbSaopMergeSaopColInfo);
+	YbMergeScanSaopColInfo *newnode = makeNode(YbMergeScanSaopColInfo);
 
 	COPY_NODE_FIELD(saop);
 	COPY_SCALAR_FIELD(indexcol);
@@ -6417,12 +6417,12 @@ copyObjectImpl(const void *from)
 			retval = _copyYbUpdateAffectedEntities(from);
 			break;
 
-		case T_YbSaopMergeInfo:
-			retval = _copyYbSaopMergeInfo(from);
+		case T_YbMergeScanInfo:
+			retval = _copyYbMergeScanInfo(from);
 			break;
 
-		case T_YbSaopMergeSaopColInfo:
-			retval = _copyYbSaopMergeSaopColInfo(from);
+		case T_YbMergeScanSaopColInfo:
+			retval = _copyYbMergeScanSaopColInfo(from);
 			break;
 
 		case T_YbSortInfo:

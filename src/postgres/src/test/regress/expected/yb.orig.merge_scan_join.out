@@ -1,9 +1,9 @@
 --
--- See yb_saop_merge_schedule for details about the test.  Do not sort on the
+-- See yb_merge_scan_schedule for details about the test.  Do not sort on the
 -- r5n.n column because that ruins the plans.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/saop_merge_setup.sql'
+\set filename :abs_srcdir '/yb_commands/merge_scan_setup.sql'
 \i :filename
 \getenv abs_srcdir PG_ABS_SRCDIR
 \set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
@@ -11,21 +11,21 @@
 \set _echo_pq :ECHO
 \set ECHO none
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
-\set off '/*+Set(yb_max_saop_merge_streams 0)*/'
-\set on '/*+Set(yb_max_saop_merge_streams 64)*/'
+\set off '/*+Set(yb_max_merge_scan_streams 0)*/'
+\set on '/*+Set(yb_max_merge_scan_streams 64)*/'
 \set P1 ':explain'
 \set P2
 \set Q1 ':off'
 \set Q2 ':on'
 \set Pnext :iter_Q2
 -- Basic join without order
--- Third hint is to show hash join rightfully does not use SAOP merge.
--- Fourth hint is to show SAOP merge in a merge join.
--- Fifth hint is to show SAOP merge in the inner side of a merge join.
+-- Third hint is to show hash join rightfully does not use merge scan.
+-- Fourth hint is to show merge scan in a merge join.
+-- Fifth hint is to show merge scan in the inner side of a merge join.
 \set query ':explain :Q SELECT DISTINCT ON (a.r3, a.r4) * FROM r5n a JOIN r5n b ON a.r3 = b.r1 WHERE a.r1 = 9 AND a.r2 IN (3, 4, 5) LIMIT 5;'
-\set Q3 '/*+HashJoin(a b) Set(yb_max_saop_merge_streams 64)*/'
-\set Q4 '/*+MergeJoin(a b) Set(yb_max_saop_merge_streams 64)*/'
-\set Q5 '/*+MergeJoin(a b) Leading((b a)) Set(yb_max_saop_merge_streams 64)*/'
+\set Q3 '/*+HashJoin(a b) Set(yb_max_merge_scan_streams 64)*/'
+\set Q4 '/*+MergeJoin(a b) Set(yb_max_merge_scan_streams 64)*/'
+\set Q5 '/*+MergeJoin(a b) Leading((b a)) Set(yb_max_merge_scan_streams 64)*/'
 \i :iter_Q5
 \set _echo_Q :ECHO
 \set ECHO none
@@ -379,7 +379,7 @@
 (5 rows)
 
 -- Non-const equivalence prefix
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query ':explain :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r3, r5n.r4, r5n.r5, r5n.r2, r5n.r1, h3r2n.r1 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 WHERE r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5;'
 \i :iter_Q2
 \set _echo_Q :ECHO
@@ -439,7 +439,7 @@
 (23 rows)
 
 -- Non-const equivalence suffix
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query ':explain :Q SELECT * FROM r5n JOIN h3r2n ON r5n.r4 = h3r2n.r1 AND r5n.r5 = h3r2n.r2 WHERE r5n.r1 = 1 AND r5n.r2 IN (6, 7, 8, 9, 10) AND r5n.r3 IN (1, 2, 3, 4, 5) LIMIT 5;'
 \i :iter_Q2
 \set _echo_Q :ECHO
@@ -486,14 +486,14 @@
 
 -- 2-hop =-const equivalence
 -- Third hint is to show that when a JOIN doesn't care about the ordering of
--- the index scan, SAOP merge is not used.
--- Fourth hint is to show SAOP merge in a merge join.
--- Fifth hint is to show SAOP merge in the inner side of a merge join.
--- TODO(#29030): fifth hint should use SAOP merge.
+-- the index scan, Merge scan is not used.
+-- Fourth hint is to show merge scan in a merge join.
+-- Fifth hint is to show merge scan in the inner side of a merge join.
+-- TODO(#29030): fifth hint should use merge scan.
 \set query ':P :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 AND r5n.r3 = h3r2n.h3 WHERE h3r2n.r1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;'
-\set Q3 '/*+Leading((h3r2n r5n)) Set(yb_max_saop_merge_streams 64)*/'
-\set Q4 '/*+MergeJoin(h3r2n r5n) Set(yb_max_saop_merge_streams 64)*/'
-\set Q5 '/*+MergeJoin(h3r2n r5n) Leading((h3r2n r5n)) Set(yb_max_saop_merge_streams 64)*/'
+\set Q3 '/*+Leading((h3r2n r5n)) Set(yb_max_merge_scan_streams 64)*/'
+\set Q4 '/*+MergeJoin(h3r2n r5n) Set(yb_max_merge_scan_streams 64)*/'
+\set Q5 '/*+MergeJoin(h3r2n r5n) Leading((h3r2n r5n)) Set(yb_max_merge_scan_streams 64)*/'
 \i :iter_P2
 \set _echo_P :ECHO
 \set ECHO none
@@ -714,7 +714,7 @@
 (5 rows)
 
 -- Same as above with no DISTINCT
--- SAOP merge should not be used.
+-- Merge scan should not be used.
 \set query ':explain :Q SELECT r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 AND r5n.r3 = h3r2n.h3 WHERE h3r2n.r1 = 9 AND r5n.r2 IN (3, 4, 5) LIMIT 5;'
 \i :iter_Q2
 \set _echo_Q :ECHO
@@ -769,9 +769,9 @@
 
 -- Multi-hop =-const equivalence
 -- Third hint is to show that when a JOIN doesn't care about the ordering of
--- the index scan, SAOP merge is not used.
+-- the index scan, Merge scan is not used.
 \set query ':P :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, parent.p1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 JOIN parent ON h3r2n.h1 = parent.p1 WHERE parent.p1 = 6 AND h3r2n.h1 = h3r2n.r1 AND r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5;'
-\set Q3 '/*+Leading(((h3r2n r5n) parent)) Set(yb_max_saop_merge_streams 64)*/'
+\set Q3 '/*+Leading(((h3r2n r5n) parent)) Set(yb_max_merge_scan_streams 64)*/'
 \set Pnext :iter_Q3
 \i :iter_P2
 \set _echo_P :ECHO
@@ -930,7 +930,7 @@
 (5 rows)
 
 -- 2-hop IN-const equivalence
--- TODO(#29030): this should use SAOP merge; may want to use :run3.
+-- TODO(#29030): this should use merge scan; may want to use :run3.
 \set query ':P :Q SELECT DISTINCT ON (r5n.r3, r5n.r4) r5n.r1, h3r2n.r1, r5n.r3, r5n.r4, r5n.r5, r5n.r2 FROM r5n JOIN h3r2n ON r5n.r1 = h3r2n.r1 WHERE h3r2n.r1 IN (1, 2) AND r5n.r2 IN (3, 4, 5) ORDER BY r5n.r3, r5n.r4, r5n.r5 LIMIT 5;'
 \set Pnext :iter_Q2
 \i :iter_P2
