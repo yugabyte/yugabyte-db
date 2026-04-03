@@ -32,7 +32,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -210,8 +209,9 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateRRWithCapacityReservationAzureSuccess() {
-    RuntimeConfigEntry.upsertGlobal(
-        ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAzure.getKey(), "true");
     String rrInstanceType = "Standard_D4as_v4";
     Region region = Region.create(azuProvider, "region-1", "region-1", "yb-image");
     Universe universe = createUniverseForProvider("universe-test", azuProvider);
@@ -268,7 +268,9 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
 
   @Test
   public void testCreateRRWithCapacityReservationAwsSuccess() {
-    RuntimeConfigEntry.upsertGlobal(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
+    factory
+        .globalRuntimeConf()
+        .setValue(ProviderConfKeys.enableCapacityReservationAws.getKey(), "true");
     String rrInstanceType = "m5.superlarge";
     Region region = Region.getByCode(defaultProvider, "region-1");
     Universe universe = createUniverseForProvider("universe-test", defaultProvider);

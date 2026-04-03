@@ -19,7 +19,6 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -69,7 +68,7 @@ public class CheckDbNodePortConnectivityTest extends CommissionerBaseTest {
   }
 
   private void enableDualNic() {
-    RuntimeConfigEntry.upsert(defaultCustomer, CustomerConfKeys.cloudEnabled.getKey(), "true");
+    factory.forCustomer(defaultCustomer).setValue(CustomerConfKeys.cloudEnabled.getKey(), "true");
     universe.updateConfig(Collections.singletonMap(Universe.DUAL_NET_LEGACY, "false"));
     universe.save();
   }

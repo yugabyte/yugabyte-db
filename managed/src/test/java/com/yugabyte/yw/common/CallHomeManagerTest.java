@@ -294,23 +294,35 @@ public class CallHomeManagerTest extends FakeDBApplication {
   public void testRuntimeConfigPayload() {
     Universe u = ModelFactory.createUniverse(defaultCustomer.getId());
 
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.test.override", "customerOverrideValue");
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.customer.region", "customerRegionValue");
-    RuntimeConfigEntry.upsert(defaultCustomer, "yb.security.secret", "customerSecretValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.test.override", "customerOverrideValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.customer.region", "customerRegionValue");
+    mutableConfigFactory
+        .forCustomer(defaultCustomer)
+        .setValue("yb.security.secret", "customerSecretValue");
 
-    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.region", "providerRegionValue");
-    RuntimeConfigEntry.upsert(defaultProvider, "yb.provider.key", "providerValue");
-    RuntimeConfigEntry.upsert(
-        defaultProvider, "yb.security.ldap.ldap_service_account_password", "providerSecretValue");
+    mutableConfigFactory
+        .forProvider(defaultProvider)
+        .setValue("yb.provider.region", "providerRegionValue");
+    mutableConfigFactory.forProvider(defaultProvider).setValue("yb.provider.key", "providerValue");
+    mutableConfigFactory
+        .forProvider(defaultProvider)
+        .setValue("yb.security.ldap.ldap_service_account_password", "providerSecretValue");
 
-    RuntimeConfigEntry.upsert(u, "yb.universe.region", "universeRegionValue");
-    RuntimeConfigEntry.upsert(u, "yb.universe.key", "universeValue");
+    mutableConfigFactory.forUniverse(u).setValue("yb.universe.region", "universeRegionValue");
+    mutableConfigFactory.forUniverse(u).setValue("yb.universe.key", "universeValue");
 
-    RuntimeConfigEntry.upsertGlobal("yb.test.override", "globalShouldBeFilteredOut");
-    RuntimeConfigEntry.upsertGlobal("yb.global.region", "globalRegionValue");
-    RuntimeConfigEntry.upsertGlobal("yb.global.key", "globalValue");
-    RuntimeConfigEntry.upsertGlobal(
-        "yb.security.ldap.ldap_service_account_password", "globalSecretValue");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.test.override", "globalShouldBeFilteredOut");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.global.region", "globalRegionValue");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.global.key", "globalValue");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.security.ldap.ldap_service_account_password", "globalSecretValue");
 
     when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
         .thenReturn(

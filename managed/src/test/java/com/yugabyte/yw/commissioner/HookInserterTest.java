@@ -14,7 +14,6 @@ import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.HookScope;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -81,7 +80,7 @@ public class HookInserterTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
-    RuntimeConfigEntry.upsertGlobal("yb.checks.nodes_safe_to_take_down.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.nodes_safe_to_take_down.enabled", "false");
   }
 
   @Test
