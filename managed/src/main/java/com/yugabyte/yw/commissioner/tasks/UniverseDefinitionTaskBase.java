@@ -2433,6 +2433,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           if (StringUtils.isNotEmpty(n.sshUserOverride)) {
             params.sshUser = n.sshUserOverride;
           }
+          params.userIntent = userIntent;
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
