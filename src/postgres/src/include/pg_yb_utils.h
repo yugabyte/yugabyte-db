@@ -132,7 +132,7 @@ typedef enum YbGeolocationDistance
 	UNKNOWN_DISTANCE
 } YbGeolocationDistance;
 
-extern YbGeolocationDistance get_tablespace_distance(Oid tablespaceoid);
+extern YbGeolocationDistance get_geolocation_distance(Oid tablespaceoid);
 
 /*
  * Checks whether YugaByte functionality is enabled within PostgreSQL.

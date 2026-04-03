@@ -5924,7 +5924,7 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(true);
 	}
-	YbGeolocationDistance distance = get_tablespace_distance(tablespaceId);
+	YbGeolocationDistance distance = get_geolocation_distance(tablespaceId);
 
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
 }

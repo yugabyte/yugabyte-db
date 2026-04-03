@@ -240,6 +240,7 @@ YbcBindColumn
 YbcCatalogMessageList
 YbcCatalogMessageLists
 YbcCloneInfo
+YbcCloudInfo
 YbcConnectionMetrics
 YbcConstSliceSet
 YbcConstSliceVector
@@ -335,6 +336,7 @@ YbcReadHybridTime
 YbcReadPointHandle
 YbcRecordTempRelationDDL_hook_type
 YbcRemotePgExecResult
+YbcReplicationInfo
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
 YbcRpczEntry

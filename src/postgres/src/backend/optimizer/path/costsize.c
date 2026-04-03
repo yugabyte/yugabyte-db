@@ -7211,7 +7211,7 @@ yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 	}
 	else
 	{
-		YbGeolocationDistance distance = get_tablespace_distance(tablespace_id);
+		YbGeolocationDistance distance = get_geolocation_distance(tablespace_id);
 
 		switch (distance)
 		{

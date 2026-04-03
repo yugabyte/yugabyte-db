@@ -2205,6 +2205,14 @@ bool YBCGetDisableTransparentCacheRefreshRetry() {
   return pgapi->GetDisableTransparentCacheRefreshRetry();
 }
 
+const YbcReplicationInfo *YBCGetClusterReplicationInfo() {
+  return &pgapi->replication_info_snapshot().Value();
+}
+
+void YBCRefreshClusterReplicationInfo() {
+  pgapi->replication_info_snapshot().Refresh();
+}
+
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }

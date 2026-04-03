@@ -89,6 +89,12 @@ YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
+// Get cluster replication info
+const YbcReplicationInfo *YBCGetClusterReplicationInfo();
+
+// Update the snapshot cluster configuration if needed
+void YBCRefreshClusterReplicationInfo();
+
 // Set global catalog_version to the local tserver's catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);

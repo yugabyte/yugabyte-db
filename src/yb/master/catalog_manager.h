@@ -3000,6 +3000,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
+  void FillHeartbeatResponseClusterConfig(
+      const SysClusterConfigEntryPB& cluster_config,
+      const TSHeartbeatRequestPB& req,
+      TSHeartbeatResponsePB* resp);
+
   Status FillHeartbeatResponseCDC(
       const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB& req,

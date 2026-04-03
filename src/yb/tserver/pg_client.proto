@@ -195,12 +195,19 @@ message OptionalUint64PB {
 message PgHeartbeatRequestPB {
   uint64 session_id = 1;
   uint32 pid = 2;
+  int32 cluster_config_version = 3;
+}
+
+message PgClusterConfigPB {
+  int32 version = 1;
+  ReplicationInfoPB replication_info = 2;
 }
 
 message PgHeartbeatResponsePB {
   AppStatusPB status = 1;
   uint64 session_id = 2;
   bytes instance_id = 3;
+  PgClusterConfigPB cluster_config = 4;
 }
 
 message PgObjectIdPB {

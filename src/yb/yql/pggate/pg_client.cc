@@ -14,6 +14,7 @@
 #include "yb/yql/pggate/pg_client.h"
 
 #include <concepts>
+#include <mutex>
 
 #include "yb/ash/rpc_wait_state.h"
 
@@ -26,6 +27,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/common_net.pb.h"
 
 #include "yb/docdb/object_lock_shared_state.h"
 
@@ -220,6 +222,8 @@ class PgTimeout {
   // The timeout representing lock_timeout in postgres.
   MonoDelta lock_timeout_;
 };
+
+constexpr int32_t kUnknownClusterConfigVersion = -1;
 } // namespace
 
 namespace {
@@ -687,6 +691,10 @@ class PgClient::Impl : public BigDataFetcher {
     } else {
       req.set_session_id(session_id_);
     }
+    if (auto v = cluster_config_.version.load(std::memory_order_acquire);
+        v != kUnknownClusterConfigVersion) {
+      req.set_cluster_config_version(v);
+    }
     proxy_.HeartbeatAsync(
         req, &heartbeat_resp_, PrepareHeartbeatController(),
         [this, create] {
@@ -710,6 +718,12 @@ class PgClient::Impl : public BigDataFetcher {
           }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
         }
+      }
+      if (heartbeat_resp_.has_cluster_config()) {
+        const auto& config = heartbeat_resp_.cluster_config();
+        std::lock_guard l(cluster_config_.mutex);
+        cluster_config_.replication_info = config.replication_info();
+        cluster_config_.version.store(config.version(), std::memory_order_release);
       }
       heartbeat_running_ = false;
       if (!status.ok()) {
@@ -1316,6 +1330,18 @@ class PgClient::Impl : public BigDataFetcher {
       }
     }
     return Status::OK();
+  }
+
+  std::optional<PgClient::ReplicationInfo> RefreshClusterReplicationInfo(
+      std::optional<int32_t> version) {
+    const auto current_version = cluster_config_.version.load(std::memory_order_acquire);
+    if ((version && current_version <= *version) ||
+        current_version == kUnknownClusterConfigVersion) {
+      return std::nullopt;
+    }
+    std::lock_guard lock(cluster_config_.mutex);
+    return PgClient::ReplicationInfo{
+        cluster_config_.version.load(std::memory_order_acquire), cluster_config_.replication_info};
   }
 
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
@@ -1982,6 +2008,12 @@ class PgClient::Impl : public BigDataFetcher {
         PrepareController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
+  struct ClusterConfig {
+    std::atomic<int32_t> version{kUnknownClusterConfigVersion};
+    std::mutex mutex;
+    ReplicationInfoPB replication_info GUARDED_BY(mutex);
+  };
+
   PgClientServiceProxy proxy_;
   CDCServiceProxy local_cdc_service_proxy_;
 
@@ -2004,6 +2036,8 @@ class PgClient::Impl : public BigDataFetcher {
   InterprocessMappedRegion big_mapped_region_;
   ThreadSafeArena object_locks_arena_;
   std::atomic<uint64_t>& next_perform_op_serial_no_;
+
+  ClusterConfig cluster_config_;
 };
 
 std::string DdlMode::ToString() const {
@@ -2128,6 +2162,11 @@ Status PgClient::GetIndexBackfillProgress(
   return impl_->GetIndexBackfillProgress(index_ids,
                                          num_rows_read_from_table,
                                          num_rows_backfilled);
+}
+
+std::optional<PgClient::ReplicationInfo> PgClient::RefreshClusterReplicationInfo(
+    std::optional<int32_t> known_version) {
+  return impl_->RefreshClusterReplicationInfo(known_version);
 }
 
 Result<yb::tserver::PgGetLockStatusResponsePB> PgClient::GetLockStatusData(

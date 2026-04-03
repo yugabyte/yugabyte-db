@@ -33,6 +33,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_net.pb.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -547,6 +548,13 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
   }
   LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
+}
+
+YbcCloudInfo MakeYbcCloudInfo(const CloudInfoPB& pb) {
+  return YbcCloudInfo{
+      pb.placement_cloud().c_str(),
+      pb.placement_region().c_str(),
+      pb.placement_zone().c_str()};
 }
 
 } // namespace
@@ -2010,6 +2018,43 @@ Status PgApiImpl::OperatorAppendArg(PgExpr *op_handle, PgExpr *arg) {
 
 Result<bool> PgApiImpl::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
+}
+
+void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
+  auto info = client_.RefreshClusterReplicationInfo(
+      value_ ? std::optional(value_->version) : std::nullopt);
+  if (!info) {
+    return;
+  }
+  value_ = std::move(info);
+  cloud_infos_holder_.clear();
+  auto& replication_pb = value_->value;
+  const auto& live_replicas = replication_pb.live_replicas().placement_blocks();
+  const auto& affinitized_leaders =
+      replication_pb.multi_affinitized_leaders().empty()
+          ? replication_pb.affinitized_leaders()
+          : replication_pb.multi_affinitized_leaders().begin()->zones();
+
+  const auto num_live_replicas = live_replicas.size();
+  const auto num_affinitized_leaders = affinitized_leaders.size();
+
+  cloud_infos_holder_.reserve(num_live_replicas + num_affinitized_leaders);
+
+  for (const auto& lr : live_replicas) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(lr.cloud_info()));
+  }
+
+  for (const auto& al : affinitized_leaders) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(al));
+  }
+
+  const auto* data = cloud_infos_holder_.data();
+  postgres_view_ = {
+    .num_live_replicas = num_live_replicas,
+    .live_replicas = num_live_replicas ? data : nullptr,
+    .num_affinitized_leaders = num_affinitized_leaders,
+    .affinitized_leaders = num_affinitized_leaders ? (data + num_live_replicas) : nullptr
+  };
 }
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {

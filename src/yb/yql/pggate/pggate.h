@@ -159,6 +159,21 @@ class PgApiImpl {
 
   Result<bool> IsInitDbDone();
 
+  class ReplicationInfoSnapshot {
+   public:
+      explicit ReplicationInfoSnapshot(PgClient& client) : client_(client) {}
+      void Refresh();
+      const YbcReplicationInfo& Value() const { return postgres_view_; }
+
+   private:
+      PgClient& client_;
+      std::optional<PgClient::ReplicationInfo> value_;
+      std::vector<YbcCloudInfo> cloud_infos_holder_;
+      YbcReplicationInfo postgres_view_{0, nullptr, 0, nullptr};
+  };
+
+  ReplicationInfoSnapshot& replication_info_snapshot() { return replication_info_snapshot_; }
+
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   Result<bool> CatalogVersionTableInPerdbMode();
@@ -1005,6 +1020,8 @@ class PgApiImpl {
   ExplicitRowLockBuffer explicit_row_lock_buffer_;
 
   ash::WaitStateInfoPtr wait_state_;
+
+  ReplicationInfoSnapshot replication_info_snapshot_{pg_client_};
 };
 
 }  // namespace yb::pggate

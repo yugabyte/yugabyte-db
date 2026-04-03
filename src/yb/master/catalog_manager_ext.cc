@@ -3339,6 +3339,7 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  FillHeartbeatResponseClusterConfig(cluster_config, req, resp);
   RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
@@ -3358,6 +3359,16 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
   RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
 
   return Status::OK();
+}
+
+void CatalogManager::FillHeartbeatResponseClusterConfig(
+  const SysClusterConfigEntryPB& cluster_config,
+  const TSHeartbeatRequestPB& req,
+  TSHeartbeatResponsePB* resp) {
+  if (req.cluster_config_version() < cluster_config.version()) {
+    resp->set_cluster_config_version(cluster_config.version());
+    *resp->mutable_cluster_replication_info() = cluster_config.replication_info();
+  }
 }
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,
