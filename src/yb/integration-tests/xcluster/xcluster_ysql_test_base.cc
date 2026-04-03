@@ -1180,30 +1180,68 @@ Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
   return Status::OK();
 }
 
-Status XClusterYsqlTestBase::XClusterFailover(
+Result<IsOperationDoneResult> XClusterYsqlTestBase::IsXClusterFailoverDone(
     const xcluster::ReplicationGroupId& replication_group_id) {
-  const MonoDelta kFailoverRestoreRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  const MonoDelta kRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  auto addr = VERIFY_RESULT(
+      consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
+  master::MasterReplicationProxy proxy(
+      &consumer_cluster_.client_->proxy_cache(), addr);
   rpc::RpcController rpc;
-  rpc.set_timeout(kFailoverRestoreRpcTimeout);
-
-  master::XClusterFailoverRequestPB req;
+  rpc.set_timeout(kRpcTimeout);
+  master::IsXClusterFailoverDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
+  master::IsXClusterFailoverDoneResponsePB resp;
+  RETURN_NOT_OK(proxy.IsXClusterFailoverDone(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+  if (resp.has_failover_error()) {
+    return IsOperationDoneResult::Done(StatusFromPB(resp.failover_error()));
+  }
+  return IsOperationDoneResult::Done();
+}
 
-  master::XClusterFailoverResponsePB resp;
+Status XClusterYsqlTestBase::StartXClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  const MonoDelta kFailoverRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
 
   auto master_address =
       VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
   master::MasterReplicationProxy master_replication_proxy(
       &consumer_cluster_.client_->proxy_cache(), master_address);
-
+  rpc::RpcController rpc;
+  rpc.set_timeout(kFailoverRpcTimeout);
+  master::XClusterFailoverRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  master::XClusterFailoverResponsePB resp;
   RETURN_NOT_OK(
       master_replication_proxy.XClusterFailover(req, &resp, &rpc));
-
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
   return Status::OK();
+}
+
+Status XClusterYsqlTestBase::XClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  const MonoDelta kFailoverRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  RETURN_NOT_OK(StartXClusterFailover(replication_group_id));
+
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto result = VERIFY_RESULT(IsXClusterFailoverDone(replication_group_id));
+        if (result.done()) {
+          RETURN_NOT_OK(result.status());
+          return true;
+        }
+        return false;
+      },
+      kFailoverRpcTimeout, "IsXClusterFailoverDone");
 }
 
 Result<YBTableName> XClusterYsqlTestBase::CreateMaterializedView(

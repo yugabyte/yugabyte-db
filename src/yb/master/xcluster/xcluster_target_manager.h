@@ -61,9 +61,7 @@ class XClusterTargetManager {
   Status XClusterFailover(
       const xcluster::ReplicationGroupId& replication_group_id,
       const LeaderEpoch& epoch,
-      CoarseTimePoint deadline,
-      ThreadPool* background_tasks_thread_pool,
-      XClusterFailoverResponsePB* resp);
+      ThreadPool* background_tasks_thread_pool);
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 
@@ -111,6 +109,8 @@ class XClusterTargetManager {
   // our replication group that needs to be lazily cleaned up.
   Status RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch)
       EXCLUDES(table_stream_ids_map_mutex_);
+
+  Status CleanupStaleFailovers(const LeaderEpoch& epoch);
 
   std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
       const TableInfoPtr& table_info, const LeaderEpoch& epoch);
@@ -276,6 +276,10 @@ class XClusterTargetManager {
   std::unique_ptr<XClusterSafeTimeService> safe_time_service_;
 
   bool removed_deleted_tables_from_replication_ = false;
+
+  // Replication groups that had a failover in progress on a previous master leader.
+  // Captured during SysCatalogLoaded and marked as Aborted in RunBgTasks.
+  std::vector<xcluster::ReplicationGroupId> stale_failover_replication_groups_;
 
   // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
   // service out of master at a later time.

@@ -104,7 +104,8 @@ class TabletSplitManager {
   // Disables splitting for tablets that are too small to split.
   void DisableSplittingForSmallKeyRangeTablet(const TabletId& tablet_id);
 
-  Status PrepareForPitr(const CoarseTimePoint& deadline);
+  Status PrepareForSnapshotRestore(
+      const CoarseTimePoint& deadline, const std::string& feature_name);
 
  private:
   void ScheduleSplits(const SplitsToScheduleMap& splits_to_schedule, const LeaderEpoch& epoch);

@@ -35,7 +35,7 @@ class XClusterFailoverTask : public MultiStepMonitoredTask {
       XClusterManager& xcluster_manager, XClusterTargetManager& target_manager,
       const xcluster::ReplicationGroupId& replication_group_id,
       std::vector<NamespaceId> namespaces, const LeaderEpoch& epoch,
-      CoarseTimePoint deadline, StdStatusCallback completion_callback);
+      StdStatusCallback completion_callback);
 
   server::MonitoredTaskType type() const override;
   std::string type_name() const override;

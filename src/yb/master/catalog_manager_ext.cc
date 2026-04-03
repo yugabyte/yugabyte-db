@@ -27,6 +27,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_type.h"
@@ -3310,7 +3311,8 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForSnapshotRestore(
+    deadline, kPitrFeatureName));
   LOG(INFO)
       << "Servicing RestoreSnapshotSchedule request. id: " << id
       << " restore_ht: " << ht;

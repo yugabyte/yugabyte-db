@@ -23,6 +23,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_replication.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -30,13 +31,15 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 
+DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_int32(xcluster_safe_time_update_interval_secs);
+
+DECLARE_bool(TEST_pause_xcluster_failover_before_delete_replication);
 DECLARE_bool(TEST_xcluster_failover_fail_create_snapshot);
 DECLARE_bool(TEST_xcluster_failover_fail_delete_replication);
 DECLARE_string(TEST_xcluster_failover_fail_restore_namespace_id);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
-DECLARE_int32(xcluster_safe_time_update_interval_secs);
-DECLARE_int32(timestamp_history_retention_interval_sec);
 
 namespace yb {
 
@@ -98,13 +101,6 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
     return info;
   }
 
-  Status PerformFailover(
-      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId) {
-    LOG(INFO)
-        << "FAILOVER: Restoring replication group (auto-pauses replication and tears down)";
-    return XClusterFailover(replication_group_id);
-  }
-
   Status WaitForFailoverCompletion(const std::vector<NamespaceId>& namespace_ids) {
     LOG(INFO) << "FAILOVER: Waiting for read-only mode to be disabled";
     for (const auto& ns : namespace_ids) {
@@ -131,6 +127,31 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
           return resp.snapshots().empty();
         },
         kTimeout, "Wait for failover snapshots to be deleted");
+  }
+
+  Status WaitForAllRestorationsComplete() {
+    return LoggedWaitFor(
+        [&]() -> Result<bool> {
+          auto master_address =
+              VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
+          master::MasterBackupProxy proxy(
+              &consumer_cluster_.client_->proxy_cache(), master_address);
+          master::ListSnapshotRestorationsRequestPB req;
+          master::ListSnapshotRestorationsResponsePB resp;
+          rpc::RpcController rpc;
+          rpc.set_timeout(kTimeout);
+          RETURN_NOT_OK(proxy.ListSnapshotRestorations(req, &resp, &rpc));
+          if (resp.restorations_size() == 0) {
+            return false;
+          }
+          for (const auto& restoration : resp.restorations()) {
+            if (restoration.entry().state() != master::SysSnapshotEntryPB::RESTORED) {
+              return false;
+            }
+          }
+          return true;
+        },
+        kTimeout, "Wait for all PITR restorations to complete");
   }
 
   Status WaitForFailoverCleanup(
@@ -179,10 +200,8 @@ class XClusterFailoverWithDDLTest : public XClusterDDLReplicationTestBase {
 TEST_F(XClusterFailoverWithDDLTest, BasicRestore) {
   ASSERT_OK(SetUpClustersAndReplication());
 
+  // Create table and perform some DML operations before failover.
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-  // Perform some DML operations before failover.
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10), (2, 20), (3, 30)"));
   ASSERT_OK(producer_conn_->Execute("UPDATE test_table SET value = 100 WHERE key = 1"));
   ASSERT_OK(producer_conn_->Execute("DELETE FROM test_table WHERE key = 2"));
@@ -195,7 +214,7 @@ TEST_F(XClusterFailoverWithDDLTest, BasicRestore) {
   ASSERT_EQ(sum, 170);  // 100 + 30 + 40
 
   // Failover and restore to the (pre-safe-time) snapshot.
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   ASSERT_OK(WaitForFailoverCompletion({namespace_id}));
 
@@ -221,7 +240,6 @@ TEST_F(XClusterFailoverWithDDLTest, SequenceRestore) {
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
   ASSERT_OK(producer_conn_->Execute(
       "CREATE SEQUENCE value_data INCREMENT 5 OWNED BY test_table.value"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Insert rows using sequence: values will be 1, 6, 11 (increments of 5).
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, nextval('value_data'))"));
@@ -236,7 +254,7 @@ TEST_F(XClusterFailoverWithDDLTest, SequenceRestore) {
       "SELECT value FROM test_table WHERE key = 3"));
   ASSERT_EQ(value, 11);
 
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
   ASSERT_OK(WaitForFailoverCompletion({namespace_id}));
 
   // Verify sequence works on new primary and doesn't reuse values from before failover.
@@ -256,7 +274,6 @@ TEST_F(XClusterFailoverWithDDLTest, MultiTableAtomicRestore) {
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE t2 (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE t3 (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Insert data into all tables.
   ASSERT_OK(producer_conn_->Execute(
@@ -273,7 +290,7 @@ TEST_F(XClusterFailoverWithDDLTest, MultiTableAtomicRestore) {
   ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "t2")), 3);
   ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "t3")), 4);
 
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   // Verify all tables remain consistent.
   ASSERT_OK(WaitFor(
@@ -306,8 +323,6 @@ TEST_F(XClusterFailoverWithDDLTest, IndexAndConstraintConsistency) {
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE test_table (key INT PRIMARY KEY, value INT UNIQUE)"));
   ASSERT_OK(producer_conn_->Execute("CREATE INDEX idx_value ON test_table(value)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
   ASSERT_OK(producer_conn_->Execute(
     "INSERT INTO test_table VALUES (1, 100), (2, 200), (3, 300), (4, 400)"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -316,7 +331,7 @@ TEST_F(XClusterFailoverWithDDLTest, IndexAndConstraintConsistency) {
 
   ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "test_table")), 4);
 
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   ASSERT_OK(WaitForRowCount("test_table", 4));
 
@@ -350,8 +365,6 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverAfterTruncate) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 'a'), (2, 'b')"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
@@ -365,7 +378,7 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverAfterTruncate) {
   // Failover post-truncate.
   auto namespace_id = ASSERT_RESULT(GetTargetNamespaceId(namespace_name));
 
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   // Post-truncate state should be preserved.
   ASSERT_OK(WaitForRowCount("test_table", 1));
@@ -388,7 +401,6 @@ TEST_F(XClusterFailoverWithDDLTest, DifferentialLagRestoresToMinSafeTime) {
   // Create table with 3 tablets for per-tablet lag control.
   ASSERT_OK(producer_conn_->Execute(
       "CREATE TABLE test_table (key INT PRIMARY KEY, value INT) SPLIT INTO 3 TABLETS"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
   // Get producer tablet IDs (the lag filter matches on producer tablet IDs).
   auto producer_table = ASSERT_RESULT(
@@ -447,7 +459,7 @@ TEST_F(XClusterFailoverWithDDLTest, DifferentialLagRestoresToMinSafeTime) {
   auto namespace_id = ASSERT_RESULT(GetTargetNamespaceId(namespace_name));
 
   // Failover should pause universe replication, then restores to namespace safe time (T_100).
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   // Reset test flags
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
@@ -485,7 +497,6 @@ TEST_F(XClusterFailoverWithDDLTest, HandlesReplicationGroupWithMultipleDatabases
       ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
   ASSERT_OK(main_producer_conn->Execute(
     "CREATE TABLE main_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(main_producer_conn->Execute("INSERT INTO main_table VALUES (1, 'main')"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 
@@ -494,7 +505,6 @@ TEST_F(XClusterFailoverWithDDLTest, HandlesReplicationGroupWithMultipleDatabases
       ASSERT_RESULT(producer_cluster_.ConnectToDB(extra_db.db_name)));
   ASSERT_OK(extra_producer_conn->Execute(
     "CREATE TABLE extra_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({extra_db.db_name}));
   ASSERT_OK(extra_producer_conn->Execute(
       "INSERT INTO extra_table VALUES (10, 'ten'), (20, 'twenty')"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow({extra_db.db_name}));
@@ -522,7 +532,7 @@ TEST_F(XClusterFailoverWithDDLTest, HandlesReplicationGroupWithMultipleDatabases
 
   // Failover while the extra namespace lag is still active.
   // The extra namespace's safe time is frozen before inserting 'paused'.
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) = "";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_ms) = 0;
@@ -561,7 +571,6 @@ TEST_F(XClusterFailoverWithDDLTest, MultiDatabaseFailoverWithRetry) {
       ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name)));
   ASSERT_OK(main_producer_conn->Execute(
     "CREATE TABLE main_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(main_producer_conn->Execute(
       "INSERT INTO main_table VALUES (1, 'primary'), (2, 'primary_snapshot')"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -571,7 +580,6 @@ TEST_F(XClusterFailoverWithDDLTest, MultiDatabaseFailoverWithRetry) {
       ASSERT_RESULT(producer_cluster_.ConnectToDB(extra_db.db_name)));
   ASSERT_OK(extra_producer_conn->Execute(
     "CREATE TABLE extra_table (key INT PRIMARY KEY, value TEXT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow({extra_db.db_name}));
   ASSERT_OK(extra_producer_conn->Execute("INSERT INTO extra_table VALUES (10, 'extra')"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow({extra_db.db_name}));
   ASSERT_OK(WaitFor(
@@ -585,7 +593,7 @@ TEST_F(XClusterFailoverWithDDLTest, MultiDatabaseFailoverWithRetry) {
   ANNOTATE_UNPROTECTED_WRITE(
     FLAGS_TEST_xcluster_failover_fail_restore_namespace_id) = extra_db.consumer_namespace_id;
 
-  auto failover_status = PerformFailover();
+  auto failover_status = XClusterFailover(kReplicationGroupId);
   ASSERT_NOK(failover_status);
   ASSERT_STR_CONTAINS(failover_status.ToString(), "Simulated failure");
 
@@ -605,7 +613,7 @@ TEST_F(XClusterFailoverWithDDLTest, MultiDatabaseFailoverWithRetry) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_restore_namespace_id) = "";
 
   // Retry the failover, it should succeed.
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   // Wait for both namespaces to restore.
   ASSERT_OK(WaitForRowCount("main_table", 2));
@@ -632,8 +640,6 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
   ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10), (2, 20)"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
   ASSERT_OK(WaitForRowCount("test_table", 2));
@@ -642,7 +648,7 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
 
   // Attempt 1: fail at create-snapshot step.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_create_snapshot) = true;
-  auto status = PerformFailover();
+  auto status = XClusterFailover(kReplicationGroupId);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "Simulated snapshot creation failure");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_create_snapshot) = false;
@@ -652,12 +658,17 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
       GetUniverseReplicationInfo(consumer_cluster_, kReplicationGroupId));
   ASSERT_FALSE(replication_info.has_error());
 
+  // Polling should report the error from failed snapshot step.
+  auto poll_result = ASSERT_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+  ASSERT_TRUE(poll_result.done());
+  ASSERT_NOK(poll_result.status());
+
   // Data should still be accessible.
   ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "test_table")), 2);
 
   // Attempt 2: fail at restore step.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_restore_namespace_id) = namespace_id;
-  status = PerformFailover();
+  status = XClusterFailover(kReplicationGroupId);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "Simulated failure restoring namespace");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_restore_namespace_id) = "";
@@ -667,9 +678,14 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
       GetUniverseReplicationInfo(consumer_cluster_, kReplicationGroupId));
   ASSERT_FALSE(replication_info.has_error());
 
+  // Polling should report the error from failed restore step.
+  poll_result = ASSERT_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+  ASSERT_TRUE(poll_result.done());
+  ASSERT_NOK(poll_result.status());
+
   // Attempt 3: fail at delete replication step.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_delete_replication) = true;
-  status = PerformFailover();
+  status = XClusterFailover(kReplicationGroupId);
   ASSERT_NOK(status);
   ASSERT_STR_CONTAINS(status.ToString(), "Simulated DeleteUniverseReplication failure");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_failover_fail_delete_replication) = false;
@@ -687,8 +703,13 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
   ASSERT_FALSE(replication_info.has_error())
       << "Replication group should exist after failed delete";
 
+  // Polling should report the error from failed delete step.
+  poll_result = ASSERT_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+  ASSERT_TRUE(poll_result.done());
+  ASSERT_NOK(poll_result.status());
+
   // Attempt 4: clean failover after all previous partial failures.
-  ASSERT_OK(PerformFailover());
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
 
   ASSERT_OK(WaitForFailoverCompletion({namespace_id}));
 
@@ -699,4 +720,133 @@ TEST_F(XClusterFailoverWithDDLTest, FailoverRetryAfterStepFailures) {
   ASSERT_OK(consumer_conn_->Execute("INSERT INTO test_table VALUES (3, 30)"));
   ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "test_table")), 3);
 }
+
+// Tests all cases of the async failover API lifecycle.
+TEST_F(XClusterFailoverWithDDLTest, IsXClusterFailoverDoneLifecycle) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("CREATE TABLE test_table (key INT PRIMARY KEY, value INT)"));
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table VALUES (1, 10), (2, 20)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  auto namespace_id = ASSERT_RESULT(GetTargetNamespaceId(namespace_name));
+
+  // Case 1: Polling on a known replication group before initiating failover.
+  auto poll_result = IsXClusterFailoverDone(kReplicationGroupId);
+  ASSERT_NOK(poll_result);
+  ASSERT_TRUE(poll_result.status().IsNotFound());
+
+  // Case 2: Polling on a non-existent replication group just returns success.
+  // Callers are expected to have triggered XClusterFailover before polling this RPC.
+  // A successful failover deletes the replication group, so its absence means success.
+  const auto bogus_group = xcluster::ReplicationGroupId("bogus_replication_group");
+  auto bogus_result = ASSERT_RESULT(IsXClusterFailoverDone(bogus_group));
+  ASSERT_TRUE(bogus_result.done());
+  ASSERT_OK(bogus_result.status());
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_pause_xcluster_failover_before_delete_replication) = true;
+
+  ASSERT_OK(StartXClusterFailover(kReplicationGroupId));
+
+  // Case 3: Failover is in progress.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto result = VERIFY_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+        return !result.done();
+      },
+      kTimeout, "Verify failover is in progress"));
+
+  // While the failover is paused in-progress, a second call should be rejected.
+  auto duplicate_status = StartXClusterFailover(kReplicationGroupId);
+  ASSERT_NOK(duplicate_status);
+  ASSERT_TRUE(duplicate_status.IsAlreadyPresent()) << duplicate_status;
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_pause_xcluster_failover_before_delete_replication) = false;
+
+  // Case 4: Failover succeeded (replication group deleted).
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto result = VERIFY_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+        if (result.done()) {
+          RETURN_NOT_OK(result.status());
+          return true;
+        }
+        return false;
+      },
+      kTimeout, "Wait for failover to complete"));
+
+  ASSERT_OK(WaitForFailoverCompletion({namespace_id}));
+
+  ASSERT_OK(consumer_conn_->Execute("INSERT INTO test_table VALUES (3, 30)"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "test_table")), 3);
+}
+
+class XClusterFailoverMasterFailoverTest : public XClusterFailoverWithDDLTest {
+ public:
+  Status SetUpClustersAndReplication(
+      const SetupParams& params = {}) {
+    SetupParams multi_master_params = params;
+    multi_master_params.num_masters = 3;
+    multi_master_params.num_consumer_tablets = {3};
+    multi_master_params.num_producer_tablets = {3};
+    return XClusterFailoverWithDDLTest::SetUpClustersAndReplication(multi_master_params);
+  }
+};
+
+// Test master leader change during an in-progress failover.
+TEST_F(XClusterFailoverMasterFailoverTest, MasterLeaderChangeDuringFailover) {
+  ASSERT_OK(SetUpClustersAndReplication());
+
+  ASSERT_OK(producer_conn_->Execute("INSERT INTO test_table_0(key) VALUES (1), (2)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_pause_xcluster_failover_before_delete_replication) = true;
+
+  ASSERT_OK(StartXClusterFailover(kReplicationGroupId));
+
+  // Wait for all restorations to complete.
+  ASSERT_OK(WaitForAllRestorationsComplete());
+
+  // Task should still be in progress (paused before delete replication).
+  auto poll_result = ASSERT_RESULT(IsXClusterFailoverDone(kReplicationGroupId));
+  ASSERT_FALSE(poll_result.done());
+
+  ASSERT_OK(consumer_cluster_.mini_cluster_->StepDownMasterLeader());
+
+  // New master detects stale failover in progress and writes an aborted status.
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto result = IsXClusterFailoverDone(kReplicationGroupId);
+        if (!result.ok()) {
+          return false;
+        }
+        if (!result->done()) {
+          return false;
+        }
+        return result->status().IsAborted();
+      },
+      kTimeout, "Wait for new master to detect stale failover"));
+
+  ASSERT_OK(GetUniverseReplicationInfo(consumer_cluster_, kReplicationGroupId));
+
+  // Release the paused task so teardown can proceed.
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_TEST_pause_xcluster_failover_before_delete_replication) = false;
+
+  // A new failover should still succeed after the stale one was cleaned up.
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
+
+  auto namespace_id = ASSERT_RESULT(GetTargetNamespaceId(namespace_name));
+
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      namespace_id, /*is_read_only=*/false, &consumer_cluster_));
+  ASSERT_OK(WaitForFailoverCleanup());
+
+  ASSERT_OK(consumer_conn_->Execute("INSERT INTO test_table_0(key) VALUES (3)"));
+  ASSERT_EQ(ASSERT_RESULT(FetchRowCount(consumer_conn_.get(), "test_table_0")), 3);
+}
+
 }  // namespace yb
