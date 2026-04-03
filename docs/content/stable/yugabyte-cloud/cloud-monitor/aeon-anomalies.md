@@ -16,14 +16,14 @@ type: docs
 
 Use Anomalies to monitor your cluster for performance anomalies - whether with the database or applications.
 
-The Anomalies view continuously samples cluster activity every second using the [Active Session History](../../launch-and-manage/monitor-and-alert/active-session-history-monitor/), and correlates it with query-level data from pg_stat_statements to automatically identify anomalies, including:
+The Anomalies view continuously samples cluster activity every second using the [Active Session History](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/), and correlates it with query-level data from [pg_stat_statements](../../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) to automatically identify anomalies, including:
 
 - hot tablets starving other shards
 - hot nodes with disproportionate CPU, query load, or I/O
 - lock contention issues cascading through your application
 - a query whose latency has quietly doubled
 
-For each detected anomaly, you can drill down to view a root cause analysis page to explore detailed supporting data and understand the underlying cause.
+For each detected anomaly, you can drill down to view a root cause analysis page with actionable next steps, explore detailed supporting data, and understand the underlying cause.
 
 Anomalies is only available for clusters running YugabyteDB v2024.2 and later.
 
@@ -159,7 +159,7 @@ Solutions:
 
 Clicking an anomaly in the **Detected Anomalies** dashboard opens a detailed Root Cause Analysis (RCA) for the anomaly.
 
-Each Root Cause Analysis displays an **Anomaly Possible Cause**, with a summary, description, and analysis of the possible cause for the anomaly.
+Each RCA displays an **Anomaly Possible Cause**, with a summary, description, and analysis of the possible cause for the anomaly.
 
 Depending on the anomaly type, the RCA will display relevant charts.
 
@@ -167,7 +167,7 @@ The following sections provide examples of typical anomaly RCAs.
 
 ### Hot Tablet
 
-The Hot Tablet Anomaly identifies tablets within a table that are receiving significantly more activity than others. In a distributed database, performance is highest when load is evenly distributed. When a single tablet receives most of the traffic, it becomes a bottleneck and limits overall throughput.
+The Hot Tablet Anomaly identifies tablets in a table that are receiving significantly more activity than others. In a distributed database, performance is highest when load is evenly distributed. When a single tablet receives most of the traffic, it becomes a bottleneck and limits overall throughput.
 
 This usually indicates an opportunity to improve either:
 
@@ -176,19 +176,19 @@ This usually indicates an opportunity to improve either:
 
 The RCA has two sections.
 
-The top section lists all tablets for the object and ranks them by activity. Each tablet is shown with a colored bar representing its relative load. In the example, the first tablet handles nearly all the activity, while the others have little to none, clearly indicating imbalance.
+The top section lists all tablets for the object and ranks them by activity. Each tablet is shown with a colored bar representing its relative load. In this example, the first tablet handles nearly all the activity, while the others have little to none, clearly indicating imbalance.
 
-The bottom section shows the queries accessing the hot tablet, ranked by how much load they generate. Each query can be clicked to drill down into detailed SQL diagnostics.
+The bottom section shows the queries accessing the hot tablet, ranked by how much load they generate. Click a query to drill down into detailed SQL diagnostics.
 
 ### Hot Node
 
 The Hot Node RCA highlights when one or more nodes are handling a disproportionate amount of activity compared to the rest of the cluster. In a distributed database, performance is best when load is evenly distributed across all nodes.
 
-The graph at the top shows activity across nodes over time. In this example, the light blue line indicates a node with significantly higher CPU load than the others, signaling an imbalance.
+The top graph shows activity across nodes over time. In this example, the light blue line indicates a node with significantly higher CPU load than the others, signaling an imbalance.
 
-Below the graph is a list of nodes, with each node’s relative CPU load shown as a green bar. This makes it easy to identify which nodes are overloaded.
+Below the graph is a list of nodes, with each node's relative CPU load shown as a green bar so that you can identify which nodes are overloaded at a glance.
 
-Each node can be expanded using the plus icon to see the SQL statements running on that node, ranked by CPU usage. From there, you can click into any SQL statement to drill down into detailed query-level diagnostics.
+You can expand each node by clicking the plus icon to see the SQL statements running on that node, ranked by CPU usage. From there, you can click into any SQL statement to drill down into detailed query-level diagnostics.
 
 ### SQL Latency
 
