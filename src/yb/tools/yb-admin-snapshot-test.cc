@@ -828,6 +828,53 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       strings::Substitute("$0:3", c2z1)));
 }
 
+TEST_F(AdminCliTest, TestSetPreferredZoneWithWildcardPlacement) {
+  const std::string multi_affinitized_leaders_json_start =
+      "\"multiAffinitizedLeaders\":[{\"zones\":[";
+  const std::string json_end = "]}]";
+
+  ASSERT_OK(RunAdminToolCommand("modify_placement_info", "c1.r1.*", 3, ""));
+
+  // Setting a specific preferred zone within the wildcard placement should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", "c1.r1.z1"));
+  auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  const std::string z1_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  ASSERT_NE(
+      output.find(multi_affinitized_leaders_json_start + z1_json + json_end), string::npos);
+
+  // A zone in a different cloud/region should be rejected.
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", "c1.r2.z1"));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", "c2.r1.z1"));
+
+  // A wildcard preferred zone matching the placement should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", "c1.r1.*"));
+
+  // Multiple specific zones within the wildcard placement should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", "c1.r1.z1:1", "c1.r1.z2:2"));
+}
+
+TEST_F(AdminCliTest, TestSetWildcardPreferredZoneWithSpecificPlacement) {
+  const std::string multi_affinitized_leaders_json_start =
+      "\"multiAffinitizedLeaders\":[{\"zones\":[";
+  const std::string json_end = "]}]";
+  const std::string wildcard_zone_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\"}";
+
+  ASSERT_OK(RunAdminToolCommand("modify_placement_info", "c1.r1.z1,c1.r1.z2", 2, ""));
+
+  // A wildcard preferred zone should match specific placement blocks in the same region.
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", "c1.r1.*"));
+  auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_NE(
+      output.find(multi_affinitized_leaders_json_start + wildcard_zone_json + json_end),
+      string::npos);
+
+  // Wildcard preferred zones outside the configured placement should be rejected.
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", "c1.r2.*"));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", "c2.r1.*"));
+}
+
 class SnapshotAdminCliTest : public AdminCliTest {
  public:
   void SetUp() override {
