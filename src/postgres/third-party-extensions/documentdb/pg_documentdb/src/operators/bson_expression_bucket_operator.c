@@ -58,11 +58,11 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40201),
 						errmsg(
-							"Argument to $bucket stage must be an object, but found type: %s",
+							"The $bucket stage requires an object argument, but a value of type %s was provided instead.",
 							BsonTypeName(
 								bucketSpec->value_type)),
 						errdetail_log(
-							"Argument to $bucket stage must be an object, but found type: %s",
+							"The $bucket stage requires an object argument, but a value of type %s was provided instead.",
 							BsonTypeName(
 								bucketSpec->value_type))));
 	}
@@ -108,9 +108,9 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40198),
 						errmsg(
-							"$bucket requires 'groupBy' and 'boundaries' to be specified."),
+							"The $bucket stage requires both 'groupBy' and 'boundaries' fields to be explicitly defined."),
 						errdetail_log(
-							"The $bucket stage requires 'groupBy' and 'boundaries' to be specified.")));
+							"The $bucket stage requires both 'groupBy' and 'boundaries' fields to be explicitly defined.")));
 	}
 
 	/* Validate 'groupBy' value type */
@@ -118,11 +118,11 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40202),
 						errmsg(
-							"The $bucket 'groupBy' field must be defined as a $-prefixed path or an expression. But found: %s",
+							"The $bucket 'groupBy' field is required to be specified as either an $-prefixed path or a valid expression, but was given: %s instead",
 							BsonTypeName(
 								groupBy.value_type)),
 						errdetail_log(
-							"The $bucket 'groupBy' field must be an operator expression.But found: %s",
+							"The $bucket 'groupBy' field is required to be specified as either an $-prefixed path or a valid expression, but was given: %s instead",
 							BsonTypeName(
 								groupBy.value_type))));
 	}
@@ -132,11 +132,11 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40200),
 						errmsg(
-							"The $bucket 'boundaries' field must be an array of values. But found: %s",
+							"The $bucket 'boundaries' field is required to be an array containing values, but instead it was found to be: %s",
 							BsonTypeName(
 								boundaries.value_type)),
 						errdetail_log(
-							"The $bucket 'boundaries' field must be an array of values. But found: %s",
+							"The $bucket 'boundaries' field is required to be an array containing values, but instead it was found to be: %s",
 							BsonTypeName(
 								boundaries.value_type))));
 	}
@@ -152,10 +152,10 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40195),
 							errmsg(
-								"The $bucket 'default' field must be a constant. Input value: %s",
+								"The $bucket stage 'default' field needs to be a fixed constant value. Input provided: %s",
 								BsonValueToJsonForLogging(&defaultBucket)),
 							errdetail_log(
-								"The $bucket 'default' field must be a constant.")));
+								"The $bucket stage 'default' field needs to be a fixed constant value.")));
 		}
 	}
 
@@ -164,11 +164,11 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40196),
 						errmsg(
-							"The $bucket 'output' field must be a document. But found: %s",
+							"The 'output' field in the $bucket must be a document type, but a different type was encountered: %s",
 							BsonTypeName(
 								output.value_type)),
 						errdetail_log(
-							"The $bucket 'output' field must be a document. But found: %s",
+							"The 'output' field in the $bucket must be a document type, but a different type was encountered: %s",
 							BsonTypeName(
 								output.value_type))));
 	}
@@ -290,7 +290,7 @@ HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
 		if (parsedData->defaultBucket.kind == AggregationExpressionKind_Invalid)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-								"$bucket could not find a bucket for an input value %s, and no default was specified.",
+								"$bucket was unable to locate a matching bucket for the provided input value %s, and no default bucket was defined.",
 								BsonValueToJsonForLogging(&evaluatedGroupByField)),
 							errdetail_log(
 								"The input value must fall into one of the bucket boundaries, or specify a default value.")));
@@ -370,9 +370,9 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40191),
 							errmsg(
-								"The $bucket 'boundaries' field must be an array of constant values."),
+								"The $bucket 'boundaries' field is required to be an array containing constant values."),
 							errdetail_log(
-								"The $bucket 'boundaries' field must be an array of constant values.")));
+								"The $bucket 'boundaries' field is required to be an array containing constant values.")));
 		}
 
 		if (boundaryType != BSON_TYPE_EOD && CompareSortOrderType(boundaryType,
@@ -380,11 +380,11 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40193),
 							errmsg(
-								"The $bucket 'boundaries' field must be an array of values of the same type. Found different types: %s and %s",
+								"The $bucket 'boundaries' field is required to be an array containing values that share the same data type. Detected differing types: %s and %s",
 								BsonTypeName(
 									boundaryType), BsonTypeName(value->value_type)),
 							errdetail_log(
-								"The $bucket 'boundaries' field must be an array of values of the same type.")));
+								"The $bucket 'boundaries' field is required to be an array containing values that share the same data type.")));
 		}
 
 		if (list_length(arguments->boundaries) > 0)
@@ -395,9 +395,9 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40194),
 								errmsg(
-									"The $bucket 'boundaries' field must be an array of values in ascending order."),
+									"The $bucket 'boundaries' field must be provided as an array containing values arranged in ascending order."),
 								errdetail_log(
-									"The $bucket 'boundaries' field must be an array of values in ascending order.")));
+									"The $bucket 'boundaries' field must be provided as an array containing values arranged in ascending order.")));
 			}
 		}
 		boundaryType = value->value_type;
@@ -410,10 +410,10 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40192),
 						errmsg(
-							"The $bucket 'boundaries' field must have at least 2 values, but found: %d",
+							"The $bucket 'boundaries' field requires a minimum of 2 values, but it detected: %d",
 							list_length(arguments->boundaries)),
 						errdetail_log(
-							"The $bucket 'boundaries' field must have at least 2 values, but found: %d",
+							"The $bucket 'boundaries' field requires a minimum of 2 values, but it detected: %d",
 							list_length(arguments->boundaries))));
 	}
 
@@ -430,7 +430,7 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40199),
 								errmsg(
-									"The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.")));
+									"The $bucket 'default' field should be either smaller than the minimum boundary value or greater than or equal to the maximum boundary value.")));
 			}
 		}
 		arguments->defaultBucket.kind = AggregationExpressionKind_Constant;

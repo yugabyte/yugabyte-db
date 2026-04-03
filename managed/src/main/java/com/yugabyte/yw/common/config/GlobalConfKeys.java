@@ -395,6 +395,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YBC client timeout in milliseconds for operations",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybClientDnsDebugThresholdNs =
+      new ConfKeyInfo<>(
+          "yb.client.dns_debug_threshold_ns",
+          ScopeType.GLOBAL,
+          "DNS debug logging threshold",
+          "Threshold in nanoseconds above which DNS lookups are logged at DEBUG level",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> ybClientDnsWarningThresholdNs =
+      new ConfKeyInfo<>(
+          "yb.client.dns_warning_threshold_ns",
+          ScopeType.GLOBAL,
+          "DNS warning logging threshold",
+          "Threshold in nanoseconds above which DNS lookups are logged at WARN level",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enforceCertVerificationBackupRestore =
       new ConfKeyInfo<>(
           "yb.certVerifyBackupRestore.is_enforced",
@@ -495,6 +511,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow the usage of CipherTrust KMS.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> kmsAllowOCI =
+      new ConfKeyInfo<>(
+          "yb.kms.allow_oci",
+          ScopeType.GLOBAL,
+          "Allow OCI KMS",
+          "Allow the usage of OCI KMS.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> telemetryAllowLoki =
       new ConfKeyInfo<>(
           "yb.telemetry.allow_loki",
@@ -1747,6 +1771,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " storage.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> enableChunkedEncoding =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_chunked_encoding",
+          ScopeType.GLOBAL,
+          "Enable Chunked Encoding for Amazon S3",
+          "Enable Chunked Encoding for Amazon S3, mainly used when configuring S3 compatible"
+              + " storage.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> k8sYbaRestoreSkipDumpFileDelete =
       new ConfKeyInfo<>(
           "yb.ha.k8s_restore_skip_dump_file_delete",
@@ -2102,4 +2135,53 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disable preflight check in YNP node agent provision",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> bgRedactAuditBatchSize =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_batch_size",
+          ScopeType.GLOBAL,
+          "Background Redaction Batch Size for Audit",
+          "Batch size for redacting secrets from audit entries",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> bgRedactAuditInterval =
+      new ConfKeyInfo<>(
+          "yb.audit.bg_redact_audit_interval",
+          ScopeType.GLOBAL,
+          "Background Redaction Interval for Audit",
+          "Background interval for redacting secrets from audit entries",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> tabletsMovementVerificationTimeoutSec =
+      new ConfKeyInfo<>(
+          "yb.task.tablets_movement_verification_timeout_secs",
+          ScopeType.GLOBAL,
+          "Timeout for checking till tablets are moved away from the node",
+          "Timeout for checking till tablets are moved away from the node.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowIncorrectTablespaces =
+      new ConfKeyInfo<>(
+          "yb.checks.allow_incorrect_tablespaces",
+          ScopeType.GLOBAL,
+          "Allow having incorrect tablespaces after edit operations",
+          "Allow having incorrect tablespaces after edit operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> automaticTablespaceUpdate =
+      new ConfKeyInfo<>(
+          "yb.task.automatic_tablespace_update",
+          ScopeType.GLOBAL,
+          "Allow YBA to update tablespaces automatically during edit operations",
+          "Allow YBA to update tablespaces automatically during edit operations.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> tablespaceMoveWithTemporary =
+      new ConfKeyInfo<>(
+          "yb.task.tablespace_move_with_temporary",
+          ScopeType.GLOBAL,
+          "Whether to move tables using temporary partition",
+          "When tablespace update is required, tables are moved to new tablespace through temporary"
+              + " tablespace.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

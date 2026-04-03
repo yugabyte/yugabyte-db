@@ -38,6 +38,7 @@
 
 namespace yb {
 
+class Env;
 class PriorityThreadPool;
 
 } // namespace yb
@@ -91,7 +92,7 @@ class DocVectorIndexContext {
  public:
   virtual ~DocVectorIndexContext() = default;
   virtual Result<DocVectorIndexReverseMappingReaderPtr> CreateReverseMappingReader(
-      const ReadHybridTime& read_ht) const = 0;
+      const ReadHybridTime& read_ht, DocDBStatistics* statistics) const = 0;
 };
 
 using DocVectorIndexContextPtr = std::unique_ptr<DocVectorIndexContext>;
@@ -126,8 +127,8 @@ class DocVectorIndex {
   virtual Status Insert(
       const DocVectorIndexInsertEntries& entries, const storage::UserFrontiers& frontiers) = 0;
   virtual Result<DocVectorIndexSearchResult> Search(
-      Slice vector, const vector_index::SearchOptions& options,
-      bool could_have_missing_entries) = 0;
+      Slice vector, const vector_index::SearchOptions& options, bool could_have_missing_entries,
+      DocDBStatistics* statistics) = 0;
   virtual Result<EncodedDistance> Distance(Slice lhs, Slice rhs) = 0;
   virtual void EnableAutoCompactions() = 0;
   virtual Status Compact() = 0;

@@ -132,6 +132,7 @@
 #include "utils/syscache.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
@@ -544,7 +545,7 @@ GetTablePrimaryKeyBms(Relation rel,
 												   &column_info),
 								ybc_tabledesc);
 
-		if (column_info.is_hash || column_info.is_primary)
+		if (column_info.is_hash || column_info.is_key)
 		{
 			pkey = bms_add_member(pkey, attnum - minattr);
 		}
@@ -1254,6 +1255,22 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
+
+		/*
+		 * Initialize OpenTelemetry batch span processor for distributed
+		 * tracing.
+		 * TODO(Ishan): Since this creates a thread, this can be
+		 * initialized and cleanedup based on a GUC.
+		 */
+		if (YBCIsDistTraceEnabled())
+		{
+			char		hex_uuid[2 * UUID_LEN + 1];
+
+			hex_encode((const char *) YbGetLocalTServerUuid(), UUID_LEN, hex_uuid);
+			hex_uuid[2 * UUID_LEN] = '\0';
+
+			YBCInitDistTrace(MyProcPid, hex_uuid);
+		}
 	}
 }
 
@@ -1261,6 +1278,9 @@ void
 YBOnPostgresBackendShutdown()
 {
 	YBCDestroyPgGate();
+
+	if (YBCIsDistTraceEnabled())
+		YBCCleanupDistTrace();
 }
 
 void
@@ -2236,6 +2256,7 @@ int			yb_index_state_flags_update_delay = 1000;
 bool		yb_enable_expression_pushdown = true;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
+bool		yb_enable_primary_key_decode_from_index = false;
 bool		yb_enable_optimizer_statistics = false;
 bool		yb_make_next_ddl_statement_nonbreaking = false;
 bool		yb_make_next_ddl_statement_nonincrementing = false;
@@ -2245,7 +2266,7 @@ bool		yb_disable_wait_for_backends_catalog_version = false;
 bool		yb_enable_base_scans_cost_model = false;
 bool		yb_enable_update_reltuples_after_create_index = false;
 bool		yb_enable_index_backfill_column_projection = false;
-int			yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
+int			yb_wait_for_backends_catalog_version_timeout = 15 * 60 * 1000;	/* 15 min */
 bool		yb_prefer_bnl = false;
 bool		yb_explain_hide_non_deterministic_fields = false;
 bool		yb_enable_saop_pushdown = true;
@@ -2281,7 +2302,7 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 };
 
 YbQpmConfiguration yb_qpm_configuration = {
-	.track = YB_QPM_TRACK_NONE,
+	.track = YB_QPM_TRACK_ALL,
 	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
 	.max_cache_size = 5000,
 	.track_catalog_queries = true,
@@ -2325,6 +2346,10 @@ char	   *yb_test_block_index_phase = "";
 char	   *yb_test_fail_index_state_change = "";
 
 char	   *yb_default_replica_identity = "CHANGE";
+
+char	   *yb_dist_tracecontext = NULL;
+
+YbcOtelSpanContext yb_guc_remote_span_ctx = NULL;
 
 bool		yb_test_fail_table_rewrite_after_creation = false;
 bool		yb_test_preload_catalog_tables = false;
@@ -2763,8 +2788,9 @@ YBAddDdlTxnState(YbDdlMode mode)
 	ddl_transaction_state.num_committed_pg_txns = 0;
 	ddl_transaction_state.num_create_function_stmts =
 		ddl_transaction_state.current_stmt_node_tag == T_CreateFunctionStmt ? 1 : 0;
+	Assert(TopTransactionContext != NULL);
 	ddl_transaction_state.mem_context =
-		AllocSetContextCreate(CurrentMemoryContext,
+		AllocSetContextCreate(TopTransactionContext,
 							  "aux ddl memory context",
 							  ALLOCSET_DEFAULT_SIZES);
 	HandleYBStatus(YBCPgSetDdlStateInPlainTransaction());
@@ -6464,7 +6490,7 @@ static bool
 YBNeedCollationEncoding(const YbcPgColumnInfo *column_info)
 {
 	/* We only need collation encoding for range keys. */
-	return (column_info->is_primary && !column_info->is_hash);
+	return (column_info->is_key && !column_info->is_hash);
 }
 
 void
@@ -8867,4 +8893,74 @@ yb_maybe_test_fail_ddl(void)
 		default:
 			break;
 	}
+}
+
+const char *
+YbGetTraceparentResultErrmsg(YbTraceparentResult result)
+{
+	switch (result)
+	{
+		case YB_TRACEPARENT_OK:
+			return NULL;
+		case YB_TRACEPARENT_NO_COMMENT:
+			return "no traceparent comment found";
+		case YB_TRACEPARENT_NO_FIELD:
+			return "no traceparent field found";
+		case YB_TRACEPARENT_WRONG_SIZE:
+			return "traceparent field doesn't have the correct size";
+		case YB_TRACEPARENT_MISSING_OPEN_QUOTE:
+			return "traceparent value missing opening quote";
+		case YB_TRACEPARENT_MISSING_CLOSE_QUOTE:
+			return "traceparent value missing closing quote";
+	}
+
+	Assert(false);
+	return "unknown traceparent error";
+}
+
+/*
+ * Extract the traceparent value from a W3C trace context string of the form
+ * "traceparent='<55char>'".  On success, copies the 55-char traceparent into
+ * traceparent_out and returns YB_TRACEPARENT_OK.
+ */
+YbTraceparentResult
+YbGetTraceparentFromTraceContext(const char *trace_context, size_t trace_context_len,
+								 char *traceparent_out)
+{
+	StaticAssertStmt(sizeof(YB_TRACEPARENT_KEY_PREFIX) - 1 == YB_TRACEPARENT_KEY_PREFIX_LEN,
+					 "YB_TRACEPARENT_KEY_PREFIX_LEN must match YB_TRACEPARENT_KEY_PREFIX");
+
+	const char *trace_context_end;
+	const char *tp_start;
+	const char *tp_end;
+
+	trace_context_end = trace_context + trace_context_len;
+
+	tp_start = memmem(trace_context, trace_context_len,
+					  YB_TRACEPARENT_KEY_PREFIX, YB_TRACEPARENT_KEY_PREFIX_LEN);
+	if (!tp_start)
+		return YB_TRACEPARENT_NO_FIELD;
+
+	tp_start += YB_TRACEPARENT_KEY_PREFIX_LEN;
+
+	if (tp_start >= trace_context_end ||
+		trace_context_end - tp_start < (2 * YB_TRACEPARENT_QUOTE_LEN) +
+										YB_TRACEPARENT_VALUE_LEN)
+		return YB_TRACEPARENT_WRONG_SIZE;
+
+	if (*tp_start != '\'')
+		return YB_TRACEPARENT_MISSING_OPEN_QUOTE;
+	tp_start += YB_TRACEPARENT_QUOTE_LEN;
+
+	tp_end = memchr(tp_start, '\'', trace_context_end - tp_start);
+	if (!tp_end)
+		return YB_TRACEPARENT_MISSING_CLOSE_QUOTE;
+
+	if (tp_end - tp_start != YB_TRACEPARENT_VALUE_LEN)
+		return YB_TRACEPARENT_WRONG_SIZE;
+
+	memcpy(traceparent_out, tp_start, YB_TRACEPARENT_VALUE_LEN);
+	traceparent_out[YB_TRACEPARENT_VALUE_LEN] = '\0';
+
+	return YB_TRACEPARENT_OK;
 }

@@ -1215,8 +1215,8 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
@@ -1259,8 +1259,8 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {

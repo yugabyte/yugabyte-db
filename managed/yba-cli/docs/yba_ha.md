@@ -36,8 +36,12 @@ yba ha [flags]
 ### SEE ALSO
 
 * [yba](yba.md)	 - yba - Command line tools to manage your YugabyteDB Anywhere (Self-managed Database-as-a-Service) resources.
+* [yba ha create](yba_ha_create.md)	 - Create HA configuration
 * [yba ha delete](yba_ha_delete.md)	 - Delete HA configuration
 * [yba ha describe](yba_ha_describe.md)	 - Get HA configuration
 * [yba ha generate-cluster-key](yba_ha_generate-cluster-key.md)	 - Generate a new cluster key
+* [yba ha instance](yba_ha_instance.md)	 - Manage HA instances
+* [yba ha list-backup](yba_ha_list-backup.md)	 - List HA backups
+* [yba ha replication](yba_ha_replication.md)	 - Manage HA replication schedule
 * [yba ha update](yba_ha_update.md)	 - Update HA configuration
 

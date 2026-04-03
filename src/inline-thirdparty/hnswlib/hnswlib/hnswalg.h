@@ -255,7 +255,7 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return max_elements_;
     }
 
-    size_t getCurrentElementCount() {
+    size_t getCurrentElementCount() const {
         return cur_element_count;
     }
 

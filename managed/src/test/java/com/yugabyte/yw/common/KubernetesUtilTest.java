@@ -3,12 +3,14 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -368,5 +370,75 @@ public class KubernetesUtilTest extends FakeDBApplication {
               universeParams.getPrimaryCluster().userIntent, finalAzOverrides, node);
       assertEquals(expected, coreCount, 0.1);
     }
+  }
+
+  @Test
+  public void testNeedsFullMoveSameDeviceInfo() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    Cluster currCluster = params.getPrimaryCluster();
+    Cluster newCluster = Json.fromJson(Json.toJson(currCluster), Cluster.class);
+    assertFalse(KubernetesUtil.needsFullMove(currCluster, newCluster));
+  }
+
+  @Test
+  public void testNeedsFullMoveOnlyVolumeSizeIncreased() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    Cluster currCluster = params.getPrimaryCluster();
+    if (currCluster.userIntent.deviceInfo.volumeSize == null) {
+      currCluster.userIntent.deviceInfo.volumeSize = 100;
+      currCluster.userIntent.deviceInfo.numVolumes = 1;
+    }
+    Cluster newCluster = Json.fromJson(Json.toJson(currCluster), Cluster.class);
+    // Only increase volume size - allowed without full move
+    newCluster.userIntent.deviceInfo.volumeSize = currCluster.userIntent.deviceInfo.volumeSize + 10;
+    assertFalse(KubernetesUtil.needsFullMove(currCluster, newCluster));
+  }
+
+  @Test
+  public void testNeedsFullMoveStorageClassChanged() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    Cluster currCluster = params.getPrimaryCluster();
+    currCluster.userIntent.deviceInfo.volumeSize = 100;
+    Cluster newCluster = Json.fromJson(Json.toJson(currCluster), Cluster.class);
+    newCluster.userIntent.deviceInfo.storageClass = "fast";
+    assertTrue(KubernetesUtil.needsFullMove(currCluster, newCluster));
+  }
+
+  @Test
+  public void testNeedsFullMoveNumVolumesChanged() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    Cluster currCluster = params.getPrimaryCluster();
+    currCluster.userIntent.deviceInfo.volumeSize = 100;
+    Cluster newCluster = Json.fromJson(Json.toJson(currCluster), Cluster.class);
+    if (newCluster.userIntent.deviceInfo.numVolumes == null) {
+      newCluster.userIntent.deviceInfo.numVolumes = 1;
+    }
+    currCluster.userIntent.deviceInfo.numVolumes = 1;
+    newCluster.userIntent.deviceInfo.numVolumes = 2;
+    assertTrue(KubernetesUtil.needsFullMove(currCluster, newCluster));
+  }
+
+  @Test
+  public void testNeedsFullMoveVolumeSizeDecreased() throws IOException {
+    Pair<UniverseDefinitionTaskParams, List<AvailabilityZone>> pair =
+        addClusterAndNodeDetailsK8s("2024.2.0.0-b2", false);
+    UniverseDefinitionTaskParams params = pair.getFirst();
+    Cluster currCluster = params.getPrimaryCluster();
+    if (currCluster.userIntent.deviceInfo.volumeSize == null) {
+      currCluster.userIntent.deviceInfo.volumeSize = 100;
+      currCluster.userIntent.deviceInfo.numVolumes = 1;
+    }
+    Cluster newCluster = Json.fromJson(Json.toJson(currCluster), Cluster.class);
+    newCluster.userIntent.deviceInfo.volumeSize = 50;
+    // Decreasing volume size is a device change (not only volume size increase)
+    assertTrue(KubernetesUtil.needsFullMove(currCluster, newCluster));
   }
 }

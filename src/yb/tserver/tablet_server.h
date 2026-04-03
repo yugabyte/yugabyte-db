@@ -118,13 +118,14 @@ class PgCronLeaderService;
 
 namespace tserver {
 
+class GetYSQLLeaseInfoResponsePB;
+class PgClientServiceImpl;
+class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
 class TserverXClusterContextIf;
-class PgClientServiceImpl;
 class XClusterConsumerIf;
 class YsqlLeaseClient;
-class GetYSQLLeaseInfoResponsePB;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:
@@ -177,6 +178,12 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   TSLocalLockManagerPtr ts_local_lock_manager() const override {
     return ysql_lease_manager_->ts_local_lock_manager();
   }
+
+#ifdef __linux__
+  TServerCgroupManager* cgroup_manager() const override {
+    return cgroup_manager_.get();
+  }
+#endif
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -387,10 +394,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
-
   void RegisterPgProcessRestarter(std::function<Status(void)> restarter) override;
-
   void RegisterPgProcessKiller(std::function<Status(void)> killer) override;
+  void RegisterConnectionManagerRestarter(std::function<Status(void)> restarter);
 
   Status StartYSQLLeaseRefresher();
 
@@ -666,6 +672,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::function<Status(void)> pg_restarter_;
   std::function<Status(void)> pg_killer_;
 
+  std::function<Status(void)> conn_manager_restarter_;
+
   // xCluster consumer.
   mutable std::mutex xcluster_consumer_mutex_;
   std::unique_ptr<XClusterConsumerIf> xcluster_consumer_ GUARDED_BY(xcluster_consumer_mutex_);
@@ -688,6 +696,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   OneTimeBool shutting_down_;
 
   std::map<std::string, std::shared_future<Status>> in_flight_superuser_connections_;
+
+#ifdef __linux__
+  std::unique_ptr<TServerCgroupManager> cgroup_manager_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

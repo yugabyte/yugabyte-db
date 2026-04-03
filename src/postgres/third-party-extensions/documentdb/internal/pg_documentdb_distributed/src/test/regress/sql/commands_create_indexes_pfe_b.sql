@@ -34,7 +34,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_1');
 
 -- note that it's not the $regex operator
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
@@ -53,7 +53,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_2');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_2');
 
 -- $exists: true is supported
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
@@ -77,9 +77,9 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_3');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_3');
 
--- While Mongo throws an error for the following:
+-- While the reference implementation throws an error for the following:
 --
 -- "partialFilterExpression" {
 --   "$and": [{"p": 1}, {"q": 2}],
@@ -104,7 +104,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_4');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_4');
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'mydb_4',
@@ -129,7 +129,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb_4', 'collection_10', 'my_idx_5');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb_4', 'collection_10', 'my_idx_5');
 
 
 -- force using my_idx_5 when possible
@@ -242,7 +242,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_6');
 
 -- this is normally not supported due to $or
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
@@ -262,4 +262,4 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently(
    }',
    true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('mydb', 'collection_10', 'my_idx_7');

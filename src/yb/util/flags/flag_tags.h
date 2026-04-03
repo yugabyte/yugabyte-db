@@ -107,6 +107,12 @@
 //         DEFINE_pg_flag macro. The name and type of the flag should exactly match the guc
 //         variable.
 //
+// - "conn_mgr":
+//         These are flags for the YSQL Connection Manager (Odyssey). Only define these using the
+//         DEFINE_CONN_MGR_FLAG macros. The flag name will be automatically prefixed with
+//         ysql_conn_mgr_. Changing a runtime conn_mgr flag triggers a config reload of the
+//         connection manager process via SIGHUP.
+//
 // - "deprecated":
 //         This tag is used to indicate that a flag is deprecated. Do not explicitly set this tag.
 //         Use DEPRECATE_FLAG instead.
@@ -163,6 +169,7 @@ YB_DEFINE_ENUM(
     (kSensitive_info)
     (kAuto)
     (kPg)
+    (kConnMgr)
     (kDeprecated)
     (kPreview)
     (kHasNewInstallValue));
@@ -178,6 +185,7 @@ YB_DEFINE_ENUM(
 // kRuntime: Use DEFINE_RUNTIME_type macro instead
 // kAuto: Use DEFINE_RUNTIME_AUTO_type or DEFINE_NON_RUNTIME_AUTO_type macros instead
 // kPg: Use DEFINE_RUNTIME_pg_flag or DEFINE_NON_RUNTIME_pg_flag macros instead
+// kConnMgr: Use DEFINE_RUNTIME_CONN_MGR_FLAG or DEFINE_NON_RUNTIME_CONN_MGR_FLAG macros instead
 // kDeprecated: Use DEPRECATE_FLAG instead
 
 // Tag the flag 'flag_name' with the given tag 'tag'.
@@ -449,6 +457,43 @@ constexpr bool IsValid_string(T a) {
   BOOST_PP_CAT(DEFINE_RUNTIME_AUTO_, type)(ysql_##name, flag_class, initial_val, target_val, \
                                            description); \
   _TAG_FLAG(BOOST_PP_CAT(ysql_, name), ::yb::FlagTag::kPg, pg)
+
+// gFlag wrappers for YSQL Connection Manager (Odyssey) configuration.
+// The flag name will be automatically prefixed with ysql_conn_mgr_.
+// Changing a runtime conn_mgr flag triggers a config reload of the connection manager process.
+#define DEFINE_RUNTIME_CONN_MGR_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_RUNTIME_, type)( \
+      BOOST_PP_CAT(ysql_conn_mgr_, name), default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_conn_mgr_, name), ::yb::FlagTag::kConnMgr, conn_mgr)
+
+#define DEFINE_NON_RUNTIME_CONN_MGR_FLAG(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)( \
+      BOOST_PP_CAT(ysql_conn_mgr_, name), default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_conn_mgr_, name), ::yb::FlagTag::kConnMgr, conn_mgr)
+
+#define DEFINE_RUNTIME_CONN_MGR_PREVIEW_FLAG(type, name, default_value, description) \
+  DEFINE_RUNTIME_CONN_MGR_FLAG(type, name, default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_conn_mgr_, name), ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_NON_RUNTIME_CONN_MGR_PREVIEW_FLAG(type, name, default_value, description) \
+  DEFINE_NON_RUNTIME_CONN_MGR_FLAG(type, name, default_value, description); \
+  _TAG_FLAG(BOOST_PP_CAT(ysql_conn_mgr_, name), ::yb::FlagTag::kPreview, preview)
+
+#define DEFINE_RUNTIME_CONN_MGR_test_flag(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_RUNTIME_, type)( \
+      BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), default_value, \
+      description " (For testing only!)"); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), unsafe); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), hidden); \
+  _TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), ::yb::FlagTag::kConnMgr, conn_mgr)
+
+#define DEFINE_NON_RUNTIME_CONN_MGR_test_flag(type, name, default_value, description) \
+  BOOST_PP_CAT(DEFINE_NON_RUNTIME_, type)( \
+      BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), default_value, \
+      description " (For testing only!)"); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), unsafe); \
+  TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), hidden); \
+  _TAG_FLAG(BOOST_PP_CAT(TEST_ysql_conn_mgr_, name), ::yb::FlagTag::kConnMgr, conn_mgr)
 
 // Unknown flags. !!Not to be used!!
 // Older flags need to be reviewed in order to determine if they are runtime or non-runtime.

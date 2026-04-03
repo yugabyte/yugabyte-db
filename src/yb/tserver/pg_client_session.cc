@@ -64,12 +64,14 @@
 #include "yb/tserver/pg_table_cache.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
@@ -130,6 +132,10 @@ DEFINE_test_flag(bool, force_initial_region_local, false,
 
 DEFINE_test_flag(bool, fail_create_table_rpc, false,
     "Fail all create table requests received at PgClientSession layer.");
+
+#ifdef __linux__
+DECLARE_bool(enable_qos);
+#endif
 
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
@@ -514,6 +520,7 @@ class VectorIndexQuery {
     RETURN_NOT_OK(UpdatePartitions(table->id(), *partitions));
 
     table_ = table;
+    aggregated_metrics_.Clear();
     auto prefetch_size = read_req.index_request().vector_idx_options().prefetch_size();
     prefetch_size_ = prefetch_size < 0 ? std::numeric_limits<size_t>::max() : prefetch_size;
 
@@ -606,6 +613,13 @@ class VectorIndexQuery {
     out_resp.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
     out_resp.set_rows_data_sidecar(narrow_cast<int32_t>(sidecars.Complete()));
     out_resp.set_partition_list_version(table_partition_list_version);
+    if (aggregated_metrics_.gauge_metrics_size() > 0 ||
+        aggregated_metrics_.counter_metrics_size() > 0 ||
+        aggregated_metrics_.event_metrics_size() > 0 ||
+        aggregated_metrics_.has_scanned_table_rows() ||
+        aggregated_metrics_.has_scanned_index_rows()) {
+      *out_resp.mutable_metrics() = aggregated_metrics_;
+    }
     if (return_paging_state_ && (CouldFetchMore() || partitions_are_stale)) {
       auto& paging_state = *out_resp.mutable_paging_state();
       paging_state.set_table_id(table_->id());
@@ -708,6 +722,25 @@ class VectorIndexQuery {
     for (const auto& op : ops) {
       auto op_sidecars = sidecars_->Extract(*op.op->sidecar_index());
       auto& op_resp = op.op->response();
+      if (op_resp.has_metrics()) {
+        for (const auto& metric : op_resp.metrics().gauge_metrics()) {
+          *aggregated_metrics_.add_gauge_metrics() = metric;
+        }
+        for (const auto& metric : op_resp.metrics().counter_metrics()) {
+          *aggregated_metrics_.add_counter_metrics() = metric;
+        }
+        for (const auto& metric : op_resp.metrics().event_metrics()) {
+          *aggregated_metrics_.add_event_metrics() = metric;
+        }
+        if (op_resp.metrics().has_scanned_table_rows()) {
+          aggregated_metrics_.set_scanned_table_rows(
+              aggregated_metrics_.scanned_table_rows() + op_resp.metrics().scanned_table_rows());
+        }
+        if (op_resp.metrics().has_scanned_index_rows()) {
+          aggregated_metrics_.set_scanned_index_rows(
+              aggregated_metrics_.scanned_index_rows() + op_resp.metrics().scanned_index_rows());
+        }
+      }
       auto& distances = op_resp.vector_index_distances();
       auto& ends = op_resp.vector_index_ends();
       size_t sidecar_offset = 8;
@@ -737,6 +770,7 @@ class VectorIndexQuery {
   std::vector<VectorIndexQueryPartitionData> partitions_;
   client::PartitionListVersion partitions_version_ = 0;
   std::unique_ptr<rpc::Sidecars> sidecars_;
+  PgsqlRequestMetricsPB aggregated_metrics_;
   bool return_paging_state_ = false;
   MonoTime fetch_start_;
 };
@@ -2803,7 +2837,7 @@ class PgClientSession::Impl {
             MakeAdvisoryLockId(req.db_oid(), lock.lock_id()), lock.lock_mode())));
       }
     } else {
-      session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockAllOp(req.db_oid())));
+      session.Apply(VERIFY_RESULT(advisory_locks_table().MakeUnlockAllOps(req.db_oid())));
     }
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
     auto flush_status = session.FlushFuture().get();
@@ -3405,6 +3439,10 @@ class PgClientSession::Impl {
   Result<SetupSessionResult> SetupSession(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline, HybridTime in_txn_limit = {},
       TransactionFullLocality locality = TransactionFullLocality::RegionLocal()) {
+    if (!options.namespace_id().empty()) {
+      WARN_NOT_OK(EnsureClientSessionCgroup(options.namespace_id()),
+                  "Setting cgroup of PgClientSession");
+    }
     const auto read_time_serial_no = options.read_time_serial_no();
     auto kind = PgClientSessionKind::kPlain;
     if (options.use_catalog_session()) {
@@ -3501,11 +3539,11 @@ class PgClientSession::Impl {
       } else if (IsReadPointResetRequested(options) ||
                 options.use_catalog_session() ||
                 (is_plain_session && (read_time_serial_no_ != read_time_serial_no))) {
-          VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
-                  << " read point reset requested: " << IsReadPointResetRequested(options)
-                  << " use catalog session: " << options.use_catalog_session()
-                  << " change in read time serial number "
-                  << read_time_serial_no_ << ", " << read_time_serial_no;
+        VLOG_WITH_PREFIX(3) << "Resetting read point for session kind " << kind
+            << " read point reset requested: " << IsReadPointResetRequested(options)
+            << " use catalog session: " << options.use_catalog_session()
+            << " change in read time serial number "
+            << read_time_serial_no_ << ", " << read_time_serial_no;
         ResetReadPoint(kind);
       } else {
         VLOG_WITH_PREFIX(3) << "Keep read time: " << session.read_point()->GetReadTime();
@@ -4145,6 +4183,20 @@ class PgClientSession::Impl {
     return shared_this_.lock();
   }
 
+  Status EnsureClientSessionCgroup(NamespaceIdView namespace_id) {
+#ifdef __linux__
+    if (database_oid_ != kInvalidOid) {
+      return Status::OK();
+    }
+    database_oid_ = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+    if (context_.cgroup_manager && FLAGS_enable_qos) {
+      auto& cgroup = VERIFY_RESULT_REF(context_.cgroup_manager->CgroupForDb(database_oid_));
+      RETURN_NOT_OK(cgroup.MoveCurrentThreadToGroup());
+    }
+#endif
+    return Status::OK();
+  }
+
   client::YBClient& client_;
   const PgClientSessionContext& context_;
   const std::weak_ptr<PgClientSession> shared_this_;
@@ -4172,6 +4224,10 @@ class PgClientSession::Impl {
 
   std::atomic<bool> plain_session_has_exclusive_object_locks_{false};
   VectorIndexQueryPtr vector_index_query_data_;
+
+#ifdef __linux__
+  PgOid database_oid_ = kInvalidOid;
+#endif
 };
 
 PgClientSession::PgClientSession(

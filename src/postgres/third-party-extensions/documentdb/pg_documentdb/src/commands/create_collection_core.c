@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/create_collection_view.c
+ * src/commands/create_collection_view.c
  *
  * Implementation of view and collection creation functions.
  *
@@ -24,7 +24,7 @@
 #include "api_hooks.h"
 
 extern bool EnableNativeColocation;
-extern bool EnableNativeTableColocation;
+extern bool EnableDataTableWithoutCreationTime;
 
 static bool CanColocateAtDatabaseLevel(text *databaseDatum);
 static const char * CreatePostgresDataTable(uint64_t collectionId,
@@ -130,14 +130,6 @@ SetUnshardedColocationData(text *databaseDatum, const char **shardingColumn, con
 			 * can be colocated with this table.
 			 */
 			*colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
-
-			/* If table level colocation is desired - ignore the colocate with
-			 * on the sentinel.
-			 */
-			if (EnableNativeTableColocation)
-			{
-				*colocateWith = "none";
-			}
 		}
 	}
 }
@@ -166,7 +158,7 @@ InsertMetadataIntoCollections(text *databaseDatum, text *collectionDatum,
 		MemoryContextSwitchTo(savedMemoryContext);
 		ErrorData *errorData = CopyErrorDataAndFlush();
 
-		/* Abort the inner transaction */
+		/* Abort inner transaction */
 		RollbackAndReleaseCurrentSubTransaction();
 
 		/* Rollback changes MemoryContext */
@@ -226,12 +218,19 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
 	                  *     defined in collection.h if you decide changing definiton
 	                  *     or position of document column.
 	                  */
-					 "document %s.bson not null,"
-
-	                 /* creation time (for TTL) */
-					 "creation_time timestamptz"
-					 ")", dataTableNameInfo->data,
+					 "document %s.bson not null",
+					 dataTableNameInfo->data,
 					 CoreSchemaName, CoreSchemaName);
+
+	/* Let's add creation_time column only when EnableDataTableWithoutCreationTime GUC is off */
+	if (EnableDataTableWithoutCreationTime)
+	{
+		appendStringInfo(createTableStringInfo, ")");
+	}
+	else
+	{
+		appendStringInfo(createTableStringInfo, ", creation_time timestamptz)");
+	}
 
 	bool readOnly = false;
 	bool isNull = false;
@@ -413,7 +412,8 @@ CanColocateAtDatabaseLevel(text *databaseDatum)
 										false, SPI_OK_SELECT, &isNull);
 	ereport(LOG, (errmsg("database %s has collections: %s", text_to_cstring(
 							 databaseDatum),
-						 isNull ? "false" : "true")));
+						 isNull ? "false" : "true")), errhidestmt(true),
+			errhidecontext(true));
 
 	/* If the query returned no results then we can safely do database colocation */
 	return isNull;
@@ -480,7 +480,8 @@ GetOrCreateDatabaseConfigCollection(text *databaseDatum)
 	const char *tableName = CreatePostgresDataTable(databaseCollectionId, colocateWith,
 													shardingColumn);
 	ereport(LOG, (errmsg("Creating and returning %s for the sentinel database %s",
-						 tableName, text_to_cstring(databaseDatum))));
+						 tableName, text_to_cstring(databaseDatum)), errhidestmt(true),
+				  errhidecontext(true)));
 
 	/* Add a policy to disallow writes on this table (TODO: Investigate why RLS didn't work here) */
 	StringInfo createCheckStringInfo = makeStringInfo();

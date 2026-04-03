@@ -21,6 +21,7 @@
 
 #include <boost/intrusive/list.hpp>
 
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
@@ -45,9 +46,10 @@ void YBThreadPool::DisableDetailedLogging() { detailed_logging = false; }
 namespace {
 
 class Worker;
+struct WorkerLink;
 
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;
-using WaitingWorkers = LockFreeStack<Worker>;
+using WaitingWorkers = LockFreeStack<WorkerLink>;
 
 constexpr size_t kStopCreatingWorkersFlag = 1ul << 48;
 
@@ -90,9 +92,7 @@ YB_DEFINE_ENUM(WorkerState, (kRunning)(kWaitingTask)(kIdleStop)(kExternalStop));
 
 class Worker : public boost::intrusive::list_base_hook<> {
  public:
-  explicit Worker(ThreadPoolShare& share, bool persistent)
-      : share_(share), persistent_(persistent) {
-  }
+  explicit Worker(ThreadPoolShare& share, bool persistent);
 
   Status Start(size_t index, ThreadPoolTask* task) EXCLUDES(mutex_) {
     UniqueLock lock(mutex_);
@@ -101,18 +101,7 @@ class Worker : public boost::intrusive::list_base_hook<> {
     return Thread::Create(share_.options.name, name, &Worker::Execute, this, task, &thread_);
   }
 
-  ~Worker() {
-    {
-      std::lock_guard lock(mutex_);
-      DCHECK(!task_);
-      if (state_ == WorkerState::kIdleStop) {
-        return;
-      }
-    }
-    if (thread_) {
-      thread_->Join();
-    }
-  }
+  ~Worker();
 
   Worker(const Worker& worker) = delete;
   void operator=(const Worker& worker) = delete;
@@ -157,6 +146,15 @@ class Worker : public boost::intrusive::list_base_hook<> {
   // Meaning that we do not have work (task queue empty) or
   // does not have free hands (worker queue empty)
   void Execute(ThreadPoolTask* task) {
+#ifdef __linux__
+    if (auto cgroup = share_.options.cgroup ? share_.options.cgroup : DefaultThreadCgroup()) {
+      auto status = cgroup->MoveCurrentThreadToGroup();
+      if (!status.ok()) {
+        LOG(DFATAL) << "Failed to move thread to cgroup: " << status;
+      }
+    }
+#endif
+
     Thread::current_thread()->SetUserData(&share_);
     bool has_run_metrics = share_.options.metrics.run_time_us_stats != nullptr;
     if (!task) {
@@ -252,31 +250,84 @@ class Worker : public boost::intrusive::list_base_hook<> {
 
   void AddToWaitingWorkers() REQUIRES(mutex_) {
     if (!added_to_waiting_workers_) {
-      share_.waiting_workers.Push(this);
+      share_.waiting_workers.Push(link_);
       added_to_waiting_workers_ = true;
     }
   }
 
-  friend void SetNext(Worker& worker, Worker* next) {
-    worker.next_waiting_worker_ = next;
-  }
-
-  friend Worker* GetNext(Worker& worker) {
-    return worker.next_waiting_worker_;
-  }
-
   ThreadPoolShare& share_;
   const bool persistent_;
+  WorkerLink* link_ = nullptr;
   scoped_refptr<Thread> thread_;
   mutable std::mutex mutex_;
   std::condition_variable cond_;
   WorkerState state_ GUARDED_BY(mutex_) = WorkerState::kRunning;
   bool added_to_waiting_workers_ GUARDED_BY(mutex_) = false;
   ThreadPoolTask* task_ GUARDED_BY(mutex_) = nullptr;
-  Worker* next_waiting_worker_ = nullptr;
+};
+
+struct WorkerLink {
+  Worker* worker = nullptr;
+  std::atomic<WorkerLink*> next_link{nullptr};
 };
 
 using Workers = boost::intrusive::list<Worker>;
+
+void SetNext(WorkerLink& worker, WorkerLink* next) {
+  worker.next_link.store(next, std::memory_order_release);
+}
+
+WorkerLink* GetNext(WorkerLink& worker) {
+  return worker.next_link.load(std::memory_order_acquire);
+}
+
+class FreeWorkerLinks {
+ public:
+  ~FreeWorkerLinks() {
+    while (auto link = free_links_.Pop()) {
+      delete link;
+    }
+  }
+
+  WorkerLink* Acquire() {
+    auto link = free_links_.Pop();
+    if (!link) {
+      link = new WorkerLink{};
+    }
+    return link;
+  }
+
+  void Release(WorkerLink* link) {
+    link->worker = nullptr;
+    free_links_.Push(link);
+  }
+
+ private:
+  LockFreeStack<WorkerLink> free_links_;
+};
+
+FreeWorkerLinks free_worker_links_;
+
+Worker::Worker(ThreadPoolShare& share, bool persistent)
+    : share_(share), persistent_(persistent),
+      link_(free_worker_links_.Acquire()) {
+  link_->worker = this;
+}
+
+Worker::~Worker() {
+  {
+    std::lock_guard lock(mutex_);
+    DCHECK(!task_);
+    if (state_ == WorkerState::kIdleStop) {
+      free_worker_links_.Release(link_);
+      return;
+    }
+  }
+  if (thread_) {
+    thread_->Join();
+  }
+  free_worker_links_.Release(link_);
+}
 
 } // namespace
 
@@ -392,8 +443,8 @@ class YBThreadPool::Impl {
 
   // Returns true if we found worker that will pick up this task, false otherwise.
   bool NotifyWorker(ThreadPoolTask* task) {
-    while (auto worker = share_.waiting_workers.Pop()) {
-      auto state = worker->Notify(task);
+    while (auto link = share_.waiting_workers.Pop()) {
+      auto state = link->worker->Notify(task);
       switch (state) {
         case WorkerState::kWaitingTask:
           if (task && share_.options.metrics.queue_time_us_stats) {
@@ -407,7 +458,7 @@ class YBThreadPool::Impl {
           std::lock_guard lock(mutex_);
           if (!closing_) {
             workers_.erase_and_dispose(
-                workers_.iterator_to(*worker), std::default_delete<Worker>());
+                workers_.iterator_to(*link->worker), std::default_delete<Worker>());
           }
         } break;
       }
@@ -605,6 +656,103 @@ bool ThreadSubPool::Enqueue(ThreadPoolTask* task) {
 
 MonoDelta DefaultIdleTimeout() {
   return MonoDelta::FromMilliseconds(FLAGS_default_idle_timeout_ms);
+}
+
+
+// ------------------------------------------------------------------------------------------------
+// YBTaggedThreadPools
+// ------------------------------------------------------------------------------------------------
+
+YBTaggedThreadPools::YBTaggedThreadPools(YBTaggedThreadPools::OptionsGenerator options_generator)
+    : options_generator_{std::move(options_generator)} {}
+
+YBTaggedThreadPools::~YBTaggedThreadPools() {
+  Shutdown();
+}
+
+void YBTaggedThreadPools::Shutdown() {
+  PoolMap pools;
+  {
+    std::lock_guard lock(mutex_);
+    shutting_down_ = true;
+    pools_by_tag_.Emplace();
+    std::swap(pools, pools_holder_);
+  }
+  for (auto& pool : pools | std::views::values) {
+    pool->Shutdown();
+  }
+}
+
+YBThreadPoolScopedPtr YBTaggedThreadPools::LookupPool(Tag tag) {
+  auto pools_by_tag = pools_by_tag_.get();
+  auto itr = pools_by_tag->find(tag);
+  if (itr != pools_by_tag->end()) {
+    return itr->second;
+  }
+  return nullptr;
+}
+
+Result<YBThreadPoolScopedPtr> YBTaggedThreadPools::Pool(Tag tag) {
+  if (auto pool = LookupPool(tag)) {
+    return pool;
+  }
+
+  UniqueLock<std::mutex> lock(mutex_);
+  if (auto pool = LookupPool(tag)) {
+    return pool;
+  }
+  if (shutting_down_) {
+    return STATUS(ShutdownInProgress, "thread pools shutting down");
+  }
+
+  CleanupIdlePools(lock);
+
+  auto pool = pools_holder_.try_emplace(
+      tag, make_scoped_refptr<RefCountedData<YBThreadPool>>(options_generator_(tag))).first->second;
+  pools_by_tag_.Emplace(pools_holder_);
+  return pool;
+}
+
+void YBTaggedThreadPools::CleanupIdlePools(UniqueLock<std::mutex>& lock) {
+  // To avoid the case where someone calls Pool(tag) on an idle pool, then CleanupIdlePools()
+  // shuts down the pool before they are able to queue on the pool, we do the following:
+  // 1. prevent new callers of Pool(tag) from accessing the pool without mutex, by updating
+  //    pools_by_tag_ with idle pools removed.
+  // 2. shutdown and delete any pool with ref_count == 2 and no workers, since this means no one
+  //    else has access to it to queue new tasks, and nothing is running.
+  // 3. add any other removed pools back to pools_by_tag_, since someone else holds a reference and
+  //    may queue new tasks.
+  // This depends on the ref_count increment having acquire memory order, which is true for
+  // RefCountedThreadSafe + scoped_refptr but not for std::shared_ptr.
+  std::vector<YBThreadPoolScopedPtr> shutdown;
+
+  PoolMap temp_pools_by_tag;
+  PoolMap shutdown_candidates;
+  for (auto& [tag, pool] : pools_holder_) {
+    // Two references: pools_holder_ and pools_by_tag_.
+    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
+      shutdown_candidates.try_emplace(tag, pool);
+    } else {
+      temp_pools_by_tag.try_emplace(tag, pool);
+    }
+  }
+  pools_by_tag_.Emplace(std::move(temp_pools_by_tag));
+  for (auto& [tag, pool] : shutdown_candidates) {
+    // Two references: pools_holder_ and to_remove.
+    if (pool.HasTwoRef() && pool->NumWorkers() == 0) {
+      shutdown.emplace_back(std::move(pool));
+      pools_holder_.erase(tag);
+    }
+  }
+  pools_by_tag_.Emplace(pools_holder_);
+
+  [&] NO_THREAD_SAFETY_ANALYSIS {
+    lock.unlock();
+    for (auto& pool : shutdown) {
+      pool->Shutdown();
+    }
+    lock.lock();
+  }();
 }
 
 } // namespace yb

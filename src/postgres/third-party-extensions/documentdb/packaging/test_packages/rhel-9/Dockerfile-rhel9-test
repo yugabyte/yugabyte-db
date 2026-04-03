@@ -1,0 +1,62 @@
+ARG BASE_IMAGE=rockylinux:9
+FROM ${BASE_IMAGE}
+
+ARG POSTGRES_VERSION=16
+ARG RPM_PACKAGE_REL_PATH
+ARG TARGETARCH
+
+ENV POSTGRES_VERSION=${POSTGRES_VERSION}
+RUN echo "Testing for RPM install on RHEL 9"
+
+RUN dnf install -y dnf-plugins-core
+RUN dnf install -y epel-release && \
+    dnf config-manager --set-enabled crb && \
+    dnf clean all
+
+RUN dnf -y install glibc-langpack-en glibc-common && \
+    localedef -i en_US -f UTF-8 en_US.UTF-8 || true
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+RUN dnf -y swap curl-minimal curl && \
+    dnf -y install \
+    make \
+    ca-certificates \
+    gcc \
+    gcc-c++ \
+    pkg-config \
+    openssl \
+    openssl-libs \
+    openssl-devel \
+    zlib-devel \
+    libuuid-devel \
+    libicu-devel \
+    krb5-devel
+
+RUN echo "Detected architecture: ${TARGETARCH}"
+
+# PostgreSQL yum repo setup for RHEL 9
+RUN if [ -n "${TARGETARCH}" ] && ( [ "${TARGETARCH}" = "arm64" ] || [ "${TARGETARCH}" = "arm64v8" ] ); then ARCH=aarch64; else ARCH=x86_64; fi; \
+    echo "Setting up PGDG repo for RHEL 9 (arch=${ARCH})" && \
+    dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm && \
+    dnf -qy module disable postgresql && \
+    for i in 1 2 3; do \
+        dnf -y install --allowerasing --nobest --skip-broken postgresql${POSTGRES_VERSION} \
+        postgresql${POSTGRES_VERSION}-devel \
+        postgresql${POSTGRES_VERSION}-server \
+        postgresql${POSTGRES_VERSION}-contrib \
+        pgvector_${POSTGRES_VERSION} \
+        pg_cron_${POSTGRES_VERSION} \
+        postgis36_${POSTGRES_VERSION} \
+        $(if [ "${POSTGRES_VERSION}" -lt 18 ]; then echo "rum_${POSTGRES_VERSION}"; else echo ""; fi) && break || \
+        { echo "Attempt $i failed, retrying in 5 seconds..." && sleep 5; }; \
+    done
+
+RUN mkdir -p /usr/src/documentdb
+WORKDIR /usr/src/documentdb
+COPY . /usr/src/documentdb
+COPY ${RPM_PACKAGE_REL_PATH} /tmp/documentdb.rpm
+COPY packaging/test_packages/test-install-entrypoint-rpm.sh /usr/local/bin/test-install-entrypoint-rpm.sh
+RUN chmod +x /usr/local/bin/test-install-entrypoint-rpm.sh
+
+ENTRYPOINT ["test-install-entrypoint-rpm.sh"]

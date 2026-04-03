@@ -401,7 +401,7 @@ ANALYZE;
 begin;
 SET LOCAL enable_seqscan to off;
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" } } }');
-                                                                                                QUERY PLAN                                                                                                
+                                                                                                  QUERY PLAN                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
    Task Count: 1
@@ -417,15 +417,12 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE di
                      ->  ProjectSet (actual rows=1 loops=1)
                            ->  Result (actual rows=1 loops=1)
                                  One-Time Filter: documentdb_api_catalog.bson_true_match($4)
-                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=1 loops=1)
-                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } }'::documentdb_core.bson)
-                                       Heap Blocks: exact=1
-                                       ->  Bitmap Index Scan on ref_idx (actual rows=1 loops=1)
-                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } }'::documentdb_core.bson)
-(19 rows)
+                                 ->  Index Scan using ref_idx on documents_6637_6630098 collection (actual rows=1 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } }'::documentdb_core.bson)
+(16 rows)
 
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 } }');
-                                                                                                                      QUERY PLAN                                                                                                                       
+                                                                                                                        QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
    Task Count: 1
@@ -441,15 +438,12 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE di
                      ->  ProjectSet (actual rows=1 loops=1)
                            ->  Result (actual rows=1 loops=1)
                                  One-Time Filter: documentdb_api_catalog.bson_true_match($4)
-                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=1 loops=1)
-                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
-                                       Heap Blocks: exact=1
-                                       ->  Bitmap Index Scan on ref_idx (actual rows=1 loops=1)
-                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
-(19 rows)
+                                 ->  Index Scan using ref_idx on documents_6637_6630098 collection (actual rows=1 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } } }'::documentdb_core.bson)
+(16 rows)
 
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": {"$id": { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6"}}');
-                                                                                                QUERY PLAN                                                                                                
+                                                                                                  QUERY PLAN                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
    Task Count: 1
@@ -465,14 +459,12 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE di
                      ->  ProjectSet (actual rows=0 loops=1)
                            ->  Result (actual rows=0 loops=1)
                                  One-Time Filter: documentdb_api_catalog.bson_true_match($4)
-                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=0 loops=1)
-                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6" } }'::documentdb_core.bson)
-                                       ->  Bitmap Index Scan on ref_idx (actual rows=0 loops=1)
-                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6" } }'::documentdb_core.bson)
-(18 rows)
+                                 ->  Index Scan using ref_idx on documents_6637_6630098 collection (actual rows=0 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "b" : { "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$ref" : "distinct6" } }'::documentdb_core.bson)
+(16 rows)
 
 EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE distinctQueryWithFilter('db2', 'distinct7', 'd', '{ "b": { "$in": [ { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce6" },"$db": "db", "tt":1 }, { "$ref": "distinct6", "$id": { "$oid" : "147f000000c1de008ec19ce4" }} ] } }');
-                                                                                                                                                              QUERY PLAN                                                                                                                                                               
+                                                                                                                                                                QUERY PLAN                                                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
    Task Count: 1
@@ -484,15 +476,12 @@ EXPLAIN (COSTS OFF, BUFFERS OFF, ANALYZE ON, TIMING OFF, SUMMARY OFF) EXECUTE di
          ->  Aggregate (actual rows=1 loops=1)
                ->  HashAggregate (actual rows=2 loops=1)
                      Group Key: documentdb_api_catalog.bson_distinct_unwind(collection.document, $3)
-                     Batches: 1  Memory Usage: 37kB
+                     Batches: 1  Memory Usage: 24kB
                      ->  ProjectSet (actual rows=2 loops=1)
                            ->  Result (actual rows=2 loops=1)
                                  One-Time Filter: documentdb_api_catalog.bson_true_match($4)
-                                 ->  Bitmap Heap Scan on documents_6637_6630098 collection (actual rows=2 loops=1)
-                                       Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } }, { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } ] }'::documentdb_core.bson)
-                                       Heap Blocks: exact=1
-                                       ->  Bitmap Index Scan on ref_idx (actual rows=2 loops=1)
-                                             Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } }, { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } ] }'::documentdb_core.bson)
-(19 rows)
+                                 ->  Index Scan using ref_idx on documents_6637_6630098 collection (actual rows=2 loops=1)
+                                       Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "b" : [ { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce6" }, "$db" : "db", "tt" : { "$numberInt" : "1" } }, { "$ref" : "distinct6", "$id" : { "$oid" : "147f000000c1de008ec19ce4" } } ] }'::documentdb_core.bson)
+(16 rows)
 
 commit;

@@ -12,3 +12,7 @@ s/^-[+-]{2,}$/------------------------------------------------------------------
 # Replace the values of the time system variables ($$NOW) with a constant
 s/\"sn\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"sn\" : NOW_SYS_VARIABLE/g
 s/\"now\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"now\" : NOW_SYS_VARIABLE/g
+s/TTL job elapsed time: [+-]?[0-9]*\.?[0-9]+([eE][+-]?[0-9]+)?ms,/TTL job elapsed time:<redacted>/g
+s/expiry_cutoff=[0-9]*,/expiry_cutoff=<redacted>/g
+s/coord_combine_agg\('[0-9]+'/coord_combine_agg\('xxxx'/g
+s/worker_partial_agg\('[0-9]+'/coord_combine_agg\('xxxx'/g

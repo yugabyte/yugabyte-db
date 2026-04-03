@@ -13,13 +13,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.TableSpaceStructures;
+import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -27,11 +29,14 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -117,7 +122,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
       log.debug("Comprehensive prechecks are disabled, skipping.");
       return;
     }
-
+    // On the first try, we only want to check the nodes that are being added.
+    // On retry, some nodes might have transitioned into some other state.
+    Collection<NodeDetails> nodesToCheck =
+        isFirstTry() ? taskParams().nodeDetailsSet : universe.getNodes();
+    createCheckDuplicateInstances(universe, nodesToCheck);
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(taskParams().nodeDetailsSet);
     if (liveNodes.isEmpty()) {
       log.debug("No live nodes found, skipping comprehensive prechecks.");
@@ -330,9 +339,34 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (cluster.isGeoPartitioned() && cluster.userIntent.enableYSQL) {
-      // Currently we rely on user to modify partitions correctly after doing edit.
-      // So we don't check tablespace placement, only the existence.
-      createTablespacesTasks(cluster.getPartitions(), true);
+      boolean autoTablespaceUpdate =
+          confGetter.getGlobalConf(GlobalConfKeys.automaticTablespaceUpdate);
+      Universe oldUniverse = getUniverse();
+      Map<UUID, UniverseDefinitionTaskParams.PartitionInfo> oldPartitions =
+          oldUniverse.getCluster(cluster.uuid).getPartitions().stream()
+              .collect(Collectors.toMap(p -> p.getUuid(), p -> p));
+      List<UniverseDefinitionTaskParams.PartitionInfo> toMove = new ArrayList<>();
+      List<UniverseDefinitionTaskParams.PartitionInfo> newPartitions = new ArrayList<>();
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        UniverseDefinitionTaskParams.PartitionInfo old = oldPartitions.get(partition.getUuid());
+        if (old == null) {
+          newPartitions.add(partition);
+        } else if (autoTablespaceUpdate) {
+          TableSpaceStructures.TableSpaceInfo tableSpaceInfo =
+              TableSpaceUtil.partitionToTablespace(partition);
+          TableSpaceStructures.TableSpaceInfo oldTableSpaceInfo =
+              TableSpaceUtil.partitionToTablespace(old);
+          if (!tableSpaceInfo.equals(oldTableSpaceInfo)) {
+            toMove.add(partition);
+          }
+        }
+      }
+      if (!newPartitions.isEmpty()) {
+        createTablespacesTasks(newPartitions, false);
+      }
+      if (!toMove.isEmpty()) {
+        createMoveTablesTasks(toMove);
+      }
     }
 
     if (!nodesToBeRemoved.isEmpty()) {
@@ -519,7 +553,12 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
           SubTaskGroupType.UpdatingGFlags,
           false,
           true,
-          (x) -> UniverseTaskParams.DEFAULT_SLEEP_AFTER_RESTART_MS);
+          (serverType) ->
+              serverType == ServerType.MASTER
+                  ? confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterMasterRestartMs)
+                  : confGetter.getConfForScope(
+                      getUniverse(), UniverseConfKeys.sleepAfterTServerRestartMs));
     }
   }
 

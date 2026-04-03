@@ -1,27 +1,10 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_distinct_pushdown.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
-\i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)'
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
@@ -33,8 +16,10 @@ INSERT INTO t (SELECT 2, i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 SET yb_enable_distinct_pushdown TO off;
 -- Do not pick Distinct Index Scan since the flag is off.
 -- XXX: Results may not be consistent (no explicit ordering).
-\set query 'SELECT DISTINCT r1 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                    QUERY PLAN                   
 ------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -51,8 +36,10 @@ SET yb_enable_distinct_pushdown TO off;
 -- Turn the flag back on.
 SET yb_enable_distinct_pushdown TO on;
 -- Pick Distinct Index Scan.
-\set query 'SELECT DISTINCT r1 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -67,8 +54,10 @@ SET yb_enable_distinct_pushdown TO on;
 (2 rows)
 
 -- Test a larger prefix.
-\set query 'SELECT DISTINCT r1, r2 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -90,8 +79,10 @@ SET yb_enable_distinct_pushdown TO on;
 --   a Distinct Index Scan can still help retrieve fewer rows from storage.
 -- Observe that this behavior deviates from ORDER BY where partial sorts
 --   are not useful but partial DISTINCT scans are still worth it.
-\set query 'SELECT DISTINCT r2 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=3 loops=1)
@@ -109,8 +100,10 @@ SET yb_enable_distinct_pushdown TO on;
 
 -- Limit clauses.
 -- Limit goes after DISTINCT (this includes the Unique node).
-\set query 'SELECT DISTINCT r1 FROM t LIMIT 2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t LIMIT 2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Limit (actual rows=2 loops=1)
@@ -129,8 +122,10 @@ SET yb_enable_distinct_pushdown TO on;
 -- Test floating point data.
 CREATE TABLE tr(r1 REAL, r2 REAL, PRIMARY KEY(r1 ASC, r2 ASC));
 INSERT INTO tr (SELECT 0.5, i FROM GENERATE_SERIES(1, 1000) AS i);
-\set query 'SELECT DISTINCT r1 FROM tr'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM tr;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -147,8 +142,10 @@ DROP TABLE tr;
 -- Test text data as well.
 CREATE TABLE ts(r1 TEXT, r2 TEXT, v TEXT, PRIMARY KEY(r1 ASC, r2 ASC));
 INSERT INTO ts (SELECT 'uniq', i::TEXT, 'value' FROM GENERATE_SERIES(1, 1000) AS i);
-\set query 'SELECT DISTINCT r1 FROM ts'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM ts;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -169,8 +166,10 @@ INSERT INTO vectors SELECT to_tsvector('simple', 'filler') FROM generate_series(
 CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 -- Avoid fetching primary key and fetch secondary key instead since
 --   there is already an LSM index on the primary key and LSM supports distinct index scan.
-\set query 'SELECT DISTINCT v FROM vectors'
-:explain1run1
+\set query ':P SELECT DISTINCT v FROM vectors;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                         QUERY PLAN                        
 ----------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -189,8 +188,10 @@ DROP INDEX igin;
 DROP TABLE vectors;
 -- Test distinct index scans in scenarios where user provides explicit ordering.
 -- Start off easy with forward and backward scans.
-\set query 'SELECT DISTINCT r1 FROM t ORDER BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t ORDER BY r1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -204,8 +205,10 @@ DROP TABLE vectors;
   2
 (2 rows)
 
-\set query 'SELECT DISTINCT r1 FROM t ORDER BY r1 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -220,8 +223,10 @@ DROP TABLE vectors;
 (2 rows)
 
 -- Now, try a larger prefix.
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -239,8 +244,10 @@ DROP TABLE vectors;
   2 |  2
 (6 rows)
 
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Unique (actual rows=6 loops=1)
@@ -261,8 +268,10 @@ DROP TABLE vectors;
 -- Now, we try only a subset of the prefix.
 -- Picking a Distinct Index Scan for such cases can still be useful since
 --   the storage layer retrieves and returns fewer rows overall.
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r2;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -290,8 +299,10 @@ DROP TABLE vectors;
 CREATE TABLE tm(r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 DESC, r2 ASC, r3 ASC));
 INSERT INTO tm (SELECT i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- Test both forward and backwards scans.
-\set query 'SELECT DISTINCT r1, r2 FROM tm'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM tm;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique (actual rows=3 loops=1)
@@ -307,8 +318,10 @@ INSERT INTO tm (SELECT i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 (3 rows)
 
 -- This is a backwards scan because of how the keys are ordered in the primary index.
-\set query 'SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Unique (actual rows=3 loops=1)
@@ -327,8 +340,10 @@ DROP TABLE tm;
 -- Aggregates.
 -- Unless the aggregate is pushed down into distinct index scan,
 -- cannot currently push down DISTINCT.
-\set query 'SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                       QUERY PLAN                      
 ------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -346,8 +361,10 @@ DROP TABLE tm;
 
 -- Window Funcs.
 -- Same reasoning applies to window funcs as well.
-\set query 'SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)

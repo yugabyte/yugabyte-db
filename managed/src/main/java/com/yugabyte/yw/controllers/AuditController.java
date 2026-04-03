@@ -2,8 +2,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -23,7 +21,6 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.libs.Json;
 import play.mvc.Result;
 
 @Api(value = "Audit", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
@@ -64,9 +61,7 @@ public class AuditController extends AuthenticatedController {
   public Result getTaskAudit(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Audit entry = auditService().getOrBadRequest(customerUUID, taskUUID);
-    JsonNode entryJson = Json.toJson(entry);
-    entryJson = RedactingService.applyRegexRedaction(entryJson);
-    return PlatformResults.withData(entryJson);
+    return PlatformResults.withData(entry);
   }
 
   /**

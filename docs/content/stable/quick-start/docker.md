@@ -9,6 +9,9 @@ aliases:
   - /stable/deploy/docker/docker-compose
 type: docs
 unversioned: true
+rightNav:
+  hideH3: true
+  hideH4: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -476,3 +479,8 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```-->
+
+## Next steps
+
+- [Explore YugabyteDB](/stable/explore/)
+- [Develop for YugabyteDB](/stable/develop/)

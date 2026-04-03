@@ -22,7 +22,7 @@
  */
 typedef enum NodeType
 {
-	/* Default value for NodeType */
+	/* Default setting assigned for NodeType */
 	NodeType_None = 0,
 
 	/* a non-leaf tree node

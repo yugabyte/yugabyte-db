@@ -46,6 +46,7 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
@@ -75,6 +76,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -85,6 +87,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
@@ -135,6 +138,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -381,6 +385,51 @@ public class OperatorUtils {
   }
 
   /**
+   * Adds a YBA resource ID annotation to the given Kubernetes resource metadata. Uses {@code edit}
+   * to atomically read the latest resource state from the server and apply the annotation. If the
+   * resource already has the annotation, no modification is made.
+   *
+   * @param resource The Kubernetes resource to annotate
+   * @param resourceId The UUID to store as the YBA resource ID annotation
+   */
+  public static <T extends HasMetadata> void maybeAddYbaResourceId(
+      T resource,
+      UUID resourceId,
+      MixedOperation<T, KubernetesResourceList<T>, Resource<T>> resourceClient) {
+    ObjectMeta metadata = resource.getMetadata();
+    if (metadata == null) {
+      throw new RuntimeException(String.format("Metadata is null for resource: %s", resource));
+    }
+    Map<String, String> annotations = metadata.getAnnotations();
+    if (annotations != null && annotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      return;
+    }
+    try {
+      resourceClient
+          .inNamespace(metadata.getNamespace())
+          .withName(metadata.getName())
+          .edit(
+              r -> {
+                ObjectMeta serverMeta = r.getMetadata();
+                Map<String, String> serverAnnotations = serverMeta.getAnnotations();
+                if (serverAnnotations != null
+                    && serverAnnotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+                  return r;
+                }
+                r.setMetadata(
+                    new ObjectMetaBuilder(serverMeta)
+                        .addToAnnotations(
+                            ResourceAnnotationKeys.YBA_RESOURCE_ID, resourceId.toString())
+                        .build());
+                return r;
+              });
+    } catch (KubernetesClientException e) {
+      log.warn(
+          "Failed to add YBA resource ID '{}' annotation to resource: {}", resourceId, resource, e);
+    }
+  }
+
+  /**
    * Checks if a Kubernetes resource has a YBA resource ID annotation.
    *
    * @param metadata The ObjectMeta from a Kubernetes resource
@@ -392,12 +441,10 @@ public class OperatorUtils {
 
   /*--- YBUniverse related help methods ---*/
 
-  public boolean shouldUpdatePrimaryCluster(Cluster currentCluster, YBUniverse newYbUniverse) {
+  public boolean shouldUpdatePrimaryCluster(
+      Cluster currentCluster, YBUniverse newYbUniverse, UserIntent incomingIntent) {
     UserIntent currentUserIntent = currentCluster.userIntent;
     int newNumNodes = newYbUniverse.getSpec().getNumNodes().intValue();
-    DeviceInfo newDeviceInfo = mapDeviceInfo(newYbUniverse.getSpec().getDeviceInfo());
-    DeviceInfo newMasterDeviceInfo =
-        mapMasterDeviceInfo(newYbUniverse.getSpec().getMasterDeviceInfo());
     K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
         toNodeResourceSpec(
             newYbUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
@@ -405,10 +452,7 @@ public class OperatorUtils {
         toNodeResourceSpec(
             newYbUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
     return !(currentUserIntent.numNodes == newNumNodes)
-        || checkifDeviceInfoChanged(
-            currentUserIntent.deviceInfo, newDeviceInfo.volumeSize.intValue())
-        || checkifDeviceInfoChanged(
-            currentUserIntent.masterDeviceInfo, newMasterDeviceInfo.volumeSize.intValue())
+        || checkIfDeviceInfoChanged(currentCluster, incomingIntent, newYbUniverse)
         || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
             currentCluster.placementInfo, newYbUniverse, false)
         || !currentUserIntent.masterK8SNodeResourceSpec.equals(newMasterK8SNodeResourceSpec)
@@ -427,17 +471,17 @@ public class OperatorUtils {
     return readReplicaClusterCount > 0 && !hasReadReplica;
   }
 
-  public boolean shouldUpdateReadReplica(Universe universe, YBUniverse ybUniverse) {
+  public boolean shouldUpdateReadReplica(
+      Universe universe, YBUniverse ybUniverse, UserIntent incomingIntent) {
     int readReplicaClusterCount = universe.getUniverseDetails().getReadOnlyClusters().size();
     boolean hasReadReplica = ybUniverse.getSpec().getReadReplica() != null;
     // No read replica exists or none requested
     if (readReplicaClusterCount == 0 || !hasReadReplica) {
       return false;
     } else {
-      UserIntent readReplicaUserIntent =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
-      PlacementInfo readReplicaPlacementInfo =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      Cluster readReplicaCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      UserIntent readReplicaUserIntent = readReplicaCluster.userIntent;
+      PlacementInfo readReplicaPlacementInfo = readReplicaCluster.placementInfo;
       K8SNodeResourceSpec newReadReplicaTserverK8SNodeResourceSpec =
           toNodeResourceSpec(
               ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
@@ -449,16 +493,58 @@ public class OperatorUtils {
               != ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue()
           || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
               readReplicaPlacementInfo, ybUniverse, true)
-          || checkifDeviceInfoChanged(
-              readReplicaUserIntent.deviceInfo,
-              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue())
+          || checkIfDeviceInfoChanged(readReplicaCluster, incomingIntent, ybUniverse)
           || !readReplicaUserIntent.tserverK8SNodeResourceSpec.equals(
               newReadReplicaTserverK8SNodeResourceSpec);
     }
   }
 
-  public boolean checkifDeviceInfoChanged(DeviceInfo oldDeviceInfo, int newVolumeSize) {
-    return !oldDeviceInfo.volumeSize.equals(newVolumeSize);
+  public boolean checkIfDeviceInfoChanged(
+      Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
+    if (ybUniverse.getSpec().getTserverVolume() != null
+        || ybUniverse.getSpec().getMasterVolume() != null) {
+      AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
+      if (!curCluster.userIntent.deviceInfo.equals(newIntent.deviceInfo)) {
+        deviceInfoChanged.set(true);
+      }
+      if (curCluster.clusterType != ClusterType.ASYNC) {
+        if (!curCluster.userIntent.masterDeviceInfo.equals(newIntent.masterDeviceInfo)) {
+          deviceInfoChanged.set(true);
+        }
+      }
+      curCluster
+          .placementInfo
+          .getAllAZUUIDs()
+          .forEach(
+              azUUID -> {
+                if (ybUniverse.getSpec().getTserverVolume() != null
+                    && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null) {
+                  DeviceInfo tsDeviceInfo = curCluster.userIntent.getDeviceInfoForAz(azUUID, false);
+                  deviceInfoChanged.set(
+                      deviceInfoChanged.get()
+                          || !tsDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, false)));
+                }
+                if (ybUniverse.getSpec().getMasterVolume() != null
+                    && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null) {
+                  DeviceInfo masterDeviceInfo =
+                      curCluster.userIntent.getDeviceInfoForAz(azUUID, true);
+                  deviceInfoChanged.set(
+                      deviceInfoChanged.get()
+                          || !masterDeviceInfo.equals(newIntent.getDeviceInfoForAz(azUUID, true)));
+                }
+              });
+      return deviceInfoChanged.get();
+    } else {
+      boolean tserverSizeChanged =
+          curCluster.userIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
+      boolean masterSizeChanged = false;
+      if (curCluster.clusterType != ClusterType.ASYNC) {
+        masterSizeChanged =
+            curCluster.userIntent.masterDeviceInfo.volumeSize
+                != newIntent.masterDeviceInfo.volumeSize;
+      }
+      return tserverSizeChanged || masterSizeChanged;
+    }
   }
 
   public String getKubernetesOverridesString(Object kubernetesOverrides) {
@@ -602,6 +688,96 @@ public class OperatorUtils {
     return di;
   }
 
+  /**
+   * Maps tserverVolume from CRD to DeviceInfo object. This is the new way to specify volume
+   * configuration, replacing deviceInfo.
+   *
+   * @param tserverVolume TserverVolume object from CRD spec
+   * @return DeviceInfo object or null if tserverVolume is null
+   */
+  public DeviceInfo mapTserverVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume) {
+    if (tserverVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = tserverVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = tserverVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = tserverVolume.getStorageClass();
+
+    return di;
+  }
+
+  /**
+   * Maps masterVolume from CRD to DeviceInfo object. This is the new way to specify volume
+   * configuration, replacing masterDeviceInfo.
+   *
+   * @param masterVolume MasterVolume object from CRD spec
+   * @return DeviceInfo object or null if masterVolume is null
+   */
+  public DeviceInfo mapMasterVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume masterVolume) {
+    if (masterVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = masterVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = masterVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = masterVolume.getStorageClass();
+
+    return di;
+  }
+
+  /**
+   * Maps read replica tserverVolume from CRD to DeviceInfo object. This is the new way to specify
+   * volume configuration for read replicas, replacing deviceInfo.
+   *
+   * @param tserverVolume TserverVolume object from read replica CRD spec
+   * @return DeviceInfo object or null if tserverVolume is null
+   */
+  public DeviceInfo mapReadReplicaTserverVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume tserverVolume) {
+    if (tserverVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = tserverVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = tserverVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = tserverVolume.getStorageClass();
+
+    return di;
+  }
+
   public <T> K8SNodeResourceSpec toNodeResourceSpec(
       T operatorNodeResourceSpec, Function<T, Double> cpuMapper, Function<T, Double> memoryMapper) {
     K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
@@ -630,12 +806,23 @@ public class OperatorUtils {
     return masterDeviceInfo;
   }
 
-  public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
-    return universeAndSpecMismatch(cust, u, ybUniverse, null);
+  public boolean universeAndSpecMismatch(
+      Customer cust,
+      Universe u,
+      YBUniverse ybUniverse,
+      UserIntent newPrimaryIntent,
+      UserIntent newReadReplicaIntent) {
+    return universeAndSpecMismatch(
+        cust, u, ybUniverse, newPrimaryIntent, newReadReplicaIntent, null);
   }
 
   public boolean universeAndSpecMismatch(
-      Customer cust, Universe u, YBUniverse ybUniverse, @Nullable TaskInfo prevTaskToRerun) {
+      Customer cust,
+      Universe u,
+      YBUniverse ybUniverse,
+      UserIntent newPrimaryIntent,
+      UserIntent newReadReplicaIntent,
+      @Nullable TaskInfo prevTaskToRerun) {
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
       throw new RuntimeException(
@@ -656,9 +843,20 @@ public class OperatorUtils {
     String incomingOverrides =
         getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
     String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
-    DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-    DeviceInfo incomingMasterDeviceInfo =
-        mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+    // Use new volume fields if any are present, otherwise fall back to old deviceInfo fields
+    // If tserverVolume or masterVolume is present, use new fields for both (mutual exclusivity)
+    DeviceInfo incomingDeviceInfo;
+    DeviceInfo incomingMasterDeviceInfo;
+    if (ybUniverse.getSpec().getTserverVolume() != null
+        || ybUniverse.getSpec().getMasterVolume() != null) {
+      // Use new volume fields
+      incomingDeviceInfo = mapTserverVolume(ybUniverse.getSpec().getTserverVolume());
+      incomingMasterDeviceInfo = mapMasterVolume(ybUniverse.getSpec().getMasterVolume());
+    } else {
+      // Use old deviceInfo fields
+      incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+      incomingMasterDeviceInfo = mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+    }
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
     Boolean pauseChangeRequired =
         ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
@@ -669,8 +867,9 @@ public class OperatorUtils {
         case EditKubernetesUniverse:
           UniverseDefinitionTaskParams prevTaskParams =
               Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
-          return shouldUpdatePrimaryCluster(u.getUniverseDetails().getPrimaryCluster(), ybUniverse)
-              || shouldUpdateReadReplica(u, ybUniverse);
+          return shouldUpdatePrimaryCluster(
+                  u.getUniverseDetails().getPrimaryCluster(), ybUniverse, newPrimaryIntent)
+              || shouldUpdateReadReplica(u, ybUniverse, newReadReplicaIntent);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -703,12 +902,13 @@ public class OperatorUtils {
     log.trace("gflags mismatch: {}", mismatch);
     mismatch =
         mismatch
-            || shouldUpdatePrimaryCluster(u.getUniverseDetails().getPrimaryCluster(), ybUniverse);
+            || shouldUpdatePrimaryCluster(
+                u.getUniverseDetails().getPrimaryCluster(), ybUniverse, newPrimaryIntent);
     log.trace("primary cluster mismatch: {}", mismatch);
     mismatch =
         mismatch || shouldAddReadReplica(u, ybUniverse) || shouldRemoveReadReplica(u, ybUniverse);
     log.trace("read replica count mismatch: {}", mismatch);
-    mismatch = mismatch || shouldUpdateReadReplica(u, ybUniverse);
+    mismatch = mismatch || shouldUpdateReadReplica(u, ybUniverse, newReadReplicaIntent);
     log.trace("read replica mismatch: {}", mismatch);
     mismatch =
         mismatch
@@ -718,6 +918,11 @@ public class OperatorUtils {
     log.trace("pause mismatch: {}", mismatch);
     mismatch = mismatch || isThrottleParamUpdate(u, ybUniverse);
     log.trace("throttle mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+                == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
+    log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1903,6 +2108,8 @@ public class OperatorUtils {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableExposingService
               == ExposingServiceState.EXPOSED);
       spec.setPaused(universe.getUniverseDetails().universePaused);
+      spec.setUseYbdbInbuiltYbc(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
 
       if (universe.getUniverseDetails().clusters.size() > 1) {
         List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -1921,7 +2128,8 @@ public class OperatorUtils {
           ReadReplica rr = new ReadReplica();
           rr.setNumNodes(Long.valueOf(firstReadReplica.userIntent.numNodes));
           rr.setReplicationFactor(Long.valueOf(firstReadReplica.userIntent.replicationFactor));
-          universeImporter.setReadReplicaDeviceInfo(rr, firstReadReplica);
+          universeImporter.setReadReplicaTserverVolume(rr, firstReadReplica);
+          universeImporter.setReadReplicaAzDeviceInfoOverrides(rr, firstReadReplica);
           universeImporter.setReadReplicaResourceSpecFromUniverse(rr, firstReadReplica);
           universeImporter.setReadReplicaPlacementInfo(rr, firstReadReplica);
           spec.setReadReplica(rr);
@@ -1941,17 +2149,20 @@ public class OperatorUtils {
       // Gflags
       universeImporter.setGflagsSpecFromUniverse(spec, universe);
 
-      // Device info
-      universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
+      // Volume configuration
+      universeImporter.setTserverVolumeSpecFromUniverse(spec, universe);
       universeImporter.setTserverResourceSpecFromUniverse(spec, universe);
       universeImporter.setMasterResourceSpecFromUniverse(spec, universe);
-      universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
+      universeImporter.setMasterVolumeSpecFromUniverse(spec, universe);
 
       // Ybc throttle parameters
       universeImporter.setYbcThrottleParametersSpecFromUniverse(spec, universe);
 
       // Kubernetes overrides
       universeImporter.setKubernetesOverridesSpecFromUniverse(spec, universe);
+
+      // UserIntent overrides
+      universeImporter.setAzDeviceInfoOverridesSpecFromUniverse(spec, universe);
 
       ybUniverse.setSpec(spec);
       YBUniverseStatus status = new YBUniverseStatus();

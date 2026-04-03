@@ -35,7 +35,10 @@
 
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/tserver/tserver_cgroup_manager.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/csv_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -69,6 +72,12 @@ DECLARE_bool(openssl_require_fips);
 DEPRECATE_FLAG(string, pg_proxy_bind_address, "02_2024");
 
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
+DEFINE_validator(postmaster_cgroup,
+    FLAG_DELAYED_COND_VALIDATOR(
+        _value.empty() || !yb::tserver::TServerCgroupManagementEnabled(),
+        "postmaster_cgroup cannot be set when tserver cgroup management is enabled "
+        "(enable_qos)"));
+
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
@@ -220,7 +229,8 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_locks_txn_locks_per_tablet, 200,
 DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
     "Delay in milliseconds between stages of online index build. For testing purposes.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 60 * 1000, // 5 min
+// 15 min
+DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 15 * 60 * 1000,
     "Timeout in milliseconds to wait for backends to reach desired catalog versions. The actual"
     " time spent may be longer than that by as much as master flag"
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
@@ -432,6 +442,16 @@ DEFINE_NEW_INSTALL_STRING_VALUE(ysql_auth_method, "scram-sha-256");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_ignore_bool_cond_for_legacy_estimate, false,
     "Ignore boolean condition for row count estimate in legacy cost model.");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_nonempty_ms, 1,  // 1 ms
+    "Time in milliseconds for which the notifications poller process waits before polling again "
+    "in case the last poll returned notifications.");
+DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_nonempty_ms, FLAG_GE_VALUE_VALIDATOR(0));
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_notifications_poll_sleep_duration_empty_ms, 100,  // 100 ms
+    "Time in milliseconds for which the notifications poller process waits before polling again "
+    "in case the last poll returned no notifications.");
+DEFINE_validator(ysql_yb_notifications_poll_sleep_duration_empty_ms, FLAG_GE_VALUE_VALIDATOR(0));
 
 DEFINE_NON_RUNTIME_string(pg_upgrade_working_dir, "",
     "Working directory for pg_upgrade. If empty, defaults to the pg_upgrade data directory.");
@@ -959,11 +979,18 @@ Status PgWrapper::Start() {
 
   rpc::SetOpenSSLEnv(&*proc_);
 
-  RETURN_NOT_OK(proc_->Start());
+#ifdef __linux__
   if (!FLAGS_postmaster_cgroup.empty()) {
-    std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";
-    proc_->AddPIDToCGroup(path, proc_->pid());
+    proc_->SetEnv("YB_PG_INITIAL_CGROUP", FLAGS_postmaster_cgroup);
+    proc_->SetEnv("YB_PG_CGROUP_MANAGEMENT", "0");
+  } else if (yb::tserver::TServerCgroupManagementEnabled()) {
+    // We are not in the root cgroup, but postgres should be started in the root cgroup so that
+    // it can find the per-database cgroup.
+    proc_->SetEnv("YB_PG_INITIAL_CGROUP", RootCgroup()->path());
+    proc_->SetEnv("YB_PG_CGROUP_MANAGEMENT", "1");
   }
+#endif
+  RETURN_NOT_OK(proc_->Start());
   LOG(INFO) << "PostgreSQL server running as pid " << proc_->pid();
   return Status::OK();
 }

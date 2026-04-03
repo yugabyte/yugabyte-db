@@ -1981,9 +1981,6 @@ drop table another;
 begin;
 create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
 alter table skip_wal_skip_rewrite_index alter c type varchar(20);
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 commit;
 -- We disallow changing table's row type if it's used for storage
 create table at_tab1 (a int, b text);
@@ -2126,10 +2123,9 @@ select conname, obj_description(oid, 'pg_constraint') as desc
 (3 rows)
 
 alter table at_partitioned alter column name type varchar(127);
-NOTICE:  index rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new index.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Note: these tests currently show the wrong behavior for comments :-(
+-- YB: In YB, the child indexes' comments are actually preserved, since the
+-- indexes were reused. We diverge from PG here.
 select relname,
   c.oid = oldoid as orig_oid,
   case relfilenode
@@ -2142,23 +2138,23 @@ select relname,
   from pg_class c left join old_oids using (relname)
   where relname like 'at_partitioned%'
   order by relname;
-           relname            | orig_oid | storage |     desc     
-------------------------------+----------+---------+--------------
+           relname            | orig_oid | storage |     desc      
+------------------------------+----------+---------+---------------
  at_partitioned               | t        | own     | 
  at_partitioned_0             | t        | own     | 
- at_partitioned_0_id_name_key | f        | own     | parent index
+ at_partitioned_0_id_name_key | t        | own     | child 0 index
  at_partitioned_1             | t        | own     | 
- at_partitioned_1_id_name_key | f        | own     | parent index
- at_partitioned_id_name_key   | f        | own     | parent index
+ at_partitioned_1_id_name_key | t        | own     | child 1 index
+ at_partitioned_id_name_key   | t        | own     | parent index
 (6 rows)
 
 select conname, obj_description(oid, 'pg_constraint') as desc
   from pg_constraint where conname like 'at_partitioned%'
   order by conname;
-           conname            |       desc        
-------------------------------+-------------------
- at_partitioned_0_id_name_key | 
- at_partitioned_1_id_name_key | 
+           conname            |        desc        
+------------------------------+--------------------
+ at_partitioned_0_id_name_key | child 0 constraint
+ at_partitioned_1_id_name_key | child 1 constraint
  at_partitioned_id_name_key   | parent constraint
 (3 rows)
 
@@ -2972,17 +2968,11 @@ SELECT conname as constraint, obj_description(oid, 'pg_constraint') as comment F
 -- one. Check do a dummy ALTER TABLE that doesn't change the datatype
 -- first, to test that no-op codepath, and another one that does.
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE int;
-NOTICE:  index rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new index.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN indexed_col SET DATA TYPE text;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int;
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
 NOTICE:  table rewrite may lead to inconsistencies
 DETAIL:  Concurrent DMLs may not be reflected in the new table.
@@ -3024,9 +3014,6 @@ COMMENT ON INDEX comment_test_child_fk IS 'Index backing the FOREIGN KEY of comm
 COMMENT ON CONSTRAINT comment_test_child_fk ON comment_test_child IS 'FOREIGN KEY constraint of comment_test_child';
 -- Change column type of parent
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE text;
-NOTICE:  table rewrite may lead to inconsistencies
-DETAIL:  Concurrent DMLs may not be reflected in the new table.
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE comment_test ALTER COLUMN id SET DATA TYPE int USING id::integer;
 ERROR:  foreign key constraint "comment_test_child_fk" cannot be implemented
 DETAIL:  Key columns "id" and "id" are of incompatible types: text and integer.

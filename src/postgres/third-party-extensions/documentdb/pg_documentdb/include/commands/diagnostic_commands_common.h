@@ -3,7 +3,7 @@
  *
  * include/commands/diagnostic_commands_common.h
  *
- * Common declarations of Mongo Diagnostic commands.
+ * Common declarations of Diagnostic commands.
  * These are used in diag command scenarios like CurrentOp, IndexStats, CollStats
  *
  *-------------------------------------------------------------------------
@@ -28,5 +28,11 @@ pgbson * RunWorkerDiagnosticLogic(pgbson *(*workerFunc)(void *state), void *stat
 #define ErrMsgLength 7
 #define ErrCodeKey "err_code"
 #define ErrCodeLength 8
+
+/*
+ * For Single node scenarios the nodeId always points to itself.
+ */
+#define SINGLE_NODE_ID 10000000000LL
+#define SINGLE_NODE_ID_STR "10000000000"
 
 #endif

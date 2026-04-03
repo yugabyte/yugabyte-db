@@ -191,6 +191,8 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
   public void onAdd(StorageConfig sc) {
     if (sc.getStatus() != null) {
       if (sc.getStatus().getResourceUUID() != null) {
+        OperatorUtils.maybeAddYbaResourceId(
+            sc, UUID.fromString(sc.getStatus().getResourceUUID()), resourceClient);
         log.info("Early return because Storage Config is already initialized");
         return;
       }
@@ -249,6 +251,7 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
 
       this.ccs.create(cc);
       configUUID = Objects.toString(cc.getConfigUUID());
+      OperatorUtils.maybeAddYbaResourceId(sc, cc.getConfigUUID(), resourceClient);
     } catch (Exception e) {
       log.info(
           "Failed adding storageconfig {} exception {}",

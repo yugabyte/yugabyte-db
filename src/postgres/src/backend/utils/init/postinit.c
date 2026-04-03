@@ -1338,6 +1338,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 */
 	MyDatabaseId = dboid;
 
+	if (IsYugaByteEnabled())
+		YBCSetupPgBackendCgroup(MyDatabaseId);
+
 	/*
 	 * Validate the internal relcache init connection.
 	 */
@@ -1387,12 +1390,19 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 			YbAshSetDatabaseId(MyDatabaseId);
 	}
 
+	/* YB: Set LCV cache version as sum of global and local LCV */
 	if (YBIsDBLogicalClientVersionMode())
 	{
-		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+		uint64_t	global_logical_client_version =
+			YbGetMasterLogicalClientVersion();
 
-		elog(DEBUG1, "logical_client_version = %d", logical_client_version);
-		YbSetLogicalClientCacheVersion(logical_client_version);
+		elog(DEBUG1,
+			 "global_logical_client_version = %" PRIu64
+			 ", sighup_logical_client_version = %" PRIu64,
+			 global_logical_client_version,
+			 yb_conn_mgr_sighup_logical_client_version);
+		YbSetLogicalClientCacheVersion(global_logical_client_version
+									   + yb_conn_mgr_sighup_logical_client_version);
 	}
 
 	/*
@@ -1669,12 +1679,17 @@ YbAuthPassthroughSetupGUCAndReport(void)
 
 	if (YBIsDBLogicalClientVersionMode())
 	{
-		int32_t		logical_client_version = YbGetMasterLogicalClientVersion();
+		uint64_t	global_logical_client_version =
+			YbGetMasterLogicalClientVersion();
 
-		elog(DEBUG1, "set logical_client_version to %d",
-			 logical_client_version);
+		elog(DEBUG1,
+			"global_logical_client_version = %" PRIu64
+			", sighup_logical_client_version = %" PRIu64,
+			global_logical_client_version,
+			yb_conn_mgr_sighup_logical_client_version);
 		YbResetLogicalClientCacheVersion();
-		YbSetLogicalClientCacheVersion(logical_client_version);
+		YbSetLogicalClientCacheVersion(global_logical_client_version
+									   + yb_conn_mgr_sighup_logical_client_version);
 		YbSendLogicalClientCacheVersionToFrontend();
 	}
 

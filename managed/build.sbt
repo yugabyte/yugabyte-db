@@ -231,6 +231,12 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-resourcemanager" % "1.80.0",
   "com.google.cloud" % "google-cloud-logging" % "3.23.7",
   "com.google.oauth-client" % "google-oauth-client" % "1.35.0",
+  "com.oracle.oci.sdk" % "oci-java-sdk-common" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2", 
+  "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
@@ -278,7 +284,7 @@ libraryDependencies ++= Seq(
   "io.grpc" % "grpc-inprocess" % "1.67.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
-  "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
+  "com.yugabyte" % "yba-client-v2" % "1.0.0" % Test,
 )
 
 // Clear default resolvers.
@@ -683,6 +689,7 @@ lazy val javagen = project.in(file("client/java"))
     openApiGenerateApiTests := SettingDisabled,
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config.json",
+    version := "1.0.0",
     target := file("client/java/target/v1"),
   )
 
@@ -697,6 +704,7 @@ lazy val javaGenV2Client = project.in(file("client/java"))
     openApiValidateSpec := SettingDisabled,
     openApiConfigFile := "client/java/openapi-java-config-v2.json",
     openApiGlobalProperties += ("skipFormModel" -> "false"),
+    version := "1.0.0",
     target := file("client/java/target/v2"),
   )
 
@@ -1001,8 +1009,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.110-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b1"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.114-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.4-b2"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b35"
 
 libraryDependencies ++= Seq(
@@ -1014,6 +1022,7 @@ libraryDependencies ++= Seq(
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The

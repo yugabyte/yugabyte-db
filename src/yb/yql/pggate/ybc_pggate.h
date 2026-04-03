@@ -50,6 +50,8 @@ YbcStatus YBCInitPgGate(
     const YbcPgInitPostgresInfo *init_postgres_info, YbcPgAshConfig* ash_config,
     YbcPgExecStatsState *session_stats, bool is_binary_upgrade);
 
+void YBCSetupPgBackendCgroup(YbcPgOid dboid);
+
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -530,8 +532,8 @@ YbcStatus YbPgDmlAppendColumnRef(
 //     of the same allocated statement.
 //
 //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
-//   - BindColumn() can only be used for primary-key columns.
-//   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+//   - BindColumn() can only be used for key columns.
+//   - This bind-column function is used to bind the key column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
 //
@@ -604,6 +606,15 @@ YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_coun
 
 // This function returns the tuple id (ybctid) of a Postgres tuple.
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *ybctid);
+
+// Decode primary key column values by calling DecodePKColumnsFromBasectid.
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs);
 
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
@@ -765,6 +776,7 @@ YbcStatus YBCPgActiveTransactions(YbcPgSessionTxnInfo *infos, size_t num_infos);
 bool YBCPgIsDdlMode();
 bool YBCPgIsDdlModeWithRegularTransactionBlock();
 bool YBCCurrentTransactionUsesFastPath();
+bool YBCIsLegacyModeForCatalogOps();
 
 // System validation -------------------------------------------------------------------------------
 // Validate whether placement information is theoretically valid. If check_satisfiable is true,
@@ -1088,9 +1100,11 @@ YbcStatus YBCQueryAutoAnalyze(
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle);
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle);
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values);
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query);
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle);
 bool YBCPgGlobalViewReadIsEof(YbcPgGlobalViewRead handle);
 

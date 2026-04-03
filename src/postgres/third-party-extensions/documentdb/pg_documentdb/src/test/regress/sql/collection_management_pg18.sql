@@ -1,0 +1,1 @@
+\i sql/collection_management.sql

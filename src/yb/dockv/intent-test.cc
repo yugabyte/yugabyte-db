@@ -15,6 +15,11 @@
 
 #include "yb/dockv/intent.h"
 
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/uuid.h"
+
 namespace yb::dockv {
 
 TEST(IntentTest, MakeWeak) {
@@ -45,6 +50,49 @@ TEST(IntentTest, MakeWeak) {
   ASSERT_EQ(kWeakReadWriteSet, MakeWeak(kStrongReadWriteSet | kWeakReadSet));
   ASSERT_EQ(kWeakReadWriteSet, MakeWeak(kStrongReadWriteSet | kWeakWriteSet));
   ASSERT_EQ(kWeakReadWriteSet, MakeWeak(kStrongReadWriteSet | kWeakReadWriteSet));
+}
+
+TEST(IntentTest, IsTopLevelIntentKey) {
+  const auto cotable_id = Uuid::Generate();
+  const ColocationId colocation_id = 0x42;
+
+  // Top-level keys (no hash/range components) should be recognized.
+  EXPECT_TRUE(IsTopLevelIntentKey(DocKey().Encode().AsSlice()));
+  EXPECT_TRUE(IsTopLevelIntentKey(DocKey(cotable_id).Encode().AsSlice()));
+  EXPECT_TRUE(IsTopLevelIntentKey(DocKey(colocation_id).Encode().AsSlice()));
+
+  const KeyEntryValues hash_vals({KeyEntryValue::Int32(1)});
+  const KeyEntryValues range_vals({KeyEntryValue::Int32(2)});
+
+  // Regular keys with hash/range components are not top-level.
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(0x1234, hash_vals).Encode().AsSlice()));
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(range_vals).Encode().AsSlice()));
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(0x1234, hash_vals, range_vals).Encode().AsSlice()));
+
+  // Cotable keys with hash/range components are not top-level.
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(cotable_id, 0x1234, hash_vals).Encode().AsSlice()));
+  {
+    DocKey key(range_vals);
+    key.set_cotable_id(cotable_id);
+    EXPECT_FALSE(IsTopLevelIntentKey(key.Encode().AsSlice()));
+  }
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(cotable_id, 0x1234, hash_vals, range_vals).Encode().AsSlice()));
+
+  // Colocated keys with hash/range components are not top-level.
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(colocation_id, 0x1234, hash_vals).Encode().AsSlice()));
+  {
+    DocKey key(range_vals);
+    key.set_colocation_id(colocation_id);
+    EXPECT_FALSE(IsTopLevelIntentKey(key.Encode().AsSlice()));
+  }
+  EXPECT_FALSE(IsTopLevelIntentKey(
+      DocKey(colocation_id, 0x1234, hash_vals, range_vals).Encode().AsSlice()));
 }
 
 } // namespace yb::dockv

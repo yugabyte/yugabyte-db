@@ -95,6 +95,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_auto_flags_manager.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
@@ -261,6 +262,7 @@ DEFINE_test_flag(int32, delay_set_catalog_version_table_mode_count, 0,
     "Delay set catalog version table mode by this many times of heartbeat responses "
     "after tserver starts");
 
+DECLARE_bool(enable_qos);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint64(ysql_lease_refresher_rpc_timeout_ms);
@@ -377,7 +379,12 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       xcluster_context_(new TserverXClusterContext()),
       object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
       object_lock_shared_state_manager_(
-          new docdb::ObjectLockSharedStateManager(object_lock_tracker_)) {
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_))
+#ifdef __linux__
+      ,
+      cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)
+#endif
+      {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_ysql_enable_db_catalog_version_mode) {
@@ -840,10 +847,14 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 }
 
 Status TabletServer::RestartPG() const {
-  if (pg_restarter_) {
-    return pg_restarter_();
+  if (!pg_restarter_) {
+    return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
   }
-  return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+  RETURN_NOT_OK(pg_restarter_());
+  if (!conn_manager_restarter_) {
+    return Status::OK();
+  }
+  return conn_manager_restarter_();
 }
 
 Status TabletServer::KillPg() const {
@@ -2273,6 +2284,10 @@ void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restar
 
 void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
   pg_killer_ = std::move(killer);
+}
+
+void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)> restarter) {
+  conn_manager_restarter_ = std::move(restarter);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {

@@ -223,9 +223,9 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 
 -- create unique index fails for wildcard.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"f.$**": 1}, "name": "my_idx3", "unique": 1.0}]}', true);
-ERROR:  Error in specification { "key" : { "f.$**" : 1 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+ERROR:  Error in specification { "key" : { "f.$**" : 1 }, "name" : "my_idx3", "unique" : 1.0 }:Index type 'wildcard' does not support the unique option
 SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"$**": 1}, "wildcardProjection": { "f.g": 0 }, "name": "my_idx3", "unique": 1.0}]}', true);
-ERROR:  Error in specification { "key" : { "$**" : 1 }, "wildcardProjection" : { "f.g" : 0 }, "name" : "my_idx3", "unique" : 1.0 } :: caused by :: Index type 'wildcard' does not support the unique option
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "wildcardProjection" : { "f.g" : 0 }, "name" : "my_idx3", "unique" : 1.0 }:Index type 'wildcard' does not support the unique option
 -- test for sharded
 SELECT documentdb_api.insert_one('db','queryuniqueindexsharded','{"_id":"1", "a": { "b": 1 }, "d": 1 }', NULL);
 NOTICE:  creating collection
@@ -350,13 +350,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5607" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "e" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=e, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -484,13 +483,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -504,13 +502,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5610" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -726,13 +723,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -746,13 +742,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5611" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "key1" : { "$numberInt" : "1" }, "key2" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=key1, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=key2, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -838,13 +833,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -858,13 +852,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5612" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, true) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -932,13 +925,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -952,13 +944,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5613" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='2691', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=c, tl='2691', generatenotfoundterm='true') WITH =?=)
@@ -1027,13 +1018,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -1047,13 +1037,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5614" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)
@@ -1116,13 +1105,12 @@ CALL documentdb_api.drop_indexes('db', '{ "dropIndexes": "queryuniqueindex", "in
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
 Check constraints:
@@ -1136,13 +1124,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5600
-                   Table "documentdb_data.documents_5600"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5600"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5600" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5615" EXCLUDE USING documentdb_rum (generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }'::bson, false) bson_rum_unique_shard_path_ops WITH =#=, document bson_rum_single_path_ops (path=a, tl='60', generatenotfoundterm='true') WITH =?=, document bson_rum_single_path_ops (path=b, tl='60', generatenotfoundterm='true') WITH =?=)

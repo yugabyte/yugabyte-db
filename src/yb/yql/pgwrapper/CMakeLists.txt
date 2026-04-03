@@ -61,6 +61,15 @@ ADD_YB_LIBRARY(pq_utils
                SRCS ${PQ_UTILS_SRCS}
                DEPS ${PQ_UTILS_DEPS})
 
+set(YSQL_BINARY_RUNNER_SRCS
+    ysql_binary_runner.cc)
+set(YSQL_BINARY_RUNNER_LIBS
+    yb_util
+    yb_pgwrapper)
+ADD_YB_LIBRARY(yb_ysql_binary_runner
+               SRCS ${YSQL_BINARY_RUNNER_SRCS}
+               DEPS ${YSQL_BINARY_RUNNER_LIBS})
+
 set(PG_WRAPPER_TEST_BASE_SRCS
     libpq_test_base.cc
     pg_mini_test_base.cc
@@ -70,7 +79,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_ddl_atomicity_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
-    yb_client_test_util)
+    yb_client_test_util
+    yb_ysql_binary_runner)
 ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
@@ -109,15 +119,18 @@ ADD_YB_LIBRARY(ysql_upgrade
 
 set(YB_TEST_LINK_LIBS
     yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils geo_transactions_test_base
-    pg_locks_test_base rocksdb_tools yb-backup-test_base
+    pg_locks_test_base rocksdb_tools yb-backup-test_base yb-tserver_util
     ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(clockbound_clock-test)
 ADD_YB_TEST(colocation-test)
 ADD_YB_TEST(create_abort-test)
+ADD_YB_TEST(dist_trace-test)
+YB_TEST_TARGET_LINK_LIBRARIES(dist_trace-test opentelemetry_proto)
 ADD_YB_TEST(geo_transactions-test)
 ADD_YB_TEST(geo_transactions_promotion-test)
+ADD_YB_TEST(libpq_utils-test)
 ADD_YB_TEST(pg_alter_add_column_default-test)
 ADD_YB_TEST(pg_analyze-test)
 ADD_YB_TEST(pg_analyze_read_time-test)
@@ -127,11 +140,13 @@ ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_misc_conflicts-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_call_home-test)
 ADD_YB_TEST(pg_cancel_transaction-test)
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_catalog_snapshot_too_old-test)
 ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_cbo_dependent_flags-test)
+ADD_YB_TEST(pg_cgroups-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_concurrent_ddls-test)
 ADD_YB_TEST(pg_conn-test)

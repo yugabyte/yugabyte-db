@@ -3,10 +3,13 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.operator.OperatorConfig;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -14,13 +17,17 @@ import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
+import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
@@ -28,12 +35,14 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -45,6 +54,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -59,12 +69,18 @@ public class CallHomeManager {
   @Inject private AlertService alertService;
   @Inject private AlertChannelService alertChannelService;
   @Inject private AlertDestinationService alertDestinationService;
+  @Inject private XClusterUniverseService xClusterUniverseService;
+  @Inject private MetricQueryHelper metricQueryHelper;
+  @Inject private UniverseTableHandler universeTableHandler;
 
   // include tasks from a day ago
   private static final Duration CALLHOME_TASK_PERIOD = Duration.ofDays(1);
 
   // include alerts from a day ago
   private static final Duration CALLHOME_ALERT_PERIOD = Duration.ofDays(1);
+
+  // include metrics from a day ago
+  private static final Duration CALLHOME_METRICS_RANGE = Duration.ofDays(1);
 
   // Get timestamp from clock to make testing easier
   Clock clock = Clock.systemUTC();
@@ -99,6 +115,18 @@ public class CallHomeManager {
   private enum CloudCredentialType {
     SPECIFY_ACCESS_KEY,
     USE_INSTANCE_ROLE
+  }
+
+  @Data
+  @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+  public static class UniverseDiagnostics {
+    private UUID universeUuid;
+    private String healthCheckLastStatus;
+    private String healthCheckLastTimestamp;
+    private JsonNode healthCheckData;
+    private Integer numDatabases;
+    private Integer numTables;
+    private Map<String, Double> universeMetrics;
   }
 
   @Inject
@@ -156,7 +184,34 @@ public class CallHomeManager {
     Set<UUID> universeUuids =
         universes.stream().map(u -> u.universeUUID).collect(Collectors.toSet());
 
-    payload.set("universes", Json.toJson(universes));
+    ArrayNode universesPayload = Json.newArray();
+    for (UniverseResp universeResp : universes) {
+      ObjectNode universeNode = (ObjectNode) Json.toJson(universeResp);
+
+      List<UUID> sourceConfigUuids =
+          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+              ? universeResp.universeDetails.delegate.xClusterInfo.getSourceXClusterConfigs()
+              : Collections.emptyList();
+
+      List<UUID> targetConfigUuids =
+          universeResp.universeDetails != null && universeResp.universeDetails.delegate != null
+              ? universeResp.universeDetails.delegate.xClusterInfo.getTargetXClusterConfigs()
+              : Collections.emptyList();
+
+      universeNode.put(
+          "is_xcluster_repl_configured",
+          !sourceConfigUuids.isEmpty() || !targetConfigUuids.isEmpty());
+      universeNode.put(
+          "is_xclusterDR_configured",
+          (universeResp.drConfigUuidsAsSource != null
+                  && !universeResp.drConfigUuidsAsSource.isEmpty())
+              || (universeResp.drConfigUuidsAsTarget != null
+                  && !universeResp.drConfigUuidsAsTarget.isEmpty()));
+      enrichUniverseXCluster(sourceConfigUuids, targetConfigUuids, universeNode);
+      universesPayload.add(universeNode);
+    }
+    payload.set("universes", universesPayload);
+    payload.set("universe_diagnostics", buildUniverseDiagnostics(c, universes));
     // Build provider details json
     ArrayNode providers = Json.newArray();
     Set<UUID> providerUuids = new HashSet<>();
@@ -352,5 +407,195 @@ public class CallHomeManager {
     Instant cutoff = clock.instant().minus(CALLHOME_ALERT_PERIOD);
     List<Alert> alerts = alertService.listByCustomerSince(c.getUuid(), Date.from(cutoff));
     payload.set("alert_list", Json.toJson(alerts));
+  }
+
+  private void enrichUniverseXCluster(
+      List<UUID> sourceConfigUuids, List<UUID> targetConfigUuids, ObjectNode universeNode) {
+
+    Set<UUID> allUuids = new HashSet<>();
+    allUuids.addAll(sourceConfigUuids);
+    allUuids.addAll(targetConfigUuids);
+
+    Map<UUID, XClusterConfig> configMap =
+        xClusterUniverseService.getXClusterConfigsByUuids(allUuids);
+
+    ArrayNode asSource = Json.newArray();
+    ArrayNode asTarget = Json.newArray();
+
+    for (UUID configUuid : sourceConfigUuids) {
+      XClusterConfig config = configMap.get(configUuid);
+      if (config != null) {
+        ObjectNode item = (ObjectNode) Json.toJson(config);
+        config.maybeGetDrConfig().ifPresent(dr -> item.set("dr_config", Json.toJson(dr)));
+        asSource.add(item);
+      }
+    }
+
+    for (UUID configUuid : targetConfigUuids) {
+      XClusterConfig config = configMap.get(configUuid);
+      if (config != null) {
+        ObjectNode item = (ObjectNode) Json.toJson(config);
+        config.maybeGetDrConfig().ifPresent(dr -> item.set("dr_config", Json.toJson(dr)));
+        asTarget.add(item);
+      }
+    }
+
+    ObjectNode xclusterSettings = Json.newObject();
+    xclusterSettings.set("asSource", asSource);
+    xclusterSettings.set("asTarget", asTarget);
+    universeNode.set("xclusterSettings", xclusterSettings);
+  }
+
+  private ArrayNode buildUniverseDiagnostics(Customer c, List<UniverseResp> universes) {
+    ArrayNode arr = Json.newArray();
+    for (UniverseResp universeResp : universes) {
+      UniverseDiagnostics diag = new UniverseDiagnostics();
+      diag.setUniverseUuid(universeResp.universeUUID);
+
+      String nodePrefix = universeResp.universeDetails.delegate.nodePrefix;
+
+      HealthCheck latest = HealthCheck.getLatest(universeResp.universeUUID);
+      if (latest == null) {
+        diag.setHealthCheckLastStatus("UNKNOWN");
+      } else {
+        HealthCheck.Details details = latest.getDetailsJson();
+        diag.setHealthCheckLastTimestamp(latest.getIdKey().checkTime.toInstant().toString());
+        if (details.getHasError()) {
+          diag.setHealthCheckLastStatus("ERROR");
+        } else if (details.getHasWarning()) {
+          diag.setHealthCheckLastStatus("WARNING");
+        } else {
+          diag.setHealthCheckLastStatus("OK");
+        }
+        if (details.getData() != null) {
+          diag.setHealthCheckData(Json.toJson(details.getData()));
+        }
+      }
+      boolean isK8s =
+          universeResp.universeDetails.delegate.getPrimaryCluster().userIntent.providerType
+              == CloudType.kubernetes;
+      Map<String, Double> metrics = getUniverseMetrics(c, nodePrefix, isK8s, clock.instant());
+      diag.setUniverseMetrics(metrics);
+
+      try {
+        int tableCount =
+            universeTableHandler
+                .listTables(c.getUuid(), universeResp.universeUUID, false, false, false, false)
+                .size();
+
+        int dbCount =
+            universeTableHandler
+                .listNamespaces(c.getUuid(), universeResp.universeUUID, false)
+                .size();
+
+        diag.setNumTables(tableCount);
+        diag.setNumDatabases(dbCount);
+      } catch (Exception e) {
+      }
+
+      arr.add(Json.toJson(diag));
+    }
+    return arr;
+  }
+
+  private Map<String, Double> getUniverseMetrics(
+      Customer customer, String nodePrefix, boolean isK8s, Instant now) {
+
+    MetricQueryParams params = new MetricQueryParams();
+    params.setNodePrefix(nodePrefix);
+    params.setStart(now.getEpochSecond());
+    params.setEnd(now.getEpochSecond());
+    params.setStep(CALLHOME_METRICS_RANGE.getSeconds());
+    params.setMetrics(
+        isK8s
+            ? List.of(
+                "container_cpu_usage",
+                "container_memory_usage",
+                "container_volume_stats",
+                "container_volume_max_usage",
+                "ysql_server_rpc_per_second",
+                "cql_server_rpc_per_second")
+            : List.of(
+                "cpu_usage",
+                "disk_usage",
+                "memory_usage",
+                "ysql_server_rpc_per_second",
+                "cql_server_rpc_per_second"));
+
+    Map<String, Double> result = new HashMap<>();
+    try {
+      JsonNode response = metricQueryHelper.query(customer, params);
+      for (JsonNode d : response.path(isK8s ? "container_cpu_usage" : "cpu_usage").path("data")) {
+        JsonNode y = d.path("y");
+        if (y.isArray() && y.size() > 0) {
+          String name = isK8s ? "total" : d.path("name").asText().toLowerCase();
+          result.put("cpu_" + name, Double.parseDouble(y.get(0).asText()));
+        }
+      }
+      double usedGb = 0, sizeGb = 0;
+      if (isK8s) {
+        for (JsonNode d : response.path("container_volume_stats").path("data")) {
+          usedGb = Double.parseDouble(d.path("y").get(0).asText());
+        }
+        for (JsonNode d : response.path("container_volume_max_usage").path("data")) {
+          sizeGb = Double.parseDouble(d.path("y").get(0).asText());
+        }
+      } else {
+        double freeGb = 0;
+        for (JsonNode d : response.path("disk_usage").path("data")) {
+          double val = Double.parseDouble(d.path("y").get(0).asText());
+          if ("free".equals(d.path("name").asText())) freeGb = val;
+          if ("size".equals(d.path("name").asText())) sizeGb = val;
+        }
+        usedGb = sizeGb - freeGb;
+      }
+      if (sizeGb > 0) {
+        result.put("disk_used_gb", usedGb);
+        result.put("disk_total_gb", sizeGb);
+        result.put("disk_usage_percent", (usedGb / sizeGb) * 100.0);
+      }
+
+      if (isK8s) {
+        JsonNode data = response.path("container_memory_usage").path("data");
+        if (data.size() > 0) {
+          result.put("memory_used_gb", Double.parseDouble(data.get(0).path("y").get(0).asText()));
+        }
+      } else {
+        for (JsonNode d : response.path("memory_usage").path("data")) {
+          double val = Double.parseDouble(d.path("y").get(0).asText());
+          String name = d.path("name").asText().toLowerCase();
+          result.put("memory_" + name + "_gb", val);
+        }
+      }
+
+      double ysqlRead = 0.0;
+      double ysqlWrite = 0.0;
+      for (JsonNode d : response.path("ysql_server_rpc_per_second").path("data")) {
+        double val = Double.parseDouble(d.path("y").get(0).asText());
+        if ("Select".equals(d.path("name").asText())) {
+          ysqlRead = val;
+        } else {
+          ysqlWrite += val;
+        }
+      }
+      result.put("ysql_read_ops", ysqlRead);
+      result.put("ysql_write_ops", ysqlWrite);
+
+      double ycqlRead = 0.0;
+      double ycqlWrite = 0.0;
+      for (JsonNode d : response.path("cql_server_rpc_per_second").path("data")) {
+        double val = Double.parseDouble(d.path("y").get(0).asText());
+        if ("Select".equals(d.path("name").asText())) {
+          ycqlRead = val;
+        } else {
+          ycqlWrite += val;
+        }
+      }
+      result.put("ycql_read_ops", ycqlRead);
+      result.put("ycql_write_ops", ycqlWrite);
+
+    } catch (Exception ex) {
+    }
+    return result;
   }
 }

@@ -125,7 +125,7 @@ const SlowQueriesComponent = () => {
   const [hideQueryAlert, setQueryAlert] = useState(localStorage.getItem('__yb_close_query_info__'));
 
   const handleRowSelect = (row, isSelected) => {
-    if (isSelected) {
+    if (isSelected && (row.queryid !== null && row.queryid !== undefined)) {
       setSelectedRow([row.queryid]);
     } else if (!isSelected && row.queryid === selectedRow[0]) {
       setSelectedRow([]);
@@ -140,8 +140,12 @@ const SlowQueriesComponent = () => {
     }
   }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getQueryStatement = (cell) => {
-    const truncatedText = cell.length > 200 ? `${cell.substring(0, 200)}...` : cell;
+  const getQueryStatement = (queryText) => {
+    if (!queryText) {
+      return '-';
+    }
+    const truncatedText =
+      queryText.length > 200 ? `${queryText.substring(0, 200)}...` : queryText;
     return (
       <div className="query-container">
         <Highlighter type="sql" text={truncatedText} element="pre" />
@@ -418,7 +422,7 @@ const SlowQueriesComponent = () => {
         queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
         queryType={QueryType.SLOW}
         isPg15Supported={isPg15Supported}
-        visible={selectedRow.length}
+        visible={selectedRow.length && selectedRow[0] !== undefined}
       />
     </div>
   );

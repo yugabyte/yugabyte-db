@@ -776,9 +776,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // new_tablet's partition should be the remainder of old_tablet's original partition.
   // This should only be used for transaction status tables, where the partition ranges
   // are not actually used.
-  void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
-                                        const dockv::Partition& partition,
-                                        const TabletInfoPtr& new_tablet);
+  Result<TabletInfo::WriteLock> AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
+                                                                 const dockv::Partition& partition,
+                                                                 const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
   Status ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
@@ -1334,6 +1334,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
 
   const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_id() const {
     return pb.unqualified_table_id();
+  }
+
+  const google::protobuf::RepeatedPtrField<std::string>& dropped_table_id() const {
+    return pb.dropped_table_id();
   }
 
   const NamespaceId& namespace_id() const {

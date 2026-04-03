@@ -443,7 +443,7 @@ SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pa
 SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pageSize => 100000, pipeline => '{ "": [{ "$match": { "_id": { "$gt": 2 }} }, { "$limit": 1 }, { "$addFields": { "c": "$a" }}]}');
                                                                                                 filtereddoc                                                                                                | docsize | continuationfiltered | persistconnection 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+---------+----------------------+-------------------
- { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "3" } ] } | 1200131 |                      | t
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "1" }, "ids" : [ { "$numberInt" : "3" } ] } | 1200131 |                      | f
                                                                                                                                                                                                            |         |                      | f
 (2 rows)
 
@@ -896,7 +896,7 @@ SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 6, pa
 ROLLBACK;
 -- test for errors when returnKey is set to true
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
-ERROR:  key returnKey is not supported yet
+ERROR:  The key returnKey is currently not supported
 -- test for no errors when returnKey is set to false
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "returnKey" : false, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
                                                            cursorpage                                                           
@@ -906,7 +906,7 @@ SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "
 
 -- test for errors when returnKey and showRecordId are set to true
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "filter" : { "title" : "a" }, "limit" : 1, "singleBatch" : true, "batchSize" : 1, "showRecordId": true, "returnKey" : true, "lsid" : { "id" : { "$binary" : { "base64": "apfUje6LTzKH9YfO3smIGA==", "subType" : "04" } } }, "$db" : "test" }');
-ERROR:  key showRecordId is not supported yet
+ERROR:  The key showRecordId is currently not supported
 -- test for ntoreturn in find command with unset documentdb.version
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies",  "limit" : 1,  "batchSize" : 1, "ntoreturn":1 ,"$db" : "test" }');
 ERROR:  'limit' or 'batchSize' fields can not be set with 'ntoreturn' field
@@ -928,6 +928,33 @@ SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.movies", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+-- GUC to change default batch size should be honored but should follow the 16MB limit
+BEGIN;
+set local documentdb.defaultCursorFirstPageBatchSize = 10;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_smalldoc_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+                                                               bson_dollar_project                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "ns" : "db.get_aggregation_cursor_smalldoc_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "10" } }
+(1 row)
+
+set local documentdb.defaultCursorFirstPageBatchSize = 5;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_smalldoc_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+                                                              bson_dollar_project                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "ns" : "db.get_aggregation_cursor_smalldoc_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "5" } }
+(1 row)
+
+set local documentdb.defaultCursorFirstPageBatchSize = 500;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1,  "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+                                                          bson_dollar_project                                                          
+---------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "ns" : "db.get_aggregation_cursor_test" }, "ok" : { "$numberDouble" : "1.0" }, "batchCount" : { "$numberInt" : "2" } }
+(1 row)
+
+END;
 -- testing with batchSize that doesn't drain
 -- first drain one time with a batchSize of 2 - this leaves a cursor state around
 SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pageSize => 1, pipeline => '{ "": [{ "$skip": 2 }]}');

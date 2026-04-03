@@ -125,6 +125,10 @@ DEPRECATE_FLAG(bool, cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, "
 DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
                  "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
 
+DEFINE_RUNTIME_PREVIEW_bool(cdcsdk_use_dropped_table_list_for_cleanup, false,
+    "When enabled, dropped tables are tracked via the dropped_table_id list in stream metadata "
+    "instead of using the DELETING_METADATA stream state.");
+
 DEFINE_test_flag(bool, cdcsdk_disable_deleted_stream_cleanup, false,
                  "When enabled, cleanup of deleted CDCSDK streams will be skipped.");
 
@@ -295,8 +299,12 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
       xcluster_manager_.RecordOutboundStream(stream, metadata.table_id(0));
     }
     if (ns) {
+      std::unordered_set<std::string> dropped_table_ids = FindDroppedTables(metadata.table_id());
       for (const auto& table_id : metadata.table_id()) {
-        catalog_manager_->cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
+        // Add to cdcsdk_tables_to_stream_map_ only if table_id is not present in dropped_table_ids.
+        if (dropped_table_ids.find(table_id) == dropped_table_ids.end()) {
+          catalog_manager_->cdcsdk_tables_to_stream_map_[table_id].insert(stream->StreamId());
+        }
       }
       if (metadata.has_cdcsdk_ysql_replication_slot_name()) {
         catalog_manager_->cdcsdk_replication_slots_to_stream_map_.insert_or_assign(
@@ -337,6 +345,26 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
   }
 
  private:
+  // Returns the set of table IDs from 'table_ids' that are dropped (i.e. table not found or has
+  // no tablets).
+  std::unordered_set<std::string> FindDroppedTables(
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids) const
+      REQUIRES(catalog_manager_->mutex_) {
+    std::unordered_set<std::string> dropped_tables;
+    for (const auto& tid : table_ids) {
+      auto table_info = catalog_manager_->GetTableInfoUnlocked(tid);
+      if (!table_info) {
+        dropped_tables.insert(tid);
+        continue;
+      }
+      auto tablets_result = table_info->GetTabletsIncludeInactive();
+      if (!tablets_result.ok() || tablets_result->empty()) {
+        dropped_tables.insert(tid);
+      }
+    }
+    return dropped_tables;
+  }
+
   CatalogManager* catalog_manager_;
   XClusterManager& xcluster_manager_;
 
@@ -598,6 +626,107 @@ Status CatalogManager::DropXClusterStreamsOfTables(const std::unordered_set<Tabl
   // Do not delete them here, just mark them as DELETING and the catalog manager background thread
   // will handle the deletion.
   return DropXReplStreams(streams, SysCDCStreamEntryPB::DELETING);
+}
+
+Status CatalogManager::HandleDroppedTablesForCDCSDKStreams(
+    const std::unordered_set<TableId>& table_ids) {
+  if (table_ids.empty()) {
+    return Status::OK();
+  }
+
+  // Collect candidate streams and the tables to be added in 'dropped_table_id' list while holding
+  // the mutex_, then release the mutex_ before taking per-stream write locks.
+  struct StreamAndDroppedTables {
+    CDCStreamInfoPtr stream_info;
+    std::unordered_set<TableId> tables_to_add;
+  };
+  std::vector<StreamAndDroppedTables> stream_with_dropped_tables;
+
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [_, stream_info] : cdc_stream_map_) {
+      std::unordered_set<TableId> tables_to_add_to_dropped_tables_list;
+      auto ltm = stream_info->LockForRead();
+      if (ltm->is_deleting() || ltm->namespace_id().empty()) {
+        continue;
+      }
+
+      for (const auto& dropped_table_id : table_ids) {
+        bool found_in_qualified =
+            std::find(ltm->table_id().begin(), ltm->table_id().end(), dropped_table_id) !=
+            ltm->table_id().end();
+        bool found_in_unqualified =
+            std::find(
+                ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end(),
+                dropped_table_id) != ltm->unqualified_table_id().end();
+
+        if (found_in_qualified || found_in_unqualified) {
+          tables_to_add_to_dropped_tables_list.insert(dropped_table_id);
+        }
+      }
+
+      if (!tables_to_add_to_dropped_tables_list.empty()) {
+        stream_with_dropped_tables.push_back(
+            {stream_info, std::move(tables_to_add_to_dropped_tables_list)});
+      }
+    }
+  }
+
+  if (!stream_with_dropped_tables.empty()) {
+    std::sort(
+        stream_with_dropped_tables.begin(), stream_with_dropped_tables.end(),
+        [](const auto& lhs, const auto& rhs) {
+          return lhs.stream_info->StreamId() < rhs.stream_info->StreamId();
+        });
+
+    std::vector<CDCStreamInfo::WriteLock> locks;
+    std::vector<CDCStreamInfo*> streams_to_update;
+
+    for (auto& [stream_info, tables_to_add_to_dropped_tables_list] : stream_with_dropped_tables) {
+      bool modified = false;
+      auto l = stream_info->LockForWrite();
+      for (const auto& dropped_table_id : tables_to_add_to_dropped_tables_list) {
+        bool already_in_dropped = std::find(
+                                      l->dropped_table_id().begin(), l->dropped_table_id().end(),
+                                      dropped_table_id) != l->dropped_table_id().end();
+
+        if (!already_in_dropped) {
+          l.mutable_data()->pb.add_dropped_table_id(dropped_table_id);
+          modified = true;
+          VLOG_WITH_FUNC(3) << "Added table " << dropped_table_id
+                            << " to dropped_table_id list of stream " << stream_info->StreamId();
+        }
+      }
+
+      if (modified) {
+        locks.push_back(std::move(l));
+        streams_to_update.push_back(stream_info.get());
+      }
+    }
+
+    if (!streams_to_update.empty()) {
+      RETURN_NOT_OK(CheckStatus(
+          sys_catalog_->Upsert(leader_ready_term(), streams_to_update),
+          "updating CDCSDK streams with dropped table IDs in sys-catalog"));
+      LOG(INFO) << "Successfully updated dropped_table_id list for CDCSDK streams "
+                << CDCStreamInfosAsString(streams_to_update)
+                << " for tables: " << AsString(table_ids);
+      for (auto& lock : locks) {
+        lock.Commit();
+      }
+    }
+  }
+
+  {
+    // Clearing the in-memory map cdcsdk_tables_to_stream_map_ after persisting the updated streams'
+    // metadata.
+    LockGuard lock(mutex_);
+    for (const auto& table_id : table_ids) {
+      cdcsdk_tables_to_stream_map_.erase(table_id);
+    }
+  }
+
+  return Status::OK();
 }
 
 Status CatalogManager::DropCDCSDKStreams(const std::unordered_set<TableId>& table_ids) {
@@ -1603,7 +1732,10 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream_info = entry.second;
-      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id) {
+      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
+          IsTableEligibleForCDCSDKStream(
+              table, table->LockForRead(), /*check_schema=*/true,
+              stream_info->IsTablesWithoutPrimaryKeyAllowed())) {
         streams.emplace_back(stream_info);
       }
     }
@@ -2292,9 +2424,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     return false;
   }
 
-  if (!table_info->IsUserTable(lock)) {
+  if (!(table_info->IsUserTable(lock) || (lock->namespace_name() == kYbSystemDbName &&
+                                          lock->name() == kPgYbNotificationsTableName))) {
     // Non-user tables like indexes, system tables etc should not be added as they are not
     // supported for streaming.
+    // System table yb_system.pg_yb_notifications is just like any other user table except that it
+    // is meant for YB's internal use for LISTEN/NOTIFY. Creating CDC streams on it is supported.
+    // Allow this as it is a prerequisite for LISTEN to work.
     return false;
   }
 
@@ -2733,8 +2869,10 @@ Status CatalogManager::GetDroppedTablesFromCDCSDKStream(
 
     // For the table dropped, GetTablets() will be empty.
     // For all other tables, GetTablets() will be non-empty.
-    for (const auto& tablet : tablets) {
-      tablets_with_streams->insert(tablet->tablet_id());
+    if (tablets_with_streams != nullptr) {
+      for (const auto& tablet : tablets) {
+        tablets_with_streams->insert(tablet->tablet_id());
+      }
     }
 
     if (tablets.size() == 0) {
@@ -2745,9 +2883,38 @@ Status CatalogManager::GetDroppedTablesFromCDCSDKStream(
   return Status::OK();
 }
 
+Status CatalogManager::GetTabletsForNonDroppedTables(
+    const std::unordered_set<TableId>& table_ids, const std::set<TableId>& dropped_tables,
+    std::set<TabletId>* tablets_with_streams) {
+  for (const auto& table_id : table_ids) {
+    // We only gather tablets for the tables that are not in the 'dropped_tables' list.
+    if (dropped_tables.contains(table_id)) {
+      continue;
+    }
+
+    TabletInfos tablets;
+    auto table_result = FindTableById(table_id);
+    if (table_result.ok()) {
+      tablets = VERIFY_RESULT((*table_result)->GetTabletsIncludeInactive());
+    }
+
+    // NOTE: Some of the tables (which are not in the 'dropped_tables' list) may have no tablets.
+    // Such tables might have gotten dropped. But we won't add them to the 'dropped_tables' list.
+    // Such tables will be handled when they appear in the 'dropped_table_ids' list in corresponding
+    // stream metadata in the next iteration of the background task.
+    for (const auto& tablet : tablets) {
+      tablets_with_streams->insert(tablet->tablet_id());
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::GetValidTabletsAndDroppedTablesForStream(
     const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
     std::set<TableId>* dropped_tables) {
+  DCHECK(dropped_tables != nullptr) << "GetValidTabletsAndDroppedTablesForStream() shouldn't "
+                                       "be called with a null dropped_tables pointer";
   std::unordered_set<TableId> qualified_tables;
   std::unordered_set<TableId> unqualified_tables;
   {
@@ -2761,14 +2928,31 @@ Status CatalogManager::GetValidTabletsAndDroppedTablesForStream(
         unqualified_tables.insert(table_id);
       }
     }
+
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup &&
+        stream_lock->pb.dropped_table_id_size() > 0) {
+      for (const auto& table_id : stream_lock->dropped_table_id()) {
+        dropped_tables->insert(table_id);
+      }
+    }
   }
 
-  RETURN_NOT_OK(
-      GetDroppedTablesFromCDCSDKStream(qualified_tables, tablets_with_streams, dropped_tables));
-
-  if (!unqualified_tables.empty()) {
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
     RETURN_NOT_OK(
-        GetDroppedTablesFromCDCSDKStream(unqualified_tables, tablets_with_streams, dropped_tables));
+        GetTabletsForNonDroppedTables(qualified_tables, *dropped_tables, tablets_with_streams));
+
+    if (!unqualified_tables.empty()) {
+      RETURN_NOT_OK(
+          GetTabletsForNonDroppedTables(unqualified_tables, *dropped_tables, tablets_with_streams));
+    }
+  } else {
+    RETURN_NOT_OK(
+        GetDroppedTablesFromCDCSDKStream(qualified_tables, tablets_with_streams, dropped_tables));
+
+    if (!unqualified_tables.empty()) {
+      RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
+          unqualified_tables, tablets_with_streams, dropped_tables));
+    }
   }
 
   return Status::OK();
@@ -2813,6 +2997,16 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
             ltm.mutable_data()->pb.mutable_replica_identity_map()->erase(table_id);
           }
         }
+
+        if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup &&
+            ltm->pb.dropped_table_id_size() > 0) {
+          auto dropped_table_id_iter =
+              std::find(ltm->dropped_table_id().begin(), ltm->dropped_table_id().end(), table_id);
+          if (dropped_table_id_iter != ltm->dropped_table_id().end()) {
+            need_to_update_stream = true;
+            ltm.mutable_data()->pb.mutable_dropped_table_id()->erase(dropped_table_id_iter);
+          }
+        }
       }
       if (need_to_update_stream) {
         streams_to_update.push_back(cdc_stream_info);
@@ -2825,7 +3019,6 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
     }
   }
 
-  // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
   RETURN_ACTION_NOT_OK(
       sys_catalog_->Upsert(epoch, streams_to_update),
       "Updating CDC streams in system catalog");
@@ -2836,11 +3029,121 @@ Status CatalogManager::CleanupCDCSDKDroppedTablesFromStreamInfo(
   return Status::OK();
 }
 
+Result<std::vector<CDCStreamInfoPtr>> CatalogManager::GetCDCSDKStreamsToCleanMetadata() {
+  std::vector<CDCStreamInfoPtr> streams_to_clean;
+  std::vector<CDCStreamInfoPtr> streams_with_deleting_metadata_state;
+  {
+    SharedLock lock(mutex_);
+    for (const auto& [_, stream_info] : cdc_stream_map_) {
+      auto ltm = stream_info->LockForRead();
+      if (ltm->pb.dropped_table_id_size() > 0) {
+        VLOG_WITH_FUNC(2) << "Stream " << stream_info->StreamId() << " has dropped_table_id list";
+        streams_to_clean.push_back(stream_info);
+      }
+      if (ltm->is_deleting_metadata()) {
+        VLOG_WITH_FUNC(2) << "Stream " << stream_info->StreamId()
+                          << " is in DELETING_METADATA state";
+        streams_with_deleting_metadata_state.push_back(stream_info);
+      }
+    }
+  }
+
+  // If the flag is not set, we will be using old mechanism of streams' metadata cleanup which
+  // relies on stream state being DELETING_METADATA. So only need to return streams with
+  // DELETING_METADATA state.
+  if (!FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+    return streams_with_deleting_metadata_state;
+  }
+
+  // If we reach here, we are using the new mechanism of streams' metadata cleanup which relies on
+  // dropped_table_id list of streams' metadata. So here we will populate the dropped_table_id list
+  // for (old) streams with DELETING_METADATA state. Such streams will then be moved to ACTIVE
+  // state. This, thus, will be a one time operation for all (old) streams with DELETING_METADATA
+  // state.
+
+  if (streams_with_deleting_metadata_state.empty()) {
+    return streams_to_clean;
+  }
+
+  TEST_SYNC_POINT(
+      "GetCDCSDKStreamsToCleanMetadata::AfterFilteringStreamsWithDeletingMetadataState");
+  TEST_SYNC_POINT(
+      "GetCDCSDKStreamsToCleanMetadata::BeforeProcessingStreamsWithDeletingMetadataState");
+
+  std::vector<CDCStreamInfo::WriteLock> locks;
+  std::vector<CDCStreamInfo*> streams_to_update;
+  locks.reserve(streams_with_deleting_metadata_state.size());
+  streams_to_update.reserve(streams_with_deleting_metadata_state.size());
+
+  for (const auto& stream_info : streams_with_deleting_metadata_state) {
+    auto ltm = stream_info->LockForWrite();
+    // If the stream is not in DELETING_METADATA state now, then it means that meanwhile some other
+    // workflow ran which changed the stream state. In such case, we won't process this stream
+    // further for populating dropped_table_id list and overwriting its state to ACTIVE.
+    if (!ltm->is_deleting_metadata()) {
+      VLOG_WITH_FUNC(3) << "Stream " << stream_info->StreamId()
+                        << " is not in DELETING_METADATA state now. Skipping it for populating "
+                           "dropped_table_id list and overwriting its state to ACTIVE.";
+      continue;
+    }
+
+    std::set<TableId> dropped_tables;
+    int64_t initial_dropped_table_id_count = ltm->pb.dropped_table_id_size();
+    if (initial_dropped_table_id_count > 0) {
+      dropped_tables.insert(ltm->dropped_table_id().begin(), ltm->dropped_table_id().end());
+    }
+
+    // Find dropped tables from both qualified and unqualified lists.
+    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
+        std::unordered_set<TableId>(ltm->table_id().begin(), ltm->table_id().end()),
+        nullptr /* tablets_with_streams */, &dropped_tables));
+    RETURN_NOT_OK(GetDroppedTablesFromCDCSDKStream(
+        std::unordered_set<TableId>(
+            ltm->unqualified_table_id().begin(), ltm->unqualified_table_id().end()),
+        nullptr /* tablets_with_streams */, &dropped_tables));
+
+    // Replace the dropped_table_id list with the complete set.
+    ltm.mutable_data()->pb.clear_dropped_table_id();
+    for (const auto& table_id : dropped_tables) {
+      ltm.mutable_data()->pb.add_dropped_table_id(table_id);
+      VLOG_WITH_FUNC(3) << "Table " << table_id << " added in dropped_table_id list of stream "
+                        << stream_info->StreamId() << " with DELETING_METADATA state";
+    }
+
+    // Transition from DELETING_METADATA to ACTIVE since we will now be using dropped_table_id
+    // list to track dropped tables instead of the stream state.
+    ltm.mutable_data()->pb.set_state(SysCDCStreamEntryPB::ACTIVE);
+
+    int64_t final_dropped_table_id_count = ltm->pb.dropped_table_id_size();
+    if (final_dropped_table_id_count > initial_dropped_table_id_count) {
+      streams_to_clean.push_back(stream_info);
+    }
+
+    locks.push_back(std::move(ltm));
+    streams_to_update.push_back(stream_info.get());
+  }
+
+  if (!streams_to_update.empty()) {
+    RETURN_NOT_OK(CheckStatus(
+        sys_catalog_->Upsert(leader_ready_term(), streams_to_update),
+        "updating dropped_table_id list for CDCSDK streams with DELETING_METADATA state in "
+        "sys-catalog"));
+    VLOG_WITH_FUNC(3) << "Successfully updated dropped_table_id list for CDCSDK streams with "
+                         "DELETING_METADATA state: "
+                      << CDCStreamInfosAsString(streams_to_update);
+    for (auto& lock : locks) {
+      lock.Commit();
+    }
+  }
+
+  TEST_SYNC_POINT(
+      "GetCDCSDKStreamsToCleanMetadata::AfterProcessingStreamsWithDeletingMetadataState");
+
+  return streams_to_clean;
+}
+
 Status CatalogManager::CleanUpCDCSDKStreamsMetadata(const LeaderEpoch& epoch) {
-  // DELETING_METADATA special state is used by CDCSDK, to do CDCSDK streams metadata cleanup from
-  // cache as well as from the system catalog for the drop table scenario.
-  auto streams =
-      VERIFY_RESULT(FindXReplStreamsMarkedForDeletion(SysCDCStreamEntryPB::DELETING_METADATA));
+  std::vector<CDCStreamInfoPtr> streams = VERIFY_RESULT(GetCDCSDKStreamsToCleanMetadata());
   if (streams.empty()) {
     return Status::OK();
   }

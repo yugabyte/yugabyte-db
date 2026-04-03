@@ -142,10 +142,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
 
-  void UpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
-                                       UpdateTransactionStatusLocationResponsePB* resp,
-                                       rpc::RpcContext context) override;
-
   void UpdateTransactionWaitingForStatus(
       const UpdateTransactionWaitingForStatusRequestPB* req,
       UpdateTransactionWaitingForStatusResponsePB* resp,
@@ -273,6 +269,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
   Result<ConnectivityStateResponsePB> ConnectivityState(
       const ConnectivityStateRequestPB& req, CoarseTimePoint deadline) override;
 
+  void CollectYsqlCallHomeStats(
+      const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void Shutdown() override;
 
  private:
@@ -285,10 +285,6 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
     tserver::ReadResponseMsg* resp) override;
 
   Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
-
-  Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
-                                               UpdateTransactionStatusLocationResponsePB* resp,
-                                               std::shared_ptr<rpc::RpcContext> context);
 
   Status CheckLocalLeaseEpoch(std::optional<uint64_t> recipient_lease_epoch);
 

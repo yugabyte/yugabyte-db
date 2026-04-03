@@ -86,8 +86,7 @@ public class BackupPreflightValidate extends AbstractTaskBase {
           if (e.getMessage().contains(PRECHECK_FAILED_MSG)) {
             throw e;
           } else {
-            log.error("Error while running NFS precheck on universe: {}", universe.getName());
-            e.printStackTrace();
+            log.error("Error while running NFS precheck on universe: {}", universe.getName(), e);
           }
         }
       }

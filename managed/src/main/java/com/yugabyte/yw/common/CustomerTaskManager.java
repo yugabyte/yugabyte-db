@@ -43,6 +43,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
@@ -395,6 +396,7 @@ public class CustomerTaskManager {
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
+              + "AND ti.task_state != 'Paused' "
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
@@ -927,6 +929,9 @@ public class CustomerTaskManager {
         }
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
+        break;
+      case ConfigureExportTelemetryConfig:
+        taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

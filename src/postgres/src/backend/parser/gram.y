@@ -1041,13 +1041,13 @@ stmt:
 			| AlterDefaultPrivilegesStmt
 			| AlterDomainStmt
 			| AlterEnumStmt
-			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", true); }
-			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", true); }
+			| AlterExtensionStmt { parser_ybc_beta_feature(@1, "extension", false); }
+			| AlterExtensionContentsStmt { parser_ybc_beta_feature(@1, "extension", false); }
 			| AlterFdwStmt
 			| AlterForeignServerStmt
 			| AlterFunctionStmt
 			| AlterGroupStmt
-			| AlterObjectDependsStmt { parser_ybc_not_support(@1, "This statement"); }
+			| AlterObjectDependsStmt { parser_ybc_beta_feature(@1, "extension", false); }
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterOperatorStmt
@@ -9508,7 +9508,6 @@ AlterFunctionStmt:
 				}
 			| ALTER PROCEDURE function_with_argtypes alterfunc_opt_list opt_restrict
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER PROCEDURE", 2717);
 					AlterFunctionStmt *n = makeNode(AlterFunctionStmt);
 
 					n->objtype = OBJECT_PROCEDURE;
@@ -9518,7 +9517,6 @@ AlterFunctionStmt:
 				}
 			| ALTER ROUTINE function_with_argtypes alterfunc_opt_list opt_restrict
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER ROUTINE", 2717);
 					AlterFunctionStmt *n = makeNode(AlterFunctionStmt);
 
 					n->objtype = OBJECT_ROUTINE;
@@ -10152,7 +10150,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER PROCEDURE function_with_argtypes RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER PROCEDURE", 2717);
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_PROCEDURE;
@@ -10173,7 +10170,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER ROUTINE function_with_argtypes RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER ROUTINE", 2717);
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_ROUTINE;
@@ -10639,7 +10635,6 @@ AlterObjectDependsStmt:
 				}
 			| ALTER PROCEDURE function_with_argtypes opt_no DEPENDS ON EXTENSION name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER PROCEDURE DEPENDS ON EXTENSION", 2717);
 					AlterObjectDependsStmt *n = makeNode(AlterObjectDependsStmt);
 
 					n->objectType = OBJECT_PROCEDURE;
@@ -10650,7 +10645,6 @@ AlterObjectDependsStmt:
 				}
 			| ALTER ROUTINE function_with_argtypes opt_no DEPENDS ON EXTENSION name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER ROUTINE DEPENDS ON EXTENSION", 2717);
 					AlterObjectDependsStmt *n = makeNode(AlterObjectDependsStmt);
 
 					n->objectType = OBJECT_ROUTINE;
@@ -10708,7 +10702,6 @@ opt_no:		NO				{ $$ = true; }
 AlterObjectSchemaStmt:
 			ALTER AGGREGATE aggregate_with_argtypes SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER AGGREGATE SET SCHEMA", 2717);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_AGGREGATE;
@@ -10804,7 +10797,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER PROCEDURE function_with_argtypes SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER PROCEDURE SET SCHEMA", 2717);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_PROCEDURE;
@@ -10815,7 +10807,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER ROUTINE function_with_argtypes SET SCHEMA name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER ROUTINE SET SCHEMA", 2717);
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_ROUTINE;

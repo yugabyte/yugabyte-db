@@ -8,6 +8,7 @@ import { RegionCard } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { NodeAvailabilityProps } from './dtos';
 import { getFaultToleranceNeeded } from '../../CreateUniverseUtils';
+import { TotalNodeCount } from './TotalNodeCount';
 
 import ErrorCircle from '@app/redesign/assets/error-circle.svg?img';
 
@@ -31,7 +32,11 @@ const StyledError = styled(Box)(({ theme }) => ({
   }
 }));
 
-export const AvailabilityZones = () => {
+interface AvailabilityZonesProps {
+  showErrorsAfterSubmit?: boolean;
+}
+
+export const AvailabilityZones = ({ showErrorsAfterSubmit = true }: AvailabilityZonesProps) => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
   });
@@ -47,13 +52,13 @@ export const AvailabilityZones = () => {
   const az = watch('availabilityZones');
   const azCount = Object.keys(az).reduce((acc, region) => acc + az[region].length, 0);
   const faultToleranceNeeded = getFaultToleranceNeeded(
-    resilienceAndRegionsSettings?.replicationFactor ?? 1
+    resilienceAndRegionsSettings?.resilienceFactor ?? 1
   );
 
   return (
     <StyledPanel>
       <StyledHeader>{t('title')}</StyledHeader>
-      {(errors as any)?.availabilityZones?.message && (
+      {showErrorsAfterSubmit && (errors as any)?.availabilityZones?.message && (
         <StyledError>
           <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             <img src={ErrorCircle} alt="error" />
@@ -82,8 +87,9 @@ export const AvailabilityZones = () => {
         {!isEmpty(az) &&
           Object.keys(az).map((regionCode, index) => {
             const region = resilienceAndRegionsSettings?.regions.find((r) => r.code === regionCode);
-            return region && <RegionCard key={region.uuid} region={region} index={index} />;
+            return region && <RegionCard key={region.uuid} region={region} index={index} showErrorsAfterSubmit={showErrorsAfterSubmit} />;
           })}
+          <TotalNodeCount />
       </StyledContent>
     </StyledPanel>
   );

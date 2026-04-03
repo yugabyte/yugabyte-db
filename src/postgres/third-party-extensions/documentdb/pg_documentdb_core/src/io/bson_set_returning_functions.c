@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_set_returning_functions.c
+ * src/io/bson_set_returning_functions.c
  *
  * Implementation to setup bson tuple store for functions that return SETOF bson.
  *

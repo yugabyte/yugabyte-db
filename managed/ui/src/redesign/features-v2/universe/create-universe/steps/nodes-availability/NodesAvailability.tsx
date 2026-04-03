@@ -1,4 +1,4 @@
-import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
+import { forwardRef, useContext, useEffect, useImperativeHandle, useState } from 'react';
 import { isEmpty } from 'lodash';
 import { useMount } from 'react-use';
 import { Trans, useTranslation } from 'react-i18next';
@@ -16,13 +16,15 @@ import {
   useGetMapIcons
 } from '@yugabyte-ui-library/core';
 import {
-  FreeFormRFRequirement,
-  GuidedRequirementDetails,
   AvailabilityZones,
-  ReplicationStatusCard,
   DedicatedNode
-} from './index';
-import { assignRegionsAZNodeByReplicationFactor } from '../../CreateUniverseUtils';
+} from '.';
+import { values } from 'lodash';
+import {
+  assignRegionsAZNodeByReplicationFactor,
+  getFaultToleranceNeeded
+} from '../../CreateUniverseUtils';
+import { getGuidedNodesStepReplicationFactor } from '../resilence-regions/GuidedResilienceRequirementSummary';
 import { NodesAvailabilitySchema } from './ValidationSchema';
 import { Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import {
@@ -37,6 +39,8 @@ import { ResilienceFormMode, ResilienceType } from '../resilence-regions/dtos';
 //icons
 import { ArrowDropDown } from '@material-ui/icons';
 import NodesIcon from '@app/redesign/assets/nodes.svg';
+import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { ResilienceRequirementCard } from '../resilence-regions/ResilienceRequirementCard';
 
 const { Box, styled, Fade } = mui;
 
@@ -101,13 +105,57 @@ export const NodesAvailability = forwardRef<
 
   const methods = useForm<NodeAvailabilityProps>({
     defaultValues: nodesAvailabilitySettings,
-    resolver: yupResolver(NodesAvailabilitySchema(t, resilienceAndRegionsSettings))
+    resolver: yupResolver(NodesAvailabilitySchema(resilienceAndRegionsSettings))
   });
+  const { trigger } = methods;
   const availabilityZones = methods.watch('availabilityZones');
+  const faultToleranceNeeded = getFaultToleranceNeeded(
+    resilienceAndRegionsSettings?.resilienceFactor ?? 1
+  );
+  const totalAzCount = values(availabilityZones).reduce(
+    (acc, zones) => acc + zones.length,
+    0
+  );
+  const lesserNodesTransValues = {
+    faultToleranceNeeded,
+    required_zones: faultToleranceNeeded,
+    max_az: faultToleranceNeeded - 1,
+    nodeCount: totalAzCount,
+    availability_zone: totalAzCount,
+    selected_regions: regions.length
+  };
   const [isNodesAccordionOpen, setIsNodesAccordionOpen] = useState(false);
+  const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
+  const { errors, isSubmitted } = methods.formState;
+
+  // Clear errors as soon as validation passes (e.g. after user fixes AZ count or preferred ranks).
+  // React to formState.errors so we don't depend on effect timing or trigger() resolving with stale state.
+  const hasErrors = errors && Object.keys(errors).length > 0;
+  useEffect(() => {
+    if (isSubmitted && !hasErrors) {
+      setShowErrorsAfterSubmit(false);
+    }
+  }, [isSubmitted, hasErrors]);
+
+  // Re-validate when AZ data changes so formState.errors stays in sync. Use serialized AZ data so
+  // add/remove AZ always triggers (watch() reference may not change for nested setValue).
+  useEffect(() => {
+    if (isSubmitted) trigger();
+  }, [JSON.stringify(availabilityZones), isSubmitted, trigger]);
 
   useMount(() => {
     if (!resilienceAndRegionsSettings) return;
+
+    if (resilienceAndRegionsSettings.resilienceFormMode === ResilienceFormMode.GUIDED) {
+      methods.setValue(
+        REPLICATION_FACTOR,
+        getGuidedNodesStepReplicationFactor(
+          resilienceAndRegionsSettings.faultToleranceType,
+          resilienceAndRegionsSettings.resilienceFactor
+        )
+      );
+    }
+
     if (isEmpty(availabilityZones)) {
       const availabilityZones = assignRegionsAZNodeByReplicationFactor(
         resilienceAndRegionsSettings
@@ -120,6 +168,7 @@ export const NodesAvailability = forwardRef<
     forwardRef,
     () => ({
       onNext: () => {
+        setShowErrorsAfterSubmit(true);
         return methods.handleSubmit((data) => {
           saveNodesAvailabilitySettings(data);
           moveToNextPage();
@@ -127,17 +176,17 @@ export const NodesAvailability = forwardRef<
       },
       onPrev: () => {
         moveToPreviousPage();
-      }
+      },
+      setValue: methods.setValue as (name: string, value: unknown) => void
     }),
-    []
+    [methods, saveNodesAvailabilitySettings, moveToNextPage, moveToPreviousPage]
   );
-  const { errors } = methods.formState;
   if (!isGeoPartition) {
     return (
       <FormProvider {...methods}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <YBMaps
-            mapHeight={345}
+            mapHeight={216}
             coordinates={[
               [37.3688, -122.0363],
               [34.052235, -118.243683]
@@ -173,15 +222,14 @@ export const NodesAvailability = forwardRef<
           </YBMaps>
           {resilienceAndRegionsSettings?.resilienceType === ResilienceType.REGULAR &&
             resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED && (
-              <ReplicationStatusCard />
+              <ResilienceRequirementCard
+                resilienceAndRegionsProps={resilienceAndRegionsSettings}
+                noShadow
+                placementStep="nodes"
+              />
             )}
-          {resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.FREE_FORM ? (
-            <FreeFormRFRequirement />
-          ) : (
-            <GuidedRequirementDetails />
-          )}
-          <AvailabilityZones />
-          {(errors as any)?.lesserNodes?.message && (
+          <AvailabilityZones showErrorsAfterSubmit={showErrorsAfterSubmit} />
+          {showErrorsAfterSubmit && (errors as any)?.lesserNodes?.message && (
             <YBAlert
               open
               variant={AlertVariant.Error}
@@ -190,6 +238,7 @@ export const NodesAvailability = forwardRef<
                   t={t}
                   i18nKey={(errors as any)?.lesserNodes?.message}
                   components={{ b: <b /> }}
+                  values={lesserNodesTransValues}
                 >
                   {(errors as any).lesserNodes.message}
                 </Trans>
@@ -217,17 +266,8 @@ export const NodesAvailability = forwardRef<
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'row', gap: '16px' }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '720px' }}>
-          {resilienceAndRegionsSettings?.resilienceType === ResilienceType.REGULAR &&
-            resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED && (
-              <ReplicationStatusCard />
-            )}
-          {resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.FREE_FORM ? (
-            <FreeFormRFRequirement />
-          ) : (
-            <GuidedRequirementDetails />
-          )}
-          <AvailabilityZones />
-          {(errors as any)?.lesserNodes?.message && (
+          <AvailabilityZones showErrorsAfterSubmit={showErrorsAfterSubmit} />
+          {showErrorsAfterSubmit && (errors as any)?.lesserNodes?.message && (
             <YBAlert
               open
               variant={AlertVariant.Error}
@@ -236,6 +276,7 @@ export const NodesAvailability = forwardRef<
                   t={t}
                   i18nKey={(errors as any)?.lesserNodes?.message}
                   components={{ b: <b /> }}
+                  values={lesserNodesTransValues}
                 >
                   {(errors as any).lesserNodes.message}
                 </Trans>

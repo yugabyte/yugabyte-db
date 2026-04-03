@@ -104,7 +104,7 @@ const unum::usearch::byte_t* VectorToBytePtr(const FloatVector& vector) {
   return pointer_cast<const unum::usearch::byte_t*>(vector.data());
 }
 
-YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnsw)(kHnswlib));
+YB_DEFINE_ENUM(VectorIndexEngine, (kUsearch)(kYbHnswUsearch)(kHnswlib)(kYbHnswHnswlib));
 YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 
 ////////////////////////////////////////////////////////
@@ -133,11 +133,14 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
       case VectorIndexEngine::kUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
         break;
-      case VectorIndexEngine::kYbHnsw:
+      case VectorIndexEngine::kYbHnswUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw";
         break;
       case VectorIndexEngine::kHnswlib:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "hnswlib";
+        break;
+      case VectorIndexEngine::kYbHnswHnswlib:
+        ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "yb_hnsw_hnswlib";
         break;
     }
 
@@ -187,11 +190,13 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
 
   Status CreateIndex(
        PGConn& conn, const std::string& index_name = kVectorIndexName,
-       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt) {
+       std::optional<vector_index::DistanceKind> distance_kind = std::nullopt,
+       const std::string& column = std::string()) {
     return conn.ExecuteFormat(
-        "CREATE INDEX $1 ON test USING ybhnsw (embedding $0) "
+        "CREATE INDEX $1 ON test USING ybhnsw ($2 $0) "
             "WITH (ef_construction = 256, m = 32, m0 = 128)",
-        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name);
+        VectorOpsName(distance_kind.value_or(distance_kind_)), index_name,
+        column.empty() ? "embedding" : column);
   }
 
   Result<PGConn> MakeIndex(size_t dimensions = 3, bool table_exists = false) {
@@ -1203,11 +1208,14 @@ TEST_P(PgVectorIndexTest, Options) {
       switch (Engine()) {
         case VectorIndexEngine::kUsearch:
           break;
-        case VectorIndexEngine::kYbHnsw:
-          expected_options += " backend: YB_HNSW";
+        case VectorIndexEngine::kYbHnswUsearch:
+          expected_options += " backend: YB_HNSW_USEARCH";
           break;
         case VectorIndexEngine::kHnswlib:
           expected_options += " backend: HNSWLIB";
+          break;
+        case VectorIndexEngine::kYbHnswHnswlib:
+          expected_options += " backend: YB_HNSW_HNSWLIB";
           break;
       }
       if (!options.empty()) {
@@ -1273,6 +1281,15 @@ TEST_P(PgVectorIndexTest, Backup) {
 
   auto restore_conn = ASSERT_RESULT(ConnectToDB(kRestoreDb));
   VerifyRead(restore_conn, 10, AddFilter::kFalse);
+}
+
+TEST_P(PgVectorIndexTest, ReverseColumnOrder) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(conn.Execute("ALTER TABLE test ADD COLUMN v2 vector(1)"));
+  ASSERT_OK(CreateIndex(conn, "vi_2", std::nullopt, "v2"));
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(CreateIndex(conn, "vi_3", std::nullopt, "v2"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, '[1, 2, 3]', '[4]')"));
 }
 
 ////////////////////////////////////////////////////////

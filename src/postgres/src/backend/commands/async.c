@@ -163,7 +163,6 @@
 #include "replication/slot.h"
 #include "replication/yb_decode.h"
 #include "replication/yb_virtual_wal_client.h"
-#include "yb/yql/pggate/ybc_gflags.h"
 
 
 /*
@@ -340,6 +339,10 @@ static SlruCtlData NotifyCtlData;
  * SLRU_PAGES_PER_SEGMENT, for easier testing of queue-full behaviour.
  */
 #define QUEUE_MAX_PAGE			(SLRU_PAGES_PER_SEGMENT * 0x10000 - 1)
+
+bool		yb_enable_listen_notify = false;
+int			yb_notifications_poll_sleep_duration_nonempty_ms = 1;
+int			yb_notifications_poll_sleep_duration_empty_ms = 100;
 
 /*
  * listenChannels identifies the channels we are actually listening to
@@ -2986,7 +2989,7 @@ YbNotifsPollerMain(Datum main_arg)
 
 	BackgroundWorkerUnblockSignals();
 
-	BackgroundWorkerInitializeConnection(YbSystemDbName, "yugabyte", 0);
+	BackgroundWorkerInitializeConnection(YbSystemDbName, NULL, 0);
 
 	ybNotifsPollerInit();
 
@@ -3059,6 +3062,26 @@ ybNotifsPollerLoop()
 	for (;;)
 	{
 		CHECK_FOR_INTERRUPTS();
+
+		if (ConfigReloadPending)
+		{
+			ConfigReloadPending = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+
+		if (ShutdownRequestPending)
+			proc_exit(0);
+
+		/*
+		 * YBCReadRecord sleeps using yb_walsender_poll_sleep_duration_*_ms.
+		 * Override them with notifications poller specific values after a
+		 * potential config reload.
+		 */
+		yb_walsender_poll_sleep_duration_nonempty_ms =
+			yb_notifications_poll_sleep_duration_nonempty_ms;
+		yb_walsender_poll_sleep_duration_empty_ms =
+			yb_notifications_poll_sleep_duration_empty_ms;
+
 		record = YBCReadRecord(publications);
 		if (record)
 			ybNotifsPollerProcessRecord(record);
@@ -3219,22 +3242,22 @@ ybRecordToAsyncQueueEntry(const YbcPgRowMessage *record,
 static void
 ybListenNotifyPreChecks(void)
 {
-	if (!*YBCGetGFlags()->TEST_ysql_yb_enable_listen_notify)
+	if (!yb_enable_listen_notify)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("listen/notify is disabled. Enable it via runtime "
-						"tserver flag ysql_yb_enable_listen_notify")));
+				 errmsg("LISTEN/NOTIFY is disabled"),
+				 errdetail("Enable runtime flag ysql_yb_enable_listen_notify on the tserver and master")));
 
 	if (!OidIsValid(YbSystemDbOid()))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("creating internal objects for listen/notify, please try after a few seconds"),
+				 errmsg("creating internal objects for LISTEN/NOTIFY, please try after a few seconds"),
 				 errdetail("yb_system database is being created")));
 
 	if (!OidIsValid(ybNotificationsRelId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("creating internal objects for listen/notify, please try after a few seconds"),
+				 errmsg("creating internal objects for LISTEN/NOTIFY, please try after a few seconds"),
 				 errdetail("pg_yb_notifications table is being created")));
 
 	/* TODO(arpan): Add check for publication too. */

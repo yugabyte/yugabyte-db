@@ -49,7 +49,17 @@ class PgSelectIndex : public PgSelect {
   Status PrepareSubquery(
       const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req);
 
-  boost::container::small_vector<Slice, 8> ybctids_;
+  struct Ybctids {
+    boost::container::small_vector<Slice, 8> values;
+    DocResultYbctidRetention retention;
+
+    void Clear() {
+        values.clear();
+        retention.Clear();
+    }
+  };
+
+  Ybctids ybctids_;
 };
 
 }  // namespace yb::pggate

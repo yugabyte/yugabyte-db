@@ -136,6 +136,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  dist_trace.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -154,6 +155,7 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
+  html_print_helper.cc
   json_document.cc
   jsonwriter.cc
   jwt_util.cc
@@ -244,11 +246,16 @@ set(UTIL_SRCS
   varint.cc
   write_buffer.cc
   yb_partition.cc
-  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   thread_holder.cc
   )
+
+set(OPENTELEMETRY_LIBRARIES
+  opentelemetry_trace
+  opentelemetry_exporter_otlp_http
+  opentelemetry_resources
+  opentelemetry_proto)
 
 set(UTIL_LIBS
   absl
@@ -268,7 +275,8 @@ set(UTIL_LIBS
   protobuf
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY})
+  ${OPENSSL_SSL_LIBRARY}
+  ${OPENTELEMETRY_LIBRARIES})
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")

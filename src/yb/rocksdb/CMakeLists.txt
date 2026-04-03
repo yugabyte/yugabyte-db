@@ -137,7 +137,6 @@ set(ROCKSDB_SRCS
     utilities/convenience/info_log_finder.cc
     utilities/checkpoint/checkpoint.cc
     utilities/compaction_filters/remove_emptyvalue_compactionfilter.cc
-    utilities/env_mirror.cc
     utilities/leveldb_options/leveldb_options.cc
     utilities/memory/memory_util.cc
     utilities/merge_operators/put.cc

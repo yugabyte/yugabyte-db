@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.UpdateOOMServiceState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.CustomerTask;
@@ -498,9 +499,19 @@ public enum TaskType {
       CustomerTask.TaskType.ModifyQueryLoggingConfig,
       CustomerTask.TargetType.Universe),
 
+  ModifyKubernetesQueryLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyKubernetesQueryLoggingConfig.class,
+      CustomerTask.TaskType.ModifyQueryLoggingConfig,
+      CustomerTask.TargetType.Universe),
+
   ModifyMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.upgrade.ModifyMetricsExportConfig.class,
       CustomerTask.TaskType.ModifyMetricsExportConfig,
+      CustomerTask.TargetType.Universe),
+
+  ConfigureExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ConfigureExportTelemetryConfig.class,
+      CustomerTask.TaskType.ConfigureExportTelemetryConfig,
       CustomerTask.TargetType.Universe),
 
   InstallYbcSoftware(
@@ -1183,6 +1194,9 @@ public enum TaskType {
   UpdateAndPersistMetricsExportConfig(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistMetricsExportConfig.class),
 
+  UpdateAndPersistExportTelemetryConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig.class),
+
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
 
@@ -1284,8 +1298,14 @@ public enum TaskType {
   UpdateAndPersistKubernetesImmutableYbc(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesImmutableYbc.class),
 
-  TablespaceValidationOnRemove(
-      com.yugabyte.yw.commissioner.tasks.subtasks.TablespaceValidationOnRemove.class),
+  CheckTabletsMovementAvailable(CheckTabletsMovementAvailable.class),
+
+  CheckTabletsMovementAvailableForNode(
+      com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailableForNode.class),
+
+  MoveTablesTask(com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask.class),
+
+  DropTablespacesTask(com.yugabyte.yw.commissioner.tasks.subtasks.DropTablespacesTask.class),
 
   CheckServiceLiveness(com.yugabyte.yw.commissioner.tasks.subtasks.CheckServiceLiveness.class),
 
@@ -1297,7 +1317,12 @@ public enum TaskType {
 
   OperatorImportResource(com.yugabyte.yw.commissioner.tasks.subtasks.OperatorImportResource.class),
 
-  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class);
+  UpdateParentTaskParams(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateParentTaskParams.class),
+
+  SaveSoftwareUpgradeProgress(
+      com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress.class),
+
+  CheckDuplicateInstance(com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -1357,11 +1382,13 @@ public enum TaskType {
           .put(ModifyAuditLoggingConfig, 55)
           .put(ModifyKubernetesAuditLoggingConfig, 56)
           .put(ModifyQueryLoggingConfig, 57)
+          .put(ModifyKubernetesQueryLoggingConfig, 64)
           .put(ModifyMetricsExportConfig, 58)
-          .put(KubernetesToggleImmutableYbc, 59)
-          .put(UpgradeKubernetesYbcGFlags, 60)
-          .put(UpdateYbcThrottleFlags, 61)
-          .put(UpdateK8sYbcThrottleFlags, 62)
+          .put(ConfigureExportTelemetryConfig, 59)
+          .put(KubernetesToggleImmutableYbc, 60)
+          .put(UpgradeKubernetesYbcGFlags, 61)
+          .put(UpdateYbcThrottleFlags, 62)
+          .put(UpdateK8sYbcThrottleFlags, 63)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

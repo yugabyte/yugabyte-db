@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/pgbson.h
+ * include/io/pgbson.h
  *
  * The BSON type serialization.
  *
@@ -145,6 +145,7 @@ void PgbsonElementWriterStartDocument(pgbson_element_writer *elementWriter,
 void PgbsonElementWriterEndDocument(pgbson_element_writer *elementWriter,
 									pgbson_writer *endDocument);
 
+bson_value_t PgbsonWriterGetValue(pgbson_writer *writer);
 void PgbsonWriterCopyDocumentDataToBsonValue(pgbson_writer *writer,
 											 bson_value_t *bsonValue);
 pgbson * PgbsonWriterGetPgbson(pgbson_writer *writer);
@@ -161,6 +162,7 @@ void PgbsonWriterConcatBytes(pgbson_writer *writer, const uint8_t *bsonBytes, ui
 uint32_t PgbsonArrayWriterGetIndex(pgbson_array_writer *arrayWriter);
 bool IsPgbsonWriterEmptyDocument(pgbson_writer *writer);
 pgbson_heap_writer * PgbsonHeapWriterInit(void);
+void PgbsonHeapWriterReset(pgbson_heap_writer *writer);
 void PgbsonHeapWriterFree(pgbson_heap_writer *writer);
 uint32_t PgbsonHeapWriterGetSize(pgbson_heap_writer *writer);
 bool IsPgbsonHeapWriterEmptyDocument(pgbson_heap_writer *writer);
@@ -173,4 +175,7 @@ void PgbsonHeapWriterStartArray(pgbson_heap_writer *writer, const char *path,
 								uint32_t pathLength, pgbson_array_writer *childWriter);
 void PgbsonHeapWriterEndArray(pgbson_heap_writer *writer,
 							  pgbson_array_writer *childWriter);
+void PgbsonHeapWriterAppendValue(pgbson_heap_writer *writer, const char *path,
+								 uint32_t pathLength, const bson_value_t *value);
+bson_value_t PgbsonHeapWriterGetValue(pgbson_heap_writer *writer);
 #endif

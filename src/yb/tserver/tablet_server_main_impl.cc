@@ -58,8 +58,10 @@
 #include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_call_home.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
@@ -138,6 +140,42 @@ namespace yb {
 namespace tserver {
 
 const auto kShutdownGraceTimeBeforeDumpingStackThreads = MonoDelta::FromSeconds(30);
+
+Result<std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>> CreateYsqlConnMgrSupervisor(
+    TabletServer& tablet_server, const TabletServerOptions& tablet_server_options,
+    PgSupervisor& pg_supervisor, bool ysql_lease_enabled) {
+  LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
+  ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
+      ysql_conn_mgr_wrapper::YsqlConnMgrConf(tablet_server_options.fs_opts.data_paths.front());
+  ysql_conn_mgr_conf.set_yb_tserver_key(tablet_server.GetSharedMemoryPostgresAuthKey());
+
+  RETURN_NOT_OK(
+      ysql_conn_mgr_conf.SetSslConf(tablet_server.options(), *tablet_server.fs_manager()));
+
+  if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
+    LOG(FATAL) << "Client to server encryption can not be enabled "
+               << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
+               << " disabled.";
+
+  // Construct the config file for the Ysql Connection Manager process.
+  const auto conn_mgr_shmem_key =
+      FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor.GetYsqlConnManagerStatsShmkey() : 0;
+  auto ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
+      ysql_conn_mgr_conf, conn_mgr_shmem_key);
+  if (ysql_lease_enabled) {
+    RETURN_NOT_OK(ysql_conn_mgr_supervisor->InitPaused());
+  } else {
+    RETURN_NOT_OK(ysql_conn_mgr_supervisor->Start());
+  }
+  tablet_server.RegisterConnectionManagerRestarter(std::bind(
+      &ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor::StartIfNotStarted,
+      ysql_conn_mgr_supervisor.get()));
+
+  // Set the shared memory key for tserver so it can access stats as well.
+  tablet_server.SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
+
+  return std::move(ysql_conn_mgr_supervisor);
+}
 
 void SetProxyAddress(std::string* flag, const std::string& name,
   uint16_t port, bool override_port = false) {
@@ -280,8 +318,8 @@ Status StartServices(Services& services) {
   services.call_home->ScheduleCallHome();
 
   bool ysql_lease_enabled = false;
-  bool ysql_conn_mgr_enabled = FLAGS_enable_ysql_conn_mgr;
-  if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
+  bool ysql_enabled = FLAGS_start_pgsql_proxy || FLAGS_enable_ysql;
+  if (ysql_enabled) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
         FLAGS_pgsql_proxy_bind_address,
         tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
@@ -298,60 +336,19 @@ Status StartServices(Services& services) {
         std::make_unique<PgSupervisor>(pg_process_conf, services.tablet_server.get());
     ysql_lease_enabled = IsYsqlLeaseEnabled();
     if (ysql_lease_enabled) {
-      if (ysql_conn_mgr_enabled) {
-        // Normally when the lease is enabled we don't spawn a postgres process until acquiring a
-        // lease. However the ysql connection manager seems to peel configuration from the postgres
-        // process. Starting up the connection manager fails unless postgres is currently running.
-        // So if it's configured, keep the pg process alive while we spawn the ysql connection
-        // manager.
-        RETURN_NOT_OK(services.pg_supervisor->Start());
-      } else {
-        // If the ysql lease feature is enabled, we don't want to accept pg connections until the
-        // tserver acquires a lease from the master leader.
-        RETURN_NOT_OK(services.pg_supervisor->InitPaused());
-        RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
-      }
+      RETURN_NOT_OK(services.pg_supervisor->InitPaused());
     } else {
       RETURN_NOT_OK(services.pg_supervisor->Start());
-      RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
     }
   }
 
-  if (ysql_conn_mgr_enabled) {
-    LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
-
-    ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
-        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
-          tablet_server_options.fs_opts.data_paths.front());
-    ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
-        services.tablet_server->GetSharedMemoryPostgresAuthKey());
-
-    RETURN_NOT_OK(ysql_conn_mgr_conf.SetSslConf(
-        services.tablet_server->options(), *services.tablet_server->fs_manager()));
-
-    if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
-      LOG(FATAL) << "Client to server encryption can not be enabled "
-                 << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
-                 << " disabled.";
-
-    // Construct the config file for the Ysql Connection Manager process.
-    const auto conn_mgr_shmem_key = FLAGS_enable_ysql_conn_mgr_stats
-                                        ? services.pg_supervisor->GetYsqlConnManagerStatsShmkey()
-                                        : 0;
-    services.ysql_conn_mgr_supervisor =
-        std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-            ysql_conn_mgr_conf, conn_mgr_shmem_key);
-
-    RETURN_NOT_OK(services.ysql_conn_mgr_supervisor->Start());
-
-    // Set the shared memory key for tserver so it can access stats as well.
-    services.tablet_server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
-    if (ysql_lease_enabled) {
-      // Now that the connection manager has been spawned we can kill the postgres process and wait
-      // for a lease.
-      RETURN_NOT_OK(services.pg_supervisor->Pause());
-      RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
-    }
+  if (FLAGS_enable_ysql_conn_mgr) {
+    services.ysql_conn_mgr_supervisor = VERIFY_RESULT(CreateYsqlConnMgrSupervisor(
+        *services.tablet_server, tablet_server_options, *services.pg_supervisor,
+        ysql_lease_enabled));
+  }
+  if (ysql_enabled) {
+    RETURN_NOT_OK(services.tablet_server->StartYSQLLeaseRefresher());
   }
 
   if (FLAGS_start_redis_proxy) {
@@ -496,6 +493,12 @@ int TabletServerMain(int argc, char** argv) {
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
       TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
+
+#ifdef __linux__
+  if (TServerCgroupManagementEnabled()) {
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+  }
+#endif
 
   Services services;
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(StartServices(services));

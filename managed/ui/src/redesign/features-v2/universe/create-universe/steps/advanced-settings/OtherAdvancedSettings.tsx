@@ -20,7 +20,6 @@ import {
   InstanceARNField,
   SystemDField,
   AccessKeyField,
-  IPV6Field,
   NetworkAcessField
 } from '../../fields';
 import {
@@ -47,14 +46,17 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
   });
 
   const methods = useForm<OtherAdvancedProps>({
-    resolver: yupResolver(OtherAdvancedValidationSchema(t)),
+    resolver: yupResolver(OtherAdvancedValidationSchema(t, provider?.code)),
     defaultValues: {
-      instanceTags: [
-        {
-          name: '',
-          value: ''
-        }
-      ],
+      ...(provider?.code !== CloudType.kubernetes && {
+        instanceTags: [
+          {
+            name: '',
+            value: ''
+          }
+        ],
+        useTimeSync: true
+      }),
       ...otherAdvancedSettings
     },
     mode: 'onChange'
@@ -115,7 +117,7 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           )}
           {provider?.code === CloudType.aws && <InstanceARNField disabled={false} />}
           {provider?.code !== CloudType.kubernetes && <SystemDField disabled={false} />}
-          {provider?.code === CloudType.kubernetes && <IPV6Field disabled={false} />}
+
           {provider?.code === CloudType.kubernetes && <NetworkAcessField disabled={false} />}
         </StyledContent>
       </StyledPanel>

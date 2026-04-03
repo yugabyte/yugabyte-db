@@ -370,7 +370,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       throw t;
     } finally {
       try {
-        if (hasRollingUpgrade) {
+        boolean isPauseRequested = getRunnableTask().isPaused();
+        if (hasRollingUpgrade && !isPauseRequested) {
           setTaskQueueAndRun(
               () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
         }
@@ -1213,12 +1214,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       return sortTServersInRestartOrder(universe, tServerNodes);
     }
     return tServerNodes;
-  }
-
-  public int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
   }
 
   // Find the master leader and move it to the end of the list.

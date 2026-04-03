@@ -13,7 +13,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { mui, YBToggleField, YBPasswordField, YBTooltip } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
-import { YCQL_FIELD } from '../ycql-settings/YCQLSettingsField';
+import { YSQL_AUTH_FIELD, YSQL_FIELD, YSQL_CONFIRM_PWD, YSQL_PASSWORD_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
@@ -23,12 +23,7 @@ const { Box } = mui;
 interface YSQLProps {
   disabled?: boolean;
 }
-//need to integrate enforceAuth runtime flag
-
-export const YSQL_FIELD = 'ysql.enable';
-const YSQL_AUTH_FIELD = 'ysql.enable_auth';
-const YSQL_PASSWORD_FIELD = 'ysql.password';
-const YSQL_CONFIRM_PWD = 'ysql.confirm_pwd';
+//TODO :need to integrate enforceAuth runtime flag
 
 export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
   const { control } = useFormContext<DatabaseSettingsProps>();
@@ -39,7 +34,6 @@ export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
   //watchers
   const ysqlEnabled = useWatch({ name: YSQL_FIELD });
   const ysqlAuthEnabled = useWatch({ name: YSQL_AUTH_FIELD });
-  const ycqlEnabled = useWatch({ name: YCQL_FIELD });
 
   return (
     <FieldContainer>
@@ -47,25 +41,18 @@ export const YSQLField: FC<YSQLProps> = ({ disabled }) => {
         sx={{ display: 'flex', flexDirection: 'row', padding: '16px 24px', alignItems: 'center' }}
       >
         <Box sx={{ marginBottom: '-5px', mr: 1 }}>
-          <YBTooltip
-            title={!ycqlEnabled && ysqlEnabled ? (t('enableYsqlOrYcql') as string) : ''}
-            placement="top-start"
-          >
-            <div
-              style={{ display: 'flex', flexDirection: 'row', gap: '4px', alignItems: 'center' }}
-            >
-              <YBToggleField
-                name={YSQL_FIELD}
-                control={control}
-                label={t('ysqlSettings.toggleLabel')}
-                dataTestId="ysql-settings-field"
-                disabled={!ycqlEnabled || disabled}
-              />
-              <span>
-                <InfoIcon />
-              </span>
-            </div>
-          </YBTooltip>
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '4px', alignItems: 'center' }}>
+            <YBToggleField
+              name={YSQL_FIELD}
+              control={control}
+              label={t('ysqlSettings.toggleLabel')}
+              dataTestId="ysql-settings-field"
+              disabled={disabled}
+            />
+            <span>
+              <InfoIcon />
+            </span>
+          </div>
         </Box>
       </Box>
       {ysqlEnabled && (

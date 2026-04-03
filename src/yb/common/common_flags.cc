@@ -85,12 +85,7 @@ DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_m
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
 TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
-// TODO(#13369): use this flag in tserver.
-DEFINE_NON_RUNTIME_uint32(master_ts_ysql_catalog_lease_ms, 10000, // 10s
-    "Lease period between master and tserver that guarantees YSQL system catalog is not stale."
-    " Must be higher than --heartbeat_interval_ms, preferably many times higher.");
-TAG_FLAG(master_ts_ysql_catalog_lease_ms, advanced);
-TAG_FLAG(master_ts_ysql_catalog_lease_ms, hidden);
+DEPRECATE_FLAG(uint32, master_ts_ysql_catalog_lease_ms, "03_2026");
 
 DEFINE_NON_RUNTIME_bool(
     ysql_enable_colocated_tables_with_tablespaces, false,
@@ -352,7 +347,7 @@ DEFINE_RUNTIME_int32(timestamp_history_retention_interval_sec, 900,
     "after a compaction. Set this to be higher than the expected maximum duration "
     "of any single transaction in your application.");
 
-DEFINE_test_flag(bool, ysql_yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
+DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_listen_notify, false, "Enable YSQL LISTEN/NOTIFY.");
 DEFINE_RUNTIME_AUTO_bool(
     ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
     "Enable the infra required for Auto Analyze");

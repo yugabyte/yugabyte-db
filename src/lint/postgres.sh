@@ -105,7 +105,8 @@ if is_yb_file "$1"; then
     fi
 
     prev_line=$line
-  done < <(grep -nB 100 '^#include' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
+  # Match only .h/.hpp includes, not .def X-macro includes.
+  done < <(grep -nB 100 '^#include.*\.h' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
 else
   diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
   exit_code=$?

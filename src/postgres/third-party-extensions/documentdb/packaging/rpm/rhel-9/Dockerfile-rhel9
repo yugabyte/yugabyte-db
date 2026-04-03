@@ -1,0 +1,94 @@
+ARG BASE_IMAGE=rockylinux:9
+FROM ${BASE_IMAGE}
+
+ARG POSTGRES_VERSION=16
+ARG DOCUMENTDB_VERSION
+ARG TARGETARCH
+
+ENV POSTGRES_VERSION=${POSTGRES_VERSION}
+ENV DOCUMENTDB_VERSION=${DOCUMENTDB_VERSION}
+
+RUN test -n "$DOCUMENTDB_VERSION" || (echo "DOCUMENTDB_VERSION not set" && false)
+
+RUN printf "[main]\nskip_if_unavailable=True\n" > /etc/dnf/dnf.conf
+RUN dnf --setopt=skip_if_unavailable=True install -y dnf-plugins-core && \
+    dnf --setopt=skip_if_unavailable=True config-manager --set-enabled crb
+
+# Locale setup
+RUN dnf -y install glibc-langpack-en glibc-common && \
+    localedef -i en_US -f UTF-8 en_US.UTF-8 || true
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# Install base build tools and dependencies
+RUN dnf -y swap curl-minimal curl && \
+    dnf -y install \
+        dnf-utils \
+        rpm-build \
+        rpmdevtools \
+        wget \
+        curl \
+        git \
+        gcc \
+        gcc-c++ \
+        make \
+        cmake \
+        which \
+        libicu-devel \
+        krb5-devel \
+        python3 \
+        tar && \
+    dnf update -y --refresh && \
+    dnf clean all
+
+RUN echo "Detected architecture: ${TARGETARCH}"
+
+# PostgreSQL repo setup for RHEL 9
+# Note: transient PGDG repodata signature outages were observed (repomd.xml GPG signature verification error). If happends again, consider temporarily using --nogpgcheck flag or check https://github.com/pgdg-packaging/pgdg-rpms/issues for fixing.
+RUN if [ -n "${TARGETARCH}" ] && ( [ "${TARGETARCH}" = "arm64" ] || [ "${TARGETARCH}" = "arm64v8" ] ); then ARCH=aarch64; else ARCH=x86_64; fi; \
+    echo "Setting up PGDG repo for RHEL 9 (arch=${ARCH})" && \
+    dnf -y --disablerepo=* install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm && \
+    dnf -qy module disable postgresql && \
+    dnf -y install postgresql${POSTGRES_VERSION} \
+    postgresql${POSTGRES_VERSION}-devel \
+    postgresql${POSTGRES_VERSION}-server
+
+RUN dnf -y install \
+        openssl-devel \
+        cyrus-sasl-devel \
+        snappy-devel \
+        zlib-devel \
+        libcurl-devel \
+        libuuid-devel \
+        lz4-devel \
+        bzip2-devel \
+        llvm-toolset \
+        clang-devel \
+        llvm-devel
+
+# PostgreSQL 16+ with JIT enabled expects LLVM tools in /usr/lib64/llvm20/bin
+# On RHEL 9, LLVM binaries are in /usr/bin, so create a simple symlink
+RUN mkdir -p /usr/lib64/llvm20 && ln -s /usr/bin /usr/lib64/llvm20/bin
+
+RUN rpmdev-setuptree
+
+COPY scripts /tmp/install_setup
+
+RUN export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup && \
+    MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh && \
+    /tmp/install_setup/install_setup_pcre2.sh && \
+    /tmp/install_setup/install_setup_intel_decimal_math_lib.sh && \
+    /tmp/install_setup/install_citus_indent.sh
+
+WORKDIR /build
+COPY . /build
+
+COPY packaging/rpm/spec/documentdb.spec /build/rpm/documentdb.spec
+RUN sed -i "s/POSTGRES_VERSION/${POSTGRES_VERSION}/g" /build/rpm/documentdb.spec
+RUN sed -i "s/DOCUMENTDB_VERSION/${DOCUMENTDB_VERSION}/g" /build/rpm/documentdb.spec
+
+COPY packaging/rpm/packaging-entrypoint-rpm.sh /usr/local/bin/packaging-entrypoint-rpm.sh
+RUN chmod +x /usr/local/bin/packaging-entrypoint-rpm.sh
+
+ENTRYPOINT ["packaging-entrypoint-rpm.sh"]
+

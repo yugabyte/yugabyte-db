@@ -149,6 +149,7 @@ set(MASTER_SRCS
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
+  xcluster/xcluster_failover_task.cc
   xcluster/xcluster_inbound_replication_group_setup_task.cc
   xcluster/xcluster_manager.cc
   xcluster/xcluster_outbound_replication_group.cc

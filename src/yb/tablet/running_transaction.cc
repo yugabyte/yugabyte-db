@@ -665,7 +665,7 @@ const TabletId& RunningTransaction::status_tablet() const {
   return metadata_.status_tablet;
 }
 
-void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
+void RunningTransaction::UpdateTransactionPromoting(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
   metadata_.locality = TransactionFullLocality::Global();

@@ -9,14 +9,19 @@
 
 import { useEffectOnce } from 'react-use';
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
-import { YBInputFieldProps, yba } from '@yugabyte-ui-library/core';
+import { YBInputFieldProps, yba, mui } from '@yugabyte-ui-library/core';
 import { generateUniqueName } from '@app/redesign/helpers/utils';
 import { GeneralSettingsProps } from '../../steps/general-settings/dtos';
 
-const { YBInputField } = yba;
+import ClearIcon from '@app/redesign/assets/close.svg';
 
-interface UniverseNameFieldProps<T extends FieldValues>
-  extends Omit<YBInputFieldProps<T>, 'name' | 'control'> {
+const { YBInputField } = yba;
+const { InputAdornment, IconButton } = mui;
+
+interface UniverseNameFieldProps<T extends FieldValues> extends Omit<
+  YBInputFieldProps<T>,
+  'name' | 'control'
+> {
   name: Path<GeneralSettingsProps>;
   label: string;
   placeholder?: string;
@@ -53,6 +58,24 @@ export const UniverseNameField = <T extends FieldValues>({
           label={label}
           sx={sx}
           dataTestId="universe-name-field"
+          slotProps={{
+            input: {
+              endAdornment: (field.value ?? '')?.toString().trim() ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setValue(name, '')}
+                    onMouseDown={(e: React.MouseEvent) => e.preventDefault()}
+                    aria-label="Clear"
+                    data-testid="universe-name-field-clear"
+                    disableRipple
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ) : null
+            }
+          }}
         />
       )}
     />

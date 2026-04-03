@@ -5,6 +5,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -109,6 +110,10 @@ public class MiniYugabytedCluster implements AutoCloseable {
     private static final String YUGABYTED_YSQL_PORT = "ysql_port";
     private static final String YUGABYTED_CALLHOME = "callhome";
 
+    /** Max time to wait for `yugabyted status` to report Stopped after `yugabyted stop`. */
+    private static final long NODE_STOP_WAIT_MS = 30000;
+    private static final long NODE_STOP_POLL_MS = 2000;
+
     // These are used to assign master/tserver indexes used in the logs (the "m1",
     // "ts2", etc.
     // prefixes).
@@ -157,7 +162,7 @@ public class MiniYugabytedCluster implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        throw new UnsupportedOperationException("Unimplemented method 'close'");
+        shutdown();
     }
 
     public void restart() throws Exception {
@@ -165,7 +170,41 @@ public class MiniYugabytedCluster implements AutoCloseable {
         // restart(true /* waitForMasterLeader */);
     }
 
+    /**
+     * Runs `yugabyted stop` and `yugabyted destroy` for one node
+     */
+    private void stopDestroyYugabytedInstance(String baseDir) {
+        if (baseDir == null || baseDir.isEmpty()) {
+            return;
+        }
+        try {
+            YugabytedCommands.stop(baseDir);
+        } catch (Exception e) {
+            LOG.warn("yugabyted stop failed for base_dir {}: {}", baseDir, e.getMessage());
+        }
+        long deadline = System.currentTimeMillis() + NODE_STOP_WAIT_MS;
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                if (YugabytedTestUtils.checkNodeStatus(baseDir, "Stopped")) {
+                    break;
+                }
+                Thread.sleep(NODE_STOP_POLL_MS);
+            }
+        } catch (Exception e) {
+            LOG.warn("Error while waiting for yugabyted node ({}) to stop {}",
+                     baseDir, e.getMessage());
+        }
+        try {
+            YugabytedCommands.destroy(baseDir);
+        } catch (Exception e) {
+            LOG.warn("yugabyted destroy failed for base_dir {}: {}", baseDir, e.getMessage());
+        }
+    }
+
     public void shutdown() throws Exception {
+        for (MiniYBDaemon daemon : yugabytedProcesses.values()) {
+            stopDestroyYugabytedInstance(daemon.getDataDirPath());
+        }
     }
 
     public Map<HostAndPort, MiniYBDaemon> getYugabytedNodes() {
@@ -188,6 +227,17 @@ public class MiniYugabytedCluster implements AutoCloseable {
      */
     public List<HostAndPort> getMasterHostPorts() {
         return yugabytedMasterHostAndPorts;
+    }
+
+    public List<InetSocketAddress> getPostgresContactPoints() {
+        if (ysqlPort == null) {
+            return Collections.emptyList();
+        }
+        List<InetSocketAddress> result = new ArrayList<>();
+        for (HostAndPort hp : yugabytedMasterHostAndPorts) {
+            result.add(new InetSocketAddress(hp.getHost(), ysqlPort));
+        }
+        return result;
     }
 
     /**

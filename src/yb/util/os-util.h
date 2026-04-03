@@ -54,6 +54,13 @@ struct ThreadStats {
   // Default constructor zeroes all members in case structure can't be filled by
   // GetThreadStats.
   ThreadStats() : user_ns(0), kernel_ns(0), iowait_ns(0) { }
+
+  ThreadStats& operator+=(const ThreadStats& other) {
+    user_ns += other.user_ns;
+    kernel_ns += other.kernel_ns;
+    iowait_ns += other.iowait_ns;
+    return *this;
+  }
 };
 
 // Populates ThreadStats object using a given buffer. The buffer is expected to

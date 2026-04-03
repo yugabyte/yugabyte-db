@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -28,13 +29,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class TableSpaceUtil {
+
+  public static final String DB = "postgres";
 
   public static final String REPLICA_PLACEMENT_TEXT = "replica_placement=";
 
@@ -46,8 +52,47 @@ public class TableSpaceUtil {
           "SELECT c.relfilenode, t.spcname, c.relname FROM pg_tablespace t JOIN pg_class c ON t.oid"
               + " = c.reltablespace");
 
+  private static final Pattern VALID_POSTGRES_IDENTIFIER =
+      Pattern.compile("^[a-z_][a-z0-9_]*$", Pattern.CASE_INSENSITIVE);
+
+  private static final int MAX_IDENTIFIER_LENGTH = 63;
+
   private static String wrapInJson(String query) {
     return "select jsonb_agg(t) from (" + query + ") as t";
+  }
+
+  public static boolean isValidTablespaceName(String name) {
+    if (name != null) {
+      name = name.trim();
+    }
+    if (StringUtils.isEmpty(name)) {
+      return false;
+    }
+    if (name.length() > MAX_IDENTIFIER_LENGTH) {
+      return false;
+    }
+    if (!VALID_POSTGRES_IDENTIFIER.matcher(name).matches()) {
+      return false;
+    }
+    return true;
+  }
+
+  public static Optional<PlacementBlock> findPlacementBlockByNode(
+      TableSpaceInfo tableSpaceInfo, NodeDetails node) {
+    if (tableSpaceInfo == null || tableSpaceInfo.placementBlocks == null) {
+      return Optional.empty();
+    }
+    return tableSpaceInfo.placementBlocks.stream()
+        .filter(pb -> pb.cloud.equals(node.cloudInfo.cloud))
+        .filter(pb -> pb.region.equals(node.cloudInfo.region))
+        .filter(pb -> pb.zone.equals(node.cloudInfo.az))
+        .findFirst();
+  }
+
+  public static boolean isSameAz(PlacementBlock pb, AvailabilityZone az) {
+    return pb.zone.equals(az.getCode())
+        && pb.region.equals(az.getRegion().getCode())
+        && pb.cloud.equals(az.getRegion().getProvider().getCode());
   }
 
   public static TableSpaceInfo parseToTableSpaceInfo(TableSpaceQueryResponse tablespace) {
@@ -167,7 +212,7 @@ public class TableSpaceUtil {
       NodeDetails nodeToQuery, Universe universe, NodeUniverseManager nodeUniverseManager) {
     ShellResponse shellResponse =
         nodeUniverseManager
-            .runYsqlCommand(nodeToQuery, universe, "postgres", FETCH_TABLESPACES_QUERY)
+            .runYsqlCommand(nodeToQuery, universe, DB, FETCH_TABLESPACES_QUERY)
             .processErrors();
 
     Map<String, TableSpaceInfo> existingTablespaces = new HashMap<>();
@@ -190,8 +235,30 @@ public class TableSpaceUtil {
     return existingTablespaces;
   }
 
-  public static String getTablespaceName(UniverseDefinitionTaskParams.PartitionInfo partitionInfo) {
-    return partitionInfo.getName() + "_tablespace";
+  public static TableSpaceInfo partitionToTablespace(
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo) {
+    TableSpaceStructures.TableSpaceInfo tableSpaceInfo = new TableSpaceStructures.TableSpaceInfo();
+    tableSpaceInfo.name = partitionInfo.getTablespaceName();
+    tableSpaceInfo.numReplicas = partitionInfo.getReplicationFactor();
+    List<TableSpaceStructures.PlacementBlock> blocks = new ArrayList<>();
+    for (PlacementInfo.PlacementCloud placementCloud : partitionInfo.getPlacement().cloudList) {
+      for (PlacementInfo.PlacementRegion placementRegion : placementCloud.regionList) {
+        for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(placementAZ.uuid);
+          TableSpaceStructures.PlacementBlock block = new TableSpaceStructures.PlacementBlock();
+          block.minNumReplicas = placementAZ.replicationFactor;
+          block.zone = zone.getCode();
+          block.region = placementRegion.code;
+          block.cloud = placementCloud.code;
+          if (placementAZ.leaderPreference > 0) {
+            block.leaderPreference = placementAZ.leaderPreference;
+          }
+          blocks.add(block);
+        }
+      }
+    }
+    tableSpaceInfo.placementBlocks = blocks;
+    return tableSpaceInfo;
   }
 
   private static void validatePlacement(PlacementInfo clusterPlacement, PlacementBlock pb) {

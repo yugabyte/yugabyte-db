@@ -2,38 +2,27 @@
 -- See yb_saop_merge_schedule for details about the test.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_saop_merge.sql'
+\set filename :abs_srcdir '/yb_commands/saop_merge_setup.sql'
 \i :filename
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 \set off '/*+Set(yb_max_saop_merge_streams 0)*/'
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
-\set hint1 ':off'
-\set hint2 ':on'
+\set P1 ':explain'
+\set P2
+\set Q1 ':off'
+\set Q2 ':on'
+\set Pnext :iter_Q2
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -59,8 +48,10 @@
 (8 rows)
 
 -- No limit
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Sort (actual rows=1983 loops=1)
@@ -90,8 +81,10 @@
 (10 rows)
 
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -148,8 +141,10 @@
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -206,8 +201,10 @@
 (5 rows)
 
 -- Partial forward scan
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3 DESC, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3 DESC, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -265,8 +262,10 @@
 (5 rows)
 
 -- Partial backward scan
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -324,8 +323,10 @@
 (5 rows)
 
 -- Targets
-\set query 'SELECT r5, 1, r5 FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2 DESC, r3, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -383,8 +384,10 @@
 (5 rows)
 
 -- DISTINCT
-\set query 'SELECT DISTINCT r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3 LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT DISTINCT r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3 LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -443,8 +446,10 @@
 (5 rows)
 
 -- GROUP BY
-\set query 'SELECT COUNT(*), r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) GROUP BY r2, r3 ORDER BY r2, r3 LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT COUNT(*), r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) GROUP BY r2, r3 ORDER BY r2, r3 LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -503,8 +508,10 @@
 
 -- sort, IN
 -- SAOP merge should not be used.
-\set query 'SELECT r1, n, r2, r3 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r1, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r1, n, r2, r3 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r1, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -543,8 +550,10 @@
 
 -- _, IN, sort...
 -- SAOP merge should not be used.
-\set query 'SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -578,8 +587,10 @@
 (12 rows)
 
 -- IN, sort, _, sort...
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r2, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) ORDER BY r2, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -637,8 +648,10 @@
 (5 rows)
 
 -- IN, IN, sort...
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 IN (3, 4, 5) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 1, 2) AND r2 IN (3, 4, 5) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                  QUERY PLAN                                                 
 ------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -696,8 +709,10 @@
 
 -- IN/=, sort...
 -- SAOP merge should not be used.
-\set query 'SELECT r1, r2, r3, r4, r5, n FROM r5n WHERE r1 = 2 AND r1 IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r2, r3, r4, r5, n FROM r5n WHERE r1 = 2 AND r1 IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -751,8 +766,10 @@
 (5 rows)
 
 -- IN, IN/sort, IN, sort...
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 IN (1, 9) AND r3 IN (5, 6, 7, 8) ORDER BY r2, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 IN (1, 9) AND r3 IN (5, 6, 7, 8) ORDER BY r2, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                        QUERY PLAN                                                                       
 --------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -809,8 +826,10 @@
 (5 rows)
 
 -- IN, =, IN, sort...
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -867,8 +886,10 @@
 (5 rows)
 
 -- IN, =/sort, IN, sort...
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r2, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r2, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -925,8 +946,10 @@
 (5 rows)
 
 -- IN, =/sort, IN, sort... (out-of-order sort)
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r4, r5, r2, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r4, r5, r2, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -983,8 +1006,10 @@
 (5 rows)
 
 -- IN, =/sort, IN/sort, sort...
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 = 7 AND r3 IN (5, 6, 7, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1041,8 +1066,10 @@
 (5 rows)
 
 -- IN, IN/=/IN, sort...
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 IN (0, 1, 2) AND r2 = 2 AND r2 IN (1, 2, 3) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5, 6) AND r2 IN (0, 1, 2) AND r2 = 2 AND r2 IN (1, 2, 3) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                   QUERY PLAN                                                                                  
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1099,8 +1126,10 @@
 (5 rows)
 
 -- IN/=/IN, IN, sort...
-\set query 'SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND r1 IN (0, 1, 2) AND r1 = 2 AND r1 IN (1, 2, 3) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND r1 IN (0, 1, 2) AND r1 = 2 AND r1 IN (1, 2, 3) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                   QUERY PLAN                                                                                   
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1157,8 +1186,10 @@
 (5 rows)
 
 -- =, IN/IN, sort...
-\set query 'SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1217,8 +1248,10 @@
 (5 rows)
 
 -- =, not-IN/IN, sort...
-\set query 'SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 NOT IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 = 7 AND r2 IN (1, 2, 3, 4) AND r2 NOT IN (0, 2, 4, 6, 8) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1277,8 +1310,10 @@
 (5 rows)
 
 -- IN/>/<, sort...
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > 1 AND r1 IN (0, 2, 4, 6, 8) AND r1 < 7 ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > 1 AND r1 IN (0, 2, 4, 6, 8) AND r1 < 7 ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                QUERY PLAN                                                
 ---------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1338,8 +1373,10 @@
 
 -- Not-IN, sort...
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 NOT IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 NOT IN (0, 2, 4, 6, 8) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1373,8 +1410,10 @@
 (12 rows)
 
 -- =ANY, sort...
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[[[0], [2]], [[4], [6]], [[8], [10]]]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[[[0], [2]], [[4], [6]], [[8], [10]]]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1432,8 +1471,10 @@
 
 -- >ANY, sort...
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 > ANY (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1470,8 +1511,10 @@
 
 -- >=ALL, sort...
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 >= ALL (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 >= ALL (ARRAY[0, 2, 4, 6, 8]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1505,8 +1548,10 @@
 (12 rows)
 
 -- IN, sort, =, sort
-\set query 'SELECT r3, r2, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5) AND r3 = 2 ORDER BY r2, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r2, r4, n, r1 FROM r5n WHERE r1 IN (0, 1, 2, 3, 4, 5) AND r3 = 2 ORDER BY r2, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1564,8 +1609,10 @@
 
 -- =, sort, IN, sort
 -- SAOP merge should not be used.
-\set query 'SELECT r1, r2, r4, n, r3 FROM r5n WHERE r1 = 2 AND r3 IN (0, 1, 2, 3, 4, 5) ORDER BY r2, r4, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r1, r2, r4, n, r3 FROM r5n WHERE r1 = 2 AND r3 IN (0, 1, 2, 3, 4, 5) ORDER BY r2, r4, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1605,8 +1652,10 @@
 (17 rows)
 
 -- IN, sort, IN, sort...
-\set query 'SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r4, r5, n, r1, r3 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1663,8 +1712,10 @@
 (5 rows)
 
 -- IN, sort, IN/sort, sort...
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, 2) AND r3 IN (3, 4, 5) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                  QUERY PLAN                                                  
 -------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1722,8 +1773,10 @@
 
 -- IN equivalence to first key non-sort column
 -- TODO(#29030): this should use SAOP merge.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (7, 8, 9) AND r2 = r1 ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (7, 8, 9) AND r2 = r1 ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1777,8 +1830,10 @@
 (5 rows)
 
 -- IN equivalence to first key sort column
-\set query 'SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1838,8 +1893,10 @@
 (5 rows)
 
 -- IN equivalence to first key sort column (v2)
-\set query 'SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r1, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r1, r3, r4, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r3 ORDER BY r1, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1899,8 +1956,10 @@
 (5 rows)
 
 -- IN equivalence to last key sort column
-\set query 'SELECT r3, r4, r1, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r5 ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r1, r5, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r5 ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -1959,8 +2018,10 @@
 (5 rows)
 
 -- IN equivalence to last key non-sort column
-\set query 'SELECT r3, r4, n, r1, r5, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r5 ORDER BY r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, n, r1, r5, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = r5 ORDER BY r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2019,8 +2080,10 @@
 (5 rows)
 
 -- IN equivalence to last non-key sort column
-\set query 'SELECT r3, r4, r5, r1, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = n ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, r1, n, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6, 7, 8, 9) AND r2 IN (6, 0, 5) AND r1 = n ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                        QUERY PLAN                                                       
 ------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=2 loops=1)
@@ -2074,8 +2137,10 @@
 
 -- =-var equivalence prefix
 -- SAOP merge should not be used.
-\set query 'SELECT r4, r5, n, r3, r1, r2 FROM r5n WHERE r3 IN (7, 8, 9) AND r1 = r2 ORDER BY r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r4, r5, n, r3, r1, r2 FROM r5n WHERE r3 IN (7, 8, 9) AND r1 = r2 ORDER BY r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2112,8 +2177,10 @@
 
 -- =-var equivalence suffix
 -- SAOP merge should not be used.
-\set query 'SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (7, 8, 9) AND r2 = r3 ORDER BY r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (7, 8, 9) AND r2 = r3 ORDER BY r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2149,8 +2216,10 @@
 (13 rows)
 
 -- OR clause
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND r1 IN (0, 1, 2) AND (r1 = 2 OR r1 IN (1, 2, 3)) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND r1 IN (0, 1, 2) AND (r1 = 2 OR r1 IN (1, 2, 3)) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                      QUERY PLAN                                                     
 --------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2210,8 +2279,10 @@
 
 -- Another OR clause
 -- SAOP merge should not be used.
-\set query 'SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND (r1 IN (0, 1, 2) OR r1 = 2 OR r1 IN (1, 2, 3)) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r3, r4, r5, n, r2, r1 FROM r5n WHERE r2 IN (0, 1, 2, 3, 4, 5, 6) AND (r1 IN (0, 1, 2) OR r1 = 2 OR r1 IN (1, 2, 3)) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                                            QUERY PLAN                                                           
 --------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2247,8 +2318,10 @@
 (13 rows)
 
 -- Cross-type SAOP: compatible type
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[0, 2, 4, 6, 8]::int8[]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[0, 2, 4, 6, 8]::int8[]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2306,8 +2379,10 @@
 
 -- Cross-type SAOP: incompatible type
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[0, 2, 4, 6, 8]::float[]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY (ARRAY[0, 2, 4, 6, 8]::float[]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2342,8 +2417,10 @@
 
 -- Typecasted LHS
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1::text = ANY (ARRAY[0, 2, 4, 6, 8]::text[]) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1::text = ANY (ARRAY[0, 2, 4, 6, 8]::text[]) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                               QUERY PLAN                              
 ----------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2380,8 +2457,10 @@
 
 -- ArrayExpr containing FuncExpr
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 1, random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                QUERY PLAN                                
 -------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2418,8 +2497,10 @@
 
 -- ArrayExpr containing OpExpr
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 100 + random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 100 + random()::int) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2456,8 +2537,10 @@
 
 -- ArrayExpr containing Param
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, (SELECT count(*) FROM r5n)) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, (SELECT count(*) FROM r5n)) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2510,8 +2593,10 @@
 
 -- Row IN without constant table
 -- TODO(#29032): this should use SAOP merge.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE (r1, r2) IN ((1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE (r1, r2) IN ((1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2584,8 +2669,10 @@
 
 -- Row IN with constant table
 -- TODO(#29032): this should use SAOP merge.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE row(r1, r2) IN (values (1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE row(r1, r2) IN (values (1, 2), (3, 4)) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2659,8 +2746,10 @@
 (5 rows)
 
 -- Subquery with ORDER inside
-\set query 'SELECT r2, r3, r4, n FROM (SELECT r2, r3, r4, n FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5) sub'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, n FROM (SELECT r2, r3, r4, n FROM r5n WHERE r1 IN (0, 1, 2, 3) ORDER BY r2, r3, r4, n LIMIT 5) sub;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2717,8 +2806,10 @@
 (5 rows)
 
 -- Subquery with ORDER outside
-\set query 'SELECT r2, r3, r4, n FROM (SELECT r2, r3, r4, n FROM r5n WHERE r1 IN (0, 1, 2, 3)) sub ORDER BY r2, r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, n FROM (SELECT r2, r3, r4, n FROM r5n WHERE r1 IN (0, 1, 2, 3)) sub ORDER BY r2, r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2776,8 +2867,10 @@
 
 -- NULL in IN
 -- TODO(#29073) after culling array, number of streams should be 3.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, null, 3) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, null, 3) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2837,9 +2930,12 @@
 -- Third hint is to use SAOP merge as the second hint ends up using sort.
 -- TODO(#29073): after culling array, maybe the third hint should not use SAOP
 -- merge.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (null, null, null) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-\set hint3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 64)*/'
-:explain3run3
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (null, null, null) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 64)*/'
+\set Pnext :iter_Q3
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit (actual rows=0 loops=1)
@@ -2898,8 +2994,10 @@
 
 -- Empty array
 -- Third hint is to use SAOP merge as the second hint ends up using sort.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain3run3
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 = ANY(''{}'') ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Limit (actual rows=0 loops=1)
@@ -2958,8 +3056,10 @@
 
 -- Non-const in RHS (like var ref)
 -- SAOP merge should not be used.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, r2, 2) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -2993,8 +3093,11 @@
 (12 rows)
 
 -- Large number of streams
-\set query 'SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) AND r2 IN (0, 1, 2, 3) AND r3 IN (0, 1, 2, 3) ORDER BY r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r4, r5, n, r1, r2, r3 FROM r5n WHERE r1 IN (0, 1, 2, 3) AND r2 IN (0, 1, 2, 3) AND r3 IN (0, 1, 2, 3) ORDER BY r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                          QUERY PLAN                                                                         
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3053,8 +3156,10 @@
 -- Single IN hitting limit
 -- SAOP merge should not be used.
 \set on '/*+Set(yb_max_saop_merge_streams 5)*/'
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (0, 2, 4, 6, 8, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3089,8 +3194,10 @@
 
 -- Double IN hitting limit
 -- SAOP merge should not be used.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3128,9 +3235,11 @@
 -- Third hint is to encourage use of SAOP merge like other similar empty array
 -- test cases.
 -- SAOP merge should not be used.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) AND r3 = ANY(''{}'') ORDER BY r4, r5, n LIMIT 5'
-\set hint3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 5)*/'
-:explain3
+\set query ':explain :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) AND r3 = ANY(''{}'') ORDER BY r4, r5, n LIMIT 5;'
+\set Q3 '/*+Set(enable_sort off) Set(yb_max_saop_merge_streams 5)*/'
+\i :iter_Q3
+\set _echo_Q :ECHO
+\set ECHO none
                                                                   QUERY PLAN                                                                   
 -----------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=0 loops=1)
@@ -3172,8 +3281,11 @@
 
 -- Triple IN avoiding limit because of 0x multiplier.
 -- Third hint is to use SAOP merge as the second hint ends up using sort.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 = ANY(''{}'') AND r3 IN (6, 8) ORDER BY r4, r5, n LIMIT 5'
-:explain3run3
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (0, 2, 4) AND r2 = ANY(''{}'') AND r3 IN (6, 8) ORDER BY r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q3
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                   QUERY PLAN                                                                   
 -----------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=0 loops=1)
@@ -3232,8 +3344,11 @@
 
 -- Choose lowest cardinality IN
 -- TODO(#20899): this test needs to be reconsidered when fixing this issue.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5, 6) AND r1 IN (3, 4, 5, 6, 7) AND r1 IN (5, 6, 7, 8, 9, 10) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                QUERY PLAN                                                                               
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3293,8 +3408,10 @@
 
 -- Duplicates in IN
 -- TODO(#29073): after culling array, this should use SAOP merge.
-\set query 'SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1, 1, 2, 3, 3, 4, 5, 5, 5, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, r5, n, r1 FROM r5n WHERE r1 IN (1, 1, 1, 2, 3, 3, 4, 5, 5, 5, 1) ORDER BY r2, r3, r4, r5, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3348,10 +3465,12 @@
 -- (Reset the limit change)
 \set on '/*+Set(yb_max_saop_merge_streams 64)*/'
 -- #30096: SAOP merge shouldn't be used in a parallel scan.
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5'
-\set hint3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
-\set hint4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
-:explain4
+\set query ':explain :Q SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3, r4, r5;'
+\set Q3 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 0)*/'
+\set Q4 '/*+Parallel(r5n 2) Set(yb_enable_parallel_scan_range_sharded true) Set(yb_parallel_range_rows 1) Set(yb_max_saop_merge_streams 64)*/'
+\i :iter_Q4
+\set _echo_Q :ECHO
+\set ECHO none
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Sort (actual rows=318 loops=1)
@@ -3429,8 +3548,10 @@
 (20 rows)
 
 -- Same thing with backwards scan.
-\set query 'SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC'
-:explain4
+\set query ':explain :Q SELECT * FROM r5n WHERE r1 IN (0, 2, 4) AND r2 IN (6, 8) ORDER BY r3 DESC, r4 DESC, r5 DESC;'
+\i :iter_Q4
+\set _echo_Q :ECHO
+\set ECHO none
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Sort (actual rows=318 loops=1)
@@ -3520,8 +3641,10 @@ SPLIT AT VALUES (
     (3));
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3548,8 +3671,10 @@ SPLIT AT VALUES (
 
 -- No limit
 -- TODO(#29078): this likely should use SAOP merge.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, r5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
  Sort (actual rows=2045 loops=1)
@@ -3582,8 +3707,10 @@ SPLIT AT VALUES (
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3634,8 +3761,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3686,8 +3815,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Targets
-\set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3740,8 +3871,10 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index scan VS SAOP merge PK scan
-\set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND r2 = 4 ORDER BY r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -3800,9 +3933,12 @@ SPLIT AT VALUES (
 -- SAOP merge secondary index scan VS SAOP merge PK scan
 -- Third hint is to use the secondary index as the second hint ends up using
 -- the PK index.
-\set query 'SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) ORDER BY r3, r4, r5, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_r2_r3_r4_r5_idx) Set(yb_max_saop_merge_streams 64)*/'
-:explain3run3
+\set query ':P :Q SELECT r3, r4, r5, n, r1, r2 FROM r5n WHERE r1 IN (1, 2, 3, 4) AND r2 IN (1, 2, 3, 4) ORDER BY r3, r4, r5, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_r2_r3_r4_r5_idx) Set(yb_max_saop_merge_streams 64)*/'
+\set Pnext :iter_Q3
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4000,8 +4136,10 @@ SPLIT AT VALUES (
     (3));
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4028,12 +4166,13 @@ SPLIT AT VALUES (
 
 -- Forward scan
 -- TODO(#29383): the output is incorrect where it relies on DocDB order.
--- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5'
--- :explain2run2
+-- \set query ':P :Q SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3, r4 USING #<#, n LIMIT 5;'
+-- \set Pnext :iter_Q2
+-- \i :iter_P2
 -- Backward scan
 -- TODO(#29383): the output is incorrect where it relies on DocDB order.
--- \set query 'SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5'
--- :explain2run2
+-- \set query ':P :Q SELECT * FROM r5n WHERE r2 =#= ANY(ARRAY[0, 1, 2, 3]) ORDER BY r3 DESC, r4 USING #>#, n LIMIT 5;'
+-- \i :iter_P2
 -- (Drop this index)
 DROP INDEX r5n_r2_r3_r4_r5_idx;
 --
@@ -4049,8 +4188,10 @@ SPLIT AT VALUES (
     (3));
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4079,8 +4220,11 @@ SPLIT AT VALUES (
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3, r4, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4133,8 +4277,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4187,8 +4333,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Targets
-\set query 'SELECT n, 1, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT n, 1, n FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4243,8 +4391,10 @@ SPLIT AT VALUES (
 -- (Reset the explain change)
 \set explain 'EXPLAIN (ANALYZE, DIST, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Secondary index only scan VS SAOP merge PK scan
-\set query 'SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) ORDER BY r2, r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4314,8 +4464,10 @@ SPLIT AT VALUES (
     (3));
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                                                            QUERY PLAN                                                                            
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4347,8 +4499,10 @@ SPLIT AT VALUES (
 (11 rows)
 
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2, r3, r4, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4411,8 +4565,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4475,8 +4631,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Targets
-\set query 'SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), 1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), 1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (0, 2) ORDER BY r2 DESC, r3 DESC, r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                                        QUERY PLAN                                                                                                       
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4541,9 +4699,12 @@ SPLIT AT VALUES (
 -- Secondary index scan VS SAOP merge PK scan
 -- Third hint is to use the PK index as the second hint ends up using the
 -- expression index.
-\set query 'SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
-:explain3run3
+\set query ':P :Q SELECT (greatest(r2, r3, r4) - least(r2, r3, r4)), r2, r3, r4, n, r1 FROM r5n WHERE r1 IN (1, 2, 3, 4, 5) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) = 4 ORDER BY r2, r3, r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
+\set Pnext :iter_Q3
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                         QUERY PLAN                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4639,9 +4800,11 @@ SPLIT AT VALUES (
 -- SAOP merge secondary index scan VS SAOP merge PK scan
 -- Third hint is to use the PK index as the second hint ends up using the
 -- expression index.
-\set query 'SELECT r2, r3, r4, n, r1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE r1 IN (1, 2, 3, 4) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (1, 2, 3, 4) ORDER BY r2, r3, r4, n LIMIT 5'
-\set hint3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
-:explain3run3
+\set query ':P :Q SELECT r2, r3, r4, n, r1, (greatest(r2, r3, r4) - least(r2, r3, r4)) FROM r5n WHERE r1 IN (1, 2, 3, 4) AND (greatest(r2, r3, r4) - least(r2, r3, r4)) IN (1, 2, 3, 4) ORDER BY r2, r3, r4, n LIMIT 5;'
+\set Q3 '/*+IndexScan(r5n r5n_pkey) Set(yb_max_saop_merge_streams 64)*/'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                                 QUERY PLAN                                                                                 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4750,8 +4913,11 @@ SPLIT AT VALUES (
     (2, -2, -2),
     (3));
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3, -r4, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3, -r4, n LIMIT 5;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4811,8 +4977,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4872,8 +5040,10 @@ SPLIT AT VALUES (
 (5 rows)
 
 -- Targets
-\set query 'SELECT -r4, 1, -r4 FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT -r4, 1, -r4 FROM r5n WHERE r2 IN (0, 2) ORDER BY -r3 DESC, -r4 DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4948,8 +5118,10 @@ SPLIT AT VALUES (
     (3));
 -- No order
 -- SAOP merge should not be used.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                            QUERY PLAN                           
 ----------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -4978,8 +5150,10 @@ SPLIT AT VALUES (
 -- due to non-deterministic order of equal rows in merge sort, hide their DIST
 \set explain 'EXPLAIN (ANALYZE, VERBOSE, COSTS OFF, SUMMARY OFF, TIMING OFF)'
 -- Forward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -5031,8 +5205,10 @@ SPLIT AT VALUES (
 
 -- Forward scan (v2)
 -- SAOP merge is not used.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), r2 DESC, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4), r2 DESC, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -5060,8 +5236,10 @@ SPLIT AT VALUES (
 (9 rows)
 
 -- Backward scan
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -5113,8 +5291,10 @@ SPLIT AT VALUES (
 
 -- Backward scan (v2)
 -- SAOP merge is not used.
-\set query 'SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT * FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -5142,8 +5322,10 @@ SPLIT AT VALUES (
 (9 rows)
 
 -- Targets
-\set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5'
-:explain2run2
+\set query ':P :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, n LIMIT 5;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)
@@ -5195,8 +5377,10 @@ SPLIT AT VALUES (
 
 -- Targets (v2)
 -- SAOP merge is not used.
-\set query 'SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5'
-:explain2
+\set query ':explain :Q SELECT r5, 1, r5 FROM r5n WHERE r2 IN (0, 1, 2, 3) ORDER BY (r3 + r4) DESC, r2, n LIMIT 5;'
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
  Limit (actual rows=5 loops=1)

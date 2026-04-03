@@ -13,6 +13,7 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_INSTANCE_TYPE_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
+import { parsePositiveIntegerInput } from '@app/redesign/features-v2/universe/create-universe/helpers/instanceNumericInput';
 
 //icons
 import Close from '@app/redesign/assets/close.svg';
@@ -35,7 +36,7 @@ export const K8VolumeInfoField = ({
   provider
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { watch, control, setValue } = useFormContext<InstanceSettingProps>();
-  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.instanceSettings' });
+  const { t } = useTranslation();
 
   const nodeTypeTag = isMaster ? NodeType.Master : NodeType.TServer;
   const fieldValue = isMaster ? watch(MASTER_DEVICE_INFO_FIELD) : watch(DEVICE_INFO_FIELD);
@@ -58,12 +59,33 @@ export const K8VolumeInfoField = ({
 
   const onVolumeSizeChanged = (value: any) => {
     if (!fieldValue) return;
-    setValue(UPDATE_FIELD, { ...fieldValue, volumeSize: Number(value) });
+    const defaults = getK8DeviceInfo(providerRuntimeConfigs);
+    const dv = Number(defaults.volumeSize);
+    const defaultSize = Math.max(
+      1,
+      Number.isFinite(dv) && dv > 0
+        ? dv
+        : fieldValue.volumeSize && fieldValue.volumeSize > 0
+          ? fieldValue.volumeSize
+          : 1
+    );
+    const volumeSize = parsePositiveIntegerInput(String(value), defaultSize);
+    setValue(UPDATE_FIELD, { ...fieldValue, volumeSize });
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
     if (!fieldValue) return;
-    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    const defaults = getK8DeviceInfo(providerRuntimeConfigs);
+    const dnv = Number(defaults.numVolumes);
+    const defaultNum = Math.max(
+      1,
+      Number.isFinite(dnv) && dnv > 0
+        ? dnv
+        : fieldValue.numVolumes && fieldValue.numVolumes > 0
+          ? fieldValue.numVolumes
+          : 1
+    );
+    const volumeCount = parsePositiveIntegerInput(String(numVolumes), defaultNum, maxVolumeCount);
     setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
@@ -72,7 +94,7 @@ export const K8VolumeInfoField = ({
       name={UPDATE_FIELD}
       control={control}
       rules={{
-        required: t('createUniverseV2.validation.required', {
+        required: t('createUniverseV2.instanceSettings.validation.required', {
           field: t('createUniverseV2.instanceSettings.instanceType')
         }) as string
       }}
@@ -81,7 +103,9 @@ export const K8VolumeInfoField = ({
           <Box display="flex" flexDirection="column">
             <Box display="flex">
               <Box>
-                <YBLabel>{t('provisionedThroughputPerPod')}</YBLabel>
+                <YBLabel>
+                  {t('createUniverseV2.instanceSettings.provisionedThroughputPerPod')}
+                </YBLabel>
               </Box>
             </Box>
             <Box display="flex" width="100%">
@@ -143,7 +167,7 @@ export const K8VolumeInfoField = ({
                   marginBottom: 1
                 })}
               >
-                {t('k8VolumeSizeUnit')}
+                {t('createUniverseV2.instanceSettings.k8VolumeSizeUnit')}
               </Box>
             </Box>
           </Box>

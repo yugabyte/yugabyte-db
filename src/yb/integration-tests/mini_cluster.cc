@@ -35,6 +35,8 @@
 #include <algorithm>
 #include <string>
 
+#include <boost/algorithm/string/join.hpp>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
@@ -1160,6 +1162,27 @@ Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
   return PeersToTablets(VERIFY_RESULT(ListTabletPeersForTableName(cluster, table_name, filter)));
 }
 
+Result<std::string> DumpTableLeadersDocDB(MiniCluster* cluster, const std::string& table_name) {
+  auto vector = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster, table_name));
+  return boost::algorithm::join(vector, "\n");
+}
+
+Result<std::vector<std::string>> DumpTableLeadersDocDBToVector(
+    MiniCluster* cluster, const std::string& table_name) {
+  std::vector<std::string> result;
+  auto tablets = VERIFY_RESULT(ListTabletsForTableName(
+      cluster, table_name, ListPeersFilter::kLeaders));
+  std::ranges::sort(tablets, [](const auto& lhs, const auto& rhs) {
+    return lhs->metadata()->partition()->partition_key_start() <
+           rhs->metadata()->partition()->partition_key_start();
+  });
+  for (const auto& tablet : tablets) {
+    tablet->TEST_DocDBDumpToContainer(
+      result, docdb::IncludeIntents::kFalse, dockv::IncludeWriteTime::kFalse);
+  }
+  return result;
+}
+
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers) {
   std::vector<tablet::TabletPtr> result;
   result.reserve(peers.size());
@@ -1940,6 +1963,29 @@ Result<bool> RowExistsInTablet(
   int64_t row_count = pggate::PgWire::ReadNumber<int64_t>(&cursor);
 
   return row_count > 0;
+}
+
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster) {
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    auto* ts = cluster->mini_tablet_server(i)->server();
+    ts->client_future().get()->ClearAllMetaCachesOnServer();
+  }
+}
+
+Status WaitForTabletHidden(MiniCluster* cluster, const TabletId& tablet_id, MonoDelta timeout) {
+  return WaitFor(
+      [cluster, &tablet_id]() -> Result<bool> {
+        auto& catalog_manager =
+            VERIFY_RESULT(cluster->GetLeaderMiniMaster())->catalog_manager();
+        auto tablet_info = VERIFY_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+        auto lock = tablet_info->LockForRead();
+        if (lock->is_hidden()) {
+          LOG(INFO) << "Tablet " << tablet_id << " is now hidden";
+          return true;
+        }
+        return false;
+      },
+      timeout, Format("Wait for tablet $0 to be hidden", tablet_id));
 }
 
 }  // namespace yb

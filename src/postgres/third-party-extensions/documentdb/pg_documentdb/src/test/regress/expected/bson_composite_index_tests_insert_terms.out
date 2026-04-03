@@ -1,0 +1,657 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 5600;
+SET documentdb.next_collection_index_id TO 5600;
+CREATE OR REPLACE FUNCTION documentdb_test_helpers.gin_bson_get_composite_path_generated_terms(document documentdb_core.bson, pathSpec text, termLimit int4, addMetadata bool, wildcardIndex int4 = -1)
+    RETURNS SETOF documentdb_core.bson LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT AS '$libdir/pg_documentdb',
+$$gin_bson_get_composite_path_generated_terms$$;
+-- test scenarios of term generation for composite path
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": 1, "b": 2 }', '[ "a", "b" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": [ 1, 2, 3 ], "b": 2 }', '[ "a", "b" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "2" } ] }
+ { "" : [  ] }
+(4 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": 1, "b": [ true, false ] }', '[ "a", "b" ]', 2000, false);
+ gin_bson_get_composite_path_generated_terms 
+---------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, true ] }
+ { "$" : [ { "$numberInt" : "1" }, false ] }
+ { "" : [  ] }
+(3 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": [ 1, 2, 3 ], "b": [ true, false ] }', '[ "a", "b" ]', 2000, false);
+ gin_bson_get_composite_path_generated_terms 
+---------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, true ] }
+ { "$" : [ { "$numberInt" : "2" }, true ] }
+ { "$" : [ { "$numberInt" : "3" }, true ] }
+ { "$" : [ { "$numberInt" : "1" }, false ] }
+ { "$" : [ { "$numberInt" : "2" }, false ] }
+ { "$" : [ { "$numberInt" : "3" }, false ] }
+ { "" : [  ] }
+(7 rows)
+
+-- test when one doesn't exist
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "b": [ true, false ] }', '[ "a", "b" ]', 2000, false);
+ gin_bson_get_composite_path_generated_terms  
+----------------------------------------------
+ { "$" : [ { "$undefined" : true }, true ] }
+ { "$" : [ { "$undefined" : true }, false ] }
+ { "" : [  ] }
+(3 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": [ 1, 2, 3 ] }', '[ "a", "b" ]', 2000, false);
+          gin_bson_get_composite_path_generated_terms          
+---------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$undefined" : true } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$undefined" : true } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$undefined" : true } ] }
+ { "" : [  ] }
+(4 rows)
+
+-- test when one gets truncated (a has 29 letters, truncation limit is 50 /2 so 25 per path)
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": "aaaaaaaaaaaaaaaaaaaaaaaaaaaa", "b": 1 }', '[ "a", "b" ]', 50, true);
+                          gin_bson_get_composite_path_generated_terms                          
+-----------------------------------------------------------------------------------------------
+ { "$" : [ { "$" : "aaaaaaaa", "t" : true }, { "$" : { "$numberInt" : "1" }, "t" : false } ] }
+ { "" : { "$maxKey" : 1 }, "t" : true }
+(2 rows)
+
+-- nested paths
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_generated_terms('{ "a": { "b": { "c": 1 } } }', '[ "a.b", "a.b.c" ]', 2000, true);
+                                     gin_bson_get_composite_path_generated_terms                                      
+----------------------------------------------------------------------------------------------------------------------
+ { "$" : [ { "$" : { "c" : { "$numberInt" : "1" } }, "t" : false }, { "$" : { "$numberInt" : "1" }, "t" : false } ] }
+(1 row)
+
+-- create a table and insert some data.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "comp_index", "key": { "a": 1, "b": -1 } } ] }', TRUE);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- does not work
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "comp_index2", "key": { "$**": 1 }, "enableCompositeTerm": true } ] }', TRUE);
+ERROR:  Error in specification { "name" : "comp_index2", "key" : { "$**" : 1 }, "enableCompositeTerm" : true }:enableOrderedIndex is not supported with wildcard indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "comp_index3", "key": { "a.$**": 1 }, "enableCompositeTerm": true } ] }', TRUE);
+ERROR:  Error in specification { "name" : "comp_index3", "key" : { "a.$**" : 1 }, "enableCompositeTerm" : true }:enableOrderedIndex is not supported with wildcard indexes.
+-- create an index
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "comp_index1", "key": { "a": 1, "b": 1 } } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- create a non composite index with a different name and same key (works)
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "comp_index4", "key": { "a": 1, "b": 1 }, "enableCompositeTerm": false } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- check the index
+\d documentdb_data.documents_5601
+          Table "documentdb_data.documents_5601"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_5601" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5602" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a", { "b" : -1 } ]', tl='2691'))
+    "documents_rum_index_5603" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a", "b" ]', tl='2691'))
+    "documents_rum_index_5604" documentdb_rum (document bson_rum_single_path_ops (path=a, tl='2691'), document bson_rum_single_path_ops (path=b, tl='2691'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5601'::bigint)
+
+-- now drop the extra indexes
+CALL documentdb_api.drop_indexes('comp_db', '{ "dropIndexes": "comp_collection", "index": "comp_index" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "4" } }
+(1 row)
+
+CALL documentdb_api.drop_indexes('comp_db', '{ "dropIndexes": "comp_collection", "index": "comp_index4" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+\d documentdb_data.documents_5601
+          Table "documentdb_data.documents_5601"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_5601" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5603" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a", "b" ]', tl='2691'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5601'::bigint)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 1, "a": 1, "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 2, "a": [ 1, 2 ], "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 3, "a": 1, "b": [ true, false ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 4, "a": [ 1, 2 ], "b": [ true, false ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- pushes to the composite index
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 2, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 2, "b": false } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(1 row)
+
+-- validate specifying just one path
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 2 } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "b": false } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+-- prefix inequality
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$gt": 0 }, "b": false } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$gt": 1 }, "b": false } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(1 row)
+
+-- suffix inequality
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b":  { "$gt": false } } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 2, "b":  { "$gt": false } } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b":  { "$gt": true } } }');
+ document 
+----------
+(0 rows)
+
+-- now add some cross-type members
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 5, "a": "string1", "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 6, "a": "string2", "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 7, "a": { "key": "string2" }, "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- has cross type values
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$exists": true }, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : "string1", "b" : true }
+ { "_id" : { "$numberInt" : "6" }, "a" : "string2", "b" : true }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "key" : "string2" }, "b" : true }
+(7 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$gte": { "$minKey": 1 } }, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : "string1", "b" : true }
+ { "_id" : { "$numberInt" : "6" }, "a" : "string2", "b" : true }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "key" : "string2" }, "b" : true }
+(7 rows)
+
+-- applies type bracketing
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$gt": 0 }, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$gte": "string0" }, "b": true } }');
+                            document                             
+-----------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : "string1", "b" : true }
+ { "_id" : { "$numberInt" : "6" }, "a" : "string2", "b" : true }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$type": "string" }, "b": true } }');
+                            document                             
+-----------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : "string1", "b" : true }
+ { "_id" : { "$numberInt" : "6" }, "a" : "string2", "b" : true }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$type": "object" }, "b": true } }');
+                                  document                                   
+-----------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "key" : "string2" }, "b" : true }
+(1 row)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$type": "number" }, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+-- runtime recheck
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$regex": ".+2$" }, "b": true } }');
+                            document                             
+-----------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : "string2", "b" : true }
+(1 row)
+
+-- add large keys
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', FORMAT('{ "_id": 8, "a": { "key": "%s" }, "b": "%s" }', repeat('a', 10000), repeat('a', 10000))::bson);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT FORMAT('{ "find": "comp_collection", "filter": { "a": { "key": "%s" }, "b": "%s" }, "projection": { "_id": 1 } }', repeat('a', 5000), repeat('a', 5000)) AS q1 \gset
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', :'q1'::bson);
+ document 
+----------
+(0 rows)
+
+SELECT FORMAT('{ "find": "comp_collection", "filter": { "a": { "key": "%s" }, "b": "%s" }, "projection": { "_id": 1 } }', repeat('a', 8000), repeat('a', 8000)) AS q1 \gset
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', :'q1'::bson);
+ document 
+----------
+(0 rows)
+
+SELECT FORMAT('{ "find": "comp_collection", "filter": { "a": { "key": "%s" }, "b": "%s" }, "projection": { "_id": 1 } }', repeat('a', 10000), repeat('a', 10000)) AS q1 \gset
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', :'q1'::bson);
+              document              
+------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT FORMAT('{ "find": "comp_collection", "filter": { "a": { "key": "%s" } }, "projection": { "_id": 1 } }', repeat('a', 10000)) AS q1 \gset
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', :'q1'::bson);
+              document              
+------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+(1 row)
+
+SELECT FORMAT('{ "find": "comp_collection", "filter": { "b": "%s" }, "projection": { "_id": 1 } }', repeat('a', 10000)) AS q1 \gset
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', :'q1'::bson);
+              document              
+------------------------------------
+ { "_id" : { "$numberInt" : "8" } }
+(1 row)
+
+-- multi-bound queries
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$in": [ 1, 2 ] }, "b": true } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$in": [ 1, 2 ] }, "b": false } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(2 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$in": [ 2, "string1" ] }, "b": { "$in": [ true, false ] } } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : "string1", "b" : true }
+(3 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$in": [ 1, 2 ] }, "b": { "$in": [ true, false ] } } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": { "$in": [ 1, 2 ] }, "a": { "$lt": 2 }, "b": { "$in": [ true, false ] } } }');
+                                                      document                                                       
+---------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : true }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : true }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : [ true, false ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ], "b" : [ true, false ] }
+(4 rows)
+
+-- test that we can create side by side non composite and composite indexes with the same key when forcing composite op class.
+set documentdb.defaultUseCompositeOpClass to off;
+select documentdb_api.drop_database('comp_db');
+ drop_database 
+---------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1", "key": { "a": 1 } } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_-1", "key": { "a": -1} } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.defaultUseCompositeOpClass to on;
+-- name collision still fails
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1", "key": { "a": 1 } } ] }', TRUE);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "a" : 1 }, "name" : "a_1", "enableOrderedIndex" : 1 }, existing index: { "v" : 2, "key" : { "a" : 1 }, "name" : "a_1" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_-1", "key": { "a": -1 } } ] }', TRUE);
+ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 2, "key" : { "a" : -1 }, "name" : "a_-1", "enableOrderedIndex" : 1 }, existing index: { "v" : 2, "key" : { "a" : -1 }, "name" : "a_-1" }
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1_comp", "key": { "a": 1 } } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_-1_comp", "key": { "a": -1} } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "_id_1_comp", "key": { "_id": 1} } ] }', TRUE);
+                                                                                                                           create_indexes_non_concurrently                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "note" : "All specified indexes already exist", "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT collection_id as collid FROM documentdb_api_catalog.collections where database_name = 'comp_db' and collection_name = 'comp_collection' \gset 
+SELECT index_spec FROM documentdb_api_catalog.collection_indexes where collection_id = :'collid'::int4;
+                                                       index_spec                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
+ (a_1,"{ ""a"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,)
+ (a_-1,"{ ""a"" : { ""$numberInt"" : ""-1"" } }",,,,,2,,,)
+ (a_1_comp,"{ ""a"" : { ""$numberInt"" : ""1"" } }",,,,,2,,,"{ ""enableOrderedIndex"" : { ""$numberInt"" : ""1"" } }")
+ (a_-1_comp,"{ ""a"" : { ""$numberInt"" : ""-1"" } }",,,,,2,,,"{ ""enableOrderedIndex"" : { ""$numberInt"" : ""1"" } }")
+(5 rows)
+
+-- creating two with composite and different names fails
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1_comp_2", "key": { "a": 1 } } ] }', TRUE);
+ERROR:  Index already exists with a different name: a_1_comp
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_-1_comp_2", "key": { "a": -1 } } ] }', TRUE);
+ERROR:  Index already exists with a different name: a_-1_comp
+-- test that having side by side indexes we prefer composite index
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 1, "a": 1, "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 2, "a": [ 1, 2 ], "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 3, "a": 1, "b": [ true, false ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 4, "a": [ 1, 2 ], "b": [ true, false ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 5, "a": "string1", "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 6, "a": "string2", "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 7, "a": { "key": "string2" }, "b": true }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', FORMAT('{ "_id": 8, "a": { "key": "%s" }, "b": "%s" }', repeat('a', 10000), repeat('a', 10000))::bson);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set documentdb.logRelationIndexesOrder to on;
+set client_min_messages to log;
+EXPLAIN VERBOSE SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1 } }');
+LOG:  Name: collection_pk_5603, access method: btree, 1st opfamily: integer_ops, numPaths 2
+LOG:  Name: documents_rum_index_5610, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5609, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5608, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5607, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_5603 collection  (cost=4.43..8.45 rows=2 width=32)
+   Output: document
+   Recheck Cond: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on "a_-1_comp"  (cost=0.00..0.00 rows=8 width=0)
+         Index Cond: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+EXPLAIN VERBOSE SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b": {"$exists": true} } }');
+LOG:  Name: collection_pk_5603, access method: btree, 1st opfamily: integer_ops, numPaths 2
+LOG:  Name: documents_rum_index_5610, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5609, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5608, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5607, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documentdb_data.documents_5603 collection  (cost=4.43..8.45 rows=1 width=32)
+   Output: document
+   Recheck Cond: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Filter: (collection.document @>= '{ "b" : { "$minKey" : 1 } }'::bson)
+   ->  Bitmap Index Scan on "a_-1_comp"  (cost=0.00..0.00 rows=8 width=0)
+         Index Cond: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+(6 rows)
+
+reset client_min_messages;
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1_b_1_c_1", "key": { "a": 1, "b": 1, "c": 1}, "enableOrderedIndex": false } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('comp_db', 'comp_collection', '{ "_id": 7, "a": { "key": "string2" }, "b": true, "c": 1 }');
+                                                                                                                       insert_one                                                                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] }
+(1 row)
+
+set documentdb.forceDisableSeqScan to on;
+set client_min_messages to log;
+EXPLAIN VERBOSE SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b": {"$exists": true}, "c": {"$exists": true} } }');
+LOG:  Name: collection_pk_5603, access method: btree, 1st opfamily: integer_ops, numPaths 2
+LOG:  Name: documents_rum_index_5610, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5609, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5608, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5607, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5611, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 3
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using a_1_b_1_c_1 on documentdb_data.documents_5603 collection  (cost=0.00..4.01 rows=1 width=32)
+   Output: document
+   Index Cond: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND (collection.document @>= '{ "b" : { "$minKey" : 1 } }'::bson) AND (collection.document @>= '{ "c" : { "$minKey" : 1 } }'::bson))
+(3 rows)
+
+set documentdb.enableIndexPriorityOrdering to off;
+EXPLAIN VERBOSE SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b": {"$exists": true}, "c": {"$exists": true} } }');
+LOG:  Name: documents_rum_index_5611, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 3
+LOG:  Name: documents_rum_index_5610, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5609, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5608, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5607, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: collection_pk_5603, access method: btree, 1st opfamily: integer_ops, numPaths 2
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using a_1_b_1_c_1 on documentdb_data.documents_5603 collection  (cost=0.00..4.01 rows=1 width=32)
+   Output: document
+   Index Cond: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND (collection.document @>= '{ "b" : { "$minKey" : 1 } }'::bson) AND (collection.document @>= '{ "c" : { "$minKey" : 1 } }'::bson))
+(3 rows)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "comp_collection", "indexes": [ { "name": "a_1_b_1_c_1_comp", "key": { "a": 1, "b": 1, "c": 1} } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.enableIndexPriorityOrdering to on;
+EXPLAIN VERBOSE SELECT document FROM documentdb_api_catalog.bson_aggregation_find('comp_db', '{ "find": "comp_collection", "filter": { "a": 1, "b": {"$exists": true}, "c": {"$exists": true} } }');
+LOG:  Name: collection_pk_5603, access method: btree, 1st opfamily: integer_ops, numPaths 2
+LOG:  Name: documents_rum_index_5610, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5609, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5612, access method: documentdb_rum, 1st opfamily: bson_rum_composite_path_ops, numPaths 3
+LOG:  Name: documents_rum_index_5608, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5607, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 1
+LOG:  Name: documents_rum_index_5611, access method: documentdb_rum, 1st opfamily: bson_rum_single_path_ops, numPaths 3
+                                                                                                      QUERY PLAN                                                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using a_1_b_1_c_1_comp on documentdb_data.documents_5603 collection  (cost=0.00..4.01 rows=1 width=32)
+   Output: document
+   Index Cond: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND (collection.document @>= '{ "b" : { "$minKey" : 1 } }'::bson) AND (collection.document @>= '{ "c" : { "$minKey" : 1 } }'::bson))
+(3 rows)
+
+reset client_min_messages;
+reset documentdb.forceDisableSeqScan;
+set documentdb.logRelationIndexesOrder to off;
+set documentdb.defaultUseCompositeOpClass to off;
+-- test index limits
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "cmpcollcreate", "indexes": [ { "name": "comp_index", "key": { "a1": 1, "a2": 1, "a3": 1, "a4": 1, "a5": 1, "a6": 1, "a7": 1, "a8": 1, "a9": 1, "a10": 1, "a11": 1, "a12": 1, "a13": 1, "a14": 1, "a15": 1, "a16": 1, "a17": 1, "a18": 1, "a19": 1, "a20": 1, "a21": 1, "a22": 1, "a23": 1, "a24": 1, "a25": 1, "a26": 1, "a27": 1, "a28": 1, "a29": 1, "a30": 1, "a31": 1, "a32": 1 }, "enableCompositeTerm": true } ] }', TRUE);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- fails
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+    'comp_db', '{ "createIndexes": "cmpcollcreate", "indexes": [ { "name": "comp_index22", "key": { "a1": 1, "a2": 1, "a3": 1, "a4": 1, "a5": 1, "a6": 1, "a7": 1, "a8": 1, "a9": 1, "a10": 1, "a11": 1, "a12": 1, "a13": 1, "a14": 1, "a15": 1, "a16": 1, "a17": 1, "a18": 1, "a19": 1, "a20": 1, "a21": 1, "a22": 1, "a23": 1, "a24": 1, "a25": 1, "a26": 1, "a27": 1, "a28": 1, "a29": 1, "a30": 1, "a31": 1, "a32": 1, "a33": 1 }, "enableCompositeTerm": true } ] }', TRUE);
+ERROR:  Error in specification { "name" : "comp_index22", "key" : { "a1" : 1, "a2" : 1, "a3" : 1, "a4" : 1, "a5" : 1, "a6" : 1, "a7" : 1, "a8" : 1, "a9" : 1, "a10" : 1, "a11" : 1, "a12" : 1, "a13" : 1, "a14" : 1, "a15" : 1, "a16" : 1, "a17" : 1, "a18" : 1, "a19" : 1, "a20" : 1, "a21" : 1, "a22" : 1, "a23" : 1, "a24" : 1, "a25" : 1, "a26" : 1, "a27" : 1, "a28" : 1, "a29" : 1, "a30" : 1, "a31" : 1, "a32" : 1, "a33" : 1 }, "enableCompositeTerm" : true }:Index exceeds maximum supported keys of 32

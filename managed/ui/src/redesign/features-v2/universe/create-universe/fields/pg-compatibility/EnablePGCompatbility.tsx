@@ -8,6 +8,7 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { AnalyzeDialog } from '../../../../../features/universe/universe-actions/edit-pg-compatibility/AnalyzeDialog';
 import { isVersionPGSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
+import { PG_COMPATIBILITY_FIELD } from '../FieldNames';
 
 //icons
 import InfoIcon from '../../../../../assets/info-new.svg';
@@ -18,8 +19,6 @@ interface PGCompatibiltyFieldProps {
   disabled: boolean;
   dbVersion: string;
 }
-
-const PG_COMPATIBILITY_FIELD = 'enablePGCompatibitilty';
 
 const StyledSubText = styled(Typography)({
   fontSize: '11.5px',

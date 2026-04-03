@@ -1639,6 +1639,24 @@ TEST_F_EX(PgCloneTest, ClonePartitionedTableOidCollision, PgCloneInitiallyEmptyD
   ASSERT_OK(create_partitioned_table(target_conn));
 }
 
+TEST_F(PgCloneTest, CloneWithSpecialCharsInDbName) {
+  const std::string kInjectionDbName = "a';alter database template0 rename to rdb;--";
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", pgwrapper::PqEscapeIdentifier(kInjectionDbName),
+      kSourceNamespaceName);
+  ASSERT_OK(status);
+
+  // Verify template0 was not renamed by SQL injection.
+  auto template0_count = ASSERT_RESULT(source_conn_->FetchRow<int64_t>(
+      "SELECT count(*) FROM pg_database WHERE datname = 'template0'"));
+  ASSERT_EQ(template0_count, 1);
+
+  // Verify the cloned database is accessible and has the expected schema.
+  auto clone_conn = ASSERT_RESULT(ConnectToDB(kInjectionDbName));
+  auto count = ASSERT_RESULT(clone_conn.FetchRow<int64_t>("SELECT count(*) FROM t1"));
+  ASSERT_EQ(count, 0);
+}
+
 TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
   const std::string kRenamedNamespaceName = "testdb_renamed";
 
@@ -1685,6 +1703,42 @@ TEST_F(PgCloneTest, CloneAfterSuccessiveRenames) {
       timestamp.ToInt64());
   // The renamed name no longer exists, so this should fail.
   ASSERT_NOK(status);
+}
+
+TEST_F(PgCloneTest, DisallowCloneIntoForwardRestoreGap) {
+  // Regression test for GH#30794.
+  // After a PITR to time t1, cloning to a time t2 where t1 < t2 < PITR_completion_time
+  // should fail because data in that range was rolled back by the PITR.
+  //
+  // 1. Insert row (1, 10).
+  // 2. Record time t1.
+  // 3. Insert row (2, 20).
+  // 4. Record time t2.
+  // 5. PITR to t1.
+  // 6. Clone to t2 should fail.
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (1, 10)"));
+  auto t1 = ASSERT_RESULT(GetCurrentTime());
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (2, 20)"));
+  auto t2 = ASSERT_RESULT(GetCurrentTime());
+
+  LOG(INFO) << "Restoring to t1: " << t1;
+  auto restoration_id = ASSERT_RESULT(
+      RestoreSnapshotSchedule(master_backup_proxy_.get(), schedule_id_,
+          HybridTime::FromMicros(static_cast<uint64>(t1.ToInt64())), kTimeout));
+  ASSERT_OK(WaitForRestoration(master_backup_proxy_.get(), restoration_id, kTimeout));
+  LOG(INFO) << "Restoration complete.";
+
+  // Reconnect since PITR may invalidate the PG connection.
+  source_conn_ = std::make_unique<pgwrapper::PGConn>(
+      ASSERT_RESULT(ConnectToDB(kSourceNamespaceName)));
+
+  // Cloning to t2, which is after the PITR's restore_at but before the PITR's completion time,
+  // should be disallowed.
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      t2.ToInt64());
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Cannot perform a forward restore");
 }
 
 }  // namespace master

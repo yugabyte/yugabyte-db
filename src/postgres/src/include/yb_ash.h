@@ -34,6 +34,23 @@
 #define YbAshIsClientAddrSet() \
 	(yb_enable_ash && !IsBootstrapProcessingMode() && !YBIsInitDbModeEnvVarSet())
 
+/*
+ * query_id 0 is never produced by pg_stat_statements for a real query, so it
+ * marks an invalid / uninitialized QP pair.
+ */
+#define YB_ASH_INVALID_QUERY_ID 0
+/*
+ * Default plan_id when QPM is disabled or for utility statements that have no
+ * query plan.
+ */
+#define YB_ASH_DEFAULT_PLAN_ID 0
+/*
+ * TODO: plan_id is computed via hash_any_extended which can return 0, so a
+ * plan_id of 0 doesn't reliably indicate "no plan". Consider reserving a
+ * distinct invalid plan_id and checking it here as well.
+ */
+#define YbAshIsInvalidQpPair(pair) ((pair).query_id == YB_ASH_INVALID_QUERY_ID)
+
 /* GUC variables */
 extern bool yb_enable_ash;
 extern int	yb_ash_circular_buffer_size;

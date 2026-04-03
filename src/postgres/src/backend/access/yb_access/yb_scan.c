@@ -149,12 +149,18 @@ typedef struct YbScanPlanData
 	/* The relation where to read data from */
 	Relation	target_relation;
 
-	/* Primary and hash key columns of the referenced table/relation. */
-	Bitmapset  *primary_key;
-	Bitmapset  *hash_key;
-
-	/* Set of key columns whose values will be used for scanning. */
-	Bitmapset  *sk_cols;
+	/*
+	 * Key columns of the bind relation (i.e. the relation where cols are
+	 * bound).  For a sequential scan or primary index scan, this is the base
+	 * table's primary key columns.  For a secondary index [only] scan, this is
+	 * the secondary index's key columns.
+	 * - key_cols: all of them
+	 * - hash_key_cols: the subset that are HASH columns
+	 * - qualified_scan_key_cols: the subset qualified from scan keys
+	 */
+	Bitmapset  *key_cols;
+	Bitmapset  *hash_key_cols;
+	Bitmapset  *qualified_scan_key_cols;
 
 	/* Description and attnums of the columns to bind */
 	TupleDesc	bind_desc;
@@ -176,29 +182,21 @@ ybcAddAttributeColumn(YbScanPlan scan_plan, AttrNumber attnum)
 {
 	const int	idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
-	if (bms_is_member(idx, scan_plan->primary_key))
-		scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+	if (bms_is_member(idx, scan_plan->key_cols))
+		scan_plan->qualified_scan_key_cols =
+			bms_add_member(scan_plan->qualified_scan_key_cols, idx);
 }
 
 /*
- * Checks if an attribute is a hash or primary key column and note it in
- * the scan plan.
+ * Checks if an attribute is a hash or key column and note it in the scan plan.
  */
 static void
-ybcCheckPrimaryKeyAttribute(YbScanPlan scan_plan,
-							YbcPgTableDesc ybc_table_desc,
-							AttrNumber attnum)
+ybcCheckKeyAttribute(YbScanPlan scan_plan,
+					 YbcPgTableDesc ybc_table_desc,
+					 AttrNumber attnum)
 {
-	YbcPgColumnInfo column_info = {0};
+	YbcPgColumnInfo column_info;
 
-	/*
-	 * TODO(neil) We shouldn't need to upload YugaByte table descriptor here because the structure
-	 * Postgres::Relation already has all information.
-	 * - Primary key indicator: IndexRelation->rd_index->indisprimary
-	 * - Number of key columns: IndexRelation->rd_index->indnkeyatts
-	 * - Number of all columns: IndexRelation->rd_index->indnatts
-	 * - Hash, range, etc: IndexRelation->rd_indoption (Bits INDOPTION_HASH, RANGE, etc)
-	 */
 	HandleYBTableDescStatus(YBCPgGetColumnInfo(ybc_table_desc,
 											   attnum,
 											   &column_info), ybc_table_desc);
@@ -206,14 +204,14 @@ ybcCheckPrimaryKeyAttribute(YbScanPlan scan_plan,
 	int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
 	if (column_info.is_hash)
-		scan_plan->hash_key = bms_add_member(scan_plan->hash_key, idx);
-	if (column_info.is_primary)
-		scan_plan->primary_key = bms_add_member(scan_plan->primary_key, idx);
+		scan_plan->hash_key_cols = bms_add_member(scan_plan->hash_key_cols, idx);
+	if (column_info.is_key)
+		scan_plan->key_cols = bms_add_member(scan_plan->key_cols, idx);
 }
 
 /*
- * Get YugaByte-specific table metadata and load it into the scan_plan.
- * Currently only the hash and primary key info.
+ * Get Yugabyte-specific table metadata and load it into the scan_plan.
+ * Currently only key info.
  */
 static void
 ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
@@ -225,7 +223,7 @@ ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 									 &ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
-		ybcCheckPrimaryKeyAttribute(scan_plan, ybc_table_desc, attnum);
+		ybcCheckKeyAttribute(scan_plan, ybc_table_desc, attnum);
 }
 
 static Oid
@@ -1010,15 +1008,15 @@ ybc_should_pushdown_op(YbScanPlan scan_plan, AttrNumber attnum, int op_strategy)
 	switch (op_strategy)
 	{
 		case BTEqualStrategyNumber:
-			return bms_is_member(idx, scan_plan->primary_key);
+			return bms_is_member(idx, scan_plan->key_cols);
 
 		case BTLessStrategyNumber:
 		case BTLessEqualStrategyNumber:
 		case BTGreaterEqualStrategyNumber:
 		case BTGreaterStrategyNumber:
 			/* range key */
-			return (!bms_is_member(idx, scan_plan->hash_key) &&
-					bms_is_member(idx, scan_plan->primary_key));
+			return (!bms_is_member(idx, scan_plan->hash_key_cols) &&
+					bms_is_member(idx, scan_plan->key_cols));
 
 		default:
 			/* TODO: support other logical operators */
@@ -1194,8 +1192,8 @@ YbIsUnsatisfiableCondition(int nkeys, ScanKey keys[])
 }
 
 static bool
-YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
-							   ScanKey key)
+YbShouldPushdownScanKey(YbScanPlan scan_plan, AttrNumber attnum,
+						ScanKey key)
 {
 	if (YbIsHashCodeSearch(key))
 		return true;
@@ -1260,10 +1258,7 @@ int_compar_cb(const void *v1, const void *v2)
 static void
 ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
-	/*
-	 * Find the scan keys that are the primary key.
-	 */
-	bool		sk_cols_has_ybctid = false;
+	bool		qualified_scan_key_cols_has_ybctid = false;
 
 	for (int i = 0; i < ybScan->nkeys; i++)
 	{
@@ -1276,19 +1271,19 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 		if (attnum == YBTupleIdAttributeNumber)
 		{
-			sk_cols_has_ybctid = true;
-			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+			qualified_scan_key_cols_has_ybctid = true;
+			scan_plan->qualified_scan_key_cols =
+				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
 		}
-		/*
-		 * TODO: Can we have bound keys on non-pkey columns here?
-		 *       If not we do not need the is_primary_key below.
-		 */
-		bool		is_primary_key = bms_is_member(idx, scan_plan->primary_key);
 
-		if (is_primary_key &&
-			YbShouldPushdownScanPrimaryKey(scan_plan, attnum, ybScan->keys[i]))
+		/* SeqScan may give scan keys that are not key columns. */
+		bool		is_key_column = bms_is_member(idx, scan_plan->key_cols);
+
+		if (is_key_column &&
+			YbShouldPushdownScanKey(scan_plan, attnum, ybScan->keys[i]))
 		{
-			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
+			scan_plan->qualified_scan_key_cols =
+				bms_add_member(scan_plan->qualified_scan_key_cols, idx);
 		}
 	}
 
@@ -1299,11 +1294,12 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * scan keys.
 	 */
 	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key, scan_plan->sk_cols) &&
-		!sk_cols_has_ybctid)
+		!bms_is_subset(scan_plan->hash_key_cols,
+					   scan_plan->qualified_scan_key_cols) &&
+		!qualified_scan_key_cols_has_ybctid)
 	{
-		bms_free(scan_plan->sk_cols);
-		scan_plan->sk_cols = NULL;
+		bms_free(scan_plan->qualified_scan_key_cols);
+		scan_plan->qualified_scan_key_cols = NULL;
 	}
 }
 
@@ -1602,10 +1598,9 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	ScanKey    *subkeys = &ybScan->keys[skey_index + 1];
 
 	/*
-	 * We can only push down right now if the primary key columns
-	 * are specified in the correct order and the primary key
-	 * has no hashed columns. We also need to ensure that
-	 * the same comparison operation is done to all subkeys.
+	 * We can only push down right now if the key columns are specified in the
+	 * correct order and the key has no hashed columns. We also need to ensure
+	 * that the same comparison operation is done to all subkeys.
 	 */
 	bool		can_pushdown = true;
 
@@ -1643,11 +1638,7 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		}
 	}
 
-	/*
-	 * Make sure that the primary key has no hash columns in order
-	 * to push down.
-	 */
-
+	/* Make sure that there are no hash keys in order to push down. */
 	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)
 	{
 		if (index->rd_indoption[i] & INDOPTION_HASH)
@@ -1665,9 +1656,9 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		/*
 		 * Prepare upper/lower bound tuples determined from this
 		 * clause for bind. Care must be taken in the case
-		 * that primary key columns in the index are ordered
+		 * that key columns in the index are ordered
 		 * differently from each other. For example, consider
-		 * if the underlying index has primary key
+		 * if the underlying index has key
 		 * (r1 ASC, r2 DESC, r3 ASC) and we are dealing with
 		 * a clause like (r1, r2, r3) <= (40, 35, 12).
 		 * We cannot simply bind (40, 35, 12) as an upper bound
@@ -2077,7 +2068,7 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 	{
 		int			idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 
-		if (max_idx < idx && bms_is_member(idx, scan_plan->sk_cols))
+		if (max_idx < idx && bms_is_member(idx, scan_plan->qualified_scan_key_cols))
 			max_idx = idx;
 	}
 	max_idx++;
@@ -2194,7 +2185,7 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 
 			ybScan->needs_recheck |= needs_recheck;
 			/*
-			 * Full primary-key RowComparison bindings don't interact
+			 * Full key RowComparison bindings don't interact
 			 * or interfere too much with other bindings to the same columns.
 			 * They set the upper/lower bounds of the requested scan and also
 			 * apply IS NOT NULL filters on the bound LHS columns.
@@ -2202,11 +2193,11 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 			continue;
 		}
 
-		/* Check if this is primary columns */
 		int			bind_key_attnum = scan_plan->bind_key_attnums[i];
 		int			idx = YBAttnumToBmsIndex(relation, bind_key_attnum);
 
-		if (!bms_is_member(idx, scan_plan->sk_cols))
+		/* Check if this is a qualified key column. */
+		if (!bms_is_member(idx, scan_plan->qualified_scan_key_cols))
 		{
 			ybScan->needs_recheck = true;
 			continue;
@@ -2463,7 +2454,7 @@ ybBindOrdinaryScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *scan,
 	}
 
 	/* Bind keys for BETWEEN and IS NOT NULL */
-	int			min_idx = bms_first_member(scan_plan->sk_cols);
+	int			min_idx = bms_first_member(scan_plan->qualified_scan_key_cols);
 
 	min_idx = min_idx < 0 ? 0 : min_idx;
 	for (int idx = min_idx; idx < max_idx; idx++)
@@ -2753,6 +2744,30 @@ ybcAddNonDroppedAttr(const TupleDesc tup_desc,
 }
 
 /*
+ * Replace decoded PK column requests with a request for ybidxbasectid.
+ */
+static void
+ybcReplacePkReqWithBasectid(IndexOnlyScan *ios_plan,
+							YbAttnumBmsState *result)
+{
+	if (ios_plan->yb_num_decoded_pk_cols > 0)
+	{
+		int			phys_natts = list_length(ios_plan->indextlist) -
+								 ios_plan->yb_num_decoded_pk_cols;
+		bool		removed = false;
+		int			bms_idx = ybcAttnumBmsIndex(result, phys_natts);
+
+		while ((bms_idx = bms_next_member(result->bms, bms_idx)) >= 0)
+		{
+			bms_del_member(result->bms, bms_idx);
+			removed = true;
+		}
+		if (removed)
+			ybcAttnumBmsAdd(result, YBIdxBaseTupleIdAttributeNumber);
+	}
+}
+
+/*
  * Returns list of target columns required by scan plan.
  */
 static YbAttnumBmsState
@@ -2862,6 +2877,13 @@ ybcBuildRequiredAttrs(YbScanDesc yb_scan, YbScanPlan scan_plan,
 			for (AttrNumber attnum = 1; attnum <= target_desc->natts; ++attnum)
 				ybcAddNonDroppedAttr(target_desc, attnum, &result);
 	}
+
+	/*
+	 * For index-only scans with decoded primary key columns, do not request
+	 * their values from DocDB. Instead, request ybidxbasectid for decoding.
+	 */
+	if (pg_scan_plan && IsA(pg_scan_plan, IndexOnlyScan))
+		ybcReplacePkReqWithBasectid((IndexOnlyScan *) pg_scan_plan, &result);
 
 	return result;
 }
@@ -3268,9 +3290,9 @@ YbPredetermineNeedsRecheck(Scan *scan,
 	(void) ybBindScanKeys(&ybscan, &scan_plan, scan,
 						  true);	/* is_for_precheck */
 
-	bms_free(scan_plan.hash_key);
-	bms_free(scan_plan.primary_key);
-	bms_free(scan_plan.sk_cols);
+	bms_free(scan_plan.hash_key_cols);
+	bms_free(scan_plan.key_cols);
+	bms_free(scan_plan.qualified_scan_key_cols);
 	return ybscan.needs_recheck;
 }
 
@@ -3341,9 +3363,9 @@ YbBeginScan(Relation table,
 						false /* is_for_precheck */ ))
 	{
 		ybScan->quit_scan = true;
-		bms_free(scan_plan.hash_key);
-		bms_free(scan_plan.primary_key);
-		bms_free(scan_plan.sk_cols);
+		bms_free(scan_plan.hash_key_cols);
+		bms_free(scan_plan.key_cols);
+		bms_free(scan_plan.qualified_scan_key_cols);
 		return ybScan;
 	}
 
@@ -3388,9 +3410,9 @@ YbBeginScan(Relation table,
 	if (pg_scan_plan)
 		YbApplyMergeSortKeys(ybScan, pg_scan_plan);
 
-	bms_free(scan_plan.hash_key);
-	bms_free(scan_plan.primary_key);
-	bms_free(scan_plan.sk_cols);
+	bms_free(scan_plan.hash_key_cols);
+	bms_free(scan_plan.key_cols);
+	bms_free(scan_plan.qualified_scan_key_cols);
 	return ybScan;
 }
 
@@ -4157,27 +4179,30 @@ ybcEvalHashSelectivity(List *hashed_rinfos)
 }
 
 /*
- * Evaluate the selectivity for some qualified cols given the hash and primary key cols.
+ * Evaluate the selectivity for some qualified cols given the hash and key cols.
  */
 static double
 ybcIndexEvalClauseSelectivity(double reltuples,
-							  Bitmapset *qual_cols,
+							  Bitmapset *qualified_scan_key_cols,
 							  bool is_unique_idx,
-							  Bitmapset *hash_key,
-							  Bitmapset *primary_key)
+							  Bitmapset *hash_key_cols,
+							  Bitmapset *key_cols)
 {
 	/*
 	 * If there is no search condition, or not all of the hash columns have
 	 * search conditions, it will be a full-table scan.
 	 */
-	if (bms_is_empty(qual_cols) || !bms_is_subset(hash_key, qual_cols))
+	if (bms_is_empty(qualified_scan_key_cols) ||
+		!bms_is_subset(hash_key_cols, qualified_scan_key_cols))
+	{
 		return YBC_FULL_SCAN_SELECTIVITY;
+	}
 
 	/*
-	 * Otherwise, it will be either a primary key lookup or range scan
+	 * Otherwise, it will be either a full key lookup or range scan
 	 * on a hash key.
 	 */
-	if (bms_is_subset(primary_key, qual_cols))
+	if (bms_is_subset(key_cols, qualified_scan_key_cols))
 	{
 		/* For unique indexes full key guarantees single row. */
 		if (is_unique_idx)
@@ -4313,12 +4338,12 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 
 		if (i < indexinfo->nhashcolumns)
 		{
-			scan_plan.hash_key = bms_add_member(scan_plan.hash_key, bms_idx);
+			scan_plan.hash_key_cols = bms_add_member(scan_plan.hash_key_cols, bms_idx);
 		}
-		scan_plan.primary_key = bms_add_member(scan_plan.primary_key, bms_idx);
+		scan_plan.key_cols = bms_add_member(scan_plan.key_cols, bms_idx);
 	}
 
-	/* Find out the search conditions on the primary key columns */
+	/* Find out the search conditions on the key columns */
 	foreach(lc, path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
@@ -4390,10 +4415,10 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		else
 		{
 			*selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
-														 scan_plan.sk_cols,
+														 scan_plan.qualified_scan_key_cols,
 														 is_unique,
-														 scan_plan.hash_key,
-														 scan_plan.primary_key);
+														 scan_plan.hash_key_cols,
+														 scan_plan.key_cols);
 			baserel_rows_estimate = baserel->tuples * (*selectivity);
 		}
 	}
@@ -4426,8 +4451,8 @@ ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 		double		const_qual_selectivity = ybcIndexEvalClauseSelectivity(baserel->tuples,
 																		   const_quals,
 																		   is_unique,
-																		   scan_plan.hash_key,
-																		   scan_plan.primary_key);
+																		   scan_plan.hash_key_cols,
+																		   scan_plan.key_cols);
 
 		baserel_rows_estimate = const_qual_selectivity * baserel->tuples;
 

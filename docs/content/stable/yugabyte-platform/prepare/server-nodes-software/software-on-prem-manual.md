@@ -33,13 +33,6 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
   </li>
 
   <li>
-    <a href="../software-on-prem-assist/" class="nav-link">
-      <i class="fa-regular fa-scroll"></i>
-      Assisted
-    </a>
-  </li>
-
-  <li>
     <a href="../software-on-prem-manual/" class="nav-link active">
       <i class="icon-shell" aria-hidden="true"></i>
       Fully manual
@@ -631,7 +624,7 @@ You must reboot the system for these two settings to take effect.
 
 The YugabyteDB Anywhere node agent is used to manage communication between YugabyteDB Anywhere and the node. When node agent is installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes. For more information, refer to [Node agent](/stable/faq/yugabyte-platform/#node-agent) FAQ.
 
-For automated and assisted manual provisioning, node agents are installed onto instances automatically when adding instances, or when running the pre-provisioning script using the `--install_node_agent` flag.
+(For legacy automatic and legacy assisted manual provisioning, node agents are installed onto instances automatically when adding instances.)
 
 Use the following procedure to install node agent for fully manual provisioning.
 

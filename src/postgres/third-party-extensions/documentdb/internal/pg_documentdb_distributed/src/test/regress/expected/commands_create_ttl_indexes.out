@@ -258,13 +258,36 @@ ORDER BY shardid ASC; -- added to reduce test flakiness
          20000 |    20003 | { "ttl" : { "$numberInt" : "1" } } |     |      5 | { "ttl" : "hashed" } | 2000023
 (8 rows)
 
+-- Delete all other indexes from previous tests to reduce flakiness
+WITH deleted AS (
+  DELETE FROM documentdb_api_catalog.collection_indexes
+  WHERE collection_id != 20000
+  RETURNING 1
+) SELECT true FROM deleted UNION ALL SELECT true LIMIT 1;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT
+    collection_id,
+    (index_spec).index_key, (index_spec).index_name,
+    (index_spec).index_expire_after_seconds as ttl_expiry,
+    (index_spec).index_is_sparse as is_sparse,
+    (index_spec).index_name as index_name
+FROM documentdb_api_catalog.collection_indexes WHERE (index_spec).index_expire_after_seconds > 0;
+ collection_id |             index_key              | index_name | ttl_expiry | is_sparse | index_name 
+---------------------------------------------------------------------
+         20000 | { "ttl" : { "$numberInt" : "1" } } | ttl_index  |          5 |           | ttl_index
+(1 row)
+
 -- 10.b. Call ttl task procedure with a batch size of 0 --
 BEGIN;
 Set citus.log_remote_commands to on; -- Will print Citus rewrites of the queries
 Set citus.log_local_commands to on; -- Will print the local queries 
 set local documentdb.SingleTTLTaskTimeBudget to 1;
 CALL documentdb_api_internal.delete_expired_rows(0); -- To test the sql query, it won't delete any data
-NOTICE:  executing the command locally: SELECT index_id, collection_id, (index_spec).index_key AS index_key, (index_spec).index_pfe AS index_pfe, (index_spec).index_expire_after_seconds AS index_expire_after_seconds FROM documentdb_api_catalog.collection_indexes_102009 collection_indexes WHERE (index_is_valid AND ((index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0)) ORDER BY collection_id, index_id
+NOTICE:  executing the command locally: SELECT index_id, collection_id, (index_spec).index_key AS index_key, (index_spec).index_pfe AS index_pfe, (index_spec).index_expire_after_seconds AS index_expire_after_seconds, (index_spec).index_is_sparse AS index_is_sparse, COALESCE((documentdb_core.bson_get_value_text((index_spec).index_options, 'enableCompositeTerm'::text))::boolean, (documentdb_core.bson_get_value_text((index_spec).index_options, 'enableOrderedIndex'::text))::boolean, false) AS index_is_ordered, (index_spec).index_name AS index_name FROM documentdb_api_catalog.collection_indexes_102009 collection_indexes WHERE (index_is_valid AND ((index_spec).index_expire_after_seconds OPERATOR(pg_catalog.>=) 0)) ORDER BY collection_id, index_id
 Set citus.log_remote_commands to off;
 Set citus.log_local_commands to off;
 END;
@@ -339,29 +362,29 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 
 -- 14. TTL index creation restrictions
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": -1}]}', true);
-ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : -1 } :: caused by :: TTL index 'expireAfterSeconds' option cannot be less than 0.
+ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : -1 }:TTL index 'expireAfterSeconds' option cannot be less than 0.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": "stringNotAllowed"}]}', true);
-ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : "stringNotAllowed" } :: caused by :: TTL index 'expireAfterSeconds' option must be numeric, but received a type of string.
+ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : "stringNotAllowed" }:The 'expireAfterSeconds' option for a TTL index must be a numeric value, but a different data type was provided: string.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": true}]}', true);
-ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : true } :: caused by :: TTL index 'expireAfterSeconds' option must be numeric, but received a type of bool.
+ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : true }:The 'expireAfterSeconds' option for a TTL index must be a numeric value, but a different data type was provided: bool.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 707992037530324174}]}', true);
-ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : 707992037530324174 } :: caused by :: TTL index 'expireAfterSeconds' option must be within an acceptable range, try a different number than 707992037530324224.000000.
+ERROR:  Error in specification { "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : 707992037530324174 }:TTL index 'expireAfterSeconds' option must be within an acceptable range, try a different number than 707992037530324224.000000.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index2", "expireAfterSeconds": 100, "v" : 1}]}', true);
 ERROR:  An existing index has the same name as the requested index. When index names are not specified, they are auto generated and can cause conflicts. Please refer to our documentation. Requested index: { "v" : 1, "key" : { "ttl" : 1 }, "name" : "ttl_index2", "expireAfterSeconds" : 100 }, existing index: { "v" : 2, "key" : { "ttl2" : 1 }, "name" : "ttl_index2", "unique" : true, "expireAfterSeconds" : 100 }
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
-ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: The field 'expireAfterSeconds' is not valid for an _id index specification.
+ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 }:The field 'expireAfterSeconds' is not valid for an _id index specification.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
-ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: The field 'expireAfterSeconds' is not valid for an _id index specification.
+ERROR:  Error in specification { "key" : { "_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 }:The field 'expireAfterSeconds' is not valid for an _id index specification.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"_id": 1, "non_id" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
-ERROR:  Error in specification { "key" : { "_id" : 1, "non_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: TTL indexes are single-field indexes, compound indexes do not support TTL.
+ERROR:  Error in specification { "key" : { "_id" : 1, "non_id" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 }:TTL indexes work only on single fields, and compound indexes are incompatible with TTL functionality.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1": 1, "non_id2" : 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
-ERROR:  Error in specification { "key" : { "non_id1" : 1, "non_id2" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: TTL indexes are single-field indexes, compound indexes do not support TTL.
+ERROR:  Error in specification { "key" : { "non_id1" : 1, "non_id2" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 }:TTL indexes work only on single fields, and compound indexes are incompatible with TTL functionality.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"non_id1.$**": 1}, "name": "ttl_idx", "expireAfterSeconds": 100}]}', true);
-ERROR:  Error in specification { "key" : { "non_id1.$**" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 } :: caused by :: Index type 'wildcard' cannot be a TTL index.
+ERROR:  Error in specification { "key" : { "non_id1.$**" : 1 }, "name" : "ttl_idx", "expireAfterSeconds" : 100 }:Index type 'wildcard' cannot be a TTL index.
 -- 15. Unsupported ttl index scenarios
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttl4": "hashed"}, "name": "ttl_index4", "expireAfterSeconds": 100}]}', true);
 ERROR:  Creating a hash index as ttl index is not supported.
--- 16. Behavioral difference with Native Sharded Mongo
+-- 16. Behavioral difference with sharded reference implementation
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew": 1}, "name": "ttl_new_index1", "sparse" : true, "expireAfterSeconds" : 10}]}', true);
                                                                                                    create_indexes_non_concurrently                                                                                                    
 ---------------------------------------------------------------------
@@ -403,7 +426,7 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 (9 rows)
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlcoll", "indexes": [{"key": {"ttlnew3": "hashed"}, "name": "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10}]}', true);
-ERROR:  Error in specification { "key" : { "ttlnew3" : "hashed" }, "name" : "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10 } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
+ERROR:  Error in specification { "key" : { "ttlnew3" : "hashed" }, "name" : "ttl_new_indexk", "unique" : true, "expireAfterSeconds" : 10 }:Index type 'hashed' does not support the unique option.
 -- 17. Partial filter expresson tests
 SELECT documentdb_api_internal.create_indexes_non_concurrently(
   'db',
@@ -650,3 +673,498 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlcoll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "ttlnew" : { "$numberInt" : "1" } }, "name" : "ttl_new_index6", "sparse" : false, "expireAfterSeconds" : { "$numberInt" : "12345" } } }, "ok" : { "$numberDouble" : "1.0" } }
 (3 rows)
 
+-- 20 Repeated TTL deletes
+-- 1. Populate collection with a set of documents with different combination of $date fields --
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date older than when the test was written
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date way in future
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array, should be deleted based on min timestamp
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 8, "ttl" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','ttlRepeatedDeletes', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('db', 'ttlRepeatedDeletes', FORMAT('{ "_id": %s, "ttl": { "$date": { "$numberLong": "1657900030774" } } }', i, i)::documentdb_core.bson)) FROM generate_series(10, 10000) AS i;
+ count 
+---------------------------------------------------------------------
+  9991
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('db', 'ttlRepeatedDeletes2', FORMAT('{ "_id": %s, "ttl": { "$date": { "$numberLong": "1657900030774" } } }', i, i)::documentdb_core.bson)) FROM generate_series(10, 10000) AS i;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+  9991
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlRepeatedDeletes", "indexes": [{"key": {"ttl": 1}, "name": "ttl_repeat_1", "sparse" : true, "expireAfterSeconds" : 5}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlRepeatedDeletes2", "indexes": [{"key": {"ttl": 1}, "name": "ttl_repeat_2", "sparse" : false, "expireAfterSeconds" : 5}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT count(*)  from documentdb_api.collection('db', 'ttlRepeatedDeletes');
+ count 
+---------------------------------------------------------------------
+ 10001
+(1 row)
+
+SELECT count(*)  from documentdb_api.collection('db', 'ttlRepeatedDeletes2');
+ count 
+---------------------------------------------------------------------
+  9991
+(1 row)
+
+BEGIN;
+SET LOCAL documentdb.TTLTaskMaxRunTimeInMS to 3000;
+SET LOCAL documentdb.SingleTTLTaskTimeBudget to 2000;
+CALL documentdb_api_internal.delete_expired_rows(11);
+  -- With repeat mode off (by default), we should delete exactly 11 documents per collections (currently has 10001 and 9991 documents)
+SELECT count(*) = 9990  from documentdb_api.collection('db', 'ttlRepeatedDeletes');
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT count(*) = 9980 from documentdb_api.collection('db', 'ttlRepeatedDeletes2');
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+END;
+BEGIN;
+SET LOCAL documentdb.TTLTaskMaxRunTimeInMS to 3000;
+SET LOCAL documentdb.SingleTTLTaskTimeBudget to 2000;
+SET LOCAL documentdb.RepeatPurgeIndexesForTTLTask to true;
+SELECT count(*)  from documentdb_api.collection('db', 'ttlRepeatedDeletes');
+ count 
+---------------------------------------------------------------------
+  9990
+(1 row)
+
+SELECT count(*)  from documentdb_api.collection('db', 'ttlRepeatedDeletes2');
+ count 
+---------------------------------------------------------------------
+  9980
+(1 row)
+
+  -- With repeat mode on, we should delete more than 10 documents per collections (currently has 9990 and 9980 documents)
+CALL documentdb_api_internal.delete_expired_rows(10);
+  -- 3000 ms does 70 iterations locally. So document count should be well below 9900.
+SELECT count(*) < 9900 from documentdb_api.collection('db', 'ttlRepeatedDeletes');
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT count(*) < 9900 from documentdb_api.collection('db', 'ttlRepeatedDeletes2');
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+END;
+-- 21. TTL index with forced ordered scan via index hints
+set documentdb.enableExtendedExplainPlans to on;
+set documentdb_rum.preferOrderedIndexScan to on;
+-- if documentdb_extended_rum exists, set alternate index handler
+SELECT pg_catalog.set_config('documentdb.alternate_index_handler_name', 'extended_rum', false), extname FROM pg_extension WHERE extname = 'documentdb_extended_rum';
+  set_config  |         extname         
+---------------------------------------------------------------------
+ extended_rum | documentdb_extended_rum
+(1 row)
+
+-- Delete all other indexes from previous tests to reduce flakiness
+SELECT documentdb_api.drop_collection('db', 'ttlcoll'), documentdb_api.drop_collection('db', 'ttlcoll1'), documentdb_api.drop_collection('db', 'ttlcoll2'),
+documentdb_api.drop_collection('db', 'ttlcoll3'),documentdb_api.drop_collection('db', 'ttlRepeatedDeletes'),documentdb_api.drop_collection('db', 'ttlRepeatedDeletes2');
+ drop_collection | drop_collection | drop_collection | drop_collection | drop_collection | drop_collection 
+---------------------------------------------------------------------
+ t               | t               | t               | t               | t               | t
+(1 row)
+
+-- make sure jobs are scheduled and disable it to avoid flakiness on the test as it could run on its schedule and delete documents before we run our commands in the test
+select cron.unschedule(jobid) from cron.job where jobname like '%ttl_task%';
+ unschedule 
+---------------------------------------------------------------------
+(0 rows)
+
+-- 1. Populate collection with a set of documents with different combination of $date fields --
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date older than when the test was written
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date way in future
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array, should be deleted based on min timestamp
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 8, "ttl" : true }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('db','ttlCompositeOrderedScan', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('db', 'ttlCompositeOrderedScan', FORMAT('{ "_id": %s, "ttl": { "$date": { "$numberLong": "1657900030774" } } }', i, i)::documentdb_core.bson)) FROM generate_series(10, 10000) AS i;
+ count 
+---------------------------------------------------------------------
+  9991
+(1 row)
+
+--  Create TTL Index --
+SET documentdb.enableExtendedExplainPlans to on;
+SET documentdb.enableIndexOrderbyPushdown to on;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ttlCompositeOrderedScan", "indexes": [{"key": {"ttl": 1}, "enableCompositeTerm": true, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5, "sparse": true}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+select
+    collection_id,
+    (index_spec).index_key, (index_spec).index_name,
+    (index_spec).index_expire_after_seconds as ttl_expiry,
+    (index_spec).index_is_sparse as is_sparse,
+    (index_spec).index_name as index_name
+from documentdb_api_catalog.collection_indexes where (index_spec).index_expire_after_seconds > 0;
+ collection_id |             index_key              | index_name | ttl_expiry | is_sparse | index_name 
+---------------------------------------------------------------------
+         20006 | { "ttl" : { "$numberInt" : "1" } } | ttl_index  |          5 | t         | ttl_index
+(1 row)
+
+\d  documentdb_data.documents_20006
+          Table "documentdb_data.documents_20006"
+     Column      |  Type  | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_20006" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_20023" documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "ttl" ]', tl='2691'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '20006'::bigint)
+
+--  List All indexes --
+SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "ttlCompositeOrderedScan" }') ORDER BY 1;
+                                                                                                                                                                        bson_dollar_unwind                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlCompositeOrderedScan", "firstBatch" : { "v" : { "$numberInt" : "1" }, "key" : { "ttl" : { "$numberInt" : "1" } }, "name" : "ttl_index", "sparse" : true, "expireAfterSeconds" : { "$numberInt" : "5" }, "storageEngine" : { "enableOrderedIndex" : true } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.ttlCompositeOrderedScan", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+(2 rows)
+
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+ 10001
+(1 row)
+
+--  Call ttl purge procedure with a batch size of 100
+BEGIN;
+SET client_min_messages TO LOG;
+SET LOCAL documentdb.logTTLProgressActivity to on;
+CALL documentdb_api_internal.delete_expired_rows(100);
+RESET client_min_messages;
+END;
+BEGIN;
+SET client_min_messages TO LOG;
+SET LOCAL documentdb.useIndexHintsForTTLTask to off;
+SET LOCAL documentdb.logTTLProgressActivity to on;
+CALL documentdb_api_internal.delete_expired_rows(100);
+RESET client_min_messages;
+END;
+--  Check what documents are left after purging
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+  9801
+(1 row)
+
+--  TTL indexes behaves like normal indexes that are used in queries (cx can provide .hint() to force)
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+EXPLAIN(costs off) SELECT object_id FROM documentdb_data.documents_20006
+		WHERE bson_dollar_eq(document, '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::documentdb_core.bson)
+        LIMIT 100;
+                                                                               QUERY PLAN                                                                               
+---------------------------------------------------------------------
+ Limit
+   ->  Custom Scan (Citus Adaptive)
+         Task Count: 8
+         Tasks Shown: One of 8
+         ->  Task
+               Node: host=localhost port=58070 dbname=regression
+               ->  Limit
+                     ->  Bitmap Heap Scan on documents_20006_2000104 documents_20006
+                           Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::documentdb_core.bson)
+                           ->  Bitmap Index Scan on ttl_index
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "ttl" : { "$date" : { "$numberLong" : "100" } } }'::documentdb_core.bson)
+(11 rows)
+
+END;
+--  Check the query to fetch the eligible TTL indexes uses IndexScan.
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+EXPLAIN(analyze on, verbose on, costs off, timing off, summary off) SELECT ctid FROM documentdb_data.documents_20006_2000105
+                WHERE bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "1754515365000" } } }'::documentdb_core.bson)
+                AND documentdb_api_internal.bson_dollar_index_hint(document, 'ttl_index'::text, '{"key": {"ttl": 1}}'::documentdb_core.bson, true)
+        LIMIT 100;
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit (actual rows=100 loops=1)
+   Output: ctid
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=100 loops=1)
+         Output: ctid
+         indexName: ttl_index
+         indexKey: {"ttl": 1}
+         isMultiKey: true
+         indexBounds: ["ttl": [{ "$date" : { "$numberLong" : "-9223372036854775808" } }, { "$date" : "2025-08-06T21:22:45Z" })]
+         innerScanLoops: 4 loops
+         scanType: ordered
+         scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 12242)]
+         ->  Index Scan using ttl_index on documentdb_data.documents_20006_2000105 (actual rows=100 loops=1)
+               Output: ctid
+               Index Cond: (documents_20006_2000105.document @< '{ "ttl" : { "$date" : { "$numberLong" : "1754515365000" } } }'::bson)
+(14 rows)
+
+END;
+--  Shard collection
+SELECT documentdb_api.shard_collection('db', 'ttlCompositeOrderedScan', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+--  Check TTL deletes work on sharded (should delete 800 docs, 100 for each shard)
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+  9801
+(1 row)
+
+CALL documentdb_api_internal.delete_expired_rows(100);
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+  9001
+(1 row)
+
+--  Check for Ordered Indes Scan on the ttl index 
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+EXPLAIN(analyze on, verbose on, costs off, timing off, summary off) SELECT ctid FROM documentdb_data.documents_20006_2000124
+                WHERE bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::documentdb_core.bson)
+                AND documentdb_api_internal.bson_dollar_index_hint(document, 'ttl_index'::text, '{"key": {"ttl": 1}}'::documentdb_core.bson, true)
+        LIMIT 100;
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------
+ Limit (actual rows=100 loops=1)
+   Output: ctid
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=100 loops=1)
+         Output: ctid
+         indexName: ttl_index
+         indexKey: {"ttl": 1}
+         isMultiKey: false
+         indexBounds: ["ttl": [{ "$date" : { "$numberLong" : "-9223372036854775808" } }, { "$date" : "2022-07-15T15:47:10.775Z" })]
+         innerScanLoops: 1 loops
+         scanType: ordered
+         scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 1207)]
+         ->  Index Scan using ttl_index on documentdb_data.documents_20006_2000124 (actual rows=100 loops=1)
+               Output: ctid
+               Index Cond: (documents_20006_2000124.document @< '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::bson)
+(14 rows)
+
+END;
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+SET client_min_messages TO INFO;
+EXPLAIN(COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) SELECT ctid FROM documentdb_data.documents_20006_2000122
+                WHERE bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::documentdb_core.bson)
+                AND documentdb_api_internal.bson_dollar_index_hint(document, 'ttl_index'::text, '{"key": {"ttl": 1}}'::documentdb_core.bson, true)
+        LIMIT 100;
+                                                             QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Limit (actual rows=100 loops=1)
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=100 loops=1)
+         indexName: ttl_index
+         indexKey: {"ttl": 1}
+         isMultiKey: false
+         indexBounds: ["ttl": [{ "$date" : { "$numberLong" : "-9223372036854775808" } }, { "$date" : "2022-07-15T15:47:10.775Z" })]
+         innerScanLoops: 1 loops
+         scanType: ordered
+         scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 1216)]
+         ->  Index Scan using ttl_index on documents_20006_2000122 (actual rows=100 loops=1)
+               Index Cond: (document @< '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::bson)
+(11 rows)
+
+END;
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+  9001
+(1 row)
+
+-- Test with descending TTL ordering
+BEGIN;
+SET client_min_messages TO LOG;
+SET LOCAL documentdb.useIndexHintsForTTLTask to off;
+SET LOCAL documentdb.logTTLProgressActivity to on;
+SET LOCAL documentdb.enableTTLDescSort to on;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+CALL documentdb_api_internal.delete_expired_rows(100);
+RESET client_min_messages;
+END;
+SELECT count(*) from ( SELECT shard_key_value, object_id, document  from documentdb_api.collection('db', 'ttlCompositeOrderedScan') order by object_id) as a;
+ count 
+---------------------------------------------------------------------
+  8201
+(1 row)
+
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown to on;
+set local enable_seqscan to off;
+set LOCAL enable_bitmapscan to off;
+SET client_min_messages TO INFO;
+-- Check ORDER BY uses index 
+EXPLAIN(COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF) 
+    SELECT ctid FROM documentdb_data.documents_20006_2000122
+        WHERE 
+        bson_dollar_lt(document, '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::documentdb_core.bson) AND
+        documentdb_api_internal.bson_dollar_index_hint(document, 'ttl_index'::text, '{"key": {"ttl": 1}}'::documentdb_core.bson, true) AND
+        documentdb_api_internal.bson_dollar_fullscan(document, '{ "ttl" : -1 }'::documentdb_core.bson)
+        ORDER BY documentdb_api_catalog.bson_orderby(document, '{ "ttl" : -1}'::documentdb_core.bson)
+        LIMIT 100;
+                                                             QUERY PLAN                                                             
+---------------------------------------------------------------------
+ Limit (actual rows=100 loops=1)
+   ->  Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=100 loops=1)
+         indexName: ttl_index
+         indexKey: {"ttl": 1}
+         isMultiKey: false
+         indexBounds: ["ttl": [{ "$date" : { "$numberLong" : "-9223372036854775808" } }, { "$date" : "2022-07-15T15:47:10.775Z" })]
+         isBackwardScan: true
+         innerScanLoops: 1 loops
+         scanType: ordered
+         scanKeyDetails: key 1: [(isInequality: true, estimatedEntryCount: 1216)]
+         ->  Index Scan using ttl_index on documents_20006_2000122 (actual rows=100 loops=1)
+               Index Cond: (document @< '{ "ttl" : { "$date" : { "$numberLong" : "1657900030775" } } }'::bson)
+               Order By: (document OPERATOR(documentdb_api_internal.<>-|) '{ "ttl" : { "$numberInt" : "-1" } }'::bson)
+(13 rows)
+
+END;

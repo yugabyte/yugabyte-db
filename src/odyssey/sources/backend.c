@@ -73,15 +73,15 @@ void od_backend_evict_server_hashmap(od_server_t *server, char *context, char *d
 	od_instance_t *instance = server->global->instance;
 	od_debug(&instance->logger, context, NULL, server, "evicting hashmap entry from server");
 
-	char *stmt_name;
-	uint32_t stmt_name_len;
-	int rc = kiwi_fe_read_parse_error_yb(data, size, &stmt_name, &stmt_name_len);
+	char *keyhash_str;
+	uint32_t keyhash_str_len;
+	int rc = kiwi_fe_read_yb_server_keyhash(data, size, &keyhash_str, &keyhash_str_len);
 	if (rc == -1) {
 		od_error(&instance->logger, context, NULL, server, 
 			"failed to parse error message from server");
 		return;
 	}
-	od_hash_t keyhash = strtoul(stmt_name, NULL, 16);
+	od_hash_t keyhash = strtoul(keyhash_str, NULL, 16);
 	char **matched_keys = NULL;
 	int matched_count = 0;
 	if (yb_od_hashmap_find_key_and_remove(server->prep_stmts, keyhash,
@@ -577,9 +577,7 @@ static inline int od_backend_startup(od_server_t *server,
 						&client->yb_external_client
 							 ->yb_vars_startup,
 						name, name_len, value,
-						value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						value_len);
 				}
 			} else if ((name_len != sizeof("session_authorization") ||
 				strncmp(name, "session_authorization", name_len))) {
@@ -591,16 +589,12 @@ static inline int od_backend_startup(od_server_t *server,
 				     YB_PARAM_STATUS_SOURCE_STARTUP)
 					kiwi_vars_update(
 						&server->yb_vars_default, name,
-						name_len, value, value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						name_len, value, value_len);
 				else if (flags &
 					 YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 					kiwi_vars_update(
 						&server->yb_vars_session, name,
-						name_len, value, value_len,
-						yb_od_instance_should_lowercase_guc_name(
-							instance));
+						name_len, value, value_len);
 			}
 
 			if ((name_len != sizeof("session_authorization") ||
@@ -1076,8 +1070,6 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 	char *value;
 	uint32_t value_len;
 	char flags = 0;
-	bool should_lowercase_name =
-		yb_od_instance_should_lowercase_guc_name(instance);
 
 	int rc;
 	rc = kiwi_fe_read_yb_parameter(data, size, &name, &name_len, &value,
@@ -1130,27 +1122,25 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 
 	if (flags & YB_PARAM_STATUS_SOURCE_STARTUP)
 		kiwi_vars_update(&server->yb_vars_default, name, name_len,
-				 value, value_len, should_lowercase_name);
+				 value, value_len);
 	else if (flags & YB_PARAM_STATUS_DEFAULT_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_default, name,
-					      name_len, should_lowercase_name);
+					      name_len);
 
 	if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 		kiwi_vars_update(&server->yb_vars_session, name, name_len,
-				 value, value_len, should_lowercase_name);
+				 value, value_len);
 	else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 		yb_kiwi_vars_remove_if_exists(&server->yb_vars_session, name,
-					      name_len, should_lowercase_name);
+					      name_len);
 
 	if (!server_only) {
 		if (flags & YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION)
 			kiwi_vars_update(&client->yb_vars_session, name,
-					 name_len, value, value_len,
-					 should_lowercase_name);
+					 name_len, value, value_len);
 		else if (flags & YB_PARAM_STATUS_SESSION_VAL_RESET)
 			yb_kiwi_vars_remove_if_exists(&client->yb_vars_session,
-						      name, name_len,
-						      should_lowercase_name);
+						      name, name_len);
 	}
 
 	return 0;
@@ -1205,6 +1195,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				machine_msg_data(msg), machine_msg_size(msg));
 			machine_msg_free(msg);
 			continue;
+		} else if (type == YB_BE_CLOSE_COMPLETE_PREP_STMT_NAME) {
+			od_backend_evict_server_hashmap(server, context,
+				machine_msg_data(msg), machine_msg_size(msg));
+			machine_msg_free(msg);
+			continue;
 		} else if (type == KIWI_BE_READY_FOR_QUERY) {
 			od_backend_ready(server, machine_msg_data(msg),
 					 machine_msg_size(msg));
@@ -1214,6 +1209,11 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 				return 0;
 			}
 		}
+		/*
+		 * YB: No handling required for YB_BE_NO_PARSE_PARSE_COMPLETE and
+		 * YB_BE_PARSE_NO_PARSE_COMPLETE here as od_backend_ready_wait's job is
+		 * to just consume all the packets from the backend.
+		 */
 		machine_msg_free(msg);
 	}
 	/* never reached */

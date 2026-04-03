@@ -14,7 +14,9 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Data;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Data
 public class DumpEntitiesResponse extends NodeUIResponse {
 
@@ -59,7 +61,15 @@ public class DumpEntitiesResponse extends NodeUIResponse {
         tables.stream().collect(Collectors.toMap(t -> t.tableId, t -> t));
 
     return getTabletsByTserverAddresses(hp).stream()
-        .map(tab -> tablesById.get(tab.tableId))
+        .map(
+            tab -> {
+              Table table = tablesById.get(tab.tableId);
+              if (table == null) {
+                log.error("No table ({}) for tablet {} !!", tab.tableId, tab.tabletId);
+              }
+              return table;
+            })
+        .filter(Objects::nonNull)
         .collect(Collectors.toSet());
   }
 

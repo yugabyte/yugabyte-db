@@ -1518,37 +1518,6 @@ CREATE OR REPLACE VIEW public.v1 AS
 
 ## Performance optimizations
 
-### Hash-sharding with indexes on the timestamp/date columns
-
-**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
-**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
-
-Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../reference/configuration/postgresql-compatibility/) in YugabyteDB.
-
-**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE orders (
-    order_id int PRIMARY,
-    ...
-    created_at timestamp
-);
-
-CREATE INDEX idx_orders_created ON orders(created_at);
-```
-
-Suggested change to the schema is to add the ASC/DESC clause as follows:
-
-```sql
-CREATE INDEX idx_orders_created ON orders(created_at DESC);
-```
-
----
-
 ### Hotspots with range-sharded timestamp/date indexes
 
 **Description**: Range-sharded indexes on timestamp or date columns can lead to read/write hotspots in distributed databases like YugabyteDB, due to the way these values increment. For example, take a column of values `created_at timestamp`. As new values are inserted, all the writes will go to the same tablet. This tablet remains a hotspot until it is manually split or meets the auto-splitting criteria. Then, after a split, the newly created tablet becomes the next hotspot as inserts continue to follow the same increasing pattern. This leads to uneven data and query distribution, resulting in performance bottlenecks.
@@ -1647,33 +1616,6 @@ CREATE TABLE event_log (
 
 -- fetch event activity of last one month
 SELECT * FROM event_log WHERE shard_id IN (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15) AND event_logged_at >= NOW() - INTERVAL '1 month';
-```
-
-### Redundant indexes
-
-**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another.
-
-**Workaround**: Remove the redundant index from the schema.
-
-**Example**
-
-An example schema on the source database is as follows:
-
-```sql
-CREATE TABLE orders (
-    order_id int PRIMARY,
-    product_id int,
-    ...
-);
-
-CREATE INDEX idx_orders_order_id on orders(order_id);
-CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
-```
-
-Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
-
-```sql
-CREATE INDEX idx_orders_order_id on orders(order_id);
 ```
 
 ---
@@ -1995,3 +1937,63 @@ CREATE TABLE users (
   CONSTRAINT users_username_unique UNIQUE (username)
 );
 ```
+
+### Hash-sharding with indexes on the timestamp/date columns
+
+**GitHub**: [Issue #49](https://github.com/yugabyte/yb-voyager/issues/49)
+**Description**: Indexes on timestamp or date columns are commonly used in range-based queries. However, indexes in YugabyteDB are hash-sharded by default, which is not optimal for range predicates, and can impact query performance.
+
+Note that range sharding is currently enabled by default only in [PostgreSQL compatibility mode](../../../reference/configuration/postgresql-compatibility/) in YugabyteDB.
+
+**Workaround**: Explicitly configure the index to use range sharding. This ensures efficient data access with range-based queries.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    ...
+    created_at timestamp
+);
+
+CREATE INDEX idx_orders_created ON orders(created_at);
+```
+
+Suggested change to the schema is to add the ASC/DESC clause as follows:
+
+```sql
+CREATE INDEX idx_orders_created ON orders(created_at DESC);
+```
+
+---
+
+### Redundant indexes
+
+**Description**: A redundant index is an index that duplicates the functionality of another index or is unnecessary because the database can use an existing index to achieve the same result. This happens when multiple indexes cover the same columns or when a subset of columns in one index is already covered by another.
+
+**Workaround**: Remove the redundant index from the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE orders (
+    order_id int PRIMARY,
+    product_id int,
+    ...
+);
+
+CREATE INDEX idx_orders_order_id on orders(order_id);
+CREATE INDEX idx_orders_order_id_product_id on orders(order_id, product_id);
+```
+
+Suggested change to the schema is to remove this redundant index `idx_orders_order_id` as another stronger index is present `idx_orders_order_id_product_id`:
+
+```sql
+CREATE INDEX idx_orders_order_id on orders(order_id);
+```
+
+---

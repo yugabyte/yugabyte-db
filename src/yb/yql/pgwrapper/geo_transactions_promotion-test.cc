@@ -686,7 +686,7 @@ TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestLongTransaction
 
 TEST_F(GeoTransactionsPromotionTest, YB_DISABLE_TEST_IN_TSAN(TestLongTransactionWithoutRPCDelay)) {
   // This is enough delay that looking up both participant tablets, sending
-  // UpdateTransactionStatusLocation rpcs, and sending cleanup abort to the old tablet should all
+  // UpdateTransaction(PROMOTING) rpcs, and sending cleanup abort to the old tablet should all
   // have completed before COMMIT/ROLLBACK are sent.
   auto txn_end_delay = static_cast<int32_t>(6 * FLAGS_transaction_rpc_timeout_ms);
   CheckSimplePromotion(txn_end_delay, TestTransactionType::kAbort, TestTransactionSuccess::kTrue);

@@ -3,6 +3,8 @@ SET citus.next_shard_id TO 639000;
 SET documentdb.next_collection_id TO 6390;
 SET documentdb.next_collection_index_id TO 6390;
 
+SET documentdb.EnableVariablesSupportForWriteCommands TO on;
+
 -- Call delete for a non existent collection.
 -- Note that this should not report any logs related to collection catalog lookup.
 SET citus.log_remote_commands TO ON;
@@ -244,6 +246,14 @@ begin;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes": [{"q":{"a":{"$eq":5}},"limit":1}] }', '{ "":[{"q":{"a":{"$eq":5}},"limit":1}] }');
 rollback;
 
+-- delete with index hint specified by name and by key object
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "removeme", "indexes": [ { "key" : { "a": 1 }, "name": "validIndex"}] }', true);
+
+begin;
+select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"hint": "validIndex"}]}');
+select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"hint": { "a": 1 }}]}');
+rollback;
+
 select documentdb_api.drop_collection('db','removeme');
 
 SELECT 1 FROM documentdb_api.insert_one('delete', 'test_sort_returning', '{"_id": 1,"a":3,"b":7}');
@@ -403,3 +413,110 @@ SELECT documentdb_api.delete(
 
 select document from documentdb_api.collection('db', 'explainTest') order by 1;
 
+
+-- let support
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 1, "a":"dog"}');
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 2, "a":"cat"}');
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 3, "a":"$$varRef"}');
+
+-- enableVariablesSupportForWriteCommands GUC off: ignore variableSpec
+SET documentdb.enableVariablesSupportForWriteCommands TO off;
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "cat"} }');
+
+-- enableVariablesSupportForWriteCommands GUC on: user variableSpec
+SET documentdb.enableVariablesSupportForWriteCommands TO on;
+
+-- variables accessed outside $expr will not evaluate to let variable value
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": "$$varRef" }, "limit": 0}], "let": {"varRef": 2}} ');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": "$$varRef" }, "limit": 1}], "let": {"varRef": 2}} ');
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+BEGIN;
+--- deleteOne (1)
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+BEGIN;
+--- deleteMany (2)
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lte": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "zebra"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+-- deleteMany: when ordered, expect only first delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+-- deleteOne: when ordered, expect only first delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$_id", "$$varRef1"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef2"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 1}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+-- deleteMany: when not ordered, expect first and last delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": false, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+-- deleteOne: when not ordered, expect first and last delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$_id", "$$varRef1"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef2"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 1}], "ordered": false, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+-- $in: []
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 0}], "let": {"varRef": 2} }');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 1}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+-- sharded collection
+SELECT documentdb_api.shard_collection('db', 'coll_delete', '{ "a": "hashed" }', false);
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": 2, "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": "cat"} }');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lte": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "zebra"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ROLLBACK;
+
+-- $in: []
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 0}], "let": {"varRef": 2} }');
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 1}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+RESET documentdb.enableVariablesSupportForWriteCommands;

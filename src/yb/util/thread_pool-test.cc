@@ -22,6 +22,7 @@
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -30,6 +31,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_int32(TEST_strand_done_inject_delay_ms);
+DECLARE_uint64(default_idle_timeout_ms);
 
 using namespace std::literals;
 
@@ -564,5 +566,71 @@ TEST_F(ThreadPoolTest, SubPool) {
 }
 
 } // namespace strand
+
+#ifdef __linux__
+
+TEST_F(ThreadPoolTest, TestCgroupTaggedPools) {
+  class TestTask final : public ThreadPoolTask {
+   public:
+    TestTask(CountDownLatch& latch, const Cgroup& expected_cgroup)
+        : latch_{latch}, expected_cgroup_{expected_cgroup} {}
+
+    ~TestTask() = default;
+
+    void Run() override {
+      auto actual_cgroup = ASSERT_RESULT(GetThreadCpuCgroup());
+      ASSERT_EQ(actual_cgroup, expected_cgroup_.full_name());
+    }
+
+    void Done(const Status& status) override {
+      latch_.CountDown();
+    }
+
+   private:
+    CountDownLatch& latch_;
+    const Cgroup& expected_cgroup_;
+  };
+
+  constexpr size_t kTotalTasks = 100;
+  constexpr size_t kTotalPools = 13;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_idle_timeout_ms) = 1000;
+
+  ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+
+  Cgroup* root_cgroup = RootCgroup();
+  std::vector<Cgroup*> cgroups;
+  for (size_t i = 0; i < kTotalPools + 1; ++i) {
+    cgroups.push_back(&ASSERT_RESULT_REF(root_cgroup->CreateOrLoadChild(Format("test-$0", i))));
+  }
+
+  YBTaggedThreadPools tagged_pools{[&](YBTaggedThreadPools::Tag tag) {
+    return ThreadPoolOptions {
+      .name = Format("test-pool-$0", tag),
+      .max_workers = 100,
+      .cgroup = cgroups[tag],
+    };
+  }};
+
+  CountDownLatch latch{kTotalTasks};
+  std::vector<TestTask> tasks;
+  tasks.reserve(kTotalTasks);
+  for (size_t i = 0; i < kTotalTasks; ++i) {
+    YBTaggedThreadPools::Tag tag = i % kTotalPools;
+    tasks.emplace_back(latch, *cgroups[tag]);
+    ASSERT_TRUE(ASSERT_RESULT(tagged_pools.Pool(tag))->Enqueue(&tasks.back()));
+  }
+  ASSERT_EQ(tagged_pools.ActivePools(), kTotalPools);
+  auto pool_1 = ASSERT_RESULT(tagged_pools.Pool(/*tag=*/1));
+  latch.Wait();
+
+  SleepFor(DefaultIdleTimeout() * 2);
+
+  ASSERT_OK(tagged_pools.Pool(kTotalPools + 1));
+  // Newly created pool + pool 1.
+  ASSERT_EQ(tagged_pools.ActivePools(), 2);
+}
+
+#endif // __linux__
 
 } // namespace yb::rpc

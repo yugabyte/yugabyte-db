@@ -23,10 +23,6 @@ import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.yugabyte.operator.v1alpha1.*;
-import io.yugabyte.operator.v1alpha1.Backup;
-import io.yugabyte.operator.v1alpha1.BackupStatus;
-import io.yugabyte.operator.v1alpha1.RestoreJob;
-import io.yugabyte.operator.v1alpha1.RestoreJobStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversestatus.Actions;
 import java.io.BufferedReader;
 import java.io.File;
@@ -396,13 +392,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       }
       YBUniverseStatus status = getOrCreateUniverseStatus(ybUniverse);
 
-      boolean shouldUpdateStatus =
-          state.equals(UniverseState.READY)
-              ? !operatorUtils.universeAndSpecMismatch(cust, universe, ybUniverse)
-              : true;
-      if (shouldUpdateStatus) {
-        status.setUniverseState(state.getUniverseStateString());
-      }
+      status.setUniverseState(state.getUniverseStateString());
       ybUniverse.setStatus(status);
       // Handle the success case
       String message = null;

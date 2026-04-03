@@ -72,7 +72,9 @@ func MakeRequest(
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		util.FileLogger().
 			Errorf(ctx, "Status code for %s URL %s: %v", method, url, resp.StatusCode)
-		if resp.StatusCode == http.StatusNotFound {
+		// TODO: Once APIs are fixed to return 404 for non-existent resources,
+		// remove the check for 400 status code.
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusBadRequest {
 			return nil, resp.StatusCode, util.ErrNotExist
 		}
 		return respBody, resp.StatusCode, fmt.Errorf("HTTP error: %d", resp.StatusCode)

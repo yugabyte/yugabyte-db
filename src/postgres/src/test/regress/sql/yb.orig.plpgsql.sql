@@ -281,3 +281,139 @@ CALL multi_version_proc(4);
 
 -- Verification for Unit Test
 SELECT * FROM procedure_test_log ORDER BY run_id;
+
+--- Test ALTER ... SET SCHEMA
+CREATE SCHEMA schema1;
+ALTER PROCEDURE intermediate_commit SET SCHEMA schema1;
+call schema1.intermediate_commit();
+
+ALTER ROUTINE f1 SET SCHEMA schema1;
+SELECT schema1.f1(2);
+
+--- Test ALTER ROUTINE ... SET/RESET
+SELECT current_setting('work_mem');
+
+CREATE FUNCTION report_guc(text) RETURNS text AS
+$$ select current_setting($1) $$ LANGUAGE SQL
+SET work_mem = '1MB';
+
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem = '2MB';
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem = DEFAULT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem FROM CURRENT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) RESET work_mem;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) RESET ALL;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem = '2MB' RESTRICT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem = DEFAULT RESTRICT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) SET work_mem FROM CURRENT RESTRICT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) RESET work_mem RESTRICT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+ALTER ROUTINE report_guc(text) RESET ALL RESTRICT;
+SELECT report_guc('work_mem'), current_setting('work_mem');
+
+--- Test ALTER PROCEDURE ... SET/RESET
+CREATE PROCEDURE print_guc(text) AS
+$$
+begin
+  raise info '%', current_setting($1);
+end;
+$$ LANGUAGE plpgsql
+SET work_mem = '1MB';
+
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem = '2MB';
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem = DEFAULT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem FROM CURRENT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) RESET work_mem;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) RESET ALL;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem = '2MB' RESTRICT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem = DEFAULT RESTRICT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) SET work_mem FROM CURRENT RESTRICT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) RESET work_mem RESTRICT;
+call print_guc('work_mem');
+
+ALTER PROCEDURE print_guc(text) RESET ALL RESTRICT;
+call print_guc('work_mem');
+
+--- Test ALTER { ROUTINE | PROCEDURE } ... SECURITY { DEFINER | INVOKER }
+CREATE TABLE secret_data (id int, info text);
+INSERT INTO secret_data VALUES (1, 'Top Secret');
+SELECT * FROM secret_data;
+
+CREATE OR REPLACE PROCEDURE change_data(new_info text) AS
+$$BEGIN
+    UPDATE secret_data SET info = new_info WHERE id = 1;
+END$$ LANGUAGE plpgsql;
+ALTER PROCEDURE change_data(text) SET search_path = public;
+
+CREATE ROLE worker;
+REVOKE ALL ON secret_data FROM worker;
+GRANT EXECUTE ON PROCEDURE change_data(text) TO worker;
+
+SET ROLE worker;
+CALL change_data('Hacked by worker');  -- error: permission denied
+RESET ROLE;
+SELECT * FROM secret_data;
+
+ALTER PROCEDURE change_data(text) SECURITY DEFINER;
+ALTER PROCEDURE change_data(text) SECURITY DEFINER RESTRICT;
+ALTER PROCEDURE change_data(text) EXTERNAL SECURITY DEFINER;
+ALTER PROCEDURE change_data(text) EXTERNAL SECURITY DEFINER RESTRICT;
+ALTER ROUTINE change_data(text) SECURITY DEFINER;
+ALTER ROUTINE change_data(text) SECURITY DEFINER RESTRICT;
+ALTER ROUTINE change_data(text) EXTERNAL SECURITY DEFINER;
+ALTER ROUTINE change_data(text) EXTERNAL SECURITY DEFINER RESTRICT;
+
+SET ROLE worker;
+CALL change_data('Changed via Security Definer');
+RESET ROLE;
+SELECT * FROM secret_data;
+
+ALTER PROCEDURE change_data(text) SECURITY INVOKER;
+ALTER PROCEDURE change_data(text) SECURITY INVOKER RESTRICT;
+ALTER PROCEDURE change_data(text) EXTERNAL SECURITY INVOKER;
+ALTER PROCEDURE change_data(text) EXTERNAL SECURITY INVOKER RESTRICT;
+ALTER ROUTINE change_data(text) SECURITY INVOKER;
+ALTER ROUTINE change_data(text) SECURITY INVOKER RESTRICT;
+ALTER ROUTINE change_data(text) EXTERNAL SECURITY INVOKER;
+ALTER ROUTINE change_data(text) EXTERNAL SECURITY INVOKER RESTRICT;
+
+SET ROLE worker;
+CALL change_data('Try Security Invoker');  -- error: permission denied
+RESET ROLE;
+SELECT * FROM secret_data;

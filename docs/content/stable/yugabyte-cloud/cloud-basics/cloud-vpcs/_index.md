@@ -45,36 +45,36 @@ VPC networking is not supported in Sandbox clusters.
     title="Overview"
     body="How to choose the region and size for a VPC."
     href="cloud-vpc-intro/"
-    icon="/images/section_icons/deploy/public-clouds.png">}}
+    icon="fa-thin fa-clipboard">}}
 
   {{<index/item
     title="VPCs"
     body="Manage your account VPCs."
     href="cloud-add-vpc/"
-    icon="/images/section_icons/index/deploy.png">}}
+    icon="fa-thin fa-cloud">}}
 
   {{<index/item
     title="Peering Connections"
     body="Manage your account peering connections."
     href="cloud-add-peering/"
-    icon="/images/section_icons/quick_start/create_cluster.png">}}
+    icon="fa-thin fa-plug">}}
 
   {{<index/item
     title="Peer VPCs"
     body="Connect your VPC to application VPCs on AWS and GCP using peering."
     href="cloud-add-vpc-aws/"
-    icon="/images/section_icons/develop/api-icon.png">}}
+    icon="fa-thin fa-handshake">}}
 
   {{<index/item
     title="Private service endpoints"
     body="Manage private service endpoints (PSEs)."
     href="cloud-add-endpoint/"
-    icon="/images/section_icons/quick_start/create_cluster.png">}}
+    icon="fa-thin fa-lock">}}
 
   {{<index/item
     title="Set up a private link"
     body="Connect your VPC to application VPCs on AWS and Azure using a private link."
     href="managed-endpoint-aws/"
-    icon="/images/section_icons/develop/api-icon.png">}}
+    icon="fa-thin fa-link">}}
 
 {{</index/block>}}

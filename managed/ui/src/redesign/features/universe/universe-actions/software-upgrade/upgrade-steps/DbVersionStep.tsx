@@ -31,7 +31,6 @@ const useStyles = makeStyles((theme) => ({
   sectionHeader: {
     padding: theme.spacing(2.5, 3),
 
-    borderBottom: `1px solid ${theme.palette.grey[200]}`,
     color: theme.palette.ybacolors?.labelBackground ?? '#0B1117',
     fontSize: 15,
     fontWeight: 600,

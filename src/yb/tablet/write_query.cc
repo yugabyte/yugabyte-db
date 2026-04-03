@@ -791,8 +791,15 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 }
 
 Status WriteQuery::ExecuteUnlock() {
+  const auto& lock_it = client_request_->pgsql_lock_batch().begin();
+  // Unlock all request could be different based on if the advisory lock table is still on
+  // older schema or the new schema where all columns are hashed. Hence, need to handle both.
+  //
+  // Older schema - unlock all has dbid populated, other range columns are left empty
+  // New schema - unlock all doesn't populate any columns
   bool unlock_all =
-      client_request_->pgsql_lock_batch().begin()->lock_id().lock_range_column_values_size() == 0;
+      lock_it->lock_id().lock_range_column_values().empty() &&
+      lock_it->lock_id().lock_partition_column_values_size() <= 1;
   if (unlock_all) {
     request().mutable_write_batch()->add_lock_pairs()->set_is_lock(false);
     return Status::OK();
@@ -897,7 +904,7 @@ Status WriteQuery::DoExecute() {
   }
 
   if (!tablet->txns_enabled() || !transactional_table) {
-    CompleteExecute(HybridTime::kInvalid);
+    CompleteExecute();
     return Status::OK();
   }
 
@@ -998,7 +1005,13 @@ void WriteQuery::NonTransactionalConflictsResolved(HybridTime now, HybridTime re
     tablet->clock()->Update(result);
   }
 
-  CompleteExecute(HybridTime::kInvalid);
+  auto status = PickReadTimeIfNecessary();
+  if (!status.ok()) {
+    LOG(WARNING) << status;
+    ExecuteDone(status);
+    return;
+  }
+  CompleteExecute();
 }
 
 void WriteQuery::TransactionalConflictsResolved() {
@@ -1010,30 +1023,37 @@ void WriteQuery::TransactionalConflictsResolved() {
 }
 
 Status WriteQuery::DoTransactionalConflictsResolved() {
-  HybridTime safe_time;
+  RETURN_NOT_OK(PickReadTimeIfNecessary());
+  CompleteExecute();
+  return Status::OK();
+}
+
+Status WriteQuery::PickReadTimeIfNecessary() {
+  auto tablet = VERIFY_RESULT(tablet_safe());
+  auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
   if (!read_time_) {
-    auto tablet = VERIFY_RESULT(tablet_safe());
-    safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
     read_time_ = ReadHybridTime::FromHybridTimeRange(
         {safe_time, tablet->clock()->NowRange().second});
+    read_time_.local_limit = safe_time;
     metrics_->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
-  } else if (prepare_result_.need_read_snapshot &&
-             isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
+    return Status::OK();
+  }
+  if (prepare_result_.need_read_snapshot &&
+      isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION) {
     return STATUS_FORMAT(
         InvalidArgument,
         "Read time should NOT be specified for serializable isolation level: $0",
         read_time_);
   }
-
-  CompleteExecute(safe_time);
+  read_time_.local_limit = std::min(read_time_.local_limit, safe_time);
   return Status::OK();
 }
 
-void WriteQuery::CompleteExecute(HybridTime safe_time) {
-  ExecuteDone(DoCompleteExecute(safe_time));
+void WriteQuery::CompleteExecute() {
+  ExecuteDone(DoCompleteExecute());
 }
 
-Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
+Status WriteQuery::DoCompleteExecute() {
   auto tablet = VERIFY_RESULT(tablet_safe());
   if (prepare_result_.need_read_snapshot && !read_time_) {
     // A read_time will be picked by the below ScopedReadOperation::Create() call.
@@ -1104,7 +1124,7 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
     read_operation_data.read_time.read = read_restart_data_.restart_time;
     if (!local_limit_updated) {
       local_limit_updated = true;
-      safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+      auto safe_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
       read_operation_data.read_time.local_limit = std::min(
           read_operation_data.read_time.local_limit,
           safe_time);

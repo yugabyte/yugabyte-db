@@ -94,13 +94,13 @@ const std::vector<std::pair<int, size_t>>& PgTableDesc::GetAttrNumMap() const {
 
 Result<YbcPgColumnInfo> PgTableDesc::GetColumnInfo(int attr_number) const {
   YbcPgColumnInfo column_info {
-    .is_primary = false,
+    .is_key = false,
     .is_hash = false
   };
   const auto itr = std::lower_bound(
       attr_num_map_.begin(), attr_num_map_.end(), attr_number, CmpAttrNum());
   if (itr != attr_num_map_.end() && itr->first == attr_number) {
-    column_info.is_primary = itr->second < schema().num_key_columns();
+    column_info.is_key = itr->second < schema().num_key_columns();
     column_info.is_hash = itr->second < schema().num_hash_key_columns();
   }
   return column_info;

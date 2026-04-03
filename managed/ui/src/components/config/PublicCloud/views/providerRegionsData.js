@@ -114,6 +114,45 @@ export const AWS_REGIONS = [
     zones: ['us-gov-west-1a', 'us-gov-west-1b', 'us-gov-west-1c']
   }
 ];
+export const OCI_KMS_Region = [
+  { value: 'us-ashburn-1', label: 'US East (Ashburn)' },
+  { value: 'us-phoenix-1', label: 'US West (Phoenix)' },
+  { value: 'eu-frankfurt-1', label: 'Germany Central (Frankfurt)' },
+  { value: 'ca-montreal-1', label: 'Canada Southeast (Montreal)' },
+  { value: 'uk-london-1', label: 'UK South (London)' },
+  { value: 'ap-sydney-1', label: 'Australia East (Sydney)' },
+  { value: 'ap-tokyo-1', label: 'Japan East (Tokyo)' },
+  { value: 'ap-mumbai-1', label: 'India West (Mumbai)' },
+  { value: 'ap-seoul-1', label: 'AP Northeast (Seoul)' },
+  { value: 'ap-osaka-1', label: 'Japan Central (Osaka)' },
+  { value: 'ca-toronto-1', label: 'Canada Southeast (Toronto)' },
+  { value: 'sa-saopaulo-1', label: 'Brazil East (Sao Paulo)' },
+  { value: 'sa-santiago-1', label: 'Chile Central (Santiago)' },
+  { value: 'eu-amsterdam-1', label: 'Netherlands Northwest (Amsterdam)' },
+  { value: 'me-jeddah-1', label: 'Saudi Arabia West (Jeddah)' },
+  { value: 'ap-singapore-1', label: 'AP Southeast (Singapore)' },
+  { value: 'eu-zurich-1', label: 'EU Central (Zurich)' },
+  { value: 'ap-melbourne-1', label: 'Australia Southeast (Melbourne)' },
+  { value: 'eu-marseille-1', label: 'France South (Marseille)' },
+  { value: 'ap-hyderabad-1', label: 'India South (Hyderabad)' },
+  { value: 'ap-chuncheon-1', label: 'AP Northeast (Chuncheon)' },
+  { value: 'me-abudhabi-1', label: 'Middle East (Abu Dhabi)' },
+  { value: 'me-dubai-1', label: 'Middle East (Dubai)' },
+  { value: 'ap-chiyoda-1', label: 'AP Northeast (Chiyoda)' },
+  { value: 'ap-ibaraki-1', label: 'AP Northeast (Ibaraki)' },
+  { value: 'il-jerusalem-1', label: 'Israel Central (Jerusalem)' },
+  { value: 'eu-milan-1', label: 'Italy Northwest (Milan)' },
+  { value: 'eu-stockholm-1', label: 'EU North (Stockholm)' },
+  { value: 'af-johannesburg-1', label: 'Africa South (Johannesburg)' },
+  { value: 'ap-singapore-1', label: 'Singapore' },
+  { value: 'mx-queretaro-1', label: 'Mexico Central (Queretaro)' },
+  { value: 'eu-paris-1', label: 'France Central (Paris)' },
+  { value: 'us-saltlake-2', label: 'US West (Salt Lake)' },
+  { value: 'us-chicago-1', label: 'US Central (Chicago)' },
+  { value: 'us-montreal-1', label: 'Canada Southeast (Montreal)' },
+  { value: 'sa-vinhedo-1', label: 'Brazil SouthEast (Vinhedo)' },
+  { value: 'us-sanjose-1', label: 'US West (San Jose)' }
+];
 
 export const GCP_KMS_REGIONS = [
   {

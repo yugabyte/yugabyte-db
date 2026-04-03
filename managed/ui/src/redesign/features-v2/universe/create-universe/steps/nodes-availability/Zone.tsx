@@ -1,7 +1,8 @@
 import { FC, useContext, useState } from 'react';
 import { values } from 'lodash';
-import { Control, Controller, useWatch } from 'react-hook-form';
-import { YBInput, YBSelect, mui } from '@yugabyte-ui-library/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { Control, Controller, UseFormSetValue, useWatch } from 'react-hook-form';
+import { YBInput, YBSelect, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { PreferredInfoModal } from './index';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { NodeAvailabilityProps } from './dtos';
@@ -12,14 +13,19 @@ import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dto
 import { HelpOutline } from '@material-ui/icons';
 import Return from '../../../../../assets/tree.svg';
 import RemoveIcon from '../../../../../assets/close-large.svg';
+import BookIcon from '../../../../../assets/blue-book.svg';
 
-const { MenuItem, Typography } = mui;
+const { MenuItem, Typography, IconButton, Link, styled } = mui;
 
 interface ZoneProps {
   control: Control<NodeAvailabilityProps>;
   index: number;
   region: Region;
   remove: () => void;
+  regionIndex?: number;
+  setValue: UseFormSetValue<NodeAvailabilityProps>;
+  /** When NODE_LEVEL total nodes are below RF (lessNodes / lessNodesDedicated). */
+  showNodesCountError?: boolean;
 }
 
 const menuProps = {
@@ -32,6 +38,21 @@ const menuProps = {
     horizontal: 'left'
   }
 } as any;
+
+const StyledTooltipText = styled('div')(({ theme }) => ({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: theme.palette.grey[700]
+}));
+
+const StyledTooltipFooter = styled('div')(({ theme }) => ({
+  marginTop: '8px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  color: theme.palette.primary[600]
+}));
 
 const StyledPreferedMenuItem = mui.styled(MenuItem)(({ theme }) => ({
   display: 'flex',
@@ -47,7 +68,18 @@ const StyledPreferedMenuItem = mui.styled(MenuItem)(({ theme }) => ({
   }
 }));
 
-export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
+export const Zone: FC<ZoneProps> = ({
+  control,
+  index,
+  region,
+  remove,
+  regionIndex,
+  setValue,
+  showNodesCountError = false
+}) => {
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
+  });
   const [{ resilienceAndRegionsSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
@@ -58,6 +90,13 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
   const [showPreferredInfoModal, setShowPreferredInfoModal] = useState(false);
 
   const availabilityZones = useWatch({ name: 'availabilityZones', control });
+  const selectedAzCountInRegion = availabilityZones?.[region.code]?.length ?? 0;
+  const selectedAzNames = new Set(
+    values(availabilityZones ?? {})
+      .flat()
+      .map((selectedZone) => selectedZone.name)
+      .filter(Boolean)
+  );
 
   const zonesCount = Object.keys(availabilityZones)?.reduce(
     (a, b) => a + availabilityZones[b].length,
@@ -71,13 +110,13 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
 
   const preferredMenuItems = isPrefferedAllowed
     ? Array.from({ length: zonesCount }, (_, i) => (
-        <StyledPreferedMenuItem key={i} value={i} disabled={i > maxPrefferedRankSelected + 1}>
-          <Typography variant="body1">{`Rank ${i + 1}`}</Typography>
-          <Typography variant="subtitle1">
-            {i === 0 ? 'Default Preferred Zone' : 'Preferred zone if higher-rank zones fail.'}
-          </Typography>
-        </StyledPreferedMenuItem>
-      ))
+      <StyledPreferedMenuItem key={i} value={i} disabled={i > maxPrefferedRankSelected + 1}>
+        <Typography variant="body1">{`Rank ${i + 1}`}</Typography>
+        <Typography variant="subtitle1">
+          {i === 0 ? 'Default Preferred Zone' : 'Preferred zone if higher-rank zones fail.'}
+        </Typography>
+      </StyledPreferedMenuItem>
+    ))
     : null;
 
   preferredMenuItems?.unshift(
@@ -87,14 +126,35 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
     </StyledPreferedMenuItem>
   );
 
+  const updateNodeCountAcrossRegions = (nodeCount: number) => {
+    const updatedAz = { ...availabilityZones };
+    Object.keys(updatedAz).forEach((region) => {
+      updatedAz[region] = updatedAz[region].map((zone) => {
+        if (zone.nodeCount !== nodeCount) {
+          return { ...zone, nodeCount };
+        }
+        return zone;
+      });
+    });
+
+    setValue('availabilityZones', updatedAz, { shouldValidate: true });
+  };
+
   const zone = useWatch({
     name: `availabilityZones.${region.code}.${index}`,
     control
   });
+  const isGuidedMode = resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
+  const isRegionLevelFt =
+    resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.REGION_LEVEL;
+  const isNodeInputEditable =
+    !isRegionLevelFt && (!isGuidedMode || (regionIndex === 0 && index === 0));
 
   return (
     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '0px 8px' }}>
-      <Return style={{ marginTop: '24px' }} />
+      <span style={{ marginTop: '24px', lineHeight: 0 }}>
+        <Return />
+      </span>
       <Controller
         control={control}
         name={`availabilityZones.${region.code}.${index}`}
@@ -113,7 +173,11 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
             dataTestId="availability-zone-select"
           >
             {region.zones.map((zone) => (
-              <MenuItem key={zone.uuid} value={zone.name}>
+              <MenuItem
+                key={zone.uuid}
+                value={zone.name}
+                disabled={selectedAzNames.has(zone.name) && zone.name !== field.value?.name}
+              >
                 {zone.name}
               </MenuItem>
             ))}
@@ -124,22 +188,46 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
         control={control}
         name={`availabilityZones.${region.code}.${index}.nodeCount`}
         render={({ field }) => (
-          <YBInput
-            type="number"
-            label="Nodes"
-            value={field.value}
-            onChange={(e) => {
-              if (parseInt(e.target.value) < 1) {
-                return;
-              }
-              field.onChange(parseInt(e.target.value));
-            }}
-            disabled={
-              resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED &&
-              isPrefferedAllowed
+          <YBTooltip
+            title={
+              !isNodeInputEditable && isGuidedMode ? (
+                <div>
+                  <StyledTooltipText>
+                    <Trans t={t} i18nKey="tooltips.guidedNodeCount" components={{ b: <b /> }} />
+                  </StyledTooltipText>
+                  <StyledTooltipFooter>
+                    <BookIcon />
+                    <Link underline="always" component="button">
+                      {t('tooltips.learnMore')}
+                    </Link>
+                  </StyledTooltipFooter>
+                </div>
+              ) : (
+                ''
+              )
             }
-            dataTestId="availability-zone-node-count-input"
-          />
+          >
+            <span style={{ display: 'inline-block' }}>
+              <YBInput
+                type="number"
+                label="Nodes"
+                error={showNodesCountError}
+                value={field.value}
+                onChange={(e) => {
+                  if (parseInt(e.target.value) < 1) {
+                    return;
+                  }
+                  if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED) {
+                    updateNodeCountAcrossRegions(parseInt(e.target.value));
+                  } else {
+                    field.onChange(parseInt(e.target.value));
+                  }
+                }}
+                disabled={!isNodeInputEditable}
+                dataTestId="availability-zone-node-count-input"
+              />
+            </span>
+          </YBTooltip>
         )}
       />
       {isPrefferedAllowed && (
@@ -178,12 +266,20 @@ export const Zone: FC<ZoneProps> = ({ control, index, region, remove }) => {
         />
       )}
 
-      {isPrefferedAllowed && (
-        <RemoveIcon
-          style={{ marginTop: '24px', cursor: 'pointer', marginLeft: '8px' }}
-          onClick={remove}
-        />
-      )}
+      {resilienceAndRegionsSettings?.faultToleranceType !== FaultToleranceType.NONE &&
+        (selectedAzCountInRegion > 1 ? (
+          <IconButton
+            aria-label="Remove availability zone"
+            onClick={remove}
+            data-testid="remove-availability-zone"
+            sx={{ marginTop: '24px', marginLeft: '8px' }}
+            size="small"
+          >
+            <RemoveIcon />
+          </IconButton>
+        ) : (
+          <div style={{ marginTop: '24px', marginLeft: '8px', width: '32px', height: '32px' }} />
+        ))}
       <PreferredInfoModal
         open={showPreferredInfoModal}
         onClose={() => {

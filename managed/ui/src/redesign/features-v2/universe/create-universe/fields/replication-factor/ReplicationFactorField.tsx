@@ -8,15 +8,20 @@ import { REPLICATION_FACTOR } from '../FieldNames';
 interface ReplicationFactorFieldProps {
   hideLabel?: boolean;
   replication_options?: string[];
+  fieldName?: string;
+  /** When true, segmented buttons are non-interactive (e.g. fault tolerance None). */
+  segmentDisabled?: boolean;
 }
 
 export const ReplicationFactorField = ({
   hideLabel = false,
-  replication_options
+  replication_options,
+  fieldName = REPLICATION_FACTOR,
+  segmentDisabled = false
 }: ReplicationFactorFieldProps) => {
   const { setValue, watch } = useFormContext<ResilienceAndRegionsProps>();
 
-  const replicationFactorVal = watch(REPLICATION_FACTOR);
+  const replicationFactorVal = watch(fieldName as keyof ResilienceAndRegionsProps);
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
@@ -34,8 +39,13 @@ export const ReplicationFactorField = ({
             label: options,
             value: options,
             onClick: () => {
-              setValue(REPLICATION_FACTOR, parseInt(options));
+              setValue(fieldName as keyof ResilienceAndRegionsProps, parseInt(options), {
+                shouldValidate: true
+              });
               setReplicationFactor(options);
+            },
+            buttonProps: {
+              disabled: segmentDisabled
             }
           }))}
           value={replicationFactorVal + ''}

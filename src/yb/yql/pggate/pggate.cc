@@ -32,11 +32,13 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
+#include "yb/common/common_flags.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -48,6 +50,7 @@
 #include "yb/rpc/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/alignment.h"
@@ -806,6 +809,18 @@ PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
 }
 
+void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
+#ifdef __linux__
+  if (tserver::TServerCgroupManagementEnabled()) {
+    auto status = tserver::TServerCgroupManager::MovePgBackendToCgroup(dboid);
+    if (!status.ok()) {
+      LOG(DFATAL) << "Failed to move postgres backend to cgroup for " << dboid
+                  << ": " << status;
+    }
+  }
+#endif
+}
+
 void PgApiImpl::Interrupt() {
   interrupter_->Interrupt();
 }
@@ -1546,6 +1561,48 @@ Status PgApiImpl::DmlFetch(
 
 Result<dockv::KeyBytes> PgApiImpl::BuildTupleId(const YbcPgYBTupleIdDescriptor& descr) {
     return tuple_id_builder_.Build(pg_session_.get(), descr);
+}
+
+Status PgApiImpl::DecodePKColumnsFromBasectid(
+    const PgObjectId& table_id, Slice basectid,
+    int num_attrs, YbcPgAttrValueDescriptor* attrs) {
+  auto table_desc = VERIFY_RESULT(pg_session_->LoadTable(table_id));
+
+  dockv::DocKey doc_key;
+  RETURN_NOT_OK(doc_key.DecodeFrom(
+      &basectid, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+
+  const auto& hash_group = doc_key.hashed_group();
+  const auto& range_group = doc_key.range_group();
+  size_t hash_idx = 0;
+  size_t range_idx = 0;
+
+  // Walk PK columns, decode each matching requested attribute.
+  for (auto i : Range(table_desc->num_key_columns())) {
+    PgColumn col(table_desc->schema(), i);
+    if (col.is_partition()) {
+      SCHECK(hash_idx < hash_group.size(), Corruption,
+             "DocKey hash group too short for table schema");
+    } else {
+      SCHECK(range_idx < range_group.size(), Corruption,
+             "DocKey range group too short for table schema");
+    }
+    const auto& key_val = col.is_partition()
+        ? hash_group[hash_idx++]
+        : range_group[range_idx++];
+
+    for (int j = 0; j < num_attrs; ++j) {
+      if (attrs[j].attr_num == col.attr_num()) {
+        QLValuePB ql_val;
+        key_val.ToQLValuePB(col.desc().type(), &ql_val);
+        RETURN_NOT_OK(PBToDatum(
+            attrs[j].type_entity, YbcPgTypeAttrs{-1},
+            ql_val, &attrs[j].datum, &attrs[j].is_null));
+        break;
+      }
+    }
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::StartOperationsBuffering() {
@@ -2719,19 +2776,22 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
     return result;
 }
 
-Status PgApiImpl::NewGlobalViewRead(const char* query, PgGlobalViewRead** handle) {
+Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle) {
   auto ts_info = VERIFY_RESULT(ListTabletServers());
-
+  auto& t_servers = ts_info.tablet_servers;
   std::vector<std::string> uuids;
-  uuids.reserve(ts_info.tablet_servers.size());
-  for (const auto& ts : ts_info.tablet_servers) {
-    uuids.push_back(ts.server.uuid);
+  uuids.reserve(t_servers.size());
+  for (auto& ts : t_servers) {
+    uuids.emplace_back(std::move(ts.server.uuid));
   }
-
-  auto read = std::make_unique<PgGlobalViewRead>(pg_client_, query, std::move(uuids));
+  auto read = std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids));
   *handle = read.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
   return Status::OK();
+}
+
+YbcRemotePgExecResult PgApiImpl::Exec(PgGlobalViewRead* handle, std::string_view query) {
+  return handle->ExecScan(pg_client_, query);
 }
 
 } // namespace yb::pggate

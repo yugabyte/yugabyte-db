@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -82,6 +83,8 @@ public class KubernetesUtil {
   public static String MIN_VERSION_YBDB_INBUILT_YBC_SUPPORT_STABLE = "2025.2.0.0-b1";
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW = "2.29.0.0-b386";
   public static String MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE = "2026.1.0.0-b1";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW = "2.29.0.0-b603";
+  public static String MIN_VERSION_FULL_MOVE_SUPPORT_STABLE = "2026.1.0.0-b0";
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -133,6 +136,15 @@ public class KubernetesUtil {
             universeSoftwareVersion,
             MIN_VERSION_CERT_MANAGER_CERT_ROTATE_STABLE,
             MIN_VERSION_CERT_MANAGER_CERT_ROTATE_PREVIEW,
+            true)
+        >= 0;
+  }
+
+  public static boolean isFullMoveSupported(String universeSoftwareVersion) {
+    return Util.compareYBVersions(
+            universeSoftwareVersion,
+            MIN_VERSION_FULL_MOVE_SUPPORT_STABLE,
+            MIN_VERSION_FULL_MOVE_SUPPORT_PREVIEW,
             true)
         >= 0;
   }
@@ -1550,7 +1562,11 @@ public class KubernetesUtil {
     overridesApplier.accept(ServerType.MASTER);
     userIntent.setUserIntentOverrides(
         generateVolumeOverridesForUserIntent(
-            userIntent, placementInfo, universeOverridesStr, azOverrides, null /* skipAZs */));
+            userIntent.getUserIntentOverrides(),
+            placementInfo.getAllAZUUIDs(),
+            universeOverridesStr,
+            azOverrides,
+            null /* skipAZs */));
   }
 
   /**
@@ -1565,22 +1581,20 @@ public class KubernetesUtil {
    * @return
    */
   public static UserIntentOverrides generateVolumeOverridesForUserIntent(
-      UserIntent userIntent,
-      PlacementInfo placementInfo,
-      String universeOverridesStr,
-      Map<String, String> azOverrides,
+      UserIntentOverrides userIntentOverrides,
+      Set<UUID> azUUIDs,
+      @Nullable String universeOverridesStr,
+      @Nullable Map<String, String> azOverrides,
       @Nullable Set<UUID> skipAZs) {
     UserIntentOverrides userIntentOverridesClone =
-        userIntent.getUserIntentOverrides() == null
-            ? new UserIntentOverrides()
-            : userIntent.getUserIntentOverrides().clone();
+        userIntentOverrides == null ? new UserIntentOverrides() : userIntentOverrides.clone();
 
-    BiConsumer<PlacementAZ, ServerType> overridesApplier =
-        (pAz, serverType) -> {
-          if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(pAz.uuid)) {
+    BiConsumer<UUID, ServerType> overridesApplier =
+        (azUUID, serverType) -> {
+          if (CollectionUtils.isNotEmpty(skipAZs) && skipAZs.contains(azUUID)) {
             return;
           }
-          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(pAz.uuid);
+          AvailabilityZone zone = AvailabilityZone.getOrBadRequest(azUUID);
           DeviceInfo deviceInfo = new DeviceInfo();
           // Populate from Provider SC
           Map<String, String> azConfig = CloudInfoInterface.fetchEnvVars(zone);
@@ -1634,8 +1648,8 @@ public class KubernetesUtil {
             userIntentOverridesClone.setAzOverrides(userIntentAZOverridesMap);
           }
         };
-    placementInfo.azStream().forEach(pAZ -> overridesApplier.accept(pAZ, ServerType.MASTER));
-    placementInfo.azStream().forEach(pAZ -> overridesApplier.accept(pAZ, ServerType.TSERVER));
+    azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.MASTER));
+    azUUIDs.stream().forEach(azUUID -> overridesApplier.accept(azUUID, ServerType.TSERVER));
     return userIntentOverridesClone;
   }
 
@@ -1693,5 +1707,36 @@ public class KubernetesUtil {
       }
     }
     return deviceInfo;
+  }
+
+  public static boolean needsFullMove(Cluster currCluster, Cluster newCluster) {
+    Set<UUID> curClusterAZUUIDs = currCluster.placementInfo.getAllAZUUIDs();
+    Iterator<PlacementAZ> azIter = newCluster.placementInfo.azStream().iterator();
+    while (azIter.hasNext()) {
+      PlacementAZ az = azIter.next();
+      if (!curClusterAZUUIDs.contains(az.uuid)) {
+        continue;
+      }
+      DeviceInfo oldDeviceInfo, newDeviceInfo;
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, false /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+      oldDeviceInfo =
+          currCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      newDeviceInfo =
+          newCluster.userIntent.getDeviceInfoForAz(az.uuid, true /* isDedicatedMaster */);
+      if (!(newDeviceInfo == null
+          || oldDeviceInfo.equals(newDeviceInfo)
+          || oldDeviceInfo.onlyVolumeSizeChanged(newDeviceInfo))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

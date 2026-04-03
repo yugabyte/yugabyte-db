@@ -24,6 +24,7 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Collections;
@@ -40,12 +41,14 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
+import com.google.common.net.HostAndPort;
 import com.google.gson.JsonArray;
 
 public class BaseYsqlConnMgr extends BaseMiniClusterTest {
@@ -57,6 +60,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   private boolean warmup_random_mode = true;
   private static boolean ysql_conn_mgr_superuser_sticky = false;
   private static boolean ysql_conn_mgr_optimized_extended_query_protocol = true;
+  private static boolean ysql_conn_mgr_deallocate_if_invalid_prep_stmt = true;
 
   protected static final String DISABLE_TEST_WITH_ASAN =
         "Test is not working correctly with asan build";
@@ -78,6 +82,8 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     }
     builder.addCommonTServerFlag("ysql_conn_mgr_optimized_extended_query_protocol",
       Boolean.toString(ysql_conn_mgr_optimized_extended_query_protocol));
+    builder.addCommonTServerFlag("ysql_conn_mgr_deallocate_if_invalid_prep_stmt",
+      Boolean.toString(ysql_conn_mgr_deallocate_if_invalid_prep_stmt));
   }
 
   @Override
@@ -116,14 +122,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void restartClusterWithAdditionalFlags(
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
-    Map<String, String> tserverFlags = getTServerFlags();
-    Map<String, String> masterFlags = getMasterFlags();
-    tserverFlags.putAll(additionalTserverFlags);
-    masterFlags.putAll(additionalMasterFlags);
-
     destroyMiniCluster();
     waitForProperShutdown();
-    createMiniCluster(masterFlags, tserverFlags);
+    createMiniCluster(-1, -1, builder -> {
+      builder.addMasterFlags(additionalMasterFlags);
+      builder.addCommonTServerFlags(additionalTserverFlags);
+    });
     waitForDatabaseToStart();
   }
 
@@ -172,6 +176,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected void modifyExtendedQueryProtocolAndRestartCluster(
       boolean optimized_extended_query_protocol) throws Exception {
     ysql_conn_mgr_optimized_extended_query_protocol = optimized_extended_query_protocol;
+    // ysql_conn_mgr_deallocate_prepared_statements can only be enabled if
+    // optimized_extended_query_protocol is enabled.
+    ysql_conn_mgr_deallocate_if_invalid_prep_stmt = optimized_extended_query_protocol;
     restartClusterWithAdditionalFlags(Collections.emptyMap(), Collections.emptyMap());
   }
 
@@ -651,5 +658,12 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
     waitForDatabaseToStart();
+  }
+
+  protected void setServerFlag(HostAndPort server, String flag, String value) throws Exception {
+    List<String> args = Arrays.asList(
+        TestUtils.findBinary("yb-ts-cli"), "--server_address", server.toString(),
+        "set_flag", flag, value);
+    ProcessUtil.runProcess(args, 60 /* timeoutSeconds */);
   }
 }

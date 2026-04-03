@@ -1,6 +1,7 @@
 SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 2000;
 SET documentdb.next_collection_index_id TO 2000;
+SET documentdb.enableupdatebsondocument TO false;
 -- replace document scenarios
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a": 1}', '{ "": { "_id": 1, "b": 2 } }', '{}');
                        bson_update_document                       
@@ -17,7 +18,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- ID mismatch not allowed: error
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a": 1}', '{ "": { "_id": 2.0, "b": 2 } }', '{}');
-ERROR:  After applying the update, the (immutable) field '_id' was found to have been altered
+ERROR:  Cannot modify '_id' field as part of the operation
 -- ID not specified - pick the ID from the source document
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{ "_id": 1, "a": 1}', '{ "": { "b": 2 } }', '{}');
                        bson_update_document                       
@@ -86,12 +87,12 @@ SELECT bson_get_value((documentdb_api_internal.bson_update_document('{}', '{ "":
 
 -- upsert case: _id collision between query and replace; errors out
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "_id": 3, "b": 2 } }', '{"$and": [ { "a": 1, "_id": 2.0 }]}');
-ERROR:  After applying the update, the (immutable) field '_id' was found to have been altered
+ERROR:  Cannot modify '_id' field as part of the operation
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "$setOnInsert": {"_id.b": 1}, "$set":{ "_id": 1 } } }', '{"_id.a": 4}');
-ERROR:  Updating the path '_id.b' would create a conflict at '_id'
+ERROR:  Modifying the path '_id.b' will result in a conflict occurring at '_id'
 -- _id specified twice, failure for update.
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "_id": 3, "b": 2 } }', '{"$and": [ { "a": 1 }, {"_id": 2.0 }, { "_id": 3.0 }]}');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 -- update scenario tests: $set
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1 }', '{ "": { "$set": { "a": 2 } } }', '{}');
                        bson_update_document                       
@@ -142,7 +143,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": { "c": 3 }} }', '{ "": { "$set": { "a.b.c": "somePath", "a.b.c": false } } }', '{}');
-ERROR:  Updating the path 'a.b.c' would create a conflict at 'a.b.c'
+ERROR:  Modifying the path 'a.b.c' will result in a conflict occurring at 'a.b.c'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [] }', '{ "": { "$set": { "a.2.b": 1, "a.2.c": 1 } } }', '{}');
                                                    bson_update_document                                                   
 --------------------------------------------------------------------------------------------------------------------------
@@ -150,7 +151,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [] }', '{ "": { "$set": { "a.1500001": 1 } } }', '{}');
-ERROR:  can't backfill more than 1500000 elements
+ERROR:  Backfilling is not possible for more than 1500000 elements.
 -- update scenario tests: $inc
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$inc": { "a.b": 2 } } }', '{}');
                             bson_update_document                            
@@ -159,9 +160,9 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": { "c": 3 }} }', '{ "": { "$set": { "a.b.c": "somePath", "a.b.c": 10 }, "$inc": { "a.b.c": 2 } } }', '{}');
-ERROR:  Updating the path 'a.b.c' would create a conflict at 'a.b.c'
+ERROR:  Modifying the path 'a.b.c' will result in a conflict occurring at 'a.b.c'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 2 }', '{ "": { "$set": { "b.c": 10 }, "$inc": { "b.c": 2 } } }', '{}');
-ERROR:  Updating the path 'b.c' would create a conflict at 'b.c'
+ERROR:  Modifying the path 'b.c' will result in a conflict occurring at 'b.c'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": 2 }', '{ "": { "$inc": { "b.c": 2 } } }', '{}');
                                            bson_update_document                                           
 ----------------------------------------------------------------------------------------------------------
@@ -175,11 +176,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberLong": "9223372036854775807"} }', '{ "": { "$inc": { "a": 1 } } }', '{}');
-ERROR:  Failed to apply $inc operations to current value ((NumberLong)9223372036854775807) for document {_id: 1}
+ERROR:  Unable to perform $inc operators on the existing value ((NumberLong)9223372036854775807) in the document with identifier {_id: 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberLong": "-9223372036854775808"} }', '{ "": { "$inc": { "a": -1 } } }', '{}');
-ERROR:  Failed to apply $inc operations to current value ((NumberLong)-9223372036854775808) for document {_id: 1}
+ERROR:  Unable to perform $inc operators on the existing value ((NumberLong)-9223372036854775808) in the document with identifier {_id: 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id":{"$oid":"5d505646cf6d4fe581014ab2"}, "a": {"$numberLong": "9223372036854775807"} }', '{ "": { "$inc": { "a": 1 } } }', '{}');
-ERROR:  Failed to apply $inc operations to current value ((NumberLong)9223372036854775807) for document {_id: { "$oid" : "5d505646cf6d4fe581014ab2" }}
+ERROR:  Unable to perform $inc operators on the existing value ((NumberLong)9223372036854775807) in the document with identifier {_id: { "$oid" : "5d505646cf6d4fe581014ab2" }}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberDouble": "9223372036854775807"} }', '{ "": { "$inc": { "a": 1 } } }', '{}');
                                   bson_update_document                                   
 -----------------------------------------------------------------------------------------
@@ -230,7 +231,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1, 2, 3 ] }', '{ "": { "$set": { "a.1": -1 }, "$min": { "a.1": 1 } } }', '{}');
-ERROR:  Updating the path 'a.1' would create a conflict at 'a.1'
+ERROR:  Modifying the path 'a.1' will result in a conflict occurring at 'a.1'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$min": { "a.b": {"$numberDecimal": "9.99e-100"} } } }', '{}');
                                   bson_update_document                                  
 ----------------------------------------------------------------------------------------
@@ -281,7 +282,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1, 2, 3 ] }', '{ "": { "$set": { "a.1": 3 }, "$max": { "a.1": 1 } } }', '{}');
-ERROR:  Updating the path 'a.1' would create a conflict at 'a.1'
+ERROR:  Modifying the path 'a.1' will result in a conflict occurring at 'a.1'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }', '{ "": { "$max": { "a.b": {"$numberDecimal": "9.99e100"} } } }', '{}');
                                   bson_update_document                                  
 ----------------------------------------------------------------------------------------
@@ -325,7 +326,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
  { "_id" : { "$numberInt" : "1" }, "expdata" : { "$numberInt" : "5" } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1}', '{ "": { "$bit": { "expdata" : { "or" : 10 }} }, "upsert" : false}', '{}');
+SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1}', '{ "": { "$bit": { "expdata" : { "or" : 10 }} }}', '{}');
                           bson_update_document                           
 -------------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "expdata" : { "$numberInt" : "10" } }
@@ -357,13 +358,13 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- update scenario negative tests: $bit
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :"abc"}', '{ "": { "$bit": { "expdata" : { "or" :10 }  }  }}', '{}');
-ERROR:  Cannot apply $bit to a value of non-integral type.{ "_id" : 1 } has the field expdata of non-integer type string
+ERROR:  $bit cannot be used on a value that is not of an integral type. The document with _id = 1 contains the field expdata, which has a non-integer type string.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "or" :10.0 }  }  }}', '{}');
 ERROR:  The $bit modifier field must be an Integer(32/64 bit); a 'double' is not supported here: { "or" : 10 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "ors" :10 }  }  }}', '{}');
 ERROR:  The $bit modifier only supports 'and', 'or', and 'xor', not 'ors' which is an unknown operator: { "ors" : 10 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :[1,2,3]}', '{ "": { "$bit": { "expdata" : { "or" :10 }  }  }}', '{}');
-ERROR:  Cannot apply $bit to a value of non-integral type.{ "_id" : 1 } has the field expdata of non-integer type array
+ERROR:  $bit cannot be used on a value that is not of an integral type. The document with _id = 1 contains the field expdata, which has a non-integer type array.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : {  }} }}', '{}');
 ERROR:  You must pass in at least one bitwise operation. The format is: {$bit: {field: {and/or/xor: #}}
 /* TODO: Make the error compatible with mongo: "errmsg" : "Cannot create field 'y' in element {x: [ { y: 10 } ]}"  */
@@ -546,21 +547,21 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],3]}', '{ "": { "$addToSet" : {"a.2.5": 7 } } }', '{}');
-ERROR:  Cannot create field '2' in element {2 : 3}
+ERROR:  Failed to create the field '2' within the element specified by {2 : 3}
 -- update scenario negative tests: $inc
 SELECT documentdb_api_internal.bson_update_document('{"_id": 5, "a": [1,2] }', '{ "": { "$inc": { "a": 30 } } }', '{}');
-ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type array
+ERROR:  Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type array.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 5, "a": {"x":1} }', '{ "": { "$inc": { "a": 30 } } }', '{}');
-ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type object
+ERROR:  Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type object.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 5, "a": "b" }', '{ "": { "$inc": { "a": 30 } } }', '{}');
-ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string
+ERROR:  Operation $inc cannot be performed because the target value is not numeric. Document { _id: 5 } contains the field 'a' which is of non-numeric type string.
 -- update scenario negative tests: $addToSet
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "colors": "blue, green, red" }', '{ "": { "$addToSet": { "colors": "mauve" } }}', '{}');
-ERROR:  Cannot apply $addToSet to non-array field. Field named 'colors' has non-array type string
+ERROR:  Expected 'array' type for $addToSet but field 'colors' has 'string' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "letters": ["a","b"] }', '{ "": { "$addToSet": { "letters": { "$each": "c"}}} }', '{}');
-ERROR:  The argument to $each in $addToSet must be an array but it was of type string
+ERROR:  Expected 'array' type for $each but found 'string' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "letters": ["a","b"] }', '{ "": { "$addToSet": { "letters": { "$each" : {} }}} }', '{}');
-ERROR:  The argument to $each in $addToSet must be an array but it was of type object
+ERROR:  Expected 'array' type for $each but found 'object' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "letters": ["a","b"] }', '{ "": { "$addToSet": { "letters": { "$ach": ["c"]}}} }', '{}');
                                           bson_update_document                                           
 ---------------------------------------------------------------------------------------------------------
@@ -890,23 +891,23 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 -- int64 overflow should coerce to double: $mul
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "9223372036854775807"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberInt": "2"} } } }', '{}');
-ERROR:  Failed to apply $mul operations to current ((NumberLong)9223372036854775807) value for document { _id: 1 }
+ERROR:  Unable to perform $mul on the existing ((NumberLong)9223372036854775807) value for the document with _id: 1
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "-9223372036854775807"} } }',
                                                 '{ "": { "$mul": { "a.b": {"$numberInt": "2"} } } }', '{}');
-ERROR:  Failed to apply $mul operations to current ((NumberLong)-9223372036854775807) value for document { _id: 1 }
+ERROR:  Unable to perform $mul on the existing ((NumberLong)-9223372036854775807) value for the document with _id: 1
 -- update scenario error tests: $mul
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }','{ "": { "$mul": { "a.b": "Hello" } } }', '{}');
-ERROR:  Cannot multiply with non-numeric argument: { a.b : "Hello" }
+ERROR:  Multiplication operation failed due to a non-numeric argument: { a.b : "Hello" }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": "Text" } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
-ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type string
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field 'b', which has a non-numeric type string.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": [1,2,3] } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
-ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type array
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field 'b', which has a non-numeric type array.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {} } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
-ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type object
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field 'b', which has a non-numeric type object.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": null } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
-ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type null
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field 'b', which has a non-numeric type null.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": true } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
-ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type bool
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field 'b', which has a non-numeric type bool.
 -- $pullAll operator- positive testcases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id" : 1, "scores" : [ 0, 2, 5, 5, 1, 0 ] }', '{ "": { "$pullAll": { "scores": [0,5] } }}', '{}');
                                        bson_update_document                                        
@@ -958,11 +959,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- $pullAll operator- negative testcases
 SELECT documentdb_api_internal.bson_update_document('{"_id" : 1, "scores" : [ 0, 2, 5, 5, 1, 0 ] }', '{ "": { "$pullAll": { "scores": 0 } }}', '{}');
-ERROR:  $pullAll requires an array argument but was given a int
+ERROR:  Parameter $pullAll needs an array input, but received a int instead
 SELECT documentdb_api_internal.bson_update_document('{"_id" : 1, "scores" : "a" }', '{ "": { "$pullAll": { "scores": [0] } }}', '{}');
-ERROR:  Cannot apply $pullAll to a non-array value
+ERROR:  Unable to use $pullAll on a value that is not an array
 SELECT documentdb_api_internal.bson_update_document('{"_id" : 1, "letters" : [ [ 1, { "a" : 2 } ], { "a" : [ 1, 2 ] } ] }', '{ "": { "$pullAll": { "letters.1": [1,3,4] } }}', '{}');
-ERROR:  Cannot apply $pullAll to a non-array value
+ERROR:  Unable to use $pullAll on a value that is not an array
 -- rename overwrites.
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2, "c": 1 } }', '{ "": { "$rename": { "a.b": "a.c" } } }', '{}');
                             bson_update_document                            
@@ -1177,13 +1178,13 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- upsert querySpec with implicit AND - Invalid cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "_id": 1, "a": 1} } }', '{"b": { "$eq": 2, "$all": [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path 'b' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'b' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "_id": 1, "a": 1} } }', '{"b": { "$eq": 2, "$all": [ 2 ], "$in" : [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path 'b' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'b' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "_id": 1, "a": 1} } }', '{"b": { "$all": [ 2, 1 ], "$in": [ 1, 2 ] } }');
-ERROR:  cannot infer query fields to set, path 'b' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'b' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "_id": 1, "a": 1} } }', '{"b": { "$all": [ 2, 1 ], "$in": [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path 'b' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'b' has been matched twice
 -- upsert querySpec with implicit AND on "_id" - valid cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 1} } }', '{"_id": { "$eq": 2, "$in": [ 1, 2 ] } }'); 
                        bson_update_document                       
@@ -1211,22 +1212,22 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- upsert querySpec with implicit AND on "_id" - Invalid cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 1} } }', '{"_id": { "$eq": 2, "$all": [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 1} } }', '{"_id": { "$eq": 2, "$all": [ 2 ], "$in" : [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 1} } }', '{"_id": { "$all": [ 2, 1 ], "$in": [ 1, 2 ] } }');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 1} } }', '{"_id": { "$all": [ 2, 1 ], "$in": [ 2 ] } }');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 -- cannot modify id cases
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 2, "_id": 2 } } }', '{ "_id": 1 }');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1 }', '{ "": { "$set": { "_id": 2 } } }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1 }', '{ "": { "$inc": { "_id": 2 } } }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1 }', '{ "": { "$max": { "_id": 2 } } }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 -- Multiple operators: no-op
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {}, "x": 0 }', '{ "": { "$pullAll": { "a.b": [0] }, "$unset": { "d": 1 }, "$mul": { "x": 10 } } }', '{}');
  bson_update_document 
@@ -1347,13 +1348,13 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$addFields": { "_id": 10, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$addFields": { "_id": 30.5, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$addFields": { "_id": false, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$addFields": { "_id": "someString", "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": [ { "$addFields": { "b": { "$literal": 2.0 }, "d": 1 } }] }', '{ "d" : 1, "_id": 2.0 }');
                                            bson_update_document                                           
 ----------------------------------------------------------------------------------------------------------
@@ -1386,13 +1387,13 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$set": { "_id": 10, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$set": { "_id": 30.5, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$set": { "_id": false, "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT documentdb_api_internal.bson_update_document('{ "_id": 1, "name": "John Doe" }', '{ "": [ { "$set": { "_id": "someString", "name": 1 } }, { "$unset": "name" } ] }', '{}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": [ { "$set": { "b": { "$literal": 2.0 }, "d": 1 } }] }', '{ "d" : 1, "_id": 2.0 }');
                                            bson_update_document                                           
 ----------------------------------------------------------------------------------------------------------
@@ -1463,13 +1464,13 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- update: Error cases:
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": [1, 2, 3 ]} }', '{ "": { "$set": { "a.b.7": 9, "a.b.10": 13 }, "$unset": { "a.b.7": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b.7' would create a conflict at 'a.b.7'
+ERROR:  Modifying the path 'a.b.7' will result in a conflict occurring at 'a.b.7'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [ { "b": 2 } ] }', '{ "": { "$rename": { "a.0": "b" } } }', '{}');
 ERROR:  The source field of a rename cannot be an array element
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [ { "b": 2 } ] }', '{ "": { "$rename": { "a.0.b": "a.1.c" } } }', '{}');
 ERROR:  The source field of a rename cannot be an array element
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "a": 2, "h": 6 } } }', '{ "_id": { "$eq": 1 }, "c": 3, "$and": [ { "c": 4 } ] }');
-ERROR:  cannot infer query fields to set, path 'c' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'c' has been matched twice
 SELECT documentdb_api_internal.bson_update_document('{"a": [1], "b": {"c": [2]}, "d": [{"e": 3}], "f": 4}', '{ "": { "$rename" :{"f":"d.e"}} }', '{}');
 ERROR:  Invalid array index path e
 SELECT documentdb_api_internal.bson_update_document('{"a": [1], "b": {"c": [2]}, "d": [{"e": 3}], "f": 4}', '{ "": { "$rename" :{"f":"d.e"}} }', '{}');
@@ -1480,31 +1481,31 @@ SELECT documentdb_api_internal.bson_update_document('{"a": [1], "b": {"c": [2]},
 ERROR:  The target field of a rename cannot be an array element
 -- $push top level input validation with all modifiers
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberInt" : "2"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type int in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type int in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberLong" : "2"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type long in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type long in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberDouble" : "2.0"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type double in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type double in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"b" : [1,2,3]}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type object in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type object in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": false}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type bool in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type bool in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": NaN}', '{ "": { "$push" :{"a":"0"}} }', '{}');
-ERROR:  The field 'a' must be an array but is of type double in document { _id: 1 }
+ERROR:  The field 'a' is required to be an array, however it is currently of type double in document { _id: 1 }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": "6" }}} }', '{}');
-ERROR:  The argument to $each in $push must be an array but it was of type: string
+ERROR:  Expected 'array' type for $each in $push but found 'string' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": 6 }}} }', '{}');
-ERROR:  The argument to $each in $push must be an array but it was of type: int
+ERROR:  Expected 'array' type for $each in $push but found 'int' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": {"a": 6} }}} }', '{}');
-ERROR:  The argument to $each in $push must be an array but it was of type: object
+ERROR:  Expected 'array' type for $each in $push but found 'object' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$slice": 1.1 }}} }', '{}');
-ERROR:  The argument to $slice in $push must be an integer value but was given type: double
+ERROR:  Expected 'array' type for $slice in $push but found 'double' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$slice": "2" }}} }', '{}');
-ERROR:  The argument to $slice in $push must be an integer value but was given type: string
+ERROR:  Expected 'array' type for $slice in $push but found 'string' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$slice": true }}} }', '{}');
-ERROR:  The argument to $slice in $push must be an integer value but was given type: bool
+ERROR:  Expected 'array' type for $slice in $push but found 'bool' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$slice": [1,2,3] }}} }', '{}');
-ERROR:  The argument to $slice in $push must be an integer value but was given type: array
+ERROR:  Expected 'array' type for $slice in $push but found 'array' type
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": 0 }}} }', '{}');
 ERROR:  The $sort element value must be either 1 or -1
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": -2 }}} }', '{}');
@@ -1520,7 +1521,7 @@ ERROR:  The $sort field is a dotted field but has an empty part: a.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": {".b.c": -2} }}} }', '{}');
 ERROR:  The $sort field is a dotted field but has an empty part: .b.c
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": {"": 1} }}} }', '{}');
-ERROR:  The $sort field cannot be empty
+ERROR:  The $sort field should not be left empty
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": [], "$sort": {} }}} }', '{}');
 ERROR:  The $sort pattern is empty when it should be a set of fields.
 -- TODO: Make the error compatible with mongo: "errmsg" : "Cannot create field 'y' in element {x: [ { y: 1 } ]}"
@@ -1610,7 +1611,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],3]}', '{ "": { "$push" : {"a.2.5": 7 } } }', '{}');
-ERROR:  Cannot create field '2' in element {2 : 3}
+ERROR:  Failed to create the field '2' within the element specified by {2 : 3}
 -- $push with $each & $slice modifier in non-dotted path
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$push" : {"a": { "$each" : [], "$slice": 5 }} } }', '{}');
                                                                          bson_update_document                                                                         
@@ -1831,51 +1832,51 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- test conflicting update operator paths
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": 1 } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a.b": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$inc": {"a": 1 } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$inc": {"a.b": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$inc": {"a.b.c": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b.c' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b.c' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$inc": {"a.b.c.d.e": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b.c.d.e' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b.c.d.e' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a.b.c.d.e": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b.c.d.e' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b.c.d.e' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c": 1} } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b": 1} } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": 1} } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.k.d": 1} } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d.e": 1} } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": { "e": 1 } } } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": { "e.f": 1 } } } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": { "k.f": 1 } } } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": { "f.k": 1 } } } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a": {"b.c.d": { "e.f": {"g": 1} } } } } }', '{}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a.b.c.d": { "e": 1 } } } }', '{}');
-ERROR:  Updating the path 'a.b.c.d' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b.c.d' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a.b.c": { "d.e": 1 } } } }', '{}');
-ERROR:  Updating the path 'a.b.c' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b.c' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b": {"c": { "d.e.f": "1"} } }, "$unset": {"a.b": { "c.d.e": 1 } } } }', '{}');
-ERROR:  Updating the path 'a.b' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b.c.d.e": 1 }, "$unset": {"a.b": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b' will result in a conflict occurring at 'a.b'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b.c.d.e": 1 }, "$unset": {"a.b.c.d.e.f": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b.c.d.e.f' would create a conflict at 'a.b.c.d.e'
+ERROR:  Modifying the path 'a.b.c.d.e.f' will result in a conflict occurring at 'a.b.c.d.e'
 SELECT documentdb_api_internal.bson_update_document('{"data": "data"}', '{ "": { "$set": { "a.b.c.d.e": 1 }, "$inc": {"a.b": 1 } } }', '{}');
-ERROR:  Updating the path 'a.b' would create a conflict at 'a.b'
+ERROR:  Modifying the path 'a.b' will result in a conflict occurring at 'a.b'
 -- update scenario tests: $currentDate
 -- -- Function that extracts date / timestamp value of a given key in a json obj, and returns the equivalent epoch in ms
 CREATE OR REPLACE FUNCTION get_epochms_from_key(obj json, qkey text, is_date bool)
@@ -2136,9 +2137,9 @@ LINE 1: ... "$date": { "$numberLong" : "1234567890000" }}}', '{ "": { "...
                                                              ^
 -- --Empty UpdateSpec check
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$inc": { "": 11} } }', '{}');
-ERROR:  An empty update path is not valid
+ERROR:  The update path cannot be empty and is therefore invalid
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4] }', '{ "": { "$mul": { "a.": 11} } }', '{}');
-ERROR:  An update path 'a.' contains an empty field name, which is not allowed.
+ERROR:  Empty field name detected at path 'a.'
 -- update scenario tests: $pop
 -- -- $pop from begin of array
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" :{"a": -1}} }', '{}');
@@ -2244,59 +2245,59 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 -- -- Error Cases : $pop on Non-Array Fields
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberInt" : "2"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'int'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'int'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberLong" : "2"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'long'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'long'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberDouble" : "2.0"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'double'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'double'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'string'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'string'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : false }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'bool'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'bool'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : NaN }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
-ERROR:  Path 'a.b.c' contains an element of non-array type 'double'
+ERROR:  The specified path 'a.b.c' within $pop includes an element that is not of an array data type 'double'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 1, "a.b.d": -1 }} }', '{}');
-ERROR:  Path 'a.b.d' contains an element of non-array type 'string'
+ERROR:  The specified path 'a.b.d' within $pop includes an element that is not of an array data type 'string'
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a" : {"b" : { "c": 1 ,  "d": -1} }} } }', '{}');
-ERROR:  Expected a number in: a: { "b" : { "c" : 1, "d" : -1 } }
+ERROR:  Expected numeric value in: a: { "b" : { "c" : 1, "d" : -1 } }
 -- -- Error Cases : $pop's key's value is neither -1 nor 1
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": "Hello"}} }', '{}');
-ERROR:  Expected a number in: a: "Hello"
+ERROR:  Expected numeric value in: a: "Hello"
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": true}} }', '{}');
-ERROR:  Expected a number in: a: true
+ERROR:  Expected numeric value in: a: true
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": NaN}} }', '{}');
-ERROR:  Expected an integer: a: NaN
+ERROR:  Expected numeric value: a: NaN
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": []}} }', '{}');
-ERROR:  Expected a number in: a: [  ]
+ERROR:  Expected numeric value in: a: [  ]
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {}}} }', '{}');
-ERROR:  Expected a number in: a: { }
+ERROR:  Expected numeric value in: a: { }
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {"$numberInt" : "2"}}} }', '{}');
-ERROR:  $pop expects 1 or -1, found: 2
+ERROR:  $pop operator requires either 1 or -1, but received: 2
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {"$numberDouble" : "-1.5"}}} }', '{}');
-ERROR:  Expected an integer: a: -1.5
+ERROR:  Expected numeric value: a: -1.5
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8]}} }', '{ "": { "$pop" : {"a.b.c": 2 }} }', '{}');
-ERROR:  $pop expects 1 or -1, found: 2
+ERROR:  $pop operator requires either 1 or -1, but received: 2
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 25, "a.b.d": -1 }} }', '{}');
-ERROR:  $pop expects 1 or -1, found: 25
+ERROR:  $pop operator requires either 1 or -1, but received: 25
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 1, "a.b.d": -25 }} }', '{}');
-ERROR:  $pop expects 1 or -1, found: -25
+ERROR:  $pop operator requires either 1 or -1, but received: -25
 -- -- Error Cases : $pop is not a document
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : []} }', '{}');
-ERROR:  Modifiers operate on fields but we found type array instead. For example: {$mod: {<field>: ...}} not {$pop: [  ]}
+ERROR:  Modifiers work only with fields, but the provided value is of type array. Expected format: {$mod: {<field>: ...}}, but received: {$pop: [  ]}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : [{"a" : 1}]} }', '{}');
-ERROR:  Modifiers operate on fields but we found type array instead. For example: {$mod: {<field>: ...}} not {$pop: [ { "a" : 1 } ]}
+ERROR:  Modifiers work only with fields, but the provided value is of type array. Expected format: {$mod: {<field>: ...}}, but received: {$pop: [ { "a" : 1 } ]}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : "Hello"} }', '{}');
-ERROR:  Modifiers operate on fields but we found type string instead. For example: {$mod: {<field>: ...}} not {$pop: "Hello"}
+ERROR:  Modifiers work only with fields, but the provided value is of type string. Expected format: {$mod: {<field>: ...}}, but received: {$pop: "Hello"}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : false} }', '{}');
-ERROR:  Modifiers operate on fields but we found type bool instead. For example: {$mod: {<field>: ...}} not {$pop: false}
+ERROR:  Modifiers work only with fields, but the provided value is of type bool. Expected format: {$mod: {<field>: ...}}, but received: {$pop: false}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : NaN} }', '{}');
-ERROR:  Modifiers operate on fields but we found type double instead. For example: {$mod: {<field>: ...}} not {$pop: NaN}
+ERROR:  Modifiers work only with fields, but the provided value is of type double. Expected format: {$mod: {<field>: ...}}, but received: {$pop: NaN}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberInt" : "1"}} }', '{}');
-ERROR:  Modifiers operate on fields but we found type int instead. For example: {$mod: {<field>: ...}} not {$pop: 1}
+ERROR:  Modifiers work only with fields, but the provided value is of type int. Expected format: {$mod: {<field>: ...}}, but received: {$pop: 1}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberLong" : "-1"}} }', '{}');
-ERROR:  Modifiers operate on fields but we found type long instead. For example: {$mod: {<field>: ...}} not {$pop: -1}
+ERROR:  Modifiers work only with fields, but the provided value is of type long. Expected format: {$mod: {<field>: ...}}, but received: {$pop: -1}.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberDouble" : "2.5"}} }', '{}');
-ERROR:  Modifiers operate on fields but we found type double instead. For example: {$mod: {<field>: ...}} not {$pop: 2.5}
+ERROR:  Modifiers work only with fields, but the provided value is of type double. Expected format: {$mod: {<field>: ...}}, but received: {$pop: 2.5}.
 -- --Update the Field with Periods (.) and Dollar Signs ($)
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "$b": 2 } }', '{ "": { "$inc": { "a.$b": 2 } } }', '{}');
                             bson_update_document                             
@@ -2320,9 +2321,9 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 SELECT documentdb_api_internal.bson_update_document('{"_id" : 1}', '{ "": { "$set": { "$a": 2 } } }', '{}');
 ERROR:  The dollar ($) prefixed field '$a' in '$a' is not allowed in the context of an update's replacement document. Consider using an aggregation pipeline with $replaceWith.
 SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "_id" : 1, "$set": { "$a": 2 } } }', '{}');
-ERROR:  The dollar ($) prefixed field '$set' in '$set' is not allowed in the context of an update's replacement document. Consider using an aggregation pipeline with $replaceWith.
+ERROR:  Field '$set' in path '$set' is not allowed when doing a replace operation. Use $replaceWith aggregation stage instead
 SELECT documentdb_api_internal.bson_update_document('{"_id" : 1, "a" : 1 }', '{ "": { "_id" : 1, "$b" : 2} }', '{}');
-ERROR:  The dollar ($) prefixed field '$b' in '$b' is not allowed in the context of an update's replacement document. Consider using an aggregation pipeline with $replaceWith.
+ERROR:  Field '$b' in path '$b' is not allowed when doing a replace operation. Use $replaceWith aggregation stage instead
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "$a": { "$b": { "c" :  2 } } }', '{ "": { "$set": { "$a": { "$b" : { "$d": 1 } } } } } ', '{}');
                                              bson_update_document                                             
 --------------------------------------------------------------------------------------------------------------
@@ -2334,7 +2335,7 @@ SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "$a": { "$b": { 
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": "1" }', '{ "": { "$set": { "$secret.agent.x": 1 } } }', '{}');
 ERROR:  The dollar ($) prefixed field '$secret' in '$secret.agent.x' is not allowed in the context of an update's replacement document. Consider using an aggregation pipeline with $replaceWith.
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "$secret": { "agent": 1 } }', '{ "": { "$set": { "$secret.agent.x": 1 } } }', '{}');
-ERROR:  Cannot create field 'agent' in element {agent : 1}
+ERROR:  Failed to create the field 'agent' within the element specified by {agent : 1}
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "$secret": { "agent": { "y": 1 } } }', '{ "": { "$set": { "$secret.agent.x": 1 } } }', '{}');
                                                                   bson_update_document                                                                   
 ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2370,21 +2371,21 @@ SELECT documentdb_api_internal.bson_update_document('{}', '{ "": { "$set": { "$i
 
 -- $pull invalid cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": "text"}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": true}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"$numberDecimal": "1.23"}}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": {"b": 2}}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"b": 1, "c": 1}, {"b": 2, "c": 2}, {"b": 3, "c": 3}]}', '{ "": { "$pull": { "a.0": {"b": 2, "c":2} } } }', '{}');
-ERROR:  Cannot apply $pull to a non-array value
+ERROR:  $pull cannot be used on values that are not arrays
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [{"b": [1], "c": [1]}, {"b": [2], "c": [2]}, {"b": [3], "c": [3]}]}', '{ "": { "$pull": { "a.b": 1 } } }', '{}');
 ERROR:  Invalid array index path b
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"$lte": 2, "b": 2} } } }', '{}');
-ERROR:  unknown operator: b
+ERROR:  Unrecognized operator specified: b
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"b": 2, "$lte": 2} } } }', '{}');
 ERROR:  unknown top level operator: $lte. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 -- valid $pull without expressions in arrays and array of arrays
@@ -2582,16 +2583,16 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"x":17}}}','{"_id": { "$all" : [[13]]}}');
-ERROR:  The '_id' value cannot be of type array
+ERROR:  The '_id' field value must not be a type of array
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"_id":18}}}','{"x": { "$all" : [1,2,3]}}');
-ERROR:  cannot infer query fields to set, path 'x' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'x' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"x":19}}}','{"_id": { "$all" : [15,16,17]}}');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {}}','{"_id": { "$all" : [[15]]}}');
-ERROR:  After applying the update to the document, the (immutable) field '_id' was found to be an array or array descendant.
+ERROR:  Cannot modify '_id' field to an array or array descendent as part of the operation.
 --upsert when querySpec has $in
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {} }','{"_id": 21, "x": { "$in" : {}}}');
-ERROR:  $in needs an array
+ERROR:  Expected 'array' type for $in but found 'object' type
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {} }','{"_id": 22, "x": { "$in" : [1]}}');
         bson_update_document         
 -------------------------------------
@@ -2635,9 +2636,9 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"x":29}}}','{"_id": { "$in" : [[26]]}}');
-ERROR:  The '_id' value cannot be of type array
+ERROR:  The '_id' field value must not be a type of array
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"_id":30}}}','{"_id": { "$in" : [27]}}');
-ERROR:  Performing an update on the path '_id' would modify the immutable field '_id'
+ERROR:  Updating the path '_id' is not allowed because it would change the immutable field '_id'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"_id":31}}}','{"_id": { "$in" : [27,28,29]}}');
         bson_update_document         
 -------------------------------------
@@ -2645,7 +2646,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {} }','{"_id": { "$in" : [[27]]}}');
-ERROR:  After applying the update to the document, the (immutable) field '_id' was found to be an array or array descendant.
+ERROR:  Cannot modify '_id' field to an array or array descendent as part of the operation.
 SELECT bson_dollar_project(newDocument, '{ "_id": 0 }') as newDocument from  documentdb_api_internal.bson_update_document('{}', '{ "": {"$set":{"y":31}}}','{"_id": { "$in" : [27,28,29]}}');
             newdocument            
 -----------------------------------
@@ -2667,7 +2668,7 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 
 --miscellaneous tests with multiple fields in queySpec
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {} }','{"$and": [{"_id": 1}, {"_id": 1}]}');
-ERROR:  cannot infer query fields to set, path '_id' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path '_id' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set": {"a": 1}} }','{"_id.x": 1 , "_id.y": 2}');
                                            bson_update_document                                           
 ----------------------------------------------------------------------------------------------------------
@@ -2675,11 +2676,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set": {"a": 1}} }','{"$and": [{"x": 1}, {"x": 1}]}');
-ERROR:  cannot infer query fields to set, path 'x' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'x' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set": {"a": 1}} }','{"x": 1, "x.x": 1}');
-ERROR:  cannot infer query fields to set, path 'x.x' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'x.x' has been matched twice
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": {"$set": {"a": 1}} }','{"x.x": 1, "x": 1}');
-ERROR:  cannot infer query fields to set, path 'x' is matched twice
+ERROR:  Unable to determine which query fields to set, as the path 'x' has been matched twice
 -- show that we never crash due to passing one of the arguments as NULL
 SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1}', '{"": {"a": 2}}', null);
 ERROR:  sourceDocument / updateSpec / querySpec cannot be NULL
@@ -2701,21 +2702,21 @@ SELECT documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1}', '{"": 
 
 -- $rename Negative/No-Op cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "a.": "b"} } }', '{}');
-ERROR:  An update path 'a.' contains an empty field name, which is not allowed.
+ERROR:  Empty field name detected at path 'a.'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "$.": "b"} } }', '{}');
-ERROR:  An update path '$.' contains an empty field name, which is not allowed.
+ERROR:  Empty field name detected at path '$.'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "$[].0": "b"} } }', '{}');
-ERROR:  Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '$[].0'
+ERROR:  Array filter identifier usage (e.g., '$[<id>]') is not permitted at the starting position of the specified path '$[].0'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "a": "b."} } }', '{}');
-ERROR:  An update path 'b.' contains an empty field name, which is not allowed.
+ERROR:  Empty field name detected at path 'b.'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "a": "$"} } }', '{}');
-ERROR:  Cannot have positional (i.e. '$') element in the first position in path '$'
+ERROR:  Positional element (i.e. '$') cannot appear at the beginning of the path '$'.
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{}', '{ "": { "$rename": { "a": "$[]"} } }', '{}');
-ERROR:  Cannot have array filter identifier (i.e. '$[<id>]') element in the first position in path '$[]'
+ERROR:  Array filter identifier usage (e.g., '$[<id>]') is not permitted at the starting position of the specified path '$[]'
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"a": 1, "f": 1}', '{ "": { "$rename": { "a": "f.g"} } }', '{}');
-ERROR:  Cannot create field 'f' in element {f : 1}
+ERROR:  Failed to create the field 'f' within the element specified by {f : 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"a": 1, "f": 1}', '{ "": { "$rename": { "f.g": "a"} } }', '{}');
-ERROR:  Cannot create field 'f' in element {f : 1}
+ERROR:  Failed to create the field 'f' within the element specified by {f : 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": 1, "f": 1}', '{ "": { "$rename": { "x": "f.g"} } }', '{}');
  bson_update_document 
 ----------------------
@@ -2723,11 +2724,11 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
 (1 row)
 
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"a" : 1, "f" : 1, "b" : { "c" : { "d" : 1 } }}', '{ "": { "$rename": { "b.c.d.f": "t.k"} } }', '{}');
-ERROR:  Cannot create field 'd' in element {d : 1}
+ERROR:  Failed to create the field 'd' within the element specified by {d : 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"key": 1,"key2": 2,"f": {"g": 1, "h": 1},"j": 1,"k": 1}', '{ "": { "$rename": { "f.g": "k.m","f.h":"j.m"} } }', '{}');
-ERROR:  Cannot create field 'j' in element {j : 1}
+ERROR:  Failed to create the field 'j' within the element specified by {j : 1}
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"key": 1,"key2": 2,"f": {"g": 1, "h": 1},"j": {},"k": 1}', '{ "": { "$rename": { "f.g": "k.m","f.h":"j.m"} } }', '{}');
-ERROR:  Cannot create field 'k' in element {k : 1}
+ERROR:  Failed to create the field 'k' within the element specified by {k : 1}
 --$rename working complex cases
 SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "key": 1,"key2": 2,"f": {"g": 1, "h": 1},"h":1}', '{ "": { "$rename": { "key": "f.g"} } }', '{}');
                                                                           bson_update_document                                                                           
@@ -2741,3 +2742,4 @@ SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_upd
  { "_id" : { "$numberInt" : "2" }, "x" : {  }, "newName" : { "$numberInt" : "2" }, "z" : { "$numberInt" : "1" }, "k" : { "$numberInt" : "2" } }
 (1 row)
 
+SET documentdb.enableupdatebsondocument TO true;

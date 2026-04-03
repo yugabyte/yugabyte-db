@@ -517,20 +517,7 @@ std::string ExternalMiniCluster::GetTServerBinaryPath() const {
 }
 
 bool ExternalMiniCluster::IsYsqlConnMgrEnabledInTests() const {
-  if (!opts_.enable_ysql) {
-    return false;
-  }
-
-  if (opts_.enable_ysql_conn_mgr) {
-    return true;
-  }
-
-  static const char *enableYsqlConnMgr = getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-  if (enableYsqlConnMgr != NULL
-      && strcasecmp(enableYsqlConnMgr, "true") == 0) {
-      return true;
-  }
-  return false;
+  return opts_.IsYsqlConnMgrEnabled();
 }
 
 namespace {

@@ -327,7 +327,7 @@ TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
 
   // Release all locks.
   ASSERT_OK(session->TEST_ApplyAndFlush(
-      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOp(kDBOid))));
+      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOps(kDBOid))));
   // Should be just txn metadata left unremoved.
   CheckNumIntents(cluster_.get(), 1, table_->id());
 

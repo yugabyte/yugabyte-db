@@ -463,7 +463,7 @@ TEST_P(PgPackedRowTest, Random) {
       continue;
     }
     std::unordered_set<std::string> values;
-    tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &values);
+    tablet->TEST_DocDBDumpToContainer(values, docdb::IncludeIntents::kTrue);
     std::vector<std::string> sorted_values(values.begin(), values.end());
     std::sort(sorted_values.begin(), sorted_values.end());
     for (const auto& line : sorted_values) {

@@ -755,22 +755,22 @@ SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost"
 
 -- without sortBy field
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:  $linearFill must be specified with a top level sortBy expression with exactly one element
+ERROR:  $linearFill requires specifying a top-level sortBy expression that contains exactly one element
 -- sortBy is not numeric or date
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:  sortBy value must be numeric or a date, but found string
+ERROR:  The sortBy parameter must contain either a numeric value or a date, but instead received string
 -- sortBy with repeated value in one partition
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "cost": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:  There can be no repeated values in the sort field
+ERROR:  The sort field must not contain any duplicate values
 -- partionBy and partitionByFields both are present
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "partitionByFields": ["a"], "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:  Maximum one of 'partitionBy' and 'partitionByFields can be specified in '$fill'
+ERROR:  Only one of 'partitionBy' or 'partitionByFields' is allowed when using the '$fill'.
 -- partitionByFields element starts with $
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionByFields": ["$a"], "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+ERROR:  FieldPath field names are not allowed to begin with the operators symbol '$'; consider using $getField or $setField instead.
 -- output field is not present in the document
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }}}]}');
-ERROR:  BSON field '$fill.output' is missing but a required field
+ERROR:  Required field '$fill.output' is missing
 -- fill non-numeric field
 SELECT documentdb_api.drop_collection('db','filltest');
  drop_collection 
@@ -804,7 +804,7 @@ SELECT documentdb_api.insert_one('db','filltest','{ "_id": 3, "a": "abc", "cost"
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:   Value to be filled must be numeric or nullish
+ERROR:   The value provided must be either a numeric type or explicitly null
 SELECT documentdb_api.drop_collection('db','filltest');
  drop_collection 
 ---------------------------------------------------------------------
@@ -843,7 +843,7 @@ SELECT documentdb_api.insert_one('db','filltest','{ "_id": 5, "a": "abc", "cost"
 (1 row)
 
 SELECT document FROM bson_aggregation_pipeline('db','{ "aggregate": "filltest", "pipeline":  [{"$fill": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "method": "linear"}}}}]}');
-ERROR:   Value to be filled must be numeric or nullish
+ERROR:   The value provided must be either a numeric type or explicitly null
 -- fill with missing value
 SELECT documentdb_api.drop_collection('db','filltest');
  drop_collection 

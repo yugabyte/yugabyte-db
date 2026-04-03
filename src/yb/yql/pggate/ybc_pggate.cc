@@ -332,7 +332,8 @@ void AshCopyTServerSample(
   auto* cb_metadata = &cb_sample->metadata;
   const auto& tserver_metadata = tserver_sample.metadata();
 
-  cb_metadata->query_id = tserver_metadata.query_id();
+  cb_metadata->qp.query_id = tserver_metadata.query_id();
+  cb_metadata->qp.plan_id = tserver_metadata.plan_id();
   // if the pid is zero, it's a tserver background activity
   cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
                                             : pgapi->GetLocalTServerPid();
@@ -508,6 +509,10 @@ YbcStatus YBCInitPgGate(
             type_entities, *pg_callbacks, *ash_config, *init_postgres_info, *session_stats,
             is_binary_upgrade);
   }));
+}
+
+void YBCSetupPgBackendCgroup(YbcPgOid dboid) {
+  pgapi->SetupPgBackendCgroup(dboid);
 }
 
 void YBCDestroyPgGate() {
@@ -1555,6 +1560,19 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs) {
+  return ToYBCStatus(pgapi->DecodePKColumnsFromBasectid(
+      PgObjectId(database_oid, table_relfilenode_oid),
+      Slice(basectid_data, basectid_len),
+      num_attrs, attrs));
+}
+
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
     YbcPgTableLocalityInfo locality_info,
@@ -2023,6 +2041,32 @@ bool YBCCurrentTransactionUsesFastPath() {
   return result.get();
 }
 
+bool YBCIsLegacyModeForCatalogOps() {
+  //
+  // If object locking is enabled:
+  //
+  // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
+  //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
+  //     behavior). This is required to allow concurrent DDLs by not causing write-write conflicts
+  //     based on overlapping [transaction read time, commit time] windows. The serialization of
+  //     catalog modifications via DDLs is now handled by object locks. Catalog writes were using
+  //     the kTransactional session type pre-object locking and that stays the same.
+  //
+  // (2) Catalog reads will always use the kTransactional session type. This is done so that they
+  //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
+  //     see the catalog data modified by the current active transaction (this is required because
+  //     transactional DDL is enabled if object locking is enabled).
+  //
+  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
+  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
+  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
+  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
+  //     the TransactionSnapshot's read time serial number.
+  //
+  return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
+    || YBCIsSysTablePrefetchingStarted();
+}
+
 //------------------------------------------------------------------------------------------------
 // System validation.
 //------------------------------------------------------------------------------------------------
@@ -2411,7 +2455,10 @@ void YBCStopSysTablePrefetching() {
 }
 
 bool YBCIsSysTablePrefetchingStarted() {
-  return pgapi->IsSysTablePrefetchingStarted();
+  // https://github.com/yugabyte/yugabyte-db/issues/30880
+  // YBCIsSysTablePrefetchingStarted can be called during PG backend shutdown
+  // via YBCIsLegacyModeForCatalogOps when pgapi is already set to nullptr.
+  return pgapi && pgapi->IsSysTablePrefetchingStarted();
 }
 
 void YBCRegisterSysTableForPrefetching(
@@ -3339,16 +3386,22 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(const char* query, YbcPgGlobalViewRead* handle) {
-  return ToYBCStatus(pgapi->NewGlobalViewRead(query, handle));
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(database_name, handle));
 }
 
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {
   handle->ResetScan();
 }
 
-YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle) {
-  return handle->ExecScan();
+void YBCPgGlobalViewReadSetParams(
+    YbcPgGlobalViewRead handle, int num_params, const char** param_values) {
+  DCHECK(param_values);
+  handle->SetParams(std::span{param_values, param_values + num_params});
+}
+
+YbcRemotePgExecResult YBCPgGlobalViewReadExecScan(YbcPgGlobalViewRead handle, const char *query) {
+  return pgapi->Exec(handle, query);
 }
 
 void YBCPgGlobalViewReadDestroy(YbcPgGlobalViewRead handle) {

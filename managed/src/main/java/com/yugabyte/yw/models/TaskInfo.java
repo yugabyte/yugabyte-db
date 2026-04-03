@@ -106,7 +106,10 @@ public class TaskInfo extends Model {
     Abort(5),
 
     @EnumValue("Aborted")
-    Aborted(6);
+    Aborted(6),
+
+    @EnumValue("Paused")
+    Paused(8);
 
     // State override precedence to report the aggregated state for a SubGroupType.
     private final int precedence;

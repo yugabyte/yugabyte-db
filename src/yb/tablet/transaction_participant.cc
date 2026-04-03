@@ -380,6 +380,26 @@ class TransactionParticipant::Impl
 
   void Start() {
     LOG_WITH_PREFIX(INFO) << "Start";
+
+    std::lock_guard lock(mutex_);
+    for (auto& deferred : deferred_apply_intents_tasks_) {
+      auto it = transactions_.find(deferred.transaction_id);
+      if (it == transactions_.end()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Unknown transaction for deferred apply: " << deferred.transaction_id;
+        continue;
+      }
+      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
+      if (!operation.ok()) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Deferred apply rejected for: " << deferred.transaction_id;
+        continue;
+      }
+      (**it).SetApplyData(deferred.apply_state, &deferred.apply_data, &operation);
+    }
+    deferred_apply_intents_tasks_.clear();
+
+    started_ = true;
     start_latch_.CountDown();
   }
 
@@ -1023,8 +1043,19 @@ class TransactionParticipant::Impl
       if (!apply_state.active()) {
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
-      } else {
+      } else if (started_) {
         lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
+      } else {
+        // During bootstrap, the strand/thread pool may not be ready yet, so we cannot
+        // schedule the async ApplyIntentsTask. Record the apply state on the transaction
+        // and defer the task scheduling until Start() is called, similar to how the
+        // transaction loader defers pending applies.
+        lock_and_iterator.transaction().SetApplyData(apply_state);
+        deferred_apply_intents_tasks_.push_back(DeferredApplyIntentsTask{
+          .transaction_id = data.transaction_id,
+          .apply_data = data,
+          .apply_state = apply_state,
+        });
       }
     }
     return Status::OK();
@@ -1494,19 +1525,19 @@ class TransactionParticipant::Impl
         std::max(ignore_all_transactions_started_before_, limit);
   }
 
-  TransactionStatusResult DoUpdateTransactionStatusLocation(
+  TransactionStatusResult DoUpdateTransactionPromoting(
       RunningTransaction& transaction, const TabletId& new_status_tablet) REQUIRES(mutex_) {
     const auto& metadata = transaction.metadata();
     VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
                         << metadata.transaction_id << " from tablet " << metadata.status_tablet
                         << " to " << new_status_tablet;
-    transaction.UpdateTransactionStatusLocation(new_status_tablet);
+    transaction.UpdateTransactionPromoting(new_status_tablet);
     return TransactionStatusResult{
         TransactionStatus::PROMOTED, transaction.last_known_status_hybrid_time(),
         transaction.last_known_aborted_subtxn_set(), new_status_tablet};
   }
 
-  Status ApplyUpdateTransactionStatusLocation(
+  Status ApplyUpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
@@ -1527,7 +1558,7 @@ class TransactionParticipant::Impl
       auto& transaction = *it;
       RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
                              PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
-      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+      txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -1537,7 +1568,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  Status ReplicateUpdateTransactionStatusLocation(
+  Status ReplicateUpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
     RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
@@ -1558,7 +1589,7 @@ class TransactionParticipant::Impl
         return Status::OK();
       }
 
-      txn_status_res = DoUpdateTransactionStatusLocation(*transaction, new_status_tablet);
+      txn_status_res = DoUpdateTransactionPromoting(*transaction, new_status_tablet);
       TransactionsModifiedUnlocked(&min_running_notifier);
     }
 
@@ -2269,7 +2300,7 @@ class TransactionParticipant::Impl
   Status DoHandlePromoting(tablet::UpdateTxnOperation* operation) {
     const auto& request = *operation->request();
     auto id = VERIFY_RESULT(FullyDecodeTransactionId(request.transaction_id()));
-    return ApplyUpdateTransactionStatusLocation(id, request.tablets().front().ToBuffer());
+    return ApplyUpdateTransactionPromoting(id, request.tablets().front().ToBuffer());
   }
 
   void HandlePromoting(std::unique_ptr<tablet::UpdateTxnOperation> operation, int64_t term) {
@@ -2329,7 +2360,7 @@ class TransactionParticipant::Impl
                            "Expected only one tablet during PROMOTING, state received: $0",
                            data.state);
     }
-    return ReplicateUpdateTransactionStatusLocation(id, data.state.tablets().front().ToBuffer());
+    return ReplicateUpdateTransactionPromoting(id, data.state.tablets().front().ToBuffer());
   }
 
   Status ReplicatedApplying(const TransactionId& id, const ReplicatedData& data) {
@@ -2919,6 +2950,14 @@ class TransactionParticipant::Impl
   std::vector<std::pair<TabletId, TransactionId>> pending_applies_
       GUARDED_BY(pending_applies_mutex_);
 
+  struct DeferredApplyIntentsTask {
+    TransactionId transaction_id;
+    TransactionApplyData apply_data;
+    docdb::ApplyTransactionState apply_state;
+  };
+  bool started_ GUARDED_BY(mutex_) = false;
+  std::vector<DeferredApplyIntentsTask> deferred_apply_intents_tasks_ GUARDED_BY(mutex_);
+
   // Counters for fast mode transactions. The first counter tracks serializable transactions, and
   // the second tracks RR/RC transactions. Each counter is incremented by one for every running fast
   // mode transaction or operation within such a transaction, and decremented by one when the
@@ -3121,9 +3160,9 @@ void TransactionParticipant::IgnoreAllTransactionsStartedBefore(HybridTime limit
   impl_->IgnoreAllTransactionsStartedBefore(limit);
 }
 
-Status TransactionParticipant::UpdateTransactionStatusLocation(
+Status TransactionParticipant::UpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
-  return impl_->ApplyUpdateTransactionStatusLocation(transaction_id, new_status_tablet);
+  return impl_->ApplyUpdateTransactionPromoting(transaction_id, new_status_tablet);
 }
 
 const TabletId& TransactionParticipant::tablet_id() const {

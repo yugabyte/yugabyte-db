@@ -154,6 +154,7 @@ typedef enum {
 	OD_YB_YSQL_MAX_CONNECTIONS,
 	OD_YB_OPTIMIZED_SESSION_PARAMETERS,
 	OD_YB_MAX_POOLS,
+	OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT,
 	OD_YB_JITTER_TIME,
 	OD_TEST_YB_AUTH_DELAY_MS,
 	OD_YB_ALTER_GUC_ADOPTION_STRATEGY,
@@ -338,6 +339,8 @@ static od_keyword_t od_config_keywords[] = {
 	od_keyword("yb_optimized_session_parameters",
 		   OD_YB_OPTIMIZED_SESSION_PARAMETERS),
 	od_keyword("yb_max_pools", OD_YB_MAX_POOLS),
+	od_keyword("yb_deallocate_if_invalid_prep_stmt",
+		   OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT),
 	od_keyword("yb_jitter_time", OD_YB_JITTER_TIME),
 	od_keyword("TEST_yb_auth_delay_ms", OD_TEST_YB_AUTH_DELAY_MS),
 	od_keyword("yb_alter_guc_adoption_strategy",
@@ -544,6 +547,21 @@ static bool od_config_reader_number64(od_config_reader_t *reader,
 	return true;
 }
 
+static bool yb_od_config_reader_number32(od_config_reader_t *reader,
+	uint32_t *number)
+{
+od_token_t token;
+int rc;
+rc = od_parser_next(&reader->parser, &token);
+if (rc != OD_PARSER_NUM) {
+od_parser_push(&reader->parser, &token);
+od_config_reader_error(reader, &token, "expected 'number'");
+return false;
+}
+*number = token.value.num;
+return true;
+}
+
 static bool od_config_reader_yes_no(od_config_reader_t *reader, int *value)
 {
 	od_token_t token;
@@ -729,7 +747,7 @@ static int od_config_reader_listen(od_config_reader_t *reader)
 			continue;
 		/* client_login_timeout */
 		case OD_LCLIENT_LOGIN_TIMEOUT:
-			if (!od_config_reader_number(
+			if (!yb_od_config_reader_number32(
 				    reader, &listen->client_login_timeout))
 				return NOT_OK_RESPONSE;
 			continue;
@@ -1010,7 +1028,7 @@ static inline int od_config_reader_pgoptions(od_config_reader_t *reader,
 				return NOT_OK_RESPONSE;
 			}
 			kiwi_vars_update(dest, optarg, optarg_len + 1, optval,
-					 optval_len + 1, false);
+					 optval_len + 1);
 			free(optarg);
 			free(optval);
 			break;
@@ -2161,12 +2179,15 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			}
 			continue;
 		/* log_debug */
-		case OD_LLOG_DEBUG:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_debug)) {
+		case OD_LLOG_DEBUG: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_debug = val;
 			continue;
+		}
 		/* log_stdout */
 		case OD_LLOG_TO_STDOUT:
 			if (!od_config_reader_yes_no(reader,
@@ -2175,33 +2196,45 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 			}
 			continue;
 		/* log_config */
-		case OD_LLOG_CONFIG:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_config)) {
+		case OD_LLOG_CONFIG: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_config = val;
 			continue;
+		}
 		/* log_session */
-		case OD_LLOG_SESSION:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_session)) {
+		case OD_LLOG_SESSION: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_session = val;
 			continue;
+		}
 		/* log_query */
-		case OD_LLOG_QUERY:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_query)) {
+		case OD_LLOG_QUERY: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_query = val;
 			continue;
+		}
 		/* log_stats */
-		case OD_LLOG_STATS:
-			if (!od_config_reader_yes_no(reader,
-						     &config->log_stats)) {
+		case OD_LLOG_STATS: {
+			/* YB: First read int and then assign to _Atomic int */
+			int val;
+			if (!od_config_reader_yes_no(reader, &val)) {
 				goto error;
 			}
+			config->log_stats = val;
 			continue;
+		}
 		/* log_format */
 		case OD_LLOG_FORMAT:
 			if (!od_config_reader_string(reader,
@@ -2525,6 +2558,13 @@ static int od_config_reader_parse(od_config_reader_t *reader,
 		case OD_YB_MAX_POOLS:
 			if (!od_config_reader_number(reader,
 						     &config->yb_max_pools)) {
+				goto error;
+			}
+			continue;
+		/* yb_deallocate_if_invalid_prep_stmt */
+		case OD_YB_DEALLOCATE_IF_INVALID_PREP_STMT:
+			if (!od_config_reader_yes_no(reader,
+				    &config->yb_deallocate_if_invalid_prep_stmt)) {
 				goto error;
 			}
 			continue;

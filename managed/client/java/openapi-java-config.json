@@ -2,7 +2,6 @@
         "hideGenerationTimestamp": "true",
         "groupId": "com.yugabyte",
         "artifactId": "yba-client-v1",
-        "artifactVersion": "2.0.0",
         "artifactDescription": "Java client for Yugayte Anywhere",
         "parentGroupId": "com.yugabyte",
         "parentArtifactId": "yba",

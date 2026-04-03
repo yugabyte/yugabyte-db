@@ -808,13 +808,14 @@ Status TSTabletManager::Init() {
   waiting_txn_registry_poller_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::PollWaitingTxnRegistry, this));
 
-  vector_index_block_cache_ = std::make_shared<hnsw::BlockCache>(
-      *tablet_options_.env,
-      server_->mem_tracker(),
-      server_->metric_entity(),
-      GetTargetBlockCacheSize(kDefaultTserverBlockCacheSizePercentage),
-      GetDbBlockCacheNumShardBits()
-  );
+  if (tablet_options_.block_cache) {
+    vector_index_block_cache_ = std::make_shared<hnsw::BlockCache>(
+        *tablet_options_.env,
+        server_->mem_tracker(),
+        server_->metric_entity(),
+        *tablet_options_.block_cache
+    );
+  }
 
   return Status::OK();
 }
@@ -2580,8 +2581,8 @@ void TSTabletManager::GetTabletPeersUnlocked(
     }
     if (user_tablets_only) {
       auto tablet_ptr = peer->shared_tablet_maybe_null();
-      if (tablet_ptr &&
-          tablet_ptr->metadata()->namespace_name() == master::kSystemNamespaceName) {
+      if (tablet_ptr && (tablet_ptr->metadata()->namespace_name() == master::kSystemNamespaceName ||
+                         tablet_ptr->metadata()->namespace_name() == master::kYbSystemDbName)) {
         continue;
       }
     }

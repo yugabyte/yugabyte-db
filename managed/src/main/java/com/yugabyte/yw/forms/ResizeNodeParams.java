@@ -397,6 +397,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
       }
 
       if (!newDeviceInfo.equals(currentDeviceInfoCloned)) {
+        log.error(
+            "newDeviceInfo: {}\ncurrentDeviceInfoCloned: {}",
+            newDeviceInfo,
+            currentDeviceInfoCloned);
         errorConsumer.accept(
             "Smart resize only supports modifying volumeSize, diskIops, throughput");
       }

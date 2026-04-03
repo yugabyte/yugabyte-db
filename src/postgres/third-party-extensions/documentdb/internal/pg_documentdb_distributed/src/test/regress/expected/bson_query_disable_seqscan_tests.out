@@ -1,0 +1,77 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 730000;
+SET documentdb.next_collection_id TO 7300;
+SET documentdb.next_collection_index_id TO 7300;
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 1, "a": 1 }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 2, "a": -500 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 3, "a": { "$numberLong": "1000" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 4, "a": true }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 5, "a": "some string" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 6, "a": { "b": 1 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('seqscandb', 'seqscandistest', '{ "_id": 7, "a": { "$date": {"$numberLong": "123456"} } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set documentdb.forceDisableSeqScan to on;
+-- should fail
+SELECT document FROM bson_aggregation_find('seqscandb', '{ "find": "seqscandistest", "filter": { "a": { "$eq": 1 } } }');
+ERROR:  Could not find any valid index to push down for query
+SELECT documentdb_api_internal.create_indexes_non_concurrently('seqscandb', '{ "createIndexes": "seqscandistest", "indexes": [ { "key": { "a": 1 }, "name": "idx_a" }] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- fail to push down
+SELECT document FROM bson_aggregation_find('seqscandb', '{ "find": "seqscandistest", "filter": { "b": { "$eq": 1 } } }');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('seqscandb', '{ "find": "seqscandistest" }');
+ERROR:  Could not find any valid index to push down for query
+-- passes
+SELECT document FROM bson_aggregation_find('seqscandb', '{ "find": "seqscandistest", "filter": { "a": { "$eq": 1 } } }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('seqscandb', '{ "find": "seqscandistest", "filter": { "_id": { "$gt": 4 } } }');
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : "some string" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$date" : { "$numberLong" : "123456" } } }
+(3 rows)
+

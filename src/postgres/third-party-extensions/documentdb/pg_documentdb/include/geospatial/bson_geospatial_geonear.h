@@ -205,7 +205,7 @@ ThrowGeoNearNotAllowedInContextError()
 	ereport(ERROR, (
 				errcode(ERRCODE_DOCUMENTDB_LOCATION5626500),
 				errmsg(
-					"$geoNear, $near, and $nearSphere are not allowed in this context")));
+					"Operators $geoNear, $near, and $nearSphere cannot be used in this particular context")));
 }
 
 static inline void
@@ -213,8 +213,7 @@ pg_attribute_noreturn()
 ThrowGeoNearUnableToFindIndex()
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNABLETOFINDINDEX),
-					errmsg(
-						"planner returned error :: caused by :: unable to find index for $geoNear query")));
+					errmsg("unable to find index for $geoNear query")));
 }
 
 static inline void
@@ -223,7 +222,8 @@ ThrowNoGeoIndexesFound()
 {
 	ereport(ERROR, (
 				errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
-				errmsg("$geoNear requires a 2d or 2dsphere index, but none were found")));
+				errmsg(
+					"The $geoNear operator needs either a 2d or 2dsphere index, but no such index exists")));
 }
 
 static inline void
@@ -233,7 +233,7 @@ ThrowAmbigousIndexesFound(const char * indexType)
 	ereport(ERROR, (
 				errcode(ERRCODE_DOCUMENTDB_INDEXNOTFOUND),
 				errmsg(
-					"There is more than one %s index; unsure which to use for $geoNear",
+					"Multiple %s indexes found; uncertain which index should be applied for the $geoNear operator",
 					indexType)));
 }
 

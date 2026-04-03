@@ -104,6 +104,7 @@ yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
 yb_user_password =
 
 [ConfigureOs]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
 message = Configure limits and sysctl parameters
 fd_limit = 1048576
 nproc_limit = 64000

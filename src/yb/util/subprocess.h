@@ -235,9 +235,6 @@ class Subprocess {
   // into the output parameter(s).
   Status Call(std::string* output, std::string* error = nullptr);
 
-  // Writes pid to cgroup specified by path
-  void AddPIDToCGroup(const std::string& path, pid_t pid);
-
  private:
 
   struct ChildPipes {

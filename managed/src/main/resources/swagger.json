@@ -2030,6 +2030,7 @@
             "ModifyAuditLogging",
             "ModifyQueryLogging",
             "ConfigureMetricsExport",
+            "ConfigureExportTelemetryConfig",
             "TlsConfigUpdate",
             "UpdateDiskSize",
             "CreateCluster",
@@ -2411,10 +2412,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -2454,6 +2451,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -2606,7 +2604,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -2836,6 +2836,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -2880,12 +2881,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -3757,10 +3763,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4060,7 +4062,7 @@
     "BackupScheduleToggleParams" : {
       "properties" : {
         "runImmediateBackupOnResume" : {
-          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false (default), the full backup will instead run at its normally scheduled time.",
+          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false, the full backup will instead run at its normally scheduled time. When true, the full backup will run immediately, and then the schedule will continue as normal. If not specified, the value is determined by the yb.backup.run_immediate_backup_on_resume runtime config.",
           "type" : "boolean"
         },
         "status" : {
@@ -4340,10 +4342,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -4670,10 +4668,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -5294,10 +5288,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -5343,6 +5333,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -5495,7 +5486,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -5725,6 +5718,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -5769,12 +5763,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -5910,10 +5909,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6646,10 +6641,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -8413,10 +8404,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -8456,6 +8443,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -8608,7 +8596,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -8838,6 +8828,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -8882,12 +8873,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -9224,10 +9220,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -9267,6 +9259,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -9425,7 +9418,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -9655,6 +9650,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -9699,12 +9695,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -10754,10 +10755,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -10797,6 +10794,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -10952,7 +10950,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -11182,6 +11182,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -11226,12 +11227,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -11499,10 +11505,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -11542,6 +11544,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -11694,7 +11697,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -11924,6 +11929,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -11968,12 +11974,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -12848,10 +12859,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -14628,6 +14635,9 @@
           "format" : "int32",
           "type" : "integer"
         },
+        "tablespaceName" : {
+          "type" : "string"
+        },
         "uuid" : {
           "format" : "uuid",
           "type" : "string"
@@ -15620,6 +15630,26 @@
         "canRollbackCatalogUpgrade" : {
           "type" : "boolean"
         },
+        "mastersUpgradeCompleted" : {
+          "type" : "boolean"
+        },
+        "primaryClusterAZsCompleted" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array"
+        },
+        "readReplicaClusterAZsCompleted" : {
+          "additionalProperties" : {
+            "items" : {
+              "format" : "uuid",
+              "type" : "string"
+            },
+            "type" : "array"
+          },
+          "type" : "object"
+        },
         "softwareVersion" : {
           "type" : "string"
         },
@@ -15990,10 +16020,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -16033,6 +16059,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -16185,7 +16212,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -16415,6 +16444,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -16459,12 +16489,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -16674,10 +16709,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -16717,6 +16748,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -16869,7 +16901,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -17099,6 +17133,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -17143,12 +17178,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -17721,10 +17761,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -17764,6 +17800,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -17922,7 +17959,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18152,6 +18191,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -18196,12 +18236,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -18567,10 +18612,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -18610,6 +18651,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -18762,7 +18804,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -18992,6 +19036,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -19036,12 +19081,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -19286,10 +19336,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prefixUUID" : {
@@ -19701,10 +19747,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -19762,6 +19804,20 @@
         "platformUrl",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
+      ],
+      "type" : "object"
+    },
+    "ResumeCanaryUpgradeParams" : {
+      "description" : "Parameters to resume a paused canary software upgrade",
+      "properties" : {
+        "taskUUID" : {
+          "description" : "UUID of the paused upgrade task to resume",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "taskUUID"
       ],
       "type" : "object"
     },
@@ -20107,10 +20163,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -20150,6 +20202,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -20302,7 +20355,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -20532,6 +20587,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -20576,12 +20632,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -20960,7 +21021,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -21190,6 +21253,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -21234,12 +21298,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -21373,7 +21442,9 @@
               "ModifyAuditLoggingConfig",
               "ModifyKubernetesAuditLoggingConfig",
               "ModifyQueryLoggingConfig",
+              "ModifyKubernetesQueryLoggingConfig",
               "ModifyMetricsExportConfig",
+              "ConfigureExportTelemetryConfig",
               "InstallYbcSoftware",
               "UpgradeUniverseYbc",
               "UpgradeYbcGFlags",
@@ -21603,6 +21674,7 @@
               "UpdateAndPersistAuditLoggingConfig",
               "UpdateAndPersistQueryLoggingConfig",
               "UpdateAndPersistMetricsExportConfig",
+              "UpdateAndPersistExportTelemetryConfig",
               "MarkUniverseForHealthScriptReUpload",
               "RebootServer",
               "HardRebootServer",
@@ -21647,12 +21719,17 @@
               "DisablePitrConfig",
               "EnablePitrConfig",
               "UpdateAndPersistKubernetesImmutableYbc",
-              "TablespaceValidationOnRemove",
+              "CheckTabletsMovementAvailable",
+              "CheckTabletsMovementAvailableForNode",
+              "MoveTablesTask",
+              "DropTablespacesTask",
               "CheckServiceLiveness",
               "CheckNodeCommandExecution",
               "CheckNodeDataDirDiskSpace",
               "OperatorImportResource",
-              "UpdateParentTaskParams"
+              "UpdateParentTaskParams",
+              "SaveSoftwareUpgradeProgress",
+              "CheckDuplicateInstance"
             ],
             "type" : "string"
           },
@@ -21935,7 +22012,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22165,6 +22244,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -22209,12 +22289,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -22516,10 +22601,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -22559,6 +22640,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -22711,7 +22793,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -22941,6 +23025,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -22985,12 +23070,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -23672,10 +23762,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -23715,6 +23801,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -23867,7 +23954,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -24097,6 +24186,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -24141,12 +24231,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -24248,10 +24343,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -24554,7 +24645,8 @@
               "Failure",
               "Unknown",
               "Abort",
-              "Aborted"
+              "Aborted",
+              "Paused"
             ],
             "type" : "string"
           },
@@ -24665,6 +24757,7 @@
               "ModifyAuditLoggingConfig",
               "ModifyQueryLoggingConfig",
               "ModifyMetricsExportConfig",
+              "ConfigureExportTelemetryConfig",
               "RotateAccessKey",
               "CreateAndRotateAccessKey",
               "RunApiTriggeredHooks",
@@ -25002,10 +25095,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -25045,6 +25134,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -25197,7 +25287,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -25427,6 +25519,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -25471,12 +25564,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -25685,10 +25783,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -25728,6 +25822,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -25880,7 +25975,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26110,6 +26207,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -26154,12 +26252,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -26337,10 +26440,6 @@
           "description" : "Error message",
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -26507,10 +26606,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -26553,6 +26648,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -26705,7 +26801,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -26935,6 +27033,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -26979,12 +27078,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27157,10 +27261,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -27200,6 +27300,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -27352,7 +27453,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -27582,6 +27685,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -27626,12 +27730,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27804,10 +27913,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -27847,6 +27952,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -27999,7 +28105,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -28229,6 +28337,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -28273,12 +28382,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -28581,6 +28695,10 @@
           "description" : "Universe name",
           "type" : "string"
         },
+        "platformVersion" : {
+          "description" : "YugabyteDB Anywhere platform software version for this YBA instance",
+          "type" : "string"
+        },
         "pricePerHour" : {
           "description" : "Price",
           "format" : "double",
@@ -28731,10 +28849,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -28961,10 +29075,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -29004,6 +29114,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -29156,7 +29267,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -29386,6 +29499,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -29430,12 +29544,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -30162,10 +30281,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -30205,6 +30320,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -30365,7 +30481,9 @@
             "ModifyAuditLoggingConfig",
             "ModifyKubernetesAuditLoggingConfig",
             "ModifyQueryLoggingConfig",
+            "ModifyKubernetesQueryLoggingConfig",
             "ModifyMetricsExportConfig",
+            "ConfigureExportTelemetryConfig",
             "InstallYbcSoftware",
             "UpgradeUniverseYbc",
             "UpgradeYbcGFlags",
@@ -30595,6 +30713,7 @@
             "UpdateAndPersistAuditLoggingConfig",
             "UpdateAndPersistQueryLoggingConfig",
             "UpdateAndPersistMetricsExportConfig",
+            "UpdateAndPersistExportTelemetryConfig",
             "MarkUniverseForHealthScriptReUpload",
             "RebootServer",
             "HardRebootServer",
@@ -30639,12 +30758,17 @@
             "DisablePitrConfig",
             "EnablePitrConfig",
             "UpdateAndPersistKubernetesImmutableYbc",
-            "TablespaceValidationOnRemove",
+            "CheckTabletsMovementAvailable",
+            "CheckTabletsMovementAvailableForNode",
+            "MoveTablesTask",
+            "DropTablespacesTask",
             "CheckServiceLiveness",
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -47350,6 +47474,67 @@
           }
         ],
         "summary" : "Restart Universe",
+        "tags" : [
+          "Universe Upgrades Management"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/resume_canary" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Resumes a paused canary software upgrade. The request body must contain the task UUID of the paused upgrade.",
+        "operationId" : "resumeCanarySoftwareUpgrade",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Resume Canary Upgrade Params",
+            "in" : "body",
+            "name" : "resume_canary_upgrade_params",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/ResumeCanaryUpgradeParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Resume canary software upgrade",
         "tags" : [
           "Universe Upgrades Management"
         ]

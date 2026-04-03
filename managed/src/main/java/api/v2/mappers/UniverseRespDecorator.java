@@ -22,6 +22,9 @@ public abstract class UniverseRespDecorator implements UniverseRespMapper {
     // Fill out the rest of the universe info field using top-level properties from v1 UniverseResp.
     v2Universe.getSpec().setName(v1UniverseResp.name);
     delegate.fillV2UniverseInfoFromV1UniverseResp(v1UniverseResp, v2Universe.getInfo());
+    // Same source as v1 UniverseResp.platformVersion (injected since platformVersion is no longer
+    // in universe details).
+    v2Universe.getInfo().setPlatformVersion(v1UniverseResp.platformVersion);
     // Creation date is not mapped by fillV2UniverseInfoFromV1UniverseResp as v1UniverseResp returns
     // the date as a string. To avoid parsing the date string and assuming some specific locale,
     // we just set the date directly from the Date object.

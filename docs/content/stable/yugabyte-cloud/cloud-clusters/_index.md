@@ -86,43 +86,43 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     title="Scale clusters"
     body="Scale clusters horizontally or vertically."
     href="configure-clusters/"
-    icon="/images/section_icons/explore/linear_scalability.png">}}
+    icon="fa-thin fa-pen">}}
 
   {{<index/item
     title="Read replicas"
     body="Serve read requests from remote regions."
     href="managed-read-replica/"
-    icon="/images/section_icons/explore/planet_scale.png">}}
+    icon="fa-thin fa-clone">}}
 
   {{<index/item
     title="Back up clusters"
     body="Perform on-demand backups and restores, and customize the backup policy."
     href="backup-clusters/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-down-to-bracket">}}
 
   {{<index/item
     title="Point-in-time recovery"
     body="Create a database clone at a point in time for recovery or testing."
     href="aeon-pitr/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-timeline-arrow">}}
 
   {{<index/item
     title="Maintenance windows"
     body="Set up maintenance windows and exclusion periods for cluster upgrades."
     href="cloud-maintenance/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-window-frame-open">}}
 
   {{<index/item
     title="Database upgrade"
     body="Manage upgrades to the YugabyteDB software powering your cluster."
     href="database-upgrade/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-cloud-plus">}}
 
   {{<index/item
     title="Create extensions"
     body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
-    icon="/images/section_icons/explore/administer.png">}}
+    icon="fa-thin fa-cubes">}}
 
   {{<index/item
     title="Change Data Capture"

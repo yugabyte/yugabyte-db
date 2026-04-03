@@ -84,9 +84,12 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_master_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=10000");
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
 
     const bool enable_table_locks = EnableTableLocks();
     options->extra_tserver_flags.push_back(
@@ -3374,6 +3377,44 @@ TEST_P(PgIndexBackfillColumnProjectionTest, PartitionedTable) {
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t (col1, col2)", /* use_backfill_rpcs */ false));
   ASSERT_OK(ValidateRpcs(rpcs));
+}
+
+// Test to validate concurrent updates to non-key columns of a covering index during index backfill.
+TEST_P(PgIndexBackfillBlockDoBackfill, ConcurrentInplaceUpdateCoveringIndex) {
+  constexpr int kNumRows = 10;
+  const auto update_query = "UPDATE tbl SET v1 = v1 + 1000, v2 = v2 + 1000 WHERE k = $0";
+
+  ASSERT_OK(conn_->Execute("CREATE TABLE tbl (k int PRIMARY KEY, v1 int, v2 int)"));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO tbl SELECT i, i, i * 10 FROM generate_series(1, $0) AS i", kNumRows));
+
+  // Create a covering index in the background and block before backfill.
+  thread_holder_.AddThreadFunctor([this] {
+    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(conn.Execute(
+        "CREATE INDEX idx_tbl ON tbl (k ASC) INCLUDE (v1, v2)"));
+  });
+
+  // Wait for safe time to be picked.
+  const client::YBTableName yb_table(YQL_DATABASE_PGSQL, kDatabaseName, "tbl");
+  ASSERT_OK(WaitForBackfillSafeTime(yb_table));
+
+  // Update the remaining rows in the index. Some rows may have already been backfilled.
+  thread_holder_.AddThreadFunctor([this, update_query] {
+    auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    for (int i = 1; i <= kNumRows; ++i) {
+      ASSERT_OK(conn.ExecuteFormat(update_query, i));
+    }
+
+    // Unblock CREATE INDEX to validate the index.
+    ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  });
+
+  thread_holder_.JoinAll();
+  ASSERT_OK(WaitForIndexScan("/*+IndexOnlyScan(tbl idx_tbl)*/ SELECT v1, v2 FROM tbl"));
+
+  // Validate that the index is consistent.
+  ASSERT_OK(CheckIndexConsistency("idx_tbl"));
 }
 
 } // namespace yb::pgwrapper

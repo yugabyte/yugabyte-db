@@ -63,18 +63,15 @@ public class EditUniverse extends EditUniverseTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     addBasicPrecheckTasks();
-    createComprehensivePrecheckTasks(universe);
     prevState = Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
     if (isFirstTry()) {
       configureTaskParams(universe);
     }
+    createComprehensivePrecheckTasks(universe);
     if (universe.getUniverseDetails().getPrimaryCluster().isGeoPartitioned()
         && universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL) {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
-      createTablespaceValidationOnRemoveTask(
-          primaryCluster.uuid,
-          primaryCluster.getOverallPlacement(),
-          taskParams().getPrimaryCluster().getPartitions());
+      createTablespaceValidationOnRemoveTask(primaryCluster.uuid);
     }
   }
 

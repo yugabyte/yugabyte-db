@@ -44,10 +44,16 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
+import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
+import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMixedDispatcher;
 import io.fabric8.kubernetes.client.server.mock.KubernetesMockServer;
@@ -761,10 +767,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -807,8 +811,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
     verify(mockUniverseImporter)
         .setYsqlSpec(any(), eq(userIntent.enableYSQL), eq(userIntent.enableYSQLAuth));
     verify(mockUniverseImporter).setGflagsSpecFromUniverse(any(), eq(testUniverse));
-    verify(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), eq(testUniverse));
-    verify(mockUniverseImporter).setMasterDeviceInfoSpecFromUniverse(any(), eq(testUniverse));
+    verify(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), eq(testUniverse));
+    verify(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), eq(testUniverse));
     verify(mockUniverseImporter).setYbcThrottleParametersSpecFromUniverse(any(), eq(testUniverse));
     verify(mockUniverseImporter).setKubernetesOverridesSpecFromUniverse(any(), eq(testUniverse));
   }
@@ -836,10 +840,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     // Mock universeImporter calls
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -884,10 +886,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -929,10 +929,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     // Mock universeImporter calls
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -978,10 +976,8 @@ public class OperatorUtilsTest extends FakeDBApplication {
         .when(mockUniverseImporter)
         .setYsqlSpec(any(), any(Boolean.class), any(Boolean.class));
     Mockito.doNothing().when(mockUniverseImporter).setGflagsSpecFromUniverse(any(), any());
-    Mockito.doNothing().when(mockUniverseImporter).setDeviceInfoSpecFromUniverse(any(), any());
-    Mockito.doNothing()
-        .when(mockUniverseImporter)
-        .setMasterDeviceInfoSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setTserverVolumeSpecFromUniverse(any(), any());
+    Mockito.doNothing().when(mockUniverseImporter).setMasterVolumeSpecFromUniverse(any(), any());
     Mockito.doNothing()
         .when(mockUniverseImporter)
         .setYbcThrottleParametersSpecFromUniverse(any(), any());
@@ -1003,5 +999,164 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
     assertNotNull(createdUniverse);
     assertEquals(true, createdUniverse.getSpec().getPaused());
+  }
+
+  /*--- maybeAddYbaResourceId tests ---*/
+
+  @SuppressWarnings("unchecked")
+  private MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+      createMockResourceClient(Resource<ConfigMap> mockResource) {
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = Mockito.mock(MixedOperation.class);
+    NonNamespaceOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockInNamespace = Mockito.mock(NonNamespaceOperation.class);
+    when(mockResourceClient.inNamespace(anyString())).thenReturn(mockInNamespace);
+    when(mockInNamespace.withName(anyString())).thenReturn(mockResource);
+    return mockResourceClient;
+  }
+
+  private ConfigMap createConfigMapWithAnnotations(Map<String, String> annotations) {
+    ConfigMap configMap = new ConfigMap();
+    ObjectMeta meta = new ObjectMeta();
+    meta.setName("test-resource");
+    meta.setNamespace("test-ns");
+    if (annotations != null) {
+      meta.setAnnotations(new HashMap<>(annotations));
+    }
+    configMap.setMetadata(meta);
+    return configMap;
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdSuccess() {
+    ConfigMap configMap = createConfigMapWithAnnotations(null);
+    UUID resourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+    when(mockResource.edit(any(java.util.function.UnaryOperator.class)))
+        .thenAnswer(
+            inv -> {
+              java.util.function.UnaryOperator<ConfigMap> editor = inv.getArgument(0);
+              return editor.apply(createConfigMapWithAnnotations(null));
+            });
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
+
+    verify(mockResource).edit(any(java.util.function.UnaryOperator.class));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdAlreadyAnnotatedLocally() {
+    Map<String, String> annotations = new HashMap<>();
+    UUID existingId = UUID.randomUUID();
+    annotations.put(ResourceAnnotationKeys.YBA_RESOURCE_ID, existingId.toString());
+    ConfigMap configMap = createConfigMapWithAnnotations(annotations);
+    UUID newResourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    OperatorUtils.maybeAddYbaResourceId(configMap, newResourceId, mockResourceClient);
+
+    verify(mockResource, Mockito.never()).edit(any(java.util.function.UnaryOperator.class));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdAlreadyAnnotatedOnServer() {
+    ConfigMap configMap = createConfigMapWithAnnotations(null);
+    UUID resourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+
+    Map<String, String> serverAnnotations = new HashMap<>();
+    serverAnnotations.put(ResourceAnnotationKeys.YBA_RESOURCE_ID, UUID.randomUUID().toString());
+
+    when(mockResource.edit(any(java.util.function.UnaryOperator.class)))
+        .thenAnswer(
+            inv -> {
+              java.util.function.UnaryOperator<ConfigMap> editor = inv.getArgument(0);
+              ConfigMap result = editor.apply(createConfigMapWithAnnotations(serverAnnotations));
+              assertEquals(
+                  "Server annotation should not be overwritten",
+                  serverAnnotations.get(ResourceAnnotationKeys.YBA_RESOURCE_ID),
+                  result
+                      .getMetadata()
+                      .getAnnotations()
+                      .get(ResourceAnnotationKeys.YBA_RESOURCE_ID));
+              return result;
+            });
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdNullMetadataThrows() {
+    ConfigMap configMap = new ConfigMap();
+    UUID resourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () -> OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient));
+    assertTrue(ex.getMessage().contains("Metadata is null"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdKubernetesExceptionDoesNotThrow() {
+    ConfigMap configMap = createConfigMapWithAnnotations(null);
+    UUID resourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+
+    when(mockResource.edit(any(java.util.function.UnaryOperator.class)))
+        .thenThrow(new KubernetesClientException("Not Found", 404, null));
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testMaybeAddYbaResourceIdWithExistingAnnotationsPreservesThem() {
+    Map<String, String> existingAnnotations = new HashMap<>();
+    existingAnnotations.put("some-other-key", "some-value");
+    ConfigMap configMap = createConfigMapWithAnnotations(existingAnnotations);
+    UUID resourceId = UUID.randomUUID();
+    Resource<ConfigMap> mockResource = Mockito.mock(Resource.class);
+    when(mockResource.edit(any(java.util.function.UnaryOperator.class)))
+        .thenAnswer(
+            inv -> {
+              java.util.function.UnaryOperator<ConfigMap> editor = inv.getArgument(0);
+              ConfigMap result =
+                  editor.apply(
+                      createConfigMapWithAnnotations(
+                          new HashMap<>(Map.of("some-other-key", "some-value"))));
+              Map<String, String> resultAnnotations = result.getMetadata().getAnnotations();
+              assertEquals(
+                  resourceId.toString(),
+                  resultAnnotations.get(ResourceAnnotationKeys.YBA_RESOURCE_ID));
+              assertEquals("some-value", resultAnnotations.get("some-other-key"));
+              return result;
+            });
+
+    MixedOperation<ConfigMap, KubernetesResourceList<ConfigMap>, Resource<ConfigMap>>
+        mockResourceClient = createMockResourceClient(mockResource);
+
+    OperatorUtils.maybeAddYbaResourceId(configMap, resourceId, mockResourceClient);
   }
 }

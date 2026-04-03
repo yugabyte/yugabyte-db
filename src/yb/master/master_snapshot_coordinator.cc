@@ -673,6 +673,12 @@ class MasterSnapshotCoordinator::Impl {
     return restoration_id;
   }
 
+  Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+    std::lock_guard lock(mutex_);
+    return ForwardRestoreCheck(schedule_id, restore_at);
+  }
+
   Result<SnapshotScheduleId> CreateSchedule(
       const CreateSnapshotScheduleRequestPB& req, int64_t leader_term, CoarseTimePoint deadline) {
     // Get the validated table from the request.
@@ -820,8 +826,8 @@ class MasterSnapshotCoordinator::Impl {
         restore_at);
   }
 
-  Result<TxnSnapshotId> WaitForSnapshotToComplete(
-      const TxnSnapshotId& snapshot_id, HybridTime restore_at, CoarseTimePoint deadline) {
+  Status WaitForSnapshotToComplete(
+      const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline) {
     while (CoarseMonoClock::now() < deadline) {
       // Have to look up the snapshot each iteration because the snapshot is only valid while the
       // mutex is held.
@@ -829,7 +835,7 @@ class MasterSnapshotCoordinator::Impl {
         std::lock_guard lock(mutex_);
         const auto& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id)).get();
         if (VERIFY_RESULT(snapshot.Complete())) {
-          return snapshot.id();
+          return Status::OK();
         }
       }
       std::this_thread::sleep_for(100ms);
@@ -860,7 +866,8 @@ class MasterSnapshotCoordinator::Impl {
     while (CoarseMonoClock::now() < deadline) {
       auto result = try_get_suitable_snapshot();
       if (result.ok()) {
-        return WaitForSnapshotToComplete(*result, restore_at, deadline);
+        RETURN_NOT_OK(WaitForSnapshotToComplete(*result, deadline));
+        return *result;
       } else if (MasterError(result.status()) == MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION) {
         continue;
       } else {
@@ -2082,11 +2089,9 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status ForwardRestoreCheck(
-      const SnapshotState& snapshot, HybridTime restore_at,
-      const TxnSnapshotRestorationId& restoration_id) const REQUIRES(mutex_) {
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) const REQUIRES(mutex_) {
     const auto& index = restorations_.get<ScheduleTag>();
-    // Fetch all restorations under the given schedule id.
-    auto restores = index.equal_range(snapshot.schedule_id());
+    auto restores = index.equal_range(schedule_id);
 
     for (auto it = restores.first; it != restores.second; it++) {
       RestorationState* restore_state = it->get();
@@ -2151,7 +2156,7 @@ class MasterSnapshotCoordinator::Impl {
         }
       }
       if (restore_sys_catalog) {
-        RETURN_NOT_OK(ForwardRestoreCheck(snapshot, restore_at, restoration_id));
+        RETURN_NOT_OK(ForwardRestoreCheck(snapshot.schedule_id(), restore_at));
       }
       // Get the restoration state. Construct if in initial phase.
       RestorationState* restoration_ptr;
@@ -2515,6 +2520,11 @@ Result<TxnSnapshotRestorationId> MasterSnapshotCoordinator::Restore(
   return impl_->Restore(snapshot_id, restore_at, leader_term);
 }
 
+Status MasterSnapshotCoordinator::CheckForwardRestoreDisallowed(
+    const SnapshotScheduleId& schedule_id, HybridTime restore_at) {
+  return impl_->CheckForwardRestoreDisallowed(schedule_id, restore_at);
+}
+
 Status MasterSnapshotCoordinator::ListRestorations(
     const TxnSnapshotRestorationId& restoration_id, const TxnSnapshotId& snapshot_id,
     ListSnapshotRestorationsResponsePB* resp) {
@@ -2590,6 +2600,11 @@ Result<TxnSnapshotId> MasterSnapshotCoordinator::GetSuitableSnapshotForRestore(
     const SnapshotScheduleId& schedule_id, HybridTime restore_at, int64_t leader_term,
     CoarseTimePoint deadline) {
   return impl_->GetSuitableSnapshotForRestore(schedule_id, restore_at, leader_term, deadline);
+}
+
+Status MasterSnapshotCoordinator::WaitForSnapshotToComplete(
+    const TxnSnapshotId& snapshot_id, CoarseTimePoint deadline) {
+  return impl_->WaitForSnapshotToComplete(snapshot_id, deadline);
 }
 
 Result<bool> MasterSnapshotCoordinator::IsTableCoveredBySomeSnapshotSchedule(

@@ -609,13 +609,19 @@ DEPRECATE_FLAG(bool, vector_index_use_yb_hnsw, "02_2026");
 static constexpr char kHnswlib[] = "hnswlib";
 static constexpr char kUsearch[] = "usearch";
 static constexpr char kYbHnsw[] = "yb_hnsw";
+static constexpr char kYbHnswUsearch[] = "yb_hnsw_usearch";
+static constexpr char kYbHnswHnswlib[] = "yb_hnsw_hnswlib";
 
-DEFINE_RUNTIME_string(
-    vector_index_backend, kYbHnsw,
-    "Which vector index backend to use. Options are \"yb_hnsw\", \"hnswlib\", and \"usearch\".");
+DEFINE_RUNTIME_string(vector_index_backend, kYbHnswUsearch,
+    "Which vector index backend to use. Options are \"yb_hnsw\", \"yb_hnsw_usearch\", "
+    "\"yb_hnsw_hnswlib\", \"hnswlib\", and \"usearch\". \"yb_hnsw\" has the same effect as "
+    "\"yb_hnsw_usearch\".");
 
 DEFINE_validator(vector_index_backend,
-    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw));
+    FLAG_IN_SET_VALIDATOR(kHnswlib, kUsearch, kYbHnsw, kYbHnswUsearch, kYbHnswHnswlib));
+
+TAG_FLAG(vector_index_backend, hidden);
+TAG_FLAG(vector_index_backend, advanced);
 
 DEFINE_test_flag(int32, system_table_num_tablets, -1,
     "Number of tablets to use when creating the system tables. "
@@ -640,6 +646,7 @@ DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_bool(ysql_yb_enable_replica_identity);
@@ -2432,14 +2439,22 @@ Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(
   return l->pb.replication_info();
 }
 
-Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfo(const TableInfoPtr& table) {
-  ReplicationInfoPB cluster_replication_info;
-  {
-    auto l = ClusterConfig()->LockForRead();
-    cluster_replication_info = l->pb.replication_info();
-  }
+ReplicationInfoPB CatalogManager::GetTableReplicationInfoWithDefault(
+    const TableInfoPtr& table) const {
+  ReplicationInfoPB cluster_replication_info =
+      ClusterConfig()->LockForRead()->pb.replication_info();
+  return ResultToValue(
+      CatalogManagerUtil::GetTableReplicationInfo(
+          table, GetTablespaceManager(), cluster_replication_info),
+      cluster_replication_info);
+}
+
+Result<ReplicationInfoPB> CatalogManager::GetTableReplicationInfoNoDefault(
+    const TableInfoPtr& table) const {
+  ReplicationInfoPB cluster_replication_info =
+      ClusterConfig()->LockForRead()->pb.replication_info();
   return CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), cluster_replication_info);
+          table, GetTablespaceManager(), cluster_replication_info);
 }
 
 std::shared_ptr<YsqlTablespaceManager> CatalogManager::GetTablespaceManager() const {
@@ -2982,10 +2997,9 @@ Status CatalogManager::ShouldSplitValidCandidate(
   TSDescriptorVector ts_descs = GetAllLiveNotBlacklistedTServers();
 
   size_t num_servers = 0;
-  auto table_replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      tablet_info.table(),
-      GetTablespaceManager(),
-      ClusterConfig()->LockForRead()->pb.replication_info());
+  auto table_replication_info = VERIFY_RESULT(CatalogManagerUtil::GetTableReplicationInfo(
+      tablet_info.table(), GetTablespaceManager(),
+      ClusterConfig()->LockForRead()->pb.replication_info()));
 
   // If there is custom placement information present then
   // only count the tservers which the table has access to
@@ -4533,8 +4547,10 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       auto backend = FLAGS_vector_index_backend;
       if (backend == kHnswlib) {
         vector_index_options.mutable_hnsw()->set_backend(HnswBackend::HNSWLIB);
-      } else if (backend == kYbHnsw) {
-        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW);
+      } else if (backend == kYbHnswUsearch || backend == kYbHnsw) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_USEARCH);
+      } else if (backend == kYbHnswHnswlib) {
+        vector_index_options.mutable_hnsw()->set_backend(HnswBackend::YB_HNSW_HNSWLIB);
       }
     } else if (!is_pg_table) {
       DCHECK_EQ(index_info.columns().size(), schema.num_columns())
@@ -5371,16 +5387,13 @@ Status CatalogManager::AddTransactionStatusTablet(
               IllegalState, "New tablet not in PREPARING state");
   }
 
-  table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet);
-  auto s = sys_catalog_->Upsert(epoch, table);
-  if (PREDICT_FALSE(!s.ok())) {
-    return s;
-  }
-
+  auto old_tablet_lock = VERIFY_RESULT(
+      table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, old_tablet));
   write_lock.Commit();
-  TRACE("Wrote table to system table");
-
+  old_tablet_lock.Commit();
   new_tablet->mutable_metadata()->CommitMutation();
+  TRACE("Wrote table to system table");
 
   // Increment transaction status version if needed.
   RETURN_NOT_OK(IncrementTransactionTablesVersion());
@@ -7261,12 +7274,14 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  // Changing CDCSDK streams' state associated with the deleted tables to DELETING_MATADATA if
-  // streaming of dropped / re-written tables by CDC is disabled.
   // The catalog manager's background task removes the tables from such streams' metadata. Note that
   // the streams associated with the 'deleted_table_ids' are not being dropped.
   if (!FLAGS_enable_table_rewrite_for_cdcsdk_table) {
-    RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(deleted_table_ids));
+    } else {
+      RETURN_NOT_OK(DropCDCSDKStreams(deleted_table_ids));
+    }
   }
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
@@ -10135,7 +10150,11 @@ Status CatalogManager::DeleteYsqlDBTables(
   for (auto& [table, _] : tables_and_locks) {
     table_ids.insert(table->id());
   }
-  RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+    RETURN_NOT_OK(HandleDroppedTablesForCDCSDKStreams(table_ids));
+  } else {
+    RETURN_NOT_OK(DropCDCSDKStreams(table_ids));
+  }
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto& [table, _] : tables_and_locks) {
@@ -12075,7 +12094,7 @@ Status CatalogManager::SendCreateTabletRequests(
       }
     }
 
-    bool stream_exists_on_namespace = false;
+    bool can_set_cdc_sdk_retention_barriers = false;
     auto namespace_id = tablet->table()->namespace_id();
     {
       SharedLock lock(mutex_);
@@ -12084,8 +12103,11 @@ Status CatalogManager::SendCreateTabletRequests(
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
         // one stream with replication slot consumption exists on the namespace.
         if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-            !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-          stream_exists_on_namespace =  true;
+            !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+            IsTableEligibleForCDCSDKStream(
+                tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
+                stream->IsTablesWithoutPrimaryKeyAllowed())) {
+          can_set_cdc_sdk_retention_barriers = true;
           break;
         }
       }
@@ -12094,7 +12116,7 @@ Status CatalogManager::SendCreateTabletRequests(
     auto tablet_lock = tablet->LockForRead();
     for (const auto& peer : tablet_lock->pb.committed_consensus_state().config().peers()) {
       CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers(
-          stream_exists_on_namespace && FLAGS_ysql_yb_enable_replication_slot_consumption);
+          can_set_cdc_sdk_retention_barriers && FLAGS_ysql_yb_enable_replication_slot_consumption);
       auto task = std::make_shared<AsyncCreateReplica>(
           master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, tablet_lock, schedules, epoch,
           cdc_sdk_set_retention_barriers);
@@ -12441,7 +12463,11 @@ Status CatalogManager::BuildLocationsForTablet(
 
     // Hidden tablet locations are needed to support xCluster, CDC, CLONE, SELECT AS-OF.
     if (l_tablet->is_hidden() && !include_hidden_tablets) {
-      return STATUS_FORMAT(NotFound, "Tablet $0 hidden", tablet->id());
+      std::vector<TabletId> split_tablet_ids(
+          l_tablet->pb.split_tablet_ids().begin(), l_tablet->pb.split_tablet_ids().end());
+      return STATUS(
+          NotFound, Format("Tablet $0 hidden", tablet->id()),
+          SplitChildTabletIdsData(split_tablet_ids));
     }
 
     if (PREDICT_FALSE(l_tablet->is_deleted())) {
@@ -12592,7 +12618,8 @@ Status CatalogManager::GetTableLocations(
 
   int expected_live_replicas = 0;
   int expected_read_replicas = 0;
-  GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas);
+  RETURN_NOT_OK(
+      GetExpectedNumberOfReplicasForTable(table, &expected_live_replicas, &expected_read_replicas));
 
   resp->mutable_tablet_locations()->Reserve(narrow_cast<int32_t>(tablets.size()));
   for (const TabletInfoPtr& tablet : tablets) {
@@ -12901,16 +12928,6 @@ Result<size_t> CatalogManager::GetReplicationFactor() {
   return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
 }
 
-
-Result<size_t> CatalogManager::GetTableReplicationFactor(const TableInfoPtr& table) const {
-  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
-  if (replication_info.has_live_replicas()) {
-    return GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
-  }
-  return FLAGS_replication_factor;
-}
-
 Result<size_t> CatalogManager::GetNumTabletReplicas(const TabletInfoPtr& tablet) {
   // For system tables, the set of replicas is always the set of masters.
   if (system_tablets_.find(tablet->id()) != system_tablets_.end()) {
@@ -12931,19 +12948,18 @@ Status CatalogManager::GetExpectedNumberOfReplicasForTablet(
     // Some clients expect non-ok statuses to have a certain form.
     return STATUS_FORMAT(NotFound, "Unknown tablet $0", tablet_id);
   }
-  GetExpectedNumberOfReplicasForTable(
+  return GetExpectedNumberOfReplicasForTable(
       (*tablet_info_result)->table(), num_live_replicas, num_read_replicas);
-  return Status::OK();
 }
 
-void CatalogManager::GetExpectedNumberOfReplicasForTable(
+Status CatalogManager::GetExpectedNumberOfReplicasForTable(
     const scoped_refptr<TableInfo>& table, int* num_live_replicas, int* num_read_replicas) {
-  auto replication_info = CatalogManagerUtil::GetTableReplicationInfo(
-      table, GetTablespaceManager(), ClusterConfig()->LockForRead()->pb.replication_info());
+  auto replication_info = GetTableReplicationInfoWithDefault(table);
   *num_live_replicas = GetNumReplicasOrGlobalReplicationFactor(replication_info.live_replicas());
   for (const auto& read_replica_placement_info : replication_info.read_replicas()) {
     *num_read_replicas += read_replica_placement_info.num_replicas();
   }
+  return Status::OK();
 }
 
 Result<string> CatalogManager::placement_uuid() const {

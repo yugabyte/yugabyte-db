@@ -25,6 +25,8 @@ namespace yb {
 
 class PgResultPB;
 
+namespace pggate {
+
 // Serializes a PGresult into a PgResultPB. Sets exec_status to PGRES_TUPLES_OK and
 // encodes rows/columns. Stops early if the encoded size exceeds max_resp_size bytes.
 // Returns true if all rows were encoded, false if truncated due to size limit.
@@ -35,6 +37,7 @@ bool PgResultToPB(pg_result* result, PgResultPB* result_pb, size_t max_resp_size
 // and must free it with PQclear().
 pg_result* PgResultFromPB(const PgResultPB& result_pb);
 
+} // namespace pggate
 } // namespace yb
 
 extern "C" {

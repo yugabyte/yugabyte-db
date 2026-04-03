@@ -1,8 +1,9 @@
-import { forwardRef, useContext, useImperativeHandle } from 'react';
-import { useTranslation } from 'react-i18next';
+import { forwardRef, useContext, useImperativeHandle, useEffect, useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+import { useUpdateEffect } from 'react-use';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { mui, YBAccordion } from '@yugabyte-ui-library/core';
+import { mui, YBAccordion, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
 import { YCQField, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
 import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
 import { GFlagsFieldNew } from '../../../../../features/universe/universe-form/form/fields/GflagsField/GflagsFieldNew';
@@ -14,8 +15,24 @@ import {
 } from '../../CreateUniverseContext';
 import { DatabaseSettingsProps } from './dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import {
+  YSQL_FIELD,
+  YCQL_FIELD,
+  YSQL_CONFIRM_PWD,
+  YCQL_CONFIRM_PWD
+} from '../../fields/FieldNames';
 
-const { Box } = mui;
+//icons
+import ErrorIcon from '../../../../../assets/error-new.svg';
+
+const { Box, styled, Typography } = mui;
+
+export const StyledError = styled(Typography)(({ theme }) => ({
+  fontSize: 11.5,
+  color: theme.palette.error[500],
+  fontWeight: 400,
+  lineHeight: '16px'
+}));
 
 export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
@@ -24,7 +41,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
-    keyPrefix: 'createUniverseV2.databaseSettings'
+    keyPrefix: 'createUniverseV2'
   });
 
   const methods = useForm<DatabaseSettingsProps>({
@@ -37,12 +54,37 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     mode: 'onChange'
   });
 
-  const { control } = methods;
+  const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
+  const { trigger, formState, watch, control, setError, clearErrors } = methods;
+  const { errors, isSubmitted } = formState;
+
+  const enableYSQLVal = watch(YSQL_FIELD);
+  const enableYCQLVal = watch(YCQL_FIELD);
+  const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
+  const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
+
+  useUpdateEffect(() => {
+    if (!enableYCQLVal && !enableYSQLVal) {
+      setError(YSQL_FIELD, {
+        type: 'custom',
+        message: 'You must select at least one API interface.'
+      });
+    } else clearErrors(YSQL_FIELD);
+  }, [enableYSQLVal, enableYCQLVal]);
+
+  useUpdateEffect(() => {
+    if (isSubmitted) {
+      trigger().then((isValid) => {
+        if (isValid) setShowErrorsAfterSubmit(false);
+      });
+    }
+  }, [ysqlConfirmPwd, ycqlConfirmPwd]);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
+        setShowErrorsAfterSubmit(true);
         return methods.handleSubmit((data) => {
           saveDatabaseSettings(data);
           moveToNextPage();
@@ -59,14 +101,20 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
         <StyledPanel>
-          <StyledHeader>{t('interface')}</StyledHeader>
+          <StyledHeader>{t('databaseSettings.interface')}</StyledHeader>
           <StyledContent sx={{ gap: '16px' }}>
+            {errors?.ysql?.enable?.message && showErrorsAfterSubmit && (
+              <StyledError>
+                <ErrorIcon />
+                &nbsp;{errors?.ysql?.enable?.message}
+              </StyledError>
+            )}
             <YSQLField />
             <YCQField />
           </StyledContent>
         </StyledPanel>
         <StyledPanel>
-          <StyledHeader>{t('features')}</StyledHeader>
+          <StyledHeader>{t('databaseSettings.features')}</StyledHeader>
           <StyledContent sx={{ gap: '16px' }}>
             <ConnectionPoolingField
               disabled={false}
@@ -78,7 +126,7 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
             />
           </StyledContent>
         </StyledPanel>
-        <YBAccordion titleContent={t('advFlags')} sx={{ width: '100%' }}>
+        <YBAccordion titleContent={t('databaseSettings.advFlags')} sx={{ width: '100%' }}>
           <GFlagsFieldNew
             control={control}
             fieldPath={'gFlags'}
@@ -91,6 +139,15 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
           />
         </YBAccordion>
       </Box>
+      {showErrorsAfterSubmit && errors && (
+        <Box>
+          <YBAlert
+            open
+            variant={AlertVariant.Error}
+            text={<Trans t={t}>{t('validation.alertMsg')}</Trans>}
+          />
+        </Box>
+      )}
     </FormProvider>
   );
 });

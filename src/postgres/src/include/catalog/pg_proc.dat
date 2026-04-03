@@ -12045,9 +12045,9 @@
   proname => 'yb_active_session_history', prorows => '100000',
   proretset => 't', provolatile => 'v', proparallel => 'r', proisstrict => 'f',
   prorettype => 'record', proargtypes => 'timestamptz timestamptz',
-  proallargtypes => '{timestamptz,timestamptz,timestamptz,uuid,int8,text,text,text,uuid,int8,int4,text,text,float4,text,oid,int8,int8,oid}',
-  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{start_time,end_time,sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,pid,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid,wait_event_code,pss_mem_bytes,ysql_userid}',
+  proallargtypes => '{timestamptz,timestamptz,timestamptz,uuid,int8,text,text,text,uuid,int8,int4,text,text,float4,text,oid,int8,int8,oid,int8}',
+  proargmodes => '{i,i,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{start_time,end_time,sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,pid,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid,wait_event_code,pss_mem_bytes,ysql_userid,plan_id}',
   prosrc => 'yb_active_session_history'},
 
 { oid => '8066',

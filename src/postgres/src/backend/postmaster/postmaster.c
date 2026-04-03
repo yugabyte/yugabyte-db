@@ -1095,6 +1095,12 @@ PostmasterMain(int argc, char *argv[])
 		 */
 		YBCSetupSharedMemoryAddressSegment();
 
+		/*
+		 * Set up cgroups. This needs to be done before any fork calls, to ensure that all
+		 * subprocesses inherit the cgroup.
+		 */
+		YBCSetupCgroups();
+
 		/* Register ASH collector */
 		if (yb_enable_ash)
 			YbAshRegister();
@@ -3022,6 +3028,17 @@ SIGHUP_handler(SIGNAL_ARGS)
 		ereport(LOG,
 				(errmsg("received SIGHUP, reloading configuration files")));
 		ProcessConfigFile(PGC_SIGHUP);
+
+		/*
+		 * YB: Increment local SIGHUP LCV since PGC_BACKEND GUC(s) changed,
+		 * affecting only new backends
+		 */
+		if (yb_conn_mgr_sighup_had_backend_guc_change)
+		{
+			yb_conn_mgr_sighup_logical_client_version++;
+			yb_conn_mgr_sighup_had_backend_guc_change = false;
+		}
+
 		SignalChildren(SIGHUP);
 		if (StartupPID != 0)
 			signal_child(StartupPID, SIGHUP);

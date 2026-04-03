@@ -46,6 +46,8 @@ class CloneStateManagerExternalFunctionsBase {
   virtual Result<TxnSnapshotRestorationId> Restore(const TxnSnapshotId&, HybridTime) = 0;
   virtual Status ListRestorations(
       const TxnSnapshotRestorationId&, ListSnapshotRestorationsResponsePB*) = 0;
+  virtual Status CheckForwardRestoreDisallowed(
+      const SnapshotScheduleId& schedule_id, HybridTime restore_at) = 0;
 
   // Catalog manager.
   virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId&) = 0;

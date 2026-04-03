@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
@@ -89,6 +90,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import javax.annotation.Nullable;
@@ -211,6 +213,9 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  private static final Set<String> FILTERED_INSTANCE_KEYS_FOR_LOGGING =
+      ImmutableSet.of("name", "id", "private_ip", "private_dns", "is_running", "region", "zone");
 
   public static final String HTTP_SCHEME = "http://";
 
@@ -1709,5 +1714,23 @@ public class Util {
         .add("||")
         .add("true")
         .build();
+  }
+
+  /**
+   * Return a minimal instance details for logging.
+   *
+   * @param instances
+   * @return the filtered instance details.
+   */
+  public static List<Map<String, JsonNode>> filterInstanceDetailsForLogging(
+      List<Map<String, JsonNode>> instances) {
+    return instances.stream()
+        .map(
+            m ->
+                m.entrySet().stream()
+                    .filter(e -> e.getValue() != null && !e.getValue().isNull())
+                    .filter(e -> FILTERED_INSTANCE_KEYS_FOR_LOGGING.contains(e.getKey()))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)))
+        .collect(Collectors.toList());
   }
 }

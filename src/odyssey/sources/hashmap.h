@@ -41,6 +41,8 @@ struct od_hashmap {
 
 extern od_hashmap_t *od_hashmap_create(size_t sz);
 extern od_retcode_t od_hashmap_free(od_hashmap_t *hm);
+od_hashmap_list_item_t *yb_od_hashmap_find_item(od_hashmap_t *hm, od_hash_t keyhash,
+	od_hashmap_elt_t *key);
 od_hashmap_elt_t *od_hashmap_find(od_hashmap_t *hm, od_hash_t keyhash,
 				  od_hashmap_elt_t *key);
 

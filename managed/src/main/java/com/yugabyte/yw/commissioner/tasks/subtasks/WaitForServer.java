@@ -126,7 +126,7 @@ public class WaitForServer extends ServerSubTaskBase {
             node,
             userIntent.isYSQLAuthEnabled(),
             userIntent.enableConnectionPooling);
-    return !ysqlResponse.has("error");
+    return ysqlResponse != null && !ysqlResponse.has("error");
   }
 
   private void verifyUniverseUUID(String privateIp, ServerType serverType, Universe universe) {

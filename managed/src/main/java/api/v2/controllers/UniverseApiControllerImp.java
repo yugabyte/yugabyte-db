@@ -13,6 +13,7 @@ import api.v2.models.CollectFilesRequest;
 import api.v2.models.CollectFilesResponse;
 import api.v2.models.ConfigureMetricsExportSpec;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExportTelemetryConfigSpec;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.Universe;
@@ -25,6 +26,7 @@ import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -233,6 +235,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
     return universeUpgradeHandler.configureMetricsExport(request, cUUID, uniUUID, req);
   }
 
+  public YBATask configureExportTelemetryConfig(
+      Request request, UUID cUUID, UUID uniUUID, ExportTelemetryConfigSpec reqBody)
+      throws Exception {
+    return universeUpgradeHandler.configureExportTelemetryConfig(request, cUUID, uniUUID, reqBody);
+  }
+
   @Override
   public YBATask operatorImportUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseOperatorImportReq req) throws Exception {
@@ -306,5 +314,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
         .collectionUuid(collectionUUID)
         .nodesCleaned(nodesCleaned)
         .message(message);
+  }
+
+  @Override
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws Exception {
+    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
   }
 }

@@ -41,7 +41,8 @@
 DEFINE_RUNTIME_bool(master_auto_run_initdb, false,
     "Automatically run initdb on master leader initialization");
 
-DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 1, "Number of advisory lock tablets");
+DEFINE_NON_RUNTIME_uint32(num_advisory_locks_tablets, 3,
+    "Number of advisory lock tablets. Should be set before universe creation");
 DEFINE_validator(num_advisory_locks_tablets, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_NON_RUNTIME_int32(ysql_tablespace_info_refresh_secs, 30,
@@ -55,7 +56,7 @@ DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 
 DECLARE_int32(heartbeat_interval_ms);
-DECLARE_bool(TEST_ysql_yb_enable_listen_notify);
+DECLARE_bool(ysql_yb_enable_listen_notify);
 
 namespace yb::master {
 
@@ -261,10 +262,13 @@ Status YsqlManager::CreateYbAdvisoryLocksTableIfNeeded(const LeaderEpoch& epoch)
   TableProperties table_properties;
   table_properties.SetTransactional(true);
   client::YBSchemaBuilder schema_builder;
+  // Including all columns in the primary hash allows advisory locks use case to be horizontally
+  // scalable when necessary, given FLAGS_num_advisory_locks_tablets is set to a higher value on
+  // cluster startup accordingly.
   schema_builder.AddColumn("dbid")->Type(DataType::UINT32)->HashPrimaryKey();
-  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->PrimaryKey();
-  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->PrimaryKey();
+  schema_builder.AddColumn("classid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objid")->Type(DataType::UINT32)->HashPrimaryKey();
+  schema_builder.AddColumn("objsubid")->Type(DataType::UINT32)->HashPrimaryKey();
   schema_builder.SetTableProperties(table_properties);
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -376,7 +380,7 @@ void YsqlManager::RunBgTasks(const LeaderEpoch& epoch) {
     if (FLAGS_ysql_enable_auto_analyze_infra)
       WARN_NOT_OK(CreatePgAutoAnalyzeService(epoch), "Failed to create Auto Analyze service");
 
-    if (FLAGS_TEST_ysql_yb_enable_listen_notify) {
+    if (FLAGS_ysql_yb_enable_listen_notify) {
       WARN_NOT_OK(ListenNotifyBgTask(), "Failed to complete LISTEN/NOTIFY background task");
     }
   }

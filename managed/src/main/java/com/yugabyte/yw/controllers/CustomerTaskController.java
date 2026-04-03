@@ -5,14 +5,12 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
 import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -149,7 +147,7 @@ public class CustomerTaskController extends AuthenticatedController {
               ? task.getCustomTypeName()
               : task.getType().getFriendlyName();
       taskData.targetUUID = task.getTargetUUID();
-      taskData.userEmail = task.getUserEmail();
+      taskData.userEmail = getTaskUserEmail(task, taskInfo);
       if (taskProgress.has("details")) {
         taskData.details = taskProgress.get("details");
       } else {
@@ -180,6 +178,20 @@ public class CustomerTaskController extends AuthenticatedController {
       LOG.error("Error fetching task progress for {} : {}", task.getTaskUUID(), e);
       return null;
     }
+  }
+
+  private String getTaskUserEmail(CustomerTask task, TaskInfo taskInfo) {
+    String userEmail = task.getUserEmail();
+    if ((Strings.isNullOrEmpty(userEmail) || "Unknown".equals(userEmail))
+        && isKubernetesOperatorTask(taskInfo)) {
+      return CustomerTask.BACKGROUND_TASK_USER;
+    }
+    return userEmail;
+  }
+
+  private boolean isKubernetesOperatorTask(TaskInfo taskInfo) {
+    return taskInfo.getTaskParams() != null
+        && taskInfo.getTaskParams().hasNonNull("kubernetesResourceDetails");
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(Customer customer, UUID targetUUID) {
@@ -664,10 +676,6 @@ public class CustomerTaskController extends AuthenticatedController {
   public Result getTaskStatusWithDetails(UUID customerUUID, UUID taskUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    Map<UUID, List<CustomerTaskFormData>> singleTaskListMap =
-        buildSingleTaskListMap(customer, customerTask);
-    JsonNode singleTaskListMapJson = Json.toJson(singleTaskListMap);
-    singleTaskListMapJson = RedactingService.applyRegexRedaction(singleTaskListMapJson);
-    return PlatformResults.withData(singleTaskListMapJson);
+    return PlatformResults.withData(buildSingleTaskListMap(customer, customerTask));
   }
 }

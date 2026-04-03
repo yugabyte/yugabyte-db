@@ -394,6 +394,10 @@ Result<std::vector<tablet::TabletPtr>> ListTabletsForTableName(
     MiniCluster* cluster, const std::string& table_name,
     ListPeersFilter filter = ListPeersFilter::kAll);
 
+Result<std::string> DumpTableLeadersDocDB(MiniCluster* cluster, const std::string& table_name);
+Result<std::vector<std::string>> DumpTableLeadersDocDBToVector(
+    MiniCluster* cluster, const std::string& table_name);
+
 std::vector<tablet::TabletPtr> PeersToTablets(const std::vector<tablet::TabletPeerPtr>& peers);
 
 // By active tablet here we mean tablet is ready or going to be ready to serve read/write requests,
@@ -541,6 +545,12 @@ void ActivateCompactionTimeLogging(MiniCluster* cluster);
 void DumpDocDB(MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
 std::vector<std::string> DumpDocDBToStrings(
     MiniCluster* cluster, ListPeersFilter filter = ListPeersFilter::kLeaders);
+
+void ClearAllMetaCachesOnTServers(MiniCluster* cluster);
+
+Status WaitForTabletHidden(
+    MiniCluster* cluster, const TabletId& tablet_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(60) * kTimeMultiplier);
 
 void DisableFlushOnShutdown(MiniCluster& cluster, bool disable);
 

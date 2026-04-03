@@ -129,4 +129,3 @@ managed/src/main/java/com/yugabyte/yw/common/operator/io/*
 
 # AI assistant configuration (local only)
 CLAUDE.md
-.claude/

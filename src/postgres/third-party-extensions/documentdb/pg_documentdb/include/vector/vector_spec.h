@@ -35,12 +35,33 @@ typedef enum VectorIndexDistanceMetric
 } VectorIndexDistanceMetric;
 
 /*
+ * The compression type for a vector index.
+ */
+typedef enum VectorIndexCompressionType
+{
+	/* Use no compression */
+	VectorIndexCompressionType_None = 0,
+
+	/* Use half precision compression */
+	VectorIndexCompressionType_Half = 1,
+
+	/* Use product quantization */
+	VectorIndexCompressionType_PQ = 2,
+
+	/* Use binary quantization */
+	VectorIndexCompressionType_BQ = 3,
+} VectorIndexCompressionType;
+
+/*
  * Options associated with vector based Cosmos Search indexes
  */
 typedef struct VectorIndexCommonOptions
 {
 	/* The type of distance for the vector distance */
 	VectorIndexDistanceMetric distanceMetric;
+
+	/* The type of compression for the vector index */
+	VectorIndexCompressionType compressionType;
 
 	/* The number of dimensions of the vector */
 	int32_t numDimensions;
@@ -103,6 +124,15 @@ typedef struct VectorSearchOptions
 
 	/* The vector index definition */
 	const VectorIndexDefinition *vectorIndexDef;
+
+	/* Over sample rate */
+	double oversampling;
+
+	/* The compression type of the vector index */
+	VectorIndexCompressionType compressionType;
+
+	/* The type of distance for the vector distance */
+	VectorIndexDistanceMetric distanceMetric;
 } VectorSearchOptions;
 
 /*
@@ -133,17 +163,18 @@ typedef Oid (*GetIndexAccessMethodOidFunc)(void);
 typedef void (*SetSearchParametersToGUCFunc)(const pgbson *searchParamBson);
 
 /*
- * Get the default SearchParamBson for the vector index.
- */
-typedef pgbson *(*GetDefaultSearchParamBsonFunc)(void);
-
-/*
  * Dynamic calculation of search parameters
  * based on the number of rows and index options.
  */
-typedef pgbson *(*CalculateSearchParamBsonFunc)(bytea *indexOptions, Cardinality
-												indexRows);
+typedef pgbson *(*CalculateSearchParamBsonFunc)(bytea *indexOptions,
+												Cardinality indexRows,
+												pgbson *searchParamBson);
 
+/*
+ * Retrieve the type of index compression specified within the provided index options.
+ */
+typedef VectorIndexCompressionType (*ExtractIndexCompressionTypeFunc)(
+	bytea *indexOptions);
 
 /*
  * Definition of an extensible vector index.
@@ -166,8 +197,6 @@ typedef struct VectorIndexDefinition
 
 	const char *indexAccessMethodName;
 
-	bool needsReorderAfterFilter;
-
 	ParseIndexCreationSpecFunc parseIndexCreationSpecFunc;
 
 	GenerateIndexParamStringFunc generateIndexParamStrFunc;
@@ -178,9 +207,9 @@ typedef struct VectorIndexDefinition
 
 	SetSearchParametersToGUCFunc setSearchParametersToGUCFunc;
 
-	GetDefaultSearchParamBsonFunc getDefaultSearchParamBsonFunc;
-
 	CalculateSearchParamBsonFunc calculateSearchParamBsonFunc;
+
+	ExtractIndexCompressionTypeFunc extractIndexCompressionTypeFunc;
 } VectorIndexDefinition;
 
 const VectorIndexDefinition * GetVectorIndexDefinitionByIndexAmOid(Oid indexAmOid);

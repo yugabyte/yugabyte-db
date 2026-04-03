@@ -461,6 +461,26 @@ public class ModelFactory {
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer,
+      String configName,
+      String backupLocation,
+      String bucketName,
+      List<String> nfsVolumes) {
+    ObjectNode data = Json.newObject();
+    data.put("BACKUP_LOCATION", backupLocation);
+    data.put("NFS_BUCKET", bucketName);
+    if (nfsVolumes != null) {
+      data.set("NFS_VOLUMES", Json.toJson(nfsVolumes));
+    }
+    ObjectNode formData = Json.newObject();
+    formData.put("configName", configName);
+    formData.put("name", "NFS");
+    formData.put("type", "STORAGE");
+    formData.set("data", data);
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
   public static CustomerConfig createGcsStorageConfig(Customer customer, String configName) {
     JsonNode formData =
         Json.parse(

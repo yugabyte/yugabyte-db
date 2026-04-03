@@ -148,6 +148,7 @@ DEFINE_RUNTIME_AUTO_bool(
 DECLARE_bool(enable_ysql);
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 
 namespace yb {
 
@@ -1523,7 +1524,7 @@ Result<CatalogManager::BackupEntriesAndTabletLimitInfo> CatalogManager::GetBacku
       return STATUS_FORMAT(NotFound, "Failed to get table info for table $0", table_id);
     }
     replication_info_and_num_tablets.push_back({
-        VERIFY_RESULT(GetTableReplicationInfo(table_ptr)),
+        GetTableReplicationInfoWithDefault(table_ptr),
         table_with_tablets.tablets_entries.size()});
   }
   // Populate the backup_entries with SysTablesEntry and SysTabletsEntry.
@@ -3205,13 +3206,19 @@ void CatalogManager::CleanupHiddenTables(
 
   if (FLAGS_enable_table_rewrite_for_cdcsdk_table) {
     // A hidden table, with all the tablets deleted can be removed from the stream metadata of
-    // CDCSDK streams. Here we mark the streams as DELETING_METADATA, catalog manager's background
-    // task will remove the tables from such streams' metadata.
-    Status s = DropCDCSDKStreams(expired_table_ids);
+    // CDCSDK streams. If FLAGS_cdcsdk_use_dropped_table_list_for_cleanup is set, then we add such
+    // table to the 'dropped_table_id' list of the associated CDCSDK streams' metadata. Otherwise we
+    // mark the streams as DELETING_METADATA. The catalog manager's background task will remove the
+    // tables from such streams' metadata.
+    Status s;
+    if (FLAGS_cdcsdk_use_dropped_table_list_for_cleanup) {
+      s = HandleDroppedTablesForCDCSDKStreams(expired_table_ids);
+    } else {
+      s = DropCDCSDKStreams(expired_table_ids);
+    }
     if (!s.ok()) {
-      LOG_WITH_PREFIX(WARNING)
-          << "Failed to mark CDC streams as DELETING_METADATA for expired tables: "
-          << AsString(expired_table_ids) << ", Status: " << s;
+      LOG_WITH_PREFIX(WARNING) << "Failed to handle dropped hidden tables for CDCSDK streams: "
+                               << AsString(expired_table_ids) << ", Status: " << s;
       return;
     }
   }

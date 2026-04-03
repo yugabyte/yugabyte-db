@@ -1577,6 +1577,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file.",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDisableMasterOnNonMasterNodeSubtask =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_disable_master_on_non_master_node_subtask",
+          ScopeType.UNIVERSE,
+          "Allow disable master on non-master node subtask",
+          "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not"
+              + " master nodes in the cluster configuration or YBA configuration.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> waitAttemptsForMajorCatalogUpgrade =
       new ConfKeyInfo<>(
           "yb.upgrade.wait_attempts_for_major_catalog_upgrade",
@@ -1798,14 +1807,24 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time to sleep after upgrading tservers in each AZ",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> checkTablespacesBeforeEdit =
+  public static final ConfKeyInfo<Integer> sleepAfterMasterRestartMs =
       new ConfKeyInfo<>(
-          "yb.checks.tablespaces_before_edit.enabled",
+          "yb.upgrade.sleep_after_master_restart_ms",
           ScopeType.UNIVERSE,
-          "Check if edit operation will affect existing tablespaces",
-          "Check if edit operation will affect existing tablespaces",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          "Delay between master restarts in rolling operations",
+          "Default delay (ms) between master restarts in rolling operations (Delay Between"
+              + " Servers). Used when task params do not override.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> sleepAfterTServerRestartMs =
+      new ConfKeyInfo<>(
+          "yb.upgrade.sleep_after_tserver_restart_ms",
+          ScopeType.UNIVERSE,
+          "Delay between tserver restarts in rolling operations",
+          "Default delay (ms) between tserver restarts in rolling operations (Delay Between"
+              + " Servers). Used when task params do not override.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableNewPerfAdvisorUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.enable_new_perf_advisor_ui",
@@ -1849,5 +1868,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Set numer of nodes to move in a given batch during full move. Default is 0 which means"
               + " no batching, i.e. move all pods in a single go",
           ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> runImmediateBackupOnResume =
+      new ConfKeyInfo<>(
+          "yb.backup.run_immediate_backup_on_resume",
+          ScopeType.UNIVERSE,
+          "Run Immediate Backup On Schedule Resume",
+          "When true, resumes a stopped backup schedule by running a full or incremental backup"
+              + " immediately instead of waiting for the next scheduled time. This will only change"
+              + " the default functionality, and which can still be overwritten with an api"
+              + " payload.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

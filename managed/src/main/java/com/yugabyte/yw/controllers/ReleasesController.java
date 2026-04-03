@@ -120,13 +120,7 @@ public class ReleasesController extends AuthenticatedController {
                 BAD_REQUEST, "invalid artifact, no package url or package file id found");
           }
           release.addArtifact(artifact);
-          // Update sensitive gflags for redaction.
-          Set<String> sensitiveGflags =
-              gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
-          release.setSensitiveGflags(sensitiveGflags);
-          release.save();
-          RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
-              sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
+          updateSensitiveGflagsforRedaction(release);
         }
       }
       transaction.commit();
@@ -135,6 +129,16 @@ public class ReleasesController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Release, reqRelease.toString(), Audit.ActionType.Create);
     return new YBPCreateSuccess(release.getReleaseUUID()).asResult();
+  }
+
+  private void updateSensitiveGflagsforRedaction(Release release) {
+    gFlagsValidation.addDBMetadataFiles(release.getVersion());
+    Set<String> sensitiveGflags =
+        gFlagsValidation.getSensitiveJsonPathsForVersion(release.getVersion());
+    release.setSensitiveGflags(sensitiveGflags);
+    release.save();
+    RedactingService.SECRET_JSON_PATHS_LOGS.addAll(
+        sensitiveGflags.stream().map(JsonPath::compile).collect(Collectors.toList()));
   }
 
   @ApiOperation(

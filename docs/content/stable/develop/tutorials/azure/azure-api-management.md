@@ -3,7 +3,6 @@ title: How to Develop Centralized APIs With Azure API Management and YugabyteDB
 headerTitle: Develop centralized APIs using Azure API Management and YugabyteDB
 linkTitle: Azure API Management
 description: Learn to deploy APIs using Azure API Management and YugabyteDB, covering geo-partitioned clusters and Azure Function development.
-image: /images/tutorials/azure/icons/API-Management-Icon.svg
 headcontent: Use YugabyteDB as the database backend for your API
 menu:
   stable_develop:

@@ -244,8 +244,6 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	setDefaultConfigs(ynpConfig)
 	mergeConfigs(ynpConfig, exVars)
-	// Setup logger first to use the custom logger.
-	config.SetupLogger(ctx, pArgs.YnpConfig)
 	// Override config values from command line if any into the YNP config.
 	err = schemaHandler.OverrideProperties(pArgs.configOverrides, ynpConfig)
 	if err != nil {
@@ -253,6 +251,8 @@ func processArguments(ctx context.Context, pArgs *parsedArgs) error {
 	}
 	// Fix the types in the parsed config after merging the extra_vars.
 	pArgs.YnpConfig = config.FixParsedConfigMap(ynpConfig)
+	// Setup logger now to use the custom logger with the final logging config.
+	config.SetupLogger(ctx, pArgs.YnpConfig)
 	return nil
 }
 
@@ -332,6 +332,23 @@ func setDefaultConfigs(ynpConfig map[string]map[string]any) {
 	}
 	if _, ok := extraSection["is_ybm"]; !ok {
 		extraSection["is_ybm"] = false
+	}
+	ynpSection, ok := ynpConfig["ynp"]
+	if !ok {
+		ynpSection = make(map[string]any)
+		ynpConfig["ynp"] = ynpSection
+	}
+	if _, ok := ynpSection["use_system_level_systemd"]; !ok {
+		ynpSection["use_system_level_systemd"] = false
+	}
+	if _, ok := ynpSection["configure_thp_settings"]; !ok {
+		ynpSection["configure_thp_settings"] = true
+	}
+	if _, ok := ynpSection["is_ybcontroller_disabled"]; !ok {
+		ynpSection["is_ybcontroller_disabled"] = false
+	}
+	if _, ok := ynpSection["is_install_node_agent"]; !ok {
+		ynpSection["is_install_node_agent"] = true
 	}
 }
 

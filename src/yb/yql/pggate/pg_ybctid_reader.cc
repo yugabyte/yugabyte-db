@@ -150,13 +150,14 @@ YbctidReader::~YbctidReader() = default;
 
 Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
     PgOid database_id, const TableLocalityMap& tables_locality, const Options& options) {
+  auto& ybctids = ybctids_.values;
   // Group the items by the table ID.
-  std::ranges::sort(ybctids_, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
+  std::ranges::sort(ybctids, [](const auto& a, const auto& b) { return a.table_id < b.table_id; });
 
   auto arena = std::make_shared<ThreadSafeArena>();
 
   PrecastRequestSender precast_sender(options.run_marker);
-  boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
+
   auto request_sender = [&precast_sender](
       PgSession* session, std::span<const PgsqlOpPtr> ops, const PgTableDesc& table,
       const PgSession::RunOptions& options, IsForWritePgDoc is_write) {
@@ -165,7 +166,7 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
-  for (auto it = ybctids_.begin(), end = ybctids_.end(); it != end;) {
+  for (auto it = ybctids.begin(), end = ybctids.end(); it != end;) {
     const auto table_id = it->table_id;
     auto desc = VERIFY_RESULT(session_->LoadTable(PgObjectId(database_id, table_id)));
     auto metrics_capture = session_->metrics().metrics_capture();
@@ -174,9 +175,9 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
     auto read_op = SharedField(read_op_with_table, &read_op_with_table->read_op);
     auto* expr_pb = read_op->read_request().add_targets();
     expr_pb->set_column_id(std::to_underlying(PgSystemAttrNum::kYBTupleId));
-    doc_ops.push_back(std::make_unique<PgDocReadOp>(
+    doc_ops_.push_back(std::make_unique<PgDocReadOp>(
         session_, &read_op_with_table->table, std::move(read_op), request_sender));
-    auto& doc_op = *doc_ops.back();
+    auto& doc_op = *doc_ops_.back();
     RETURN_NOT_OK(ExecuteInit(doc_op, options));
     // Populate doc_op with ybctids which belong to current table.
     RSTATUS_DCHECK(VERIFY_RESULT(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
@@ -192,20 +193,19 @@ Result<std::span<LightweightTableYbctid>> YbctidReader::Read(
   // of each doc_op will be sent individually).
   precast_sender.DisableCollecting();
   // Collect the results from the docdb ops.
-  ybctids_.clear();
-  for (auto& doc_op : doc_ops) {
+  ybctids.clear();
+  for (auto& doc_op : doc_ops_) {
     for(;;) {
-      doc_op->ResultStream().HoldResults(holders_);
       if (!VERIFY_RESULT(doc_op->ResultStream().ProcessNextYbctids(
-        [this, object_oid = doc_op->table()->relfilenode_id().object_oid](Slice ybctid) {
-          ybctids_.emplace_back(object_oid, ybctid);
-        }))) {
+              [&ybctids, object_oid = doc_op->table()->relfilenode_id().object_oid](Slice ybctid) {
+                ybctids.emplace_back(object_oid, ybctid);
+              }, &ybctids_.retention))) {
         break;
       }
     }
   }
 
-  return std::span(ybctids_);
+  return std::span(ybctids);
 }
 
 } // namespace yb::pggate

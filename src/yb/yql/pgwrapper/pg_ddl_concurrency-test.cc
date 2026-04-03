@@ -258,13 +258,13 @@ TEST_F(PgDDLConcurrencyWithObjectLockingTestRF1, YB_DISABLE_TEST_IN_SANITIZERS(C
   thread_holder.AddThreadFunctor( [this] {
     auto conn = CHECK_RESULT(Connect());
     for (int i = 0; i < 500; i++) {
-      ASSERT_OK(conn.ExecuteFormat("create table s_$0 (id int)", i));
+      ASSERT_OK(SuppressAllowedErrors(conn.ExecuteFormat("create table s_$0 (id int)", i)));
     }
   });
   thread_holder.AddThreadFunctor( [this] {
     auto conn = CHECK_RESULT(Connect());
     for (int i = 0; i < 500; i++) {
-      ASSERT_OK(conn.ExecuteFormat("create table t_$0 (id int)", i));
+      ASSERT_OK(SuppressAllowedErrors(conn.ExecuteFormat("create table t_$0 (id int)", i)));
     }
   });
   thread_holder.JoinAll();

@@ -16,6 +16,7 @@
 
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
@@ -81,7 +82,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_server_lifetime, 3600,
     "is reached, the connection is automatically closed, regardless of activity, ensuring that "
     "fresh backend connections are regularly maintained.");
 
-DEFINE_NON_RUNTIME_string(ysql_conn_mgr_log_settings, "",
+DEFINE_RUNTIME_CONN_MGR_FLAG(string, log_settings, "",
     "Comma-separated list of log settings for Ysql Connection Manger, which may include "
     "'log_debug', 'log_config', 'log_session', 'log_query', and 'log_stats'. Only the "
     "log settings present in this string will be enabled. Omitted settings will remain disabled.");
@@ -90,6 +91,13 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
     "Enable the use of the auth-backend for authentication of logical connections. "
     "When false, the older auth-passthrough implementation is used."
     );
+
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
+    "Maximum time (in milliseconds) to wait for each startup & auth message from client. "
+    "If the client does not send a startup or auth packet/response within this timeout, the "
+    "connection is closed. Note that this is a per-message timeout, not a total timeout for the "
+    "entire auth process. This timeout applies individually to the TLS handshake, startup packet, "
+    "and each auth packet received from the client.");
 
 DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
     "Max ysql connection manager log size(in bytes) after which the log file gets rolled over");
@@ -128,6 +136,13 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_pool_timeout, 0,
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_optimized_extended_query_protocol, true,
     "Enable optimized extended query protocol in Ysql Connection Manager. "
     "If set to false, extended query protocol handling is fully correct but unoptimized.");
+
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_deallocate_if_invalid_prep_stmt, true,
+    "When enabled, the YSQL Connection Manager deallocates a prepared statement "
+    "upon receiving a Close message if the statement exists on the backend "
+    "but is marked invalid. If flag is disabled then receiving CLOSE packet is a no-operation "
+    "from connection manager and can cause errors. ysql_conn_mgr_optimized_extended_query_protocol "
+    "needs to be enabled to enable this flag.");
 
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_enable_multi_route_pool, true,
     "Enable the use of the dynamic multi-route pooling. "
@@ -196,6 +211,9 @@ bool ValidateLogSettings(const char* flag_name, const std::string& value) {
 
 DEFINE_validator(ysql_conn_mgr_log_settings, &ValidateLogSettings);
 
+DEFINE_validator(ysql_conn_mgr_deallocate_if_invalid_prep_stmt,
+    FLAG_REQUIRES_FLAG_VALIDATOR(ysql_conn_mgr_optimized_extended_query_protocol));
+
 namespace yb {
 namespace ysql_conn_mgr_wrapper {
 
@@ -232,7 +250,7 @@ Status YsqlConnMgrWrapper::Start() {
     LOG(INFO) << "Superuser connections will be made sticky in ysql connection manager";
 
   std::vector<std::string> argv{
-      ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
+      ysql_conn_mgr_executable, VERIFY_RESULT(conf_.CreateYsqlConnMgrConfigAndGetPath())};
   proc_.emplace(ysql_conn_mgr_executable, argv);
   proc_->SetEnv("YB_YSQLCONNMGR_PDEATHSIG", Format("$0", SIGINT));
 
@@ -240,7 +258,7 @@ Status YsqlConnMgrWrapper::Start() {
     proc_->SetEnv("YB_YSQL_CONN_MGR_USER", FLAGS_ysql_conn_mgr_username);
   }
 
-  proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", conf_.yb_tserver_key_);
+  proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", UInt64ToString(conf_.yb_tserver_key()));
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
 
@@ -260,8 +278,9 @@ Status YsqlConnMgrWrapper::Start() {
   if (FLAGS_enable_ysql_conn_mgr_stats) {
     if (stat_shm_key_ <= 0) return STATUS(InternalError, "Invalid stats shared memory key.");
 
-    LOG(INFO) << "Using shared memory segment with key " << stat_shm_key_
-              << "for collecting Ysql Connection Manager stats";
+    LOG(INFO) << Format(
+        "Using shared memory segment with key $0 for collecting Ysql Connection Manager stats",
+        stat_shm_key_);
 
     proc_->SetEnv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME, std::to_string(stat_shm_key_));
   }
@@ -283,6 +302,20 @@ Status YsqlConnMgrWrapper::Start() {
   }
 
   proc_->SetEnv(YSQL_CONN_MGR_WARMUP_DB, FLAGS_ysql_conn_mgr_warmup_db);
+
+#ifdef THREAD_SANITIZER
+  // Disable thread leak detection for the Ysql Connection Manager (Odyssey) process.
+  // Worker threads may not be joined before exit(0) on SIGINT/SIGTERM shutdown.
+  // This mirrors the same approach used for the PostgreSQL process in pg_wrapper.cc.
+  {
+    static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
+    const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
+    proc_->SetEnv(
+        kTSANOptionsEnvName, std::string(tsan_options ? tsan_options : "") +
+                                 " report_thread_leaks=0");
+  }
+#endif
+
   RETURN_NOT_OK(proc_->Start());
 
   LOG(INFO) << "Ysql Connection Manager process running as pid " << proc_->pid();
@@ -291,11 +324,75 @@ Status YsqlConnMgrWrapper::Start() {
   return Status::OK();
 }
 
+Status YsqlConnMgrWrapper::ReloadConfig() {
+  if (!proc_) {
+    return STATUS(IllegalState, "Process has not been started");
+  }
+  return proc_->KillNoCheckIfRunning(SIGHUP);
+}
+
+Status YsqlConnMgrWrapper::UpdateAndReloadConfig() {
+  RETURN_NOT_OK(conf_.CreateYsqlConnMgrConfigAndGetPath());
+  return ReloadConfig();
+}
+
 YsqlConnMgrSupervisor::YsqlConnMgrSupervisor(const YsqlConnMgrConf& conf, key_t stat_shm_key)
-    : conf_(std::move(conf)), stat_shm_key_(std::move(stat_shm_key)) {}
+    : conf_(conf), stat_shm_key_(stat_shm_key) {}
 
 std::shared_ptr<ProcessWrapper> YsqlConnMgrSupervisor::CreateProcessWrapper() {
   return std::make_shared<YsqlConnMgrWrapper>(conf_, stat_shm_key_);
+}
+
+void YsqlConnMgrSupervisor::UpdateAndReloadConfig() {
+  std::lock_guard lock(mtx_);
+  if (process_wrapper_) {
+    const Status status = process_wrapper_->UpdateAndReloadConfig();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to update and reload config: " << status;
+    }
+  }
+}
+
+Status YsqlConnMgrSupervisor::RegisterReloadConfigCallback(const void* flag_ptr) {
+  flag_callbacks_.emplace_back(VERIFY_RESULT(RegisterFlagUpdateCallback(
+      flag_ptr, "ReloadConnMgrConfig",
+      std::bind(&YsqlConnMgrSupervisor::UpdateAndReloadConfig, this))));
+  return Status::OK();
+}
+
+Status YsqlConnMgrSupervisor::RegisterFlagChangeNotifications() {
+  DeregisterFlagChangeNotifications();
+
+  std::vector<google::CommandLineFlagInfo> flags;
+  google::GetAllFlags(&flags);
+  for (const auto& flag : flags) {
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag.name, &tags);
+    if (tags.contains(FlagTag::kConnMgr)) {
+      RETURN_NOT_OK(RegisterReloadConfigCallback(flag.flag_ptr));
+    }
+  }
+
+  return Status::OK();
+}
+
+void YsqlConnMgrSupervisor::DeregisterFlagChangeNotifications() {
+  for (auto& callback : flag_callbacks_) {
+    callback.Deregister();
+  }
+  flag_callbacks_.clear();
+}
+
+Status YsqlConnMgrSupervisor::PrepareForStart() { return RegisterFlagChangeNotifications(); }
+
+void YsqlConnMgrSupervisor::PrepareForStop() { DeregisterFlagChangeNotifications(); }
+
+Status YsqlConnMgrSupervisor::StartIfNotStarted() {
+  if (started_) {
+    return Status::OK();
+  }
+  started_ = true;
+  return ProcessSupervisor::Restart();
 }
 
 }  // namespace ysql_conn_mgr_wrapper

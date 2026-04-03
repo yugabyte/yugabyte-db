@@ -172,16 +172,36 @@ class DocVectorMetadataIteratorProvider {
  public:
   virtual ~DocVectorMetadataIteratorProvider() = default;
   virtual Result<docdb::IntentAwareIteratorWithBounds> CreateVectorMetadataIterator(
-      const ReadHybridTime& read_ht) const = 0;
+      const ReadHybridTime& read_ht, docdb::DocDBStatistics* statistics) const = 0;
 };
 
-using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
+struct CompactionHybridTimeConstraints {
+  // Min and max time of entries participating in compaction.
+  HybridTime input_min = HybridTime::kMax;
+  HybridTime input_max = HybridTime::kMin;
+  // Min time of entry that does not participate in compaction.
+  HybridTime other_min = HybridTime::kMax;
+  // Min and max time of entries that could be repacked during this compaction.
+  // I.e. we don't have entries that does not participate in compaction within this time interval.
+  // Those constraints are exclusive.
+  HybridTime repack_range_min = HybridTime::kMin;
+  HybridTime repack_range_max = HybridTime::kMax;
+
+  // input range should be already initialized before calling this function.
+  void HandleOtherRange(HybridTime min, HybridTime max);
+  void HandleOtherRange(
+      const storage::UserFrontier& smallest, const storage::UserFrontier& largest);
+
+  std::string ToString() const;
+};
+
+using CompactionHybridTimeLimitsProvider = std::function<CompactionHybridTimeConstraints(
     const std::vector<rocksdb::FileMetaData*>&)>;
 
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
-    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
+    const CompactionHybridTimeLimitsProvider& compaction_hybrid_time_limit_provider,
     SchemaPackingProvider* schema_packing_provider,
     DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider = nullptr);
 

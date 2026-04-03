@@ -430,6 +430,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       ClusterPartitionSpec geoPartitionSpec = new ClusterPartitionSpec();
       geoPartitionSpec.setName("geo" + i);
       geoPartitionSpec.setDefaultPartition(i == 0);
+      geoPartitionSpec.setTablespaceName("tablespace" + i);
       int numNodesInGeo = 5 + i;
       int rf = i == 0 ? clusterSpec.getReplicationFactor() : 3;
       PlacementCloud placementCloud = placementFromProvider(i, numNodesInGeo, rf);

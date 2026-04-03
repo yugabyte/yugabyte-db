@@ -550,8 +550,11 @@ class YbAdminSnapshotScheduleTestWithYsql : public YbAdminSnapshotScheduleTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
     opts->enable_ysql = true;
     opts->extra_tserver_flags.emplace_back("--ysql_num_shards_per_tserver=1");
+    opts->extra_tserver_flags.emplace_back(
+      "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
     opts->extra_master_flags.emplace_back("--log_ysql_catalog_versions=true");
     opts->extra_master_flags.emplace_back("--consensus_rpc_timeout_ms=5000");
+    opts->extra_master_flags.emplace_back("--master_ysql_operation_lease_ttl_ms=10000");
     opts->num_masters = 3;
   }
 

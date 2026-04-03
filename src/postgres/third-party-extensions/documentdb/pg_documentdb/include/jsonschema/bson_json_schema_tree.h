@@ -102,6 +102,11 @@ typedef enum ArrayValidationTypes
 	ArrayValidationTypes_AdditionalItemsObject = 1 << 6,
 } ArrayValidationTypes;
 
+typedef enum BinaryValidationTypes
+{
+	BinaryValidationTypes_Encrypt = 1 << 0,
+} BinaryValidationTypes;
+
 typedef enum SchemaNodeType
 {
 	SchemaNodeType_Invalid = 0,
@@ -123,6 +128,9 @@ typedef struct ValidationsObject
 {
 	/* List of child field nodes */
 	SchemaFieldNode *properties;
+
+	/* Array of required field names */
+	bson_value_t *required;
 } ValidationsObject;
 
 typedef struct ValidationsCommon
@@ -166,7 +174,6 @@ typedef struct ValidationsArray
 	};
 } ValidationsArray;
 
-
 typedef struct Validations
 {
 	ValidationsObject *object;
@@ -183,6 +190,7 @@ typedef struct ValidationFlags
 	uint16_t numeric;
 	uint16_t string;
 	uint16_t array;
+	uint16_t binary;
 }ValidationFlags;
 
 struct SchemaNode

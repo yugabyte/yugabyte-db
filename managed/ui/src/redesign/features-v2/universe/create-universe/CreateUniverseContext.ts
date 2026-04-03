@@ -18,17 +18,18 @@ import {
 import { NodeAvailabilityProps } from './steps/nodes-availability/dtos';
 import { InstanceSettingProps } from './steps/hardware-settings/dtos';
 import { DatabaseSettingsProps } from './steps/database-settings/dtos';
-import { SecuritySettingsProps } from './steps/security-settings/dtos';
+import { CertType, SecuritySettingsProps } from './steps/security-settings/dtos';
 import { OtherAdvancedProps, ProxyAdvancedProps } from './steps/advanced-settings/dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   NODE_COUNT,
   REGIONS_FIELD,
-  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from './fields/FieldNames';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -61,13 +62,12 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
     [REGIONS_FIELD]: [],
-    [REPLICATION_FACTOR]: 3,
+    [RESILIENCE_FACTOR]: 1,
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
     [NODE_COUNT]: 1
   },
   nodesAvailabilitySettings: {
     availabilityZones: {},
-    nodeCountPerAz: 1,
     useDedicatedNodes: false
   },
   databaseSettings: {
@@ -95,13 +95,14 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     masterDeviceInfo: null,
     tserverK8SNodeResourceSpec: null,
     masterK8SNodeResourceSpec: null,
-    keepMasterTserverSame: true,
+    keepMasterTserverSame: false,
     enableEbsVolumeEncryption: false,
     ebsKmsConfigUUID: null
   },
   securitySettings: {
     enableClientToNodeEncryption: false,
-    enableNodeToNodeEncryption: false
+    enableNodeToNodeEncryption: false,
+    enableIPV6: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {
@@ -110,8 +111,16 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     secureWebProxyServer: '',
     secureWebProxyPort: undefined,
     webProxy: false,
+    webProxyServer: '',
+    webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
+  },
+  generalSettings: {
+    cloud: CloudType.aws,
+    universeName: '',
+    providerConfiguration: undefined,
+    databaseVersion: ''
   }
 };
 
@@ -179,4 +188,5 @@ export type CreateUniverseContextMethods = [
 export type StepsRef = {
   onNext: () => Promise<void>;
   onPrev: () => void;
+  setValue?: (name: string, value: unknown) => void;
 };

@@ -29,19 +29,31 @@ You can also install a standalone version using any of the following methods:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#linuxx86" class="nav-link active" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+    <a href="#macosx86" class="nav-link active" id="macosx86-tab" data-bs-toggle="tab" role="tab" aria-controls="macosx86" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS x86
+    </a>
+  </li>
+  <li>
+    <a href="#macosarm" class="nav-link" id="macosarm-tab" data-bs-toggle="tab" role="tab" aria-controls="macosarm" aria-selected="false">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS ARM
+    </a>
+  </li>
+  <li>
+    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux x86
     </a>
   </li>
   <li>
-    <a href="#linuxarm" class="nav-link" id="linuxarm-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm" aria-selected="true">
+    <a href="#linuxarm" class="nav-link" id="linuxarm-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm" aria-selected="false">
       <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux ARM
     </a>
   </li>
   <li>
-    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="false">
       <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
@@ -49,7 +61,27 @@ You can also install a standalone version using any of the following methods:
 </ul>
 
 <div class="tab-content">
-  <div id="linuxx86" class="tab-pane fade show active" role="tabpanel" aria-labelledby="linuxx86-tab">
+  <div id="macosx86" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macosx86-tab">
+
+```sh
+curl -OL https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz" | shasum --check && \
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}
+```
+
+  </div>
+  <div id="macosarm" class="tab-pane fade" role="tabpanel" aria-labelledby="macosarm-tab">
+
+```sh
+curl -OL https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz
+echo "$(curl -L https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-darwin-arm64.tar.gz.sha) *yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-arm64.tar.gz" | shasum --check && \
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-arm64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}
+```
+
+  </div>
+  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
 
 ```sh
 wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz

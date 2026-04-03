@@ -851,7 +851,7 @@ void SetUsage(const char* argv0) {
       << "  " << kClearUniverseUuidOp << "\n"
       << "  " << kClearYCQLMetaDataCacheOnServerOp << "\n"
       << "  " << kReleaseAllLocksForTxnOp << " <txn id> [subtxn id]\n"
-      << "  " << kDumpTabletDataOp << " <tablet_id> [<dest_path> | HASH_ONLY] [read_ht]\n";
+      << "  " << kDumpTabletDataOp << " <tablet_id> (<dest_path> | HASH_ONLY) [read_ht]\n";
   google::SetUsageMessage(str.str());
 }
 

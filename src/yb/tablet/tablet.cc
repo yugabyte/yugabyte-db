@@ -1189,7 +1189,7 @@ Status Tablet::OpenRegularDB(const rocksdb::Options& common_options) {
   // to this tablet. So, we ensure that rocksdb_ is reset before this tablet gets destroyed.
   regular_rocksdb_options.compaction_context_factory = docdb::CreateCompactionContextFactory(
       retention_policy_, &key_bounds_,
-      std::bind(&Tablet::DeleteMarkerRetentionTime, this, _1),
+      std::bind(&Tablet::CompactionHybridTimeConstraints, this, _1),
       metadata_.get(), vector_indexes_.get());
 
   regular_rocksdb_options.mem_table_flush_filter_factory = MakeMemTableFlushFilterFactory([this] {
@@ -1915,11 +1915,16 @@ Status Tablet::ApplyKeyValueRowOperations(
     rocksdb::WriteBatch intents_write_batch;
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
-        GetSchemaPackingProvider(), frontiers);
+        GetSchemaPackingProvider(), frontiers, vector_indexes_->List());
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
     WriteToRocksDB(frontiers, &regular_write_batch, StorageDbType::kRegular);
+
+    if (!vector_indexes_->has_vector_deletion() &&
+        frontiers.Largest().has_vector_deletion()) {
+      vector_indexes_->SetHasVectorDeletion();
+    }
 
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->IsUnderXClusterReplication()) {
@@ -3220,6 +3225,7 @@ Status Tablet::BackfillIndexesForYsql(
   DCHECK_EQ(*number_of_rows_processed, 0);
   DCHECK_EQ(*num_rows_backfilled_in_index, 0.0);
 
+  SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
   do {
     std::string serialized_backfill_spec =
         GenerateSerializedBackfillSpec(backfill_params.batch_size, *backfilled_until);
@@ -3329,8 +3335,8 @@ Status Tablet::BackfillIndexes(
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
+  SCOPED_WAIT_STATUS(BackfillIndex_WaitToBackfillTablet);
   SlowdownBackfillForTests();
-
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   auto columns = GetColumnSchemasForIndex(indexes);
 
@@ -4137,7 +4143,7 @@ Status Tablet::DebugDump(vector<string> *lines) {
   FATAL_INVALID_ENUM_VALUE(TableType, table_type_);
 }
 
-void Tablet::DocDBDebugDump(vector<string> *lines) {
+void Tablet::DocDBDebugDump(std::vector<string>* lines) {
   LOG_STRING(INFO, lines) << "Dumping tablet:";
   LOG_STRING(INFO, lines) << "---------------------------";
   docdb::DocDBDebugDump(
@@ -4320,27 +4326,45 @@ Status Tablet::ForceRocksDBCompact(
   return Status::OK();
 }
 
-std::string Tablet::TEST_DocDBDumpStr(docdb::IncludeIntents include_intents) {
+std::string Tablet::TEST_DocDBDumpStr(
+    docdb::IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time) {
   if (!regular_db_) return "";
 
   if (!include_intents) {
-    return docdb::DocDBDebugDumpToStr(doc_db().WithoutIntents(),
-        &GetSchemaPackingProvider());
+    return docdb::DocDBDebugDumpToStr(
+        doc_db().WithoutIntents(), &GetSchemaPackingProvider(), docdb::IncludeBinary::kFalse,
+        include_write_time);
   }
 
-  return docdb::DocDBDebugDumpToStr(doc_db(), &GetSchemaPackingProvider());
+  return docdb::DocDBDebugDumpToStr(
+      doc_db(), &GetSchemaPackingProvider(), docdb::IncludeBinary::kFalse, include_write_time);
+}
+
+template <class Out>
+void Tablet::TEST_DocDBDumpToContainerImpl(
+    Out& out, docdb::IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time) {
+  if (!regular_db_) {
+    return;
+  }
+
+  if (!include_intents) {
+    return docdb::DocDBDebugDumpToContainer(
+        out, doc_db().WithoutIntents(), &GetSchemaPackingProvider(), include_write_time);
+  }
+
+  return docdb::DocDBDebugDumpToContainer(out, doc_db(), &GetSchemaPackingProvider());
 }
 
 void Tablet::TEST_DocDBDumpToContainer(
-    docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out) {
-  if (!regular_db_) return;
+    std::unordered_set<std::string>& out, docdb::IncludeIntents include_intents,
+    docdb::IncludeWriteTime include_write_time) {
+  TEST_DocDBDumpToContainerImpl(out, include_intents, include_write_time);
+}
 
-  if (!include_intents) {
-    return docdb::DocDBDebugDumpToContainer(doc_db().WithoutIntents(),
-        &GetSchemaPackingProvider(), out);
-  }
-
-  return docdb::DocDBDebugDumpToContainer(doc_db(), &GetSchemaPackingProvider(), out);
+void Tablet::TEST_DocDBDumpToContainer(
+    std::vector<std::string>& out, docdb::IncludeIntents include_intents,
+    docdb::IncludeWriteTime include_write_time) {
+  TEST_DocDBDumpToContainerImpl(out, include_intents, include_write_time);
 }
 
 void Tablet::TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents) {
@@ -5177,40 +5201,76 @@ Schema Tablet::GetKeySchema(const std::string& table_id) const {
   return table_info->schema().CreateKeyProjection();
 }
 
-HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
+docdb::CompactionHybridTimeConstraints Tablet::CompactionHybridTimeConstraints(
+    const std::vector<rocksdb::FileMetaData*>& inputs) {
+  docdb::CompactionHybridTimeConstraints result;
+  std::vector<uint64_t> input_names;
+  input_names.reserve(inputs.size());
+  for (const auto& file : inputs) {
+    input_names.push_back(file->fd.GetNumber());
+    if (!file->smallest.user_frontier) {
+      // This should not happen, so consider input range as a full range.
+      LOG(DFATAL) << "Input file without frontier: " << file->ToString();
+      result.input_min = HybridTime::kMin;
+      result.input_max = HybridTime::kMax;
+      continue;
+    }
+    auto& smallest = down_cast<docdb::ConsensusFrontier&>(*file->smallest.user_frontier);
+    // Hybrid time is defined by Raft hybrid time and commit hybrid time of all records.
+    result.input_min = std::min(result.input_min, smallest.hybrid_time());
+    auto& largest = down_cast<docdb::ConsensusFrontier&>(*file->largest.user_frontier);
+    result.input_max = std::max(result.input_max, largest.hybrid_time());
+  }
+
   auto scoped_read_operation = CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!scoped_read_operation.ok()) {
     // Prevent markers from being deleted when we cannot calculate retention time during shutdown.
-    return HybridTime::kMin;
+    result.other_min = HybridTime::kMin;
+    result.repack_range_max = HybridTime::kMin;
+    result.repack_range_min = HybridTime::kMax;
+    VLOG_WITH_PREFIX_AND_FUNC(3)
+        << "Exit because of " << MoveStatus(scoped_read_operation) << ": " << result.ToString();
+    return result;
   }
 
   // Query order is important. Since it is not atomic, we should be sure that write would not sneak
   // our queries. So we follow write record travel order.
 
-  HybridTime result = transaction_participant_
-      ? transaction_participant_->MinRunningHybridTime()
-      : HybridTime::kMax;
-
-  auto smallest = regular_db_->CalcMemTableFrontier(storage::UpdateUserValueType::kSmallest);
-  if (smallest) {
-    result = std::min(
-        result, down_cast<const docdb::ConsensusFrontier&>(*smallest).hybrid_time());
+  if (transaction_participant_) {
+    auto min_running_ht = transaction_participant_->MinRunningHybridTime();
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "min_running_ht: " << min_running_ht;
+    result.HandleOtherRange(min_running_ht, HybridTime::kMax);
   }
 
-  std::unordered_set<uint64_t> input_names;
-  for (const auto& input : inputs) {
-    input_names.insert(input->fd.GetNumber());
+  auto frontiers = regular_db_->CalcMemTableFrontiers();
+  if (frontiers.first) {
+    DCHECK_ONLY_NOTNULL(frontiers.second.get());
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Mem table frontiers: " << frontiers.first->ToString()
+        << "-" << frontiers.second->ToString();
+    result.HandleOtherRange(*frontiers.first, *frontiers.second);
   }
+
   auto files = regular_db_->GetLiveFilesMetaData();
 
+  std::ranges::sort(input_names);
   for (const auto& file : files) {
-    if (input_names.count(file.name_id) || !file.smallest.user_frontier) {
+    if (std::ranges::binary_search(input_names, file.name_id)) {
       continue;
     }
-    result = std::min(
-        result, down_cast<docdb::ConsensusFrontier&>(*file.smallest.user_frontier).hybrid_time());
+    if (!file.smallest.user_frontier) {
+      // This should not happen, so disable repacking and delete marker cleanup for safety.
+      LOG(DFATAL) << "Other file without frontier: " << file.ToString();
+      result.HandleOtherRange(HybridTime::kMin, HybridTime::kMax);
+      continue;
+    }
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << file.name_id << " frontiers: " << file.smallest.user_frontier->ToString()
+        << "-" << file.largest.user_frontier->ToString();
+    result.HandleOtherRange(*file.smallest.user_frontier, *file.largest.user_frontier);
   }
 
+  VLOG_WITH_PREFIX_AND_FUNC(3) << "Result: " << result.ToString();
   return result;
 }
 

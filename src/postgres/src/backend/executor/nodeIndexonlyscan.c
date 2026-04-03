@@ -48,6 +48,7 @@
 
 /* YB includes */
 #include "access/yb_scan.h"
+#include "catalog/yb_type.h"
 #include "pg_yb_utils.h"
 
 
@@ -56,7 +57,10 @@ static void StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 							IndexTuple itup, TupleDesc itupdesc);
 static void yb_init_indexonly_scandesc(IndexOnlyScanState *node);
 static void yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node);
-
+static void yb_store_index_tuple_decoded_pk(IndexOnlyScanState *node,
+											TupleTableSlot *slot,
+											IndexTuple itup,
+											TupleDesc itupdesc);
 
 /* ----------------------------------------------------------------
  *		IndexOnlyNext
@@ -263,7 +267,9 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			ExecForceStoreHeapTuple(scandesc->xs_hitup, slot, false);
 		}
 		else if (scandesc->xs_itup)
-			StoreIndexTuple(node, slot, scandesc->xs_itup, scandesc->xs_itupdesc);
+			StoreIndexTuple(node, slot,
+							scandesc->xs_itup,
+							scandesc->xs_itupdesc);
 		else if (IsYugaByteEnabled() && scandesc->yb_aggrefs)
 		{
 			/*
@@ -352,7 +358,10 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 	 * the same number of columns though, as well as being datatype-compatible
 	 * which is something we can't so easily check.
 	 */
-	Assert(slot->tts_tupleDescriptor->natts == itupdesc->natts);
+
+	/* YB: index may provide base table's PK columns out of the base ybctid. */
+	Assert(slot->tts_tupleDescriptor->natts == itupdesc->natts +
+												node->yb_ioss_num_decoded_pk_cols);
 
 	ExecClearTuple(slot);
 	index_deform_tuple(itup, itupdesc, slot->tts_values, slot->tts_isnull);
@@ -386,6 +395,10 @@ StoreIndexTuple(IndexOnlyScanState *node, TupleTableSlot *slot,
 			slot->tts_values[attnum] = NameGetDatum(name);
 		}
 	}
+
+	/* YB: Decode PK columns into any remaining slot positions */
+	if (node->yb_ioss_num_decoded_pk_cols > 0)
+		yb_store_index_tuple_decoded_pk(node, slot, itup, itupdesc);
 
 	ExecStoreVirtualTuple(slot);
 
@@ -696,6 +709,37 @@ ExecInitIndexOnlyScan(IndexOnlyScan *node, EState *estate, int eflags)
 	indexRelation = index_open(node->indexid, lockmode);
 	indexstate->ioss_RelationDesc = indexRelation;
 
+	/* YB: Populate states for decoding PK columns from ybidxbasectid. */
+	int			decoded_natts = node->yb_num_decoded_pk_cols;
+	indexstate->yb_ioss_num_decoded_pk_cols = decoded_natts;
+	indexstate->yb_ioss_decoded_pk_base_attnums = NULL;
+	indexstate->yb_ioss_decoded_pk_typids = NULL;
+
+	if (decoded_natts > 0)
+	{
+		int			phys_natts = list_length(node->indextlist) - decoded_natts;
+
+		indexstate->yb_ioss_decoded_pk_base_attnums = (AttrNumber *)
+			palloc(sizeof(AttrNumber) * decoded_natts);
+		indexstate->yb_ioss_decoded_pk_typids = (Oid *)
+			palloc(sizeof(Oid) * decoded_natts);
+
+		ListCell   *lc;
+		int			i = 0;
+		for_each_cell(lc, node->indextlist,
+					  list_nth_cell(node->indextlist, phys_natts))
+		{
+			TargetEntry *list_element = (TargetEntry *) lfirst(lc);
+			Var		   *var_node = (Var *) list_element->expr;
+
+			Assert(IsA(var_node, Var));
+			indexstate->yb_ioss_decoded_pk_base_attnums[i] = var_node->varattno;
+			indexstate->yb_ioss_decoded_pk_typids[i] = var_node->vartype;
+			i++;
+		}
+		Assert(i == decoded_natts);
+	}
+
 	/*
 	 * Initialize index-specific scan state
 	 */
@@ -973,4 +1017,50 @@ yb_agg_pushdown_init_scan_slot(IndexOnlyScanState *node)
 	TupleDesc	tupdesc = CreateTemplateTupleDesc(list_length(node->yb_ioss_aggrefs));
 
 	ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc, &TTSOpsVirtual);
+}
+
+/*
+ * yb_store_index_tuple_decoded_pk
+ *		Decode primary key column values from ybidxbasectid into the slot
+ *		positions beyond the physical index columns.
+ */
+static void
+yb_store_index_tuple_decoded_pk(IndexOnlyScanState *node,
+								TupleTableSlot *slot,
+								IndexTuple itup,
+								TupleDesc itupdesc)
+{
+	int			phys_natts = itupdesc->natts;
+	int			decoded_natts = node->yb_ioss_num_decoded_pk_cols;
+	Assert(slot->tts_tupleDescriptor->natts == phys_natts + decoded_natts);
+
+	Datum		basectid = INDEXTUPLE_BASECTID(itup);
+	if (DatumGetPointer(basectid) == NULL)
+		return;
+
+	bytea	   *basectid_val = DatumGetByteaPP(basectid);
+	char	   *data = VARDATA_ANY(basectid_val);
+	int			len = VARSIZE_ANY_EXHDR(basectid_val);
+
+	YbcPgAttrValueDescriptor attrs[decoded_natts];
+
+	for (int i = 0; i < decoded_natts; i++)
+	{
+		attrs[i].attr_num = node->yb_ioss_decoded_pk_base_attnums[i];
+		attrs[i].type_entity = YbDataTypeFromOidMod(attrs[i].attr_num,
+													node->yb_ioss_decoded_pk_typids[i]);
+		attrs[i].datum = 0;
+		attrs[i].is_null = true;
+	}
+
+	Relation	baserel = node->ss.ss_currentRelation;
+	HandleYBStatus(YBCPgDecodePKColumnsFromBasectid(YBCGetDatabaseOid(baserel),
+													YbGetRelfileNodeId(baserel),
+													data, len, decoded_natts, attrs));
+
+	for (int i = 0; i < decoded_natts; i++)
+	{
+		slot->tts_values[phys_natts + i] = attrs[i].datum;
+		slot->tts_isnull[phys_natts + i] = attrs[i].is_null;
+	}
 }

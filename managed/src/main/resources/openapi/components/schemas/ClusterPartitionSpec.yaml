@@ -6,6 +6,7 @@ required:
   - placement
   - default_partition
   - replication_factor
+  - tablespace_name
 properties:
   uuid:
     description: System generated partition uuid used to lookup corresponding GeoPartitionSpec. This is not a user input.
@@ -24,5 +25,8 @@ properties:
     description: The replication factor for the partition.
     type: integer
     format: int32
+  tablespace_name:
+    description: The name of corresponding tablespace.
+    type: string
   placement:
     $ref: "./ClusterPlacementSpec.yaml"

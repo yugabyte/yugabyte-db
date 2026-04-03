@@ -92,7 +92,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of(
           SoftwareUpgradeState.Upgrading,
           SoftwareUpgradeState.RollingBack,
-          SoftwareUpgradeState.Finalizing);
+          SoftwareUpgradeState.Finalizing,
+          SoftwareUpgradeState.Paused);
 
   @Constraints.Required()
   @Size(min = 1)
@@ -181,6 +182,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     UpgradeFailed,
     @EnumValue("PreFinalize")
     PreFinalize,
+    @EnumValue("Paused")
+    Paused,
     @EnumValue("Finalizing")
     Finalizing,
     @EnumValue("FinalizeFailed")
@@ -959,6 +962,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean defaultPartition;
     @ApiModelProperty private PlacementInfo placement;
     @ApiModelProperty private int replicationFactor;
+    @ApiModelProperty private String tablespaceName;
   }
 
   /** The user defined intent for the universe. */
@@ -1922,6 +1926,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
 
     @ApiModelProperty private boolean canRollbackCatalogUpgrade;
+
+    // Canary upgrade progress: set when upgrade is paused for canary
+    @ApiModelProperty private boolean mastersUpgradeCompleted;
+
+    @ApiModelProperty private List<UUID> primaryClusterAZsCompleted;
+
+    @ApiModelProperty private Map<UUID, List<UUID>> readReplicaClusterAZsCompleted;
   }
 
   // XCluster: All the xCluster related code resides in this section.

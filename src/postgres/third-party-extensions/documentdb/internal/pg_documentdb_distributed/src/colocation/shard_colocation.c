@@ -23,6 +23,9 @@
 #include "io/bson_core.h"
 #include "utils/documentdb_errors.h"
 #include "utils/query_utils.h"
+#include "sharding/sharding.h"
+#include "commands/commands_common.h"
+#include "commands/parse_error.h"
 
 #include "metadata/metadata_cache.h"
 #include "metadata/collection.h"
@@ -31,8 +34,12 @@
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
+
+extern bool EnableMoveCollection;
+
 PG_FUNCTION_INFO_V1(command_get_shard_map);
 PG_FUNCTION_INFO_V1(command_list_shards);
+PG_FUNCTION_INFO_V1(documentdb_command_move_collection);
 
 
 /*
@@ -72,14 +79,13 @@ typedef struct NodeInfo
 	bool isactive;
 
 	/*
-	 * The formatted "Mongo compatible" node name
+	 * The formatted node name
 	 * uses node_<clusterName>_<nodeId>
 	 */
 	const char *mongoNodeName;
 
 	/*
-	 * The logical shard for the node in Mongo output
-	 * Uses "shard_<groupId>"
+	 * The logical shard for the node "shard_<groupId>"
 	 */
 	const char *mongoShardName;
 } NodeInfo;
@@ -112,7 +118,7 @@ static void WriteShardMap(pgbson_writer *writer, List *groupNodes);
 static void WriteShardList(pgbson_writer *writer, List *groupNodes);
 
 /*
- * Implements the mongo wire-protocol getShardMap command
+ * Implements the getShardMap command
  */
 Datum
 command_get_shard_map(PG_FUNCTION_ARGS)
@@ -151,6 +157,209 @@ command_list_shards(PG_FUNCTION_ARGS)
 }
 
 
+Datum
+documentdb_command_move_collection(PG_FUNCTION_ARGS)
+{
+	pgbson *moveSpec = PG_GETARG_PGBSON(0);
+
+	if (!EnableMoveCollection)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
+						errmsg("moveCollection is not supported yet")));
+	}
+
+	bson_iter_t moveSpecIter;
+	PgbsonInitIterator(moveSpec, &moveSpecIter);
+
+	char *moveCollectionNamespace = NULL;
+	char *toShard = NULL;
+	bool useLogicalReplication = false;
+	while (bson_iter_next(&moveSpecIter))
+	{
+		const char *key = bson_iter_key(&moveSpecIter);
+		if (strcmp(key, "moveCollection") == 0)
+		{
+			EnsureTopLevelFieldType("moveCollection", &moveSpecIter, BSON_TYPE_UTF8);
+			const bson_value_t *value = bson_iter_value(&moveSpecIter);
+			moveCollectionNamespace = pnstrdup(value->value.v_utf8.str,
+											   value->value.v_utf8.len);
+		}
+		else if (strcmp(key, "toShard") == 0)
+		{
+			EnsureTopLevelFieldType("toShard", &moveSpecIter, BSON_TYPE_UTF8);
+			const bson_value_t *value = bson_iter_value(&moveSpecIter);
+			toShard = pnstrdup(value->value.v_utf8.str, value->value.v_utf8.len);
+		}
+		else if (strcmp(key, "useLogicalReplication") == 0)
+		{
+			EnsureTopLevelFieldIsBooleanLike("useLogicalReplication", &moveSpecIter);
+			useLogicalReplication = bson_iter_as_bool(&moveSpecIter);
+		}
+		else if (!IsCommonSpecIgnoredField(key))
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
+							errmsg("Unknown top level field %s in moveCollection spec",
+								   key)));
+		}
+	}
+
+	if (moveCollectionNamespace == NULL || toShard == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
+						errmsg(
+							"Required fields moveCollection and toShard not specified")));
+	}
+
+	/* First validate shardId: We do this so we do up front validations before we start checking
+	 * the collection.
+	 */
+	if (strncmp(toShard, "shard_", 6) != 0 || strlen(toShard) < 7)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg("Invalid shard provided %s", toShard)));
+	}
+
+	char *startOfGroupId = &toShard[6];
+	char *endPointer = NULL;
+	int32_t groupId = strtol(startOfGroupId, &endPointer, 10);
+
+	if (endPointer == startOfGroupId)
+	{
+		/* No valid conversion of the integer */
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg("Invalid shard provided %s", toShard)));
+	}
+
+	/* Once we have the groupId ensure that the groupId formatted our way ends up to the original string */
+	char *formattedShard = psprintf("shard_%d", groupId);
+	if (strcmp(formattedShard, toShard) != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg("Invalid shard provided %s", toShard)));
+	}
+
+	/* Now query pg_dist_node to ensure it's a valid group id */
+	int numArgs = 1;
+	Oid argOids[1] = { INT4OID };
+	Datum argDatums[1] = { Int32GetDatum(groupId) };
+
+	Datum resultDatums[3] = { 0 };
+	bool resultNulls[3] = { 0 };
+	ExtensionExecuteMultiValueQueryWithArgsViaSPI(
+		"SELECT nodename, nodeport FROM pg_dist_node WHERE noderole = 'primary' AND isactive AND groupid = $1",
+		numArgs, argOids, argDatums, NULL, true, SPI_OK_SELECT, resultDatums, resultNulls,
+		2);
+	if (resultNulls[0] || resultNulls[1])
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg("Cound not find shard provided in metadata: %s",
+							   toShard)));
+	}
+
+	const char *toShardName = TextDatumGetCString(resultDatums[0]);
+	int toNodePort = DatumGetInt32(resultDatums[1]);
+
+	char *databaseName = NULL;
+	char *collectionName = NULL;
+	ParseNamespaceName(moveCollectionNamespace, &databaseName, &collectionName);
+
+	MongoCollection *collection = GetMongoCollectionByNameDatum(
+		CStringGetTextDatum(databaseName), CStringGetTextDatum(collectionName),
+		NoLock);
+	if (collection == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND),
+						errmsg("Namespace %s not found", moveCollectionNamespace)));
+	}
+
+	if (collection->shardKey != NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg("Cannot call moveCollection on a sharded collection")));
+	}
+
+	/* So now we know this collection is valid and is unsharded - check the shardId */
+	argOids[0] = OIDOID;
+	argDatums[0] = ObjectIdGetDatum(collection->relationId);
+	ExtensionExecuteMultiValueQueryWithArgsViaSPI(
+		"SELECT nodename, nodeport, ps.shardid FROM pg_dist_shard ps JOIN pg_dist_shard_placement pp ON ps.shardid = pp.shardid "
+		" WHERE logicalrelid = $1 AND shardminvalue IS NULL AND shardmaxvalue IS NULL",
+		numArgs, argOids, argDatums, NULL, true, SPI_OK_SELECT, resultDatums, resultNulls,
+		3);
+	if (resultNulls[0] || resultNulls[1] || resultNulls[2])
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+						errmsg(
+							"Cound not find shard information for collection in metadata: %s",
+							moveCollectionNamespace)));
+	}
+
+	const char *fromShardName = TextDatumGetCString(resultDatums[0]);
+	int fromNodePort = DatumGetInt32(resultDatums[1]);
+	int shardId = DatumGetInt32(resultDatums[2]);
+
+	/* First break any colocation on this table */
+	StringInfoData tableNameData;
+	initStringInfo(&tableNameData);
+	appendStringInfo(&tableNameData, "%s.%s", ApiDataSchemaName, collection->tableName);
+	const char *updateColocationQuery =
+		"SELECT update_distributed_table_colocation($1, colocate_with => 'none')";
+	bool resultNullIgnore = false;
+	argOids[0] = TEXTOID;
+	argDatums[0] = CStringGetTextDatum(tableNameData.data);
+	ExtensionExecuteQueryWithArgsViaSPI(updateColocationQuery, 1,
+										argOids, argDatums, NULL, false, SPI_OK_SELECT,
+										&resultNullIgnore);
+
+	/* Next re-colocate the retry table with the main table */
+	const char *retryTableUpdateColocationQuery =
+		"SELECT update_distributed_table_colocation($1, colocate_with => $2)";
+	StringInfoData retryTableNameData;
+	initStringInfo(&retryTableNameData);
+	appendStringInfo(&retryTableNameData, "%s.retry_%ld", ApiDataSchemaName,
+					 collection->collectionId);
+
+	Oid retryArgOid[2] = { TEXTOID, TEXTOID };
+	Datum retryArgDatums[2] = {
+		CStringGetTextDatum(retryTableNameData.data), CStringGetTextDatum(
+			tableNameData.data)
+	};
+	ExtensionExecuteQueryWithArgsViaSPI(retryTableUpdateColocationQuery, 2,
+										retryArgOid, retryArgDatums, NULL, false,
+										SPI_OK_SELECT,
+										&resultNullIgnore);
+
+	/* Now move the shard to the target group */
+	const char *shardTransferMode = useLogicalReplication ? "force_logical" :
+									"block_writes";
+	elog(LOG, "Moving collection from %s:%d to %s:%d", fromShardName, fromNodePort,
+		 toShardName, toNodePort);
+	int moveShardNumArgs = 6;
+	const char *moveShardQuery =
+		"SELECT citus_move_shard_placement(shard_id => $1, source_node_name => $2, source_node_port => $3, target_node_name => $4, target_node_port => $5, shard_transfer_mode => $6::citus.shard_transfer_mode)";
+	Oid moveShardArgOids[6] = { INT4OID, TEXTOID, INT4OID, TEXTOID, INT4OID, TEXTOID };
+	Datum moveShardArgs[6] =
+	{
+		Int32GetDatum(shardId), CStringGetTextDatum(fromShardName), Int32GetDatum(
+			fromNodePort),
+		CStringGetTextDatum(toShardName), Int32GetDatum(toNodePort), CStringGetTextDatum(
+			shardTransferMode)
+	};
+	ExtensionExecuteQueryWithArgsViaSPI(moveShardQuery, moveShardNumArgs,
+										moveShardArgOids, moveShardArgs, NULL, false,
+										SPI_OK_SELECT,
+										&resultNullIgnore);
+
+	pgbsonelement okElement = { 0 };
+	okElement.path = "ok";
+	okElement.pathLength = 2;
+	okElement.bsonValue.value_type = BSON_TYPE_DOUBLE;
+	okElement.bsonValue.value.v_double = 1;
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&okElement));
+}
+
+
 /*
  * override hooks related to colocation.
  */
@@ -180,7 +389,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 	if (colocationValue->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-						errmsg("colocation options must be a document.")));
+						errmsg("Colocation options must be provided as a document.")));
 	}
 
 	char *tableWithNamespace = psprintf("%s.%s", ApiDataSchemaName,
@@ -219,8 +428,8 @@ HandleDistributedColocation(MongoCollection *collection, const
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Unknown field colocation.%s", key),
-							errdetail_log("Unknown field colocation.%s", key)));
+							errmsg("Unrecognized field in colocation.%s", key),
+							errdetail_log("Unrecognized field in colocation.%s", key)));
 		}
 	}
 
@@ -268,10 +477,10 @@ HandleDistributedColocation(MongoCollection *collection, const
 		if (targetCollection == NULL)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-							errmsg("ns %s.%s does not exist",
+							errmsg("Namespace %s.%s cannot be found",
 								   collection->name.databaseName,
 								   targetCollectionName),
-							errdetail_log("ns %s.%s does not exist",
+							errdetail_log("Namespace %s.%s cannot be found",
 										  collection->name.databaseName,
 										  targetCollectionName)));
 		}
@@ -287,12 +496,12 @@ HandleDistributedColocation(MongoCollection *collection, const
 												 targetWithNamespace);
 
 		/* Get the colocationId of the changes table */
-		char *mongoDataWithNamespace = psprintf("%s.changes", ApiDataSchemaName);
+		char *documentdbDataWithNamespace = psprintf("%s.changes", ApiDataSchemaName);
 		RangeVar *rangeVar = makeRangeVar(ApiDataSchemaName, "changes", -1);
 		Oid changesRelId = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
 		int colocationIdOfChangesTable = GetColocationForTable(changesRelId, "changes",
-															   mongoDataWithNamespace);
+															   documentdbDataWithNamespace);
 		if (colocationId == colocationIdOfChangesTable)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
@@ -308,7 +517,7 @@ HandleDistributedColocation(MongoCollection *collection, const
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED),
 							errmsg(
-								"Cannot colocate current collection with a sharded collection.")));
+								"Current collection cannot be colocated with any sharded collection.")));
 		}
 
 		/* Also check if the colocated source has only 1 shard (otherwise require colocate=null explicitly) */
@@ -446,7 +655,7 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 										InvalidOid, DEFAULT_COLLATION_OID,
 										COERCE_EXPLICIT_CALL);
 
-	FuncExpr *castConcatExpr = makeFuncExpr(F_REGCLASS, OIDOID, list_make1(concatExpr),
+	FuncExpr *castConcatExpr = makeFuncExpr(F_TO_REGCLASS, OIDOID, list_make1(concatExpr),
 											DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID,
 											COERCE_EXPLICIT_CALL);
 
@@ -478,11 +687,13 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 											repathArgs, InvalidOid, InvalidOid,
 											COERCE_EXPLICIT_CALL);
 
-
+	/* Since no dotted paths in projection no need to override */
+	bool overrideArray = false;
 	Oid addFieldsOid = BsonDollaMergeDocumentsFunctionOid();
 	TargetEntry *firstEntry = linitial(source->targetList);
 	FuncExpr *addFields = makeFuncExpr(addFieldsOid, BsonTypeId(),
-									   list_make2(firstEntry->expr, colocationArgs),
+									   list_make3(firstEntry->expr, colocationArgs,
+												  MakeBoolValueConst(overrideArray)),
 									   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
 	firstEntry->expr = (Expr *) addFields;
 
@@ -493,7 +704,7 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 /*
  * The config.shards query in a distributed query scenario
  * will end up querying the pg_dist_node table to get the list of shards
- * and output them in a mongo compatible format.
+ * and output them in a compatible format.
  */
 static Query *
 RewriteConfigShardsQueryForDistribution(Query *baseQuery)

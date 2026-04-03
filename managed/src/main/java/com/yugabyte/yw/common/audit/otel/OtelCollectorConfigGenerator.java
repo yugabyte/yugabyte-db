@@ -1,10 +1,12 @@
 package com.yugabyte.yw.common.audit.otel;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.FileHelperService;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.MultilineConfig;
 import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat.RetryConfig;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -19,6 +21,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.models.helpers.exporters.UniverseExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
@@ -53,6 +56,7 @@ import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
+import play.libs.Json;
 
 @Singleton
 public class OtelCollectorConfigGenerator {
@@ -75,6 +79,7 @@ public class OtelCollectorConfigGenerator {
   // Log types
   private static final String LOG_TYPE_YSQL = "ysql";
   private static final String LOG_TYPE_YCQL = "ycql";
+  private static final String LOG_TYPE_QUERY_YSQL = "query_logs_ysql";
 
   // Job names
   private static final String JOB_NAME_YUGABYTE = "yugabyte";
@@ -91,6 +96,11 @@ public class OtelCollectorConfigGenerator {
   // Receiver prefixes
   private static final String RECEIVER_PREFIX_FILELOG = "filelog/";
   private static final String RECEIVER_PREFIX_PROMETHEUS = "prometheus/";
+
+  // Version constants for new otel helm values format
+  // Versions >= these use new format with full receiver names, attributes, and filters
+  public static final String OTEL_HELM_NEW_FORMAT_STABLE_VERSION = "2026.1.0.0";
+  public static final String OTEL_HELM_NEW_FORMAT_PREVIEW_VERSION = "2.29.0.0";
 
   // Processor prefixes
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
@@ -319,7 +329,7 @@ public class OtelCollectorConfigGenerator {
         collectorConfigFormat
             .getReceivers()
             .put(
-                RECEIVER_PREFIX_FILELOG + "query_logs_ysql",
+                RECEIVER_PREFIX_FILELOG + LOG_TYPE_QUERY_YSQL,
                 createYsqlQueryLogReceiver(provider, logLinePrefix));
 
         // Exporters
@@ -477,36 +487,73 @@ public class OtelCollectorConfigGenerator {
 
   public Map<String, Object> getOtelHelmValues(
       AuditLogConfig auditLogConfig, String logLinePrefix) {
+    return getOtelHelmValues(auditLogConfig, null, logLinePrefix, null);
+  }
+
+  public Map<String, Object> getOtelHelmValues(
+      AuditLogConfig auditLogConfig, QueryLogConfig queryLogConfig, String logLinePrefix) {
+    return getOtelHelmValues(auditLogConfig, queryLogConfig, logLinePrefix, null);
+  }
+
+  public Map<String, Object> getOtelHelmValues(
+      AuditLogConfig auditLogConfig,
+      QueryLogConfig queryLogConfig,
+      String logLinePrefix,
+      String ybSoftwareVersion) {
+    // Check if we should use new format based on version
+    // New format: full receiver names (filelog/ysql), attributes, filters, correct spelling
+    // Old format: short receiver names (ysql), no attributes/filters, misspelled "recievers"
+    boolean useNewFormat = true;
+    if (ybSoftwareVersion != null) {
+      useNewFormat =
+          Util.compareYBVersions(
+                  ybSoftwareVersion,
+                  OTEL_HELM_NEW_FORMAT_STABLE_VERSION,
+                  OTEL_HELM_NEW_FORMAT_PREVIEW_VERSION,
+                  true)
+              >= 0;
+    }
     // For K8s, we don't need to generate the entire config file.
     // We just need exporterCofigs and receiverConfigs.
-    if (auditLogConfig == null) {
+    if (auditLogConfig == null && queryLogConfig == null) {
       return null;
     }
+
     Map<String, Object> otelConfig = new HashMap<>();
+    Map<String, Object> allReceivers = new HashMap<>();
+    List<Object> allSecretEnvList = new ArrayList<>();
+    Map<String, Object> allExporters = new HashMap<>();
 
-    if (!auditLogConfig.isExportActive()) {
-      otelConfig.put("enabled", false);
-    } else {
-
-      otelConfig.put("enabled", true);
-      // Recievers
+    // enabled is false by default, set to true if any log export is active
+    boolean enabled = false;
+    if (auditLogConfig != null && auditLogConfig.isExportActive()) {
+      enabled = true;
+      // Receivers
       Map<String, Object> receivers = new HashMap<>();
       OtelCollectorConfigFormat.RegexOperator regexOperator =
           getRegexOperator(logLinePrefix, ExportType.AUDIT_LOGS);
+      // Use full receiver name for new format, short name for old format
+      String ysqlReceiverName =
+          useNewFormat ? RECEIVER_PREFIX_FILELOG + LOG_TYPE_YSQL : LOG_TYPE_YSQL;
       if (auditLogConfig.getYsqlAuditConfig() != null
           && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
-        Map<String, Object> ysqlReciever = new HashMap<>();
-        ysqlReciever.put("regex", regexOperator.getRegex());
-        ysqlReciever.put("timestamp", regexOperator.getTimestamp());
-        ysqlReciever.put("lineStartPattern", generateLineStartPattern(logLinePrefix));
-        receivers.put(LOG_TYPE_YSQL, ysqlReciever);
+        Map<String, Object> ysqlReceiver = new HashMap<>();
+        ysqlReceiver.put("regex", regexOperator.getRegex());
+        ysqlReceiver.put("timestamp", regexOperator.getTimestamp());
+        ysqlReceiver.put("lineStartPattern", generateLineStartPattern(logLinePrefix));
+        ysqlReceiver.put("attributes", ImmutableMap.of("yugabyte.audit_log_type", LOG_TYPE_YSQL));
+        ysqlReceiver.put(
+            "filters",
+            ImmutableList.of("body not matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\""));
+        receivers.put(ysqlReceiverName, ysqlReceiver);
       }
-      otelConfig.put("recievers", receivers);
+      allReceivers.putAll(receivers);
 
       // Exporters
       OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
       List<Object> secretEnv = new ArrayList<>();
       if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+        String finalYsqlReceiverName = ysqlReceiverName;
         auditLogConfig
             .getUniverseLogsExporterConfig()
             .forEach(
@@ -520,11 +567,101 @@ public class OtelCollectorConfigGenerator {
                           new ArrayList<>(),
                           ExportType.AUDIT_LOGS);
                   appendSecretEnv(telemetryProvider, secretEnv);
+                  // Add batch, memoryLimiter, attributes, and receivers to the exporter config
+                  appendK8sExporterProcessorConfigs(
+                      allExporters,
+                      exporterName,
+                      collectorConfigFormat.getExporters().get(exporterName),
+                      telemetryProvider,
+                      config,
+                      finalYsqlReceiverName);
                 });
-        otelConfig.put("exporters", collectorConfigFormat.getExporters());
-        otelConfig.put("secretEnv", secretEnv);
+        allSecretEnvList.addAll(secretEnv);
       }
     }
+
+    // Query logs export (when active)
+    if (queryLogConfig != null && queryLogConfig.isExportActive()) {
+      enabled = true;
+
+      Map<String, Object> receivers = new HashMap<>();
+      OtelCollectorConfigFormat.RegexOperator regexOperator =
+          getRegexOperator(logLinePrefix, ExportType.QUERY_LOGS);
+      // Query logs always uses new format (full receiver name)
+      String queryYsqlReceiverName = RECEIVER_PREFIX_FILELOG + LOG_TYPE_QUERY_YSQL;
+      if (queryLogConfig.getYsqlQueryLogConfig() != null
+          && queryLogConfig.getYsqlQueryLogConfig().isEnabled()) {
+        Map<String, Object> ysqlReceiver = new HashMap<>();
+        ysqlReceiver.put("regex", regexOperator.getRegex());
+        ysqlReceiver.put("timestamp", regexOperator.getTimestamp());
+        ysqlReceiver.put("lineStartPattern", generateQueryLineStartPattern(logLinePrefix));
+        // Query logs always uses new format with attributes and filters
+        ysqlReceiver.put("attributes", ImmutableMap.of("yugabyte.query_log_type", LOG_TYPE_YSQL));
+        ysqlReceiver.put(
+            "filters",
+            ImmutableList.of(
+                "body matches \"^.*\\\\w+:  AUDIT:(.|\\\\n|\\\\r|\\\\s)*$\"",
+                "body matches \"unable to find pgstat entry for abnormally terminated PID\"",
+                "body matches \"^[IWEF]\\\\d{4} \\\\d{2}:\\\\d{2}:\\\\d{2}\\\\.\\\\d{6} \\\\d+"
+                    + " .*\\\\.cc:\\\\d+\""));
+        receivers.put(queryYsqlReceiverName, ysqlReceiver);
+      }
+      allReceivers.putAll(receivers);
+
+      // Exporters
+      OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
+      List<Object> secretEnv = new ArrayList<>();
+      if (CollectionUtils.isNotEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
+        String finalQueryYsqlReceiverName = queryYsqlReceiverName;
+        queryLogConfig
+            .getUniverseLogsExporterConfig()
+            .forEach(
+                config -> {
+                  TelemetryProvider telemetryProvider =
+                      telemetryProviderService.getOrBadRequest(config.getExporterUuid());
+                  String exporterName =
+                      appendExporterConfig(
+                          telemetryProvider,
+                          collectorConfigFormat,
+                          new ArrayList<>(),
+                          ExportType.QUERY_LOGS);
+                  appendSecretEnv(telemetryProvider, secretEnv);
+                  // Add batch, memoryLimiter, attributes, and receivers to the exporter config
+                  appendK8sExporterProcessorConfigs(
+                      allExporters,
+                      exporterName,
+                      collectorConfigFormat.getExporters().get(exporterName),
+                      telemetryProvider,
+                      config,
+                      finalQueryYsqlReceiverName);
+                });
+        allSecretEnvList.addAll(secretEnv);
+      }
+    }
+
+    // Only enable and configure otel collector if we have valid receivers and exporters
+    boolean hasValidConfig = !allReceivers.isEmpty() && !allExporters.isEmpty();
+    if (enabled && hasValidConfig) {
+      otelConfig.put("enabled", true);
+      // Use correct spelling for new format, misspelled for old format (backward compat)
+      otelConfig.put(useNewFormat ? "receivers" : "recievers", allReceivers);
+      otelConfig.put("exporters", allExporters);
+      otelConfig.put("secretEnv", allSecretEnvList);
+      // Add transform processor to remove otho8Aut prefix from log body
+      otelConfig.put(
+          "transform",
+          ImmutableMap.of(
+              "log_statements",
+              ImmutableList.of(
+                  ImmutableMap.of(
+                      "context",
+                      "log",
+                      "statements",
+                      ImmutableList.of("replace_pattern(body, \"^otho8Aut\", \"\")")))));
+    } else {
+      otelConfig.put("enabled", false);
+    }
+
     return otelConfig;
   }
 
@@ -1219,6 +1356,76 @@ public class OtelCollectorConfigGenerator {
     return ".*([A-Z]\\d{4})|("
         + auditLogRegexGenerator.generateAuditLogRegex(logPrefix, /*onlyPrefix*/ true).getRegex()
         + ")";
+  }
+
+  /**
+   * Helper method to add batch, memoryLimiter, attributes, and receivers configs to the exporter
+   * for K8s Helm values. The Helm chart expects these as nested properties within each exporter.
+   */
+  @SuppressWarnings("unchecked")
+  private void appendK8sExporterProcessorConfigs(
+      Map<String, Object> allExporters,
+      String exporterName,
+      OtelCollectorConfigFormat.Exporter exporter,
+      TelemetryProvider telemetryProvider,
+      UniverseExporterConfig exporterConfig,
+      String receiverName) {
+    // Convert exporter to a Map so we can add additional properties
+    Map<String, Object> exporterMap = new HashMap<>();
+
+    // Copy base exporter config using Play's Json library
+    try {
+      JsonNode jsonNode = Json.toJson(exporter);
+      exporterMap = Json.fromJson(jsonNode, HashMap.class);
+    } catch (Exception e) {
+      // If conversion fails, start with empty map - base exporter fields will be missing
+      // but the additional configs will still be added
+    }
+
+    // Add attributes config for the processor
+    List<Map<String, Object>> attributeActions = new ArrayList<>();
+    // Add telemetry provider specific attributes
+    switch (telemetryProvider.getConfig().getType()) {
+      case DATA_DOG:
+        attributeActions.add(
+            ImmutableMap.of("action", "upsert", "key", "ddsource", "value", "yugabyte"));
+        attributeActions.add(
+            ImmutableMap.of(
+                "action", "upsert", "key", "service", "value", SERVICE_OTEL_COLLECTOR_FULL));
+        break;
+      default:
+        // Add any common attributes for other telemetry providers if needed
+        break;
+    }
+    if (!attributeActions.isEmpty()) {
+      exporterMap.put("attributes", attributeActions);
+    }
+
+    // Add batch and memoryLimiter processor configs for query logs
+    // (UniverseQueryLogsExporterConfig has these settings)
+    if (exporterConfig instanceof UniverseQueryLogsExporterConfig) {
+      UniverseQueryLogsExporterConfig queryLogsConfig =
+          (UniverseQueryLogsExporterConfig) exporterConfig;
+
+      // Add batch processor config
+      Map<String, Object> batchConfig = new HashMap<>();
+      batchConfig.put("send_batch_size", queryLogsConfig.getSendBatchSize());
+      batchConfig.put("send_batch_max_size", queryLogsConfig.getSendBatchMaxSize());
+      batchConfig.put("timeout", queryLogsConfig.getSendBatchTimeoutSeconds() + "s");
+      exporterMap.put("batch", batchConfig);
+
+      // Add memoryLimiter processor config
+      Map<String, Object> memoryLimiterConfig = new HashMap<>();
+      memoryLimiterConfig.put(
+          "check_interval", queryLogsConfig.getMemoryLimitCheckIntervalSeconds() + "s");
+      memoryLimiterConfig.put("limit_mib", queryLogsConfig.getMemoryLimitMib());
+      exporterMap.put("memoryLimiter", memoryLimiterConfig);
+    }
+
+    // Add receivers list so the Helm chart knows which receiver to use for this exporter
+    exporterMap.put("receivers", ImmutableList.of(receiverName));
+
+    allExporters.put(exporterName, exporterMap);
   }
 
   @Data

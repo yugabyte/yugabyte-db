@@ -36,7 +36,9 @@ ParseDollarRand(const bson_value_t *argument, AggregationExpressionData *data,
 		argument->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION10065),
-						errmsg("invalid parameter: expected an object ($rand)")));
+						errmsg(
+							"Expected 'array' or 'document' type for $rand but found '%s' type",
+							BsonTypeName(argument->value_type))));
 	}
 	else if ((argument->value_type == BSON_TYPE_DOCUMENT &&
 			  !IsBsonValueEmptyDocument(argument)) ||
@@ -44,7 +46,8 @@ ParseDollarRand(const bson_value_t *argument, AggregationExpressionData *data,
 			  !IsBsonValueEmptyArray(argument)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_DOLLARRANDNONEMPTYARGUMENT),
-						errmsg("$rand does not currently accept arguments")));
+						errmsg(
+							"Expected 0 arguments to be present for $rand")));
 	}
 
 	/* The random value will be generated in HandlePreParsedDollarRand to avoid caching a constant value. */
@@ -146,7 +149,7 @@ HandlePreParsedDollarMeta(pgbson *doc, void *arguments,
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17308),
-						errmsg("Unsupported argument to $meta: %.*s",
+						errmsg("Argument provided to the $meta is not supported: %.*s",
 							   valueView.length, valueView.string)));
 	}
 
