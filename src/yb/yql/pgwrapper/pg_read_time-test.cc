@@ -901,6 +901,10 @@ TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
 
   // A non-superuser should be able to SET yb_read_time in their session.
   ASSERT_OK(conn.Execute("CREATE ROLE test_user LOGIN"));
+  // Get a fresh timestamp after creating test_user so that a historical read at this time
+  // can still resolve the role OID during any cache refresh.
+  auto t2 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
   {
     auto user_conn = ASSERT_RESULT(PGConnBuilder({
         .host = pg_host_port().host(),
@@ -908,7 +912,7 @@ TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
         .dbname = "yugabyte",
         .user = "test_user"
     }).Connect());
-    ASSERT_OK(user_conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+    ASSERT_OK(user_conn.ExecuteFormat("SET yb_read_time TO $0", t2));
     ASSERT_OK(user_conn.Execute("SET yb_read_time TO 0"));
   }
 
