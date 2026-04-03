@@ -1032,6 +1032,12 @@ run_one_cxx_test() {
     fi
 
     test_wrapper_cmd_line=("${test_cmd_line_with_cgroups[@]}")
+  elif is_linux; then
+    log_with_color "$YELLOW_COLOR" "WARNING: cgroups environment is not set up." \
+        "Tests requiring cgroup isolation (e.g. cgroups-test, pg_cgroups-test," \
+        "tserver_cgroup_manager-test) will fail." \
+        "For cgroup v1, run: sudo mkdir /sys/fs/cgroup/cpu/yb-unit-test &&" \
+        "sudo chmod o+w /sys/fs/cgroup/cpu/yb-unit-test{,/cgroup.procs}"
   fi
   if [[ $TEST_TMPDIR == "/" || $TEST_TMPDIR == "/tmp" ]]; then
     # Let's be paranoid because we'll be deleting everything inside this directory.
