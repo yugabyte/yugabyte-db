@@ -49,6 +49,11 @@ using namespace std::literals;
 
 namespace {
 
+Result<uint64_t> FetchCurrentTimestampMicros(PGConn& conn) {
+  return conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint");
+}
+
 class PgReadTimeTest : public PgMiniTestBase {
  protected:
   using StmtExecutor = std::function<void()>;
@@ -469,8 +474,7 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,10) AS i"));
   auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
   ASSERT_EQ(count, 10);
-  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
-      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  auto t1 = ASSERT_RESULT(FetchCurrentTimestampMicros(conn));
   LOG(INFO) << "Deleting 4 rows from table t";
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE k>6"));
   count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
@@ -518,8 +522,7 @@ TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   ASSERT_OK(conn.Execute("INSERT INTO t (k,v) SELECT i,i FROM generate_series(1,4) AS i"));
   auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT count(*) FROM t"));
   ASSERT_EQ(count, 4);
-  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
-      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  auto t1 = ASSERT_RESULT(FetchCurrentTimestampMicros(conn));
   LOG(INFO) << "Deleting 2 rows from table t";
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE k>2"));
   count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
@@ -578,8 +581,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   LOG(INFO) << "Create table t2";
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (k2 INT primary key, v2 text);"));
   //  Step 2
-  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
-      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  auto t1 = ASSERT_RESULT(FetchCurrentTimestampMicros(conn));
   LOG(INFO) << "Current timestamp t=" << std::to_string(t1);
   // Step 3
   auto hostport = pg_host_port();
@@ -889,8 +891,7 @@ TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
   auto conn = ASSERT_RESULT(Connect());
 
   // yb_read_time should be settable in a session (PGC_USERSET).
-  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
-      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  auto t1 = ASSERT_RESULT(FetchCurrentTimestampMicros(conn));
   ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
 
@@ -903,8 +904,7 @@ TEST_F(PgMiniTestBase, YbReadTimeSessionOnly) {
   ASSERT_OK(conn.Execute("CREATE ROLE test_user LOGIN"));
   // Get a fresh timestamp after creating test_user so that a historical read at this time
   // can still resolve the role OID during any cache refresh.
-  auto t2 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
-      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  auto t2 = ASSERT_RESULT(FetchCurrentTimestampMicros(conn));
   {
     auto user_conn = ASSERT_RESULT(PGConnBuilder({
         .host = pg_host_port().host(),
