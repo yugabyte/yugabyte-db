@@ -6955,13 +6955,14 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 
 	/*
 	 * yb_read_time should only be set within a session or transaction, not
-	 * persisted via ALTER DATABASE/ROLE SET.  The persistent sources
-	 * (PGC_S_GLOBAL through PGC_S_DATABASE_USER) are contiguous in the
-	 * GucSource enum.  PGC_S_TEST is used by ALTER DATABASE/ROLE SET to
-	 * validate values before storing them.
+	 * persisted via ALTER DATABASE/ROLE SET.  PGC_S_TEST is used by ALTER
+	 * DATABASE/ROLE SET to validate values before storing them.
 	 */
 	if (value_ull != 0 &&
-		((source >= PGC_S_GLOBAL && source <= PGC_S_DATABASE_USER) ||
+		(source == PGC_S_GLOBAL ||
+		 source == PGC_S_DATABASE ||
+		 source == PGC_S_USER ||
+		 source == PGC_S_DATABASE_USER ||
 		 source == PGC_S_TEST))
 	{
 		GUC_check_errdetail("yb_read_time can only be set within a session.");
