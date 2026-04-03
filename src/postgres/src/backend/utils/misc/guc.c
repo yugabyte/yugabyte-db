@@ -6930,7 +6930,7 @@ static struct config_string ConfigureNamesString[] =
 						 " only read old data without schema changes. In other words, it should not be"
 						 " set to a timestamp before a DDL operation has been performed."
 						 " Write-DML or DDL queries are not allowed while this variable is set."),
-			GUC_DISALLOW_IN_FILE | GUC_YB_DISALLOW_IN_DB_ROLE_SETTING
+			GUC_DISALLOW_IN_FILE
 		},
 		&yb_read_time_string,
 		"0",

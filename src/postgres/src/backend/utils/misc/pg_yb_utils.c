@@ -6953,6 +6953,23 @@ check_yb_read_time(char **newval, void **extra, GucSource source)
 		return false;
 	}
 
+	/*
+	 * yb_read_time should only be set within a session or transaction, not
+	 * persisted via ALTER DATABASE SET or ALTER ROLE SET.  Reject non-default
+	 * values coming from database, role, global, or test (used by ALTER
+	 * DATABASE/ROLE SET validation) sources.
+	 */
+	if (value_ull != 0 &&
+		(source == PGC_S_DATABASE ||
+		 source == PGC_S_USER ||
+		 source == PGC_S_DATABASE_USER ||
+		 source == PGC_S_GLOBAL ||
+		 source == PGC_S_TEST))
+	{
+		GUC_check_errdetail("yb_read_time can only be set within a session.");
+		return false;
+	}
+
 	if (is_ht_unit)
 	{
 		/*

@@ -18,7 +18,6 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_db_role_setting.h"
 #include "utils/fmgroids.h"
-#include "utils/guc.h"
 #include "utils/rel.h"
 
 void
@@ -29,21 +28,6 @@ AlterSetting(Oid databaseid, Oid roleid, VariableSetStmt *setstmt)
 	Relation	rel;
 	ScanKeyData scankey[2];
 	SysScanDesc scan;
-
-	/*
-	 * YB: Block parameters that should only be set per-session from being
-	 * persisted via ALTER DATABASE/ROLE SET.
-	 */
-	if (setstmt->kind == VAR_SET_VALUE || setstmt->kind == VAR_SET_CURRENT)
-	{
-		int			flags = GetConfigOptionFlags(setstmt->name, true);
-
-		if (flags & GUC_YB_DISALLOW_IN_DB_ROLE_SETTING)
-			ereport(ERROR,
-					(errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM),
-					 errmsg("parameter \"%s\" cannot be set via ALTER DATABASE or ALTER ROLE",
-							setstmt->name)));
-	}
 
 	valuestr = ExtractSetVariableArgs(setstmt);
 
