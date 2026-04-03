@@ -61,7 +61,6 @@ main {
         position: relative;
       }
     }
-    
 
     > pre,
     .highlight {
@@ -75,10 +74,6 @@ main {
       background-clip: border-box;
       border: 1px solid rgba(0, 0, 0, .125);
       border-radius: .25rem;
-
-      pre{
-        overflow: visible;
-      }
     }
 
     li > p + pre,
@@ -270,7 +265,7 @@ main {
         background: #f7fafc;
         height: 37px;
         position: absolute;
-        right: 21px;
+        left: calc(100% - 61px);
         width: 40px;
         top: 6px;
         z-index: 0;
@@ -282,7 +277,7 @@ main {
       }
 
       button.copy {
-        right: 27px;
+        left: calc(100% - 59px);
 
         &:active {
           color: transparent;
