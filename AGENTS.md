@@ -32,10 +32,12 @@ Before building YugabyteDB in a Claude Code session, install the following depen
   ```
 - **rsync**
 - **gettext**
+- **en_US.UTF-8 locale** — required by `initdb`; minimal containers often lack it
 
-On Ubuntu/Debian, install rsync and gettext with:
+On Ubuntu/Debian:
 ```bash
 sudo apt-get install -y rsync gettext
+sudo locale-gen en_US.UTF-8
 ```
 
 ### Coding and Development
