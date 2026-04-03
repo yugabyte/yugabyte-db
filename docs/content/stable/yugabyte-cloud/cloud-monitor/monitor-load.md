@@ -4,6 +4,8 @@ headerTitle: Cluster Load
 linkTitle: Cluster Load
 description: Detect anomalies in cluster performance.
 headcontent: Discover whether the system was overloaded, and why
+tags:
+  feature: tech-preview
 menu:
   stable_yugabyte-cloud:
     identifier: monitor-load

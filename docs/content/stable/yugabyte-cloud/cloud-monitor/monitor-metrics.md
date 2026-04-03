@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Detailed performance metrics for your cluster are available on the cluster **Performance>Metrics** tab. **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
+Detailed performance metrics for your cluster are available on the cluster **Performance>Metrics** tab. **Metrics** displays a comprehensive array of performance metrics, including for YSQL and YCQL API performance.
 
 {{< youtube id="Xv4y6wWSHJ8" title="Monitor cluster performance in YugabyteDB Aeon" >}}
 
@@ -24,11 +24,13 @@ You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-a
 
 You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
+To choose the metrics to display, click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position.
+
+To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
+
 ## Performance metrics
 
-To choose the metrics to display on the **Performance** tab, select **Metrics** and then click **Add Charts**. To rearrange the metrics, click **Add Charts** and **Reorder Charts**, then drag the chart to a new position. To [export metrics](../metrics-export/) to third-party tools, click **Export**. You can additionally view the metrics for specific nodes.
-
-The **Performance** tab provides the following metrics in addition to the Overview metrics.
+The **Performance** tab provides the following metrics in addition to the [Overview metrics](../monitor-performance/#overview).
 
 ### YSQL Ops
 

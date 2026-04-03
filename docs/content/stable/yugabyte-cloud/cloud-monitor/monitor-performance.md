@@ -14,25 +14,27 @@ aliases:
 type: docs
 ---
 
-Monitor performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Performance** tab.
+You can monitor your cluster performance using the following views:
 
-- **Metrics** displays a comprehensive array of more specific performance metrics, including for YSQL and YCQL API performance.
-- **Queries>Slow Queries** shows YSQL queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster
-- **Queries>Live Queries** tab shows the queries that are currently "in-flight" on your cluster.
-- **Cluster Load** shows the load on the cluster at a glance. Use this view to answer the question _Was the system overloaded, and why_.
-- **Insights** scans clusters for performance optimizations, including index and schema changes, and to detect potentially hot nodes.
+| View | Description |
+| :--- | :---------- |
+| [Metrics](../monitor-metrics/) | Displays a comprehensive array of performance metrics, including for YSQL and YCQL API performance. |
+| [Queries>Slow Queries](../cloud-queries-slow/) | Shows YSQL queries run on the cluster, sorted by running time. Identify slower running database operations and evaluate query execution times over time. |
+| [Queries>Live Queries](../cloud-queries-live/) | Shows the queries that are currently "in-flight" on your cluster. |
+| [Cluster Load](../monitor-load/) | Shows the load on the cluster at a glance. Use this view to answer the question _Was the system overloaded, and why_. |
+| [Insights](../cloud-advisor/) | Scans clusters for performance optimizations, including index and schema changes, and to detect potentially hot nodes. |
 
 Use these tools to monitor the performance of your cluster and to determine whether the configuration needs to change. For information on changing or scaling your cluster, refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
+## Overview
+
+The cluster **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage, averaged over all the nodes in the cluster.
+
 You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
-
-## Overview metrics
-
-The **Overview** tab displays a summary of the cluster infrastructure, along with time series charts of four key performance metrics for all the nodes in the cluster - Operations/sec, Average Latency, CPU Usage, and Disk Usage, averaged over all the nodes in the cluster.
 
 You can enable alerts for CPU usage and disk usage. Refer to [Alerts](../cloud-alerts/).
 
-The following table describes the metrics available on the **Overview**.
+The following table describes the metrics available on the cluster **Overview** tab.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |

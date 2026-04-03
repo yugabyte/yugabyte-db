@@ -4,6 +4,8 @@ headerTitle: Perf Advisor
 linkTitle: Perf Advisor
 description: Detect anomalies in cluster performance.
 headcontent: Detect anomalies in cluster performance
+tags:
+  feature: tech-preview
 menu:
   stable_yugabyte-cloud:
     identifier: aeon-anomalies

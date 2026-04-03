@@ -30,7 +30,7 @@ Use YugabyteDB Aeon [Alerts](cloud-alerts/) to be automatically notified of pote
 
 ### Performance monitoring
 
-Monitor database and cluster performance in real time. Access performance monitoring from the cluster **Performance** tab, and detect performance anomalies in the **Perf Advisor** tab.
+Monitor database and cluster performance in real time. Access performance monitoring from the cluster **Performance** tab.
 
 | <div style="width:100px">Feature</div> | Description |
 | :--- | :--- |
@@ -39,7 +39,10 @@ Monitor database and cluster performance in real time. Access performance monito
 | [Live queries](cloud-queries-live/) | The **Queries>Live Queries** tab shows the queries that are currently "in-flight" on your cluster. |
 | [Cluster Load](monitor-load/) | The **Cluster Load** tab shows the load on the cluster at a glance. Use this view to answer the question _Was the system overloaded, and why_. |
 | [Insights](cloud-advisor/) | Scan clusters for performance optimizations, including index and schema changes, and detect potentially hot nodes. |
-| [Perf Advisor](aeon-anomalies/) | Shows potential performance impacting anomalies. Use this view to answer the question _When did problems occur, and what changed at that time_. |
+
+### Detect anomalies
+
+Detect performance anomalies on the **Perf Advisor** tab. [Perf Advisor](aeon-anomalies/) shows potential performance impacting anomalies. Use this view to answer the question _When did problems occur, and what changed at that time_.
 
 ### Integrations
 
