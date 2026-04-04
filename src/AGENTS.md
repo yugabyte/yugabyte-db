@@ -15,13 +15,24 @@ Before building YugabyteDB in a Claude Code session, install the following depen
   pip3 install 'cmake>=3.31'
   ```
 - **rsync**
-- **gettext**
+- **gettext** (provides `msgfmt`, required by postgres NLS configure)
 - **en_US.UTF-8 locale** — required by `initdb`; minimal containers often lack it
 
 On Ubuntu/Debian:
 ```bash
 sudo apt-get install -y rsync gettext
 sudo locale-gen en_US.UTF-8
+```
+
+If `apt-get` fails due to DNS resolution issues (common in Claude Code web sessions),
+download the `.deb` files directly via `curl` and install with `dpkg`:
+```bash
+cd /tmp
+curl -L -o gettext-base.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext-base_0.21-14ubuntu2_amd64.deb"
+curl -L -o gettext.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext_0.21-14ubuntu2_amd64.deb"
+curl -L -o libpopt0.deb "http://archive.ubuntu.com/ubuntu/pool/main/p/popt/libpopt0_1.19+dfsg-1build1_amd64.deb"
+curl -L -o rsync.deb "http://security.ubuntu.com/ubuntu/pool/main/r/rsync/rsync_3.2.7-1ubuntu1.2_amd64.deb"
+sudo dpkg -i gettext-base.deb gettext.deb libpopt0.deb rsync.deb
 ```
 
 ## Build System
