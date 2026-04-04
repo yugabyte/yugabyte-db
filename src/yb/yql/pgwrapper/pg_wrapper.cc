@@ -403,12 +403,8 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
-DEFINE_NON_RUNTIME_uint32(ysql_documentdb_gateway_port, 10260,
+DEFINE_NON_RUNTIME_uint32(ysql_documentdb_gateway_port, 27017,
     "Port for the DocumentDB Gateway to listen on for MongoDB wire protocol connections.");
-
-DEFINE_NON_RUNTIME_bool(documentdb_enable_auth, false,
-    "Enable SCRAM-SHA-256 authentication for the DocumentDB Gateway. "
-    "When false, the gateway accepts connections without authentication.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
@@ -759,8 +755,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
     lines.push_back("documentdb_gateway.database='yugabyte'");
     lines.push_back(Format("documentdb_gateway.setup_configuration_file='$0'",
                            gateway_config_path));
-    lines.push_back(Format("documentdb.isNativeAuthEnabled=$0",
-                           FLAGS_documentdb_enable_auth ? "true" : "false"));
   }
 
   // Finally add gFlags.
