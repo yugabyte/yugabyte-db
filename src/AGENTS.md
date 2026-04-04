@@ -18,15 +18,9 @@ Before building YugabyteDB in a Claude Code session, install the following depen
 - **gettext** (provides `msgfmt`, required by postgres NLS configure)
 - **en_US.UTF-8 locale** — required by `initdb`; minimal containers often lack it
 
-On Ubuntu/Debian:
+On Ubuntu/Debian (`apt-get` has DNS issues in Claude Code web sessions — use `curl` + `dpkg` instead):
 ```bash
-sudo apt-get install -y rsync gettext
 sudo locale-gen en_US.UTF-8
-```
-
-If `apt-get` fails due to DNS resolution issues (common in Claude Code web sessions),
-download the `.deb` files directly via `curl` and install with `dpkg`:
-```bash
 cd /tmp
 curl -L -o gettext-base.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext-base_0.21-14ubuntu2_amd64.deb"
 curl -L -o gettext.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext_0.21-14ubuntu2_amd64.deb"
