@@ -404,7 +404,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
 DEFINE_NON_RUNTIME_uint32(ysql_documentdb_gateway_port, 27017,
-    "Port for the DocumentDB Gateway to listen on for MongoDB wire protocol connections.");
+    "Port for the DocumentDB Gateway to listen on.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
