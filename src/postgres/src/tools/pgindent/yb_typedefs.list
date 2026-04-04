@@ -152,6 +152,7 @@ YbPgMemTracker
 YbPgRpcStats
 YbPgssCounters
 YbPgssFillInConstantLengths
+YbPgssQueryNeedingNormalization
 YbPlanInfo
 YbPlanStatePtr
 YbPrefetcherStarterFunctor
