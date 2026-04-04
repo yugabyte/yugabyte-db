@@ -35,7 +35,6 @@ import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
-import org.yb.minicluster.MiniYBClusterBuilder;
 
 /**
  * Base class for DocumentDB Gateway tests. Handles cluster setup with documentdb flags,
@@ -81,20 +80,6 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
     flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
     flagMap.putAll(getAdditionalTServerFlags());
     return flagMap;
-  }
-
-  @Override
-  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-    super.customizeMiniClusterBuilder(builder);
-    // Assign each tserver a unique gateway port to avoid "Address already in use" conflicts.
-    List<Map<String, String>> perTServerFlags = new ArrayList<>();
-    int basePort = getBaseGatewayPort();
-    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-      Map<String, String> flags = new HashMap<>();
-      flags.put("ysql_documentdb_gateway_port", String.valueOf(basePort + i));
-      perTServerFlags.add(flags);
-    }
-    builder.perTServerFlags(perTServerFlags);
   }
 
   @Before
