@@ -406,6 +406,12 @@ DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentD
 DEFINE_NON_RUNTIME_uint32(ysql_documentdb_gateway_port, 27017,
     "Port for the DocumentDB Gateway to listen on.");
 
+DEFINE_NON_RUNTIME_string(ysql_documentdb_gateway_database, "yugabyte",
+    "Database for the DocumentDB Gateway background worker to connect to.");
+
+DEFINE_NON_RUNTIME_string(ysql_documentdb_gateway_user, "yugabyte",
+    "PostgreSQL system user for the DocumentDB Gateway to use.");
+
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
     "Enables invalidation of individual table cache entry on catalog cache refresh, "
     "only applicable when invalidation messages are enabled.");
@@ -491,8 +497,8 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
       "{\n"
       "  \"NodeHostName\": \"$0\",\n"
       "  \"PostgresHostName\": \"$0\",\n"
-      "  \"PostgresSystemUser\": \"yugabyte\",\n"
-      "  \"PostgresDatabase\": \"yugabyte\",\n"
+      "  \"PostgresSystemUser\": \"$3\",\n"
+      "  \"PostgresDatabase\": \"$4\",\n"
       "  \"BlockedRolePrefixes\": "
       "[ \"documentdb\", \"citus\", \"pg\", \"internal_role\" ],\n"
       "  \"PostgresPort\": $1,\n"
@@ -502,7 +508,8 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
       "  },\n"
       "  \"UseLocalHost\": false\n"
       "}\n",
-      conf.listen_addresses, conf.pg_port, FLAGS_ysql_documentdb_gateway_port);
+      conf.listen_addresses, conf.pg_port, FLAGS_ysql_documentdb_gateway_port,
+      FLAGS_ysql_documentdb_gateway_user, FLAGS_ysql_documentdb_gateway_database);
   RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, gateway_config_path));
   return gateway_config_path;
 }
@@ -750,7 +757,8 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
 
   if (FLAGS_ysql_enable_documentdb) {
     auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
-    lines.push_back("documentdb_gateway.database='yugabyte'");
+    lines.push_back(Format("documentdb_gateway.database='$0'",
+                           FLAGS_ysql_documentdb_gateway_database));
     lines.push_back(Format("documentdb_gateway.setup_configuration_file='$0'",
                            gateway_config_path));
   }
