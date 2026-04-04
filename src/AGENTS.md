@@ -21,12 +21,13 @@ Before building YugabyteDB in a Claude Code session, install the following depen
 On Ubuntu/Debian (`apt-get` has DNS issues in Claude Code web sessions — use `curl` + `dpkg` instead):
 ```bash
 sudo locale-gen en_US.UTF-8
-cd /tmp
+pushd /tmp
 curl -L -o gettext-base.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext-base_0.21-14ubuntu2_amd64.deb"
 curl -L -o gettext.deb "http://archive.ubuntu.com/ubuntu/pool/main/g/gettext/gettext_0.21-14ubuntu2_amd64.deb"
 curl -L -o libpopt0.deb "http://archive.ubuntu.com/ubuntu/pool/main/p/popt/libpopt0_1.19+dfsg-1build1_amd64.deb"
 curl -L -o rsync.deb "http://security.ubuntu.com/ubuntu/pool/main/r/rsync/rsync_3.2.7-1ubuntu1.2_amd64.deb"
 sudo dpkg -i gettext-base.deb gettext.deb libpopt0.deb rsync.deb
+popd
 ```
 
 ## Build System
