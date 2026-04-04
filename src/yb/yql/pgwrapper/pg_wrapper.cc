@@ -403,13 +403,13 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_mixed_mode_saop_pushdown, false,
 
 DEFINE_NON_RUNTIME_PREVIEW_bool(ysql_enable_documentdb, false, "Enable DocumentDB YSQL extension");
 
-DEFINE_NON_RUNTIME_uint32(ysql_documentdb_gateway_port, 27017,
+DEFINE_NON_RUNTIME_uint32(documentdb_port, 27017,
     "Port for the DocumentDB Gateway to listen on.");
 
-DEFINE_NON_RUNTIME_string(ysql_documentdb_gateway_database, "yugabyte",
+DEFINE_NON_RUNTIME_string(documentdb_database, "yugabyte",
     "Database for the DocumentDB Gateway background worker to connect to.");
 
-DEFINE_NON_RUNTIME_string(ysql_documentdb_gateway_user, "yugabyte",
+DEFINE_NON_RUNTIME_string(documentdb_user, "yugabyte",
     "PostgreSQL system user for the DocumentDB Gateway to use.");
 
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_invalidate_table_cache_entry, true,
@@ -508,8 +508,8 @@ Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
       "  },\n"
       "  \"UseLocalHost\": false\n"
       "}\n",
-      conf.listen_addresses, conf.pg_port, FLAGS_ysql_documentdb_gateway_port,
-      FLAGS_ysql_documentdb_gateway_user, FLAGS_ysql_documentdb_gateway_database);
+      conf.listen_addresses, conf.pg_port, FLAGS_documentdb_port,
+      FLAGS_documentdb_user, FLAGS_documentdb_database);
   RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, gateway_config_path));
   return gateway_config_path;
 }
@@ -758,7 +758,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   if (FLAGS_ysql_enable_documentdb) {
     auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
     lines.push_back(Format("documentdb_gateway.database='$0'",
-                           FLAGS_ysql_documentdb_gateway_database));
+                           FLAGS_documentdb_database));
     lines.push_back(Format("documentdb_gateway.setup_configuration_file='$0'",
                            gateway_config_path));
   }
