@@ -484,11 +484,10 @@ string FormatPgGFlagValue(const string& value, const string& type) {
 
 namespace {
 
-Result<std::string> WriteDocumentDBGatewayConfig(
-    const std::string& data_dir, const std::string& listen_addresses, uint16_t pg_port) {
-  std::string gateway_config_path =
-      JoinPathSegments(data_dir, "documentdb_gateway_config.json");
-  std::string content = Format(
+Result<std::string> WriteDocumentDBGatewayConfig(const PgProcessConf& conf) {
+  auto gateway_config_path =
+      JoinPathSegments(conf.data_dir, "documentdb_gateway_config.json");
+  auto content = Format(
       "{\n"
       "  \"NodeHostName\": \"$0\",\n"
       "  \"PostgresHostName\": \"$0\",\n"
@@ -503,8 +502,8 @@ Result<std::string> WriteDocumentDBGatewayConfig(
       "  },\n"
       "  \"UseLocalHost\": false\n"
       "}\n",
-      listen_addresses, pg_port, FLAGS_ysql_documentdb_gateway_port);
-  RETURN_NOT_OK(WriteStringToFile(Env::Default(), Slice(content), gateway_config_path));
+      conf.listen_addresses, conf.pg_port, FLAGS_ysql_documentdb_gateway_port);
+  RETURN_NOT_OK(WriteStringToFile(Env::Default(), content, gateway_config_path));
   return gateway_config_path;
 }
 
@@ -750,8 +749,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   lines.push_back(Format("cron.database_name='$0'", FLAGS_ysql_cron_database_name));
 
   if (FLAGS_ysql_enable_documentdb) {
-    std::string gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(
-        conf.data_dir, conf.listen_addresses, conf.pg_port));
+    auto gateway_config_path = VERIFY_RESULT(WriteDocumentDBGatewayConfig(conf));
     lines.push_back("documentdb_gateway.database='yugabyte'");
     lines.push_back(Format("documentdb_gateway.setup_configuration_file='$0'",
                            gateway_config_path));

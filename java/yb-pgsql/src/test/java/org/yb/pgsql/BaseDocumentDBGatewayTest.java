@@ -18,9 +18,7 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
 import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -30,7 +28,7 @@ import javax.net.ssl.X509TrustManager;
 import java.security.cert.X509Certificate;
 
 import org.bson.Document;
-import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,22 +38,18 @@ import org.yb.client.TestUtils;
  * Base class for DocumentDB Gateway tests. Handles cluster setup with documentdb flags,
  * extension creation, gateway worker restart, SSL context, and MongoClient lifecycle.
  *
- * Subclasses can override {@link #getBaseGatewayPort()}, {@link #isAuthEnabled()},
+ * Subclasses can override {@link #GATEWAY_PORT}, {@link #isAuthEnabled()},
  * and {@link #getAdditionalTServerFlags()} to customize behavior.
  */
 public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(BaseDocumentDBGatewayTest.class);
 
   protected static final String TEST_DB = "testdb";
+  protected static final int GATEWAY_PORT = 27017;
 
-  private static boolean extensionCreated = false;
+  protected static MongoClient mongoClient;
 
-  protected MongoClient mongoClient;
-
-  /** Base port for the gateway; each tserver gets basePort + index. */
-  protected int getBaseGatewayPort() {
-    return 27017;
-  }
+  private static boolean gatewayInitialized = false;
 
   /** Additional tserver flags beyond the common documentdb ones. */
   protected Map<String, String> getAdditionalTServerFlags() {
@@ -84,7 +78,7 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
 
   @Before
   public void setUp() throws Exception {
-    if (!extensionCreated) {
+    if (!gatewayInitialized) {
       // Create the documentdb extension via YSQL.
       try (Statement statement = connection.createStatement()) {
         statement.execute("CREATE EXTENSION IF NOT EXISTS documentdb CASCADE");
@@ -94,32 +88,28 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
       // until the extension schemas exist. Restart the cluster so the gateway initializes
       // with the schemas already in place.
       restartForGateway();
-      extensionCreated = true;
+
+      // Wait for the gateway to start accepting connections (first tserver).
+      String host = getPgHost(0);
+      waitForGateway(host);
+
+      mongoClient = createMongoClient(host);
+      gatewayInitialized = true;
     }
-
-    // Wait for the gateway to start accepting connections (first tserver).
-    String host = getPgHost(0);
-    waitForGateway(host);
-
-    mongoClient = createMongoClient(host);
   }
 
-  @After
-  public void tearDown() throws Exception {
+  @AfterClass
+  public static void tearDownGateway() throws Exception {
     if (mongoClient != null) {
-      try {
-        mongoClient.getDatabase(TEST_DB).drop();
-      } catch (Exception e) {
-        LOG.warn("Failed to drop test database during cleanup", e);
-      }
       mongoClient.close();
       mongoClient = null;
     }
+    gatewayInitialized = false;
   }
 
   /** Builds a MongoDB connection string with TLS and SCRAM-SHA-256 auth. */
   protected String buildConnectionString(String host, String extraParams) {
-    int port = getBaseGatewayPort();
+    int port = GATEWAY_PORT;
     String base = String.format("mongodb://%s:%s@%s:%d/?tls=true&authMechanism=SCRAM-SHA-256",
         DEFAULT_PG_USER, DEFAULT_PG_PASS, host, port);
     if (extraParams != null && !extraParams.isEmpty()) {
@@ -174,7 +164,7 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
   }
 
   protected void waitForGateway(String host) throws Exception {
-    LOG.info("Waiting for DocumentDB gateway to be ready on {}:{}", host, getBaseGatewayPort());
+    LOG.info("Waiting for DocumentDB gateway to be ready on {}:{}", host, GATEWAY_PORT);
     TestUtils.waitFor(() -> {
       try {
         SSLContext ctx = createTrustAllSSLContext();

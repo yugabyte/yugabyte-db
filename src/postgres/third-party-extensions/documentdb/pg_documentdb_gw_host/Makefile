@@ -1,4 +1,4 @@
-# YB: Makefile for building and installing the pg_documentdb_gw_host Rust/pgrx extension.
+# Makefile for building and installing the pg_documentdb_gw_host Rust/pgrx extension.
 # Modeled after src/postgres/third-party-extensions/pg_parquet/Makefile.
 
 .PHONY: all install clean cargo-pgrx-exists
@@ -7,15 +7,15 @@ PG_CONFIG ?= pg_config
 CARGO_BIN ?= $(shell command -v cargo || echo $(HOME)/.cargo/bin/cargo)
 CARGO_DIR := $(dir $(CARGO_BIN))
 
-# YB: Path to the vendored pgrx directory (relative to this Makefile).
+# Path to the vendored pgrx directory (relative to this Makefile).
 PGRX_DIR := ../../pgrx
 
 YB_GW_HOST_CFLAGS := -Wno-error -Wno-implicit-fallthrough -Wno-unused-but-set-variable -Wno-missing-include-dirs
 
-# YB: OS detection
+# OS detection
 YB_UNAME_S := $(shell uname -s)
 
-# YB: macOS SDK (only defined on Darwin)
+# macOS SDK (only defined on Darwin)
 ifeq ($(YB_UNAME_S),Darwin)
 	YB_SDKROOT := $(shell xcrun --show-sdk-path)
 endif
@@ -50,7 +50,7 @@ else
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
 endif
 
-# YB: Include flags from .cargo/config.toml since RUSTFLAGS env var overrides them.
+# Include flags from .cargo/config.toml since RUSTFLAGS env var overrides them.
 # The .cargo/config.toml sets these only for x86_64, so gate them here too.
 ifeq ($(shell uname -m),x86_64)
 	RUSTFLAGS += -C target-cpu=x86-64-v3 -C force-frame-pointers=yes
@@ -59,8 +59,8 @@ endif
 all:
 
 cargo-pgrx-exists:
-	# YB: Building cargo-pgrx and configuring pgrx.
-	# YB: Creating empty data directory `data-15` to skip running 'initdb'
+	# Building cargo-pgrx and configuring pgrx.
+	# Creating empty data directory `data-15` to skip running 'initdb'
 	export PATH="$(CARGO_DIR):$$PATH" && \
 	cd $(PGRX_DIR) && \
 	env \
@@ -79,7 +79,7 @@ cargo-pgrx-exists:
 	fi
 
 install: cargo-pgrx-exists
-	# YB: Using local cargo-pgrx binary to install pg_documentdb_gw_host extension.
+	# Using local cargo-pgrx binary to install pg_documentdb_gw_host extension.
 	export PATH="$(CARGO_DIR):$$PATH" && \
 	env \
 		$(if $(CC),CC=$(CC),) \
