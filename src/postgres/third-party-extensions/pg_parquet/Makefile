@@ -44,10 +44,9 @@ else
 	LIBCLANG_PATH := $(if $(YB_LLVM_TOOLCHAIN_DIR),$(YB_LLVM_TOOLCHAIN_DIR)/lib)
 endif
 
-# YB: Source files and stamp file for incremental build optimization.
+# YB: Stamp file for incremental build optimization.
 # The stamp file tracks when the last successful install happened so we can skip
 # the expensive cargo-pgrx install when no source files have changed.
-CARGO_PGRX_BIN := $(abspath ../pgrx/target/release/cargo-pgrx)
 PG_PARQUET_STAMP := $(YB_BUILD_ROOT)/.pg_parquet_install.stamp
 
 all:
@@ -56,20 +55,18 @@ cargo-exists:
 	   $(CARGO_BIN) --version > /dev/null || (echo "cargo is not available. Please install cargo." && exit 1)
 
 cargo-pgrx-exists: cargo-exists
-	   # YB: Building cargo-pgrx (if needed) and configuring pgrx.
+	   # YB: Building cargo-pgrx and configuring pgrx.
 	   # YB: Creating empty data directory `data-15` to skip running 'initdb'
 	   export PATH="$(CARGO_DIR):$$PATH" && \
 	   cd ../pgrx && \
-	   if [ ! -x "$(CARGO_PGRX_BIN)" ]; then \
-		   env \
-			   $(if $(CC),CC=$(CC),) \
-			   $(if $(CXX),CXX=$(CXX),) \
-			   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
-			   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
-			   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
-			   CARGO_INCREMENTAL=1 \
-			   cargo build --package cargo-pgrx --release; \
-	   fi && \
+	   env \
+		   $(if $(CC),CC=$(CC),) \
+		   $(if $(CXX),CXX=$(CXX),) \
+		   $(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
+		   $(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
+		   CFLAGS="$(YB_PG_PARQUET_CFLAGS)" \
+		   CARGO_INCREMENTAL=1 \
+		   cargo build --package cargo-pgrx --release && \
 	   mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
 	   if [ ! -f "$(YB_BUILD_ROOT)/.pgrx/config.toml" ] || ! grep -q "^pg15\s*=\s*\"$$PG_CONFIG\"" "$(YB_BUILD_ROOT)/.pgrx/config.toml" >/dev/null 2>&1; then \
 		   LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
@@ -84,8 +81,8 @@ pg_parquet: cargo-pgrx-exists
 install: cargo-pgrx-exists
 	   # YB: Skip pg_parquet install if stamp file is newer than all source files.
 	   if [ -f "$(PG_PARQUET_STAMP)" ]; then \
-		   NEWEST_SRC=$$(find src ../pgrx/pgrx Cargo.toml Cargo.lock -newer "$(PG_PARQUET_STAMP)" \
-			   \( -name '*.rs' -o -name '*.toml' -o -name '*.sql' -o -name 'Cargo.lock' \) \
+		   NEWEST_SRC=$$(find src ../pgrx Cargo.toml Cargo.lock Makefile -newer "$(PG_PARQUET_STAMP)" \
+			   \( -name '*.rs' -o -name '*.toml' -o -name '*.sql' -o -name 'Cargo.lock' -o -name 'Makefile' \) \
 			   -print -quit 2>/dev/null); \
 		   if [ -z "$$NEWEST_SRC" ]; then \
 			   echo "pg_parquet: no source changes detected, skipping install."; \
