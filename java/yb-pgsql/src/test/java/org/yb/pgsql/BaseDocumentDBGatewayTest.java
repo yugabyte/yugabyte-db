@@ -28,7 +28,7 @@ import javax.net.ssl.X509TrustManager;
 import java.security.cert.X509Certificate;
 
 import org.bson.Document;
-import org.junit.AfterClass;
+import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +47,7 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
   protected static final String TEST_DB = "testdb";
   protected static final int GATEWAY_PORT = 27017;
 
-  protected static MongoClient mongoClient;
+  protected MongoClient mongoClient;
 
   private static boolean gatewayInitialized = false;
 
@@ -98,8 +98,8 @@ public abstract class BaseDocumentDBGatewayTest extends BasePgSQLTest {
     }
   }
 
-  @AfterClass
-  public static void tearDownGateway() throws Exception {
+  @After
+  public void tearDown() throws Exception {
     if (mongoClient != null) {
       mongoClient.close();
       mongoClient = null;
