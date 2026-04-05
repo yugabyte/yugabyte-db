@@ -74,12 +74,16 @@ cargo-pgrx-exists:
 		$(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
 		CFLAGS="$(YB_GW_HOST_CFLAGS)" \
 		CARGO_INCREMENTAL=1 \
+		# Disable ASAN leak detection: cargo and pgrx build tools trigger false \
+		# positive leak reports from Rust's allocator and build-time codegen that \
+		# are not actionable and block the build in ASAN-enabled environments. \
 		ASAN_OPTIONS=detect_leaks=0 \
 		cargo build --package cargo-pgrx --release && \
 	mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
 	if [ ! -f "$(YB_BUILD_ROOT)/.pgrx/config.toml" ] || ! grep -q "^pg15\s*=\s*\"$$PG_CONFIG\"" "$(YB_BUILD_ROOT)/.pgrx/config.toml" >/dev/null 2>&1; then \
 		LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
+		# See above: disable ASAN leak detection for pgrx init (runs initdb). \
 		ASAN_OPTIONS=detect_leaks=0 \
 		target/release/cargo-pgrx pgrx init --pg15 $(PG_CONFIG); \
 	fi
@@ -98,6 +102,7 @@ install: cargo-pgrx-exists
 		LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		CARGO_INCREMENTAL=1 \
+		# See above: disable ASAN leak detection for pgrx install. \
 		ASAN_OPTIONS=detect_leaks=0 \
 		$(PGRX_DIR)/target/release/cargo-pgrx pgrx install --release -F pg15 -c $(PG_CONFIG)
 
