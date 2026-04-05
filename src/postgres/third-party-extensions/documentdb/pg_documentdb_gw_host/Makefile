@@ -58,6 +58,10 @@ endif
 
 all:
 
+# YB: OpenSSL from thirdparty for the openssl-sys crate.
+# The common dir has headers+libs; fall back to uninstrumented if common doesn't have them.
+YB_OPENSSL_DIR := $(YB_THIRDPARTY_DIR)/installed/common
+
 cargo-pgrx-exists:
 	# Building cargo-pgrx and configuring pgrx.
 	# Creating empty data directory `data-15` to skip running 'initdb'
@@ -70,11 +74,13 @@ cargo-pgrx-exists:
 		$(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
 		CFLAGS="$(YB_GW_HOST_CFLAGS)" \
 		CARGO_INCREMENTAL=1 \
+		ASAN_OPTIONS=detect_leaks=0 \
 		cargo build --package cargo-pgrx --release && \
 	mkdir -p $$YB_BUILD_ROOT/.pgrx/data-15 && \
 	if [ ! -f "$(YB_BUILD_ROOT)/.pgrx/config.toml" ] || ! grep -q "^pg15\s*=\s*\"$$PG_CONFIG\"" "$(YB_BUILD_ROOT)/.pgrx/config.toml" >/dev/null 2>&1; then \
 		LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
+		ASAN_OPTIONS=detect_leaks=0 \
 		target/release/cargo-pgrx pgrx init --pg15 $(PG_CONFIG); \
 	fi
 
@@ -87,9 +93,11 @@ install: cargo-pgrx-exists
 		$(if $(RUSTFLAGS),RUSTFLAGS="$(RUSTFLAGS)",) \
 		$(if $(LIBCLANG_PATH),LIBCLANG_PATH=$(LIBCLANG_PATH),) \
 		CFLAGS="$(YB_GW_HOST_CFLAGS)" \
+		OPENSSL_DIR=$(YB_OPENSSL_DIR) \
 		LD_LIBRARY_PATH="$(YB_THIRDPARTY_DIR)/installed/common/lib:$$LD_LIBRARY_PATH" \
 		PGRX_HOME=$(YB_BUILD_ROOT)/.pgrx \
 		CARGO_INCREMENTAL=1 \
+		ASAN_OPTIONS=detect_leaks=0 \
 		$(PGRX_DIR)/target/release/cargo-pgrx pgrx install --release -F pg15 -c $(PG_CONFIG)
 
 clean:
