@@ -10,6 +10,7 @@
 #include <fmgr.h>
 #include <miscadmin.h>
 #include <utils/guc.h>
+/* YB includes */
 #include <utils/memutils.h>
 
 #include "bson_init.h"
@@ -42,10 +43,10 @@ _PG_init(void)
 
 	InstallBsonMemVTables();
 
-	/* GUC name strings (from psprintf) must survive in TopMemoryContext. */
+	/* YB: GUC name strings (from psprintf) must survive in TopMemoryContext. */
 	MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
 	InitDocumentDBCoreConfigurations("documentdb_core");
-	MemoryContextSwitchTo(oldctx);
+	MemoryContextSwitchTo(oldctx); /* YB */
 
 	MarkGUCPrefixReserved("documentdb_core");
 	ereport(LOG, (errmsg("Initialized documentdb_core extension")));

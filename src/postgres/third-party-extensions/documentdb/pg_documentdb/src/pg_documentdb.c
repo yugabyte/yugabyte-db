@@ -10,6 +10,7 @@
 #include <fmgr.h>
 #include <miscadmin.h>
 #include <utils/guc.h>
+/* YB includes */
 #include <utils/memutils.h>
 
 #include "bson_init.h"
@@ -50,10 +51,10 @@ _PG_init(void)
 
 	RegisterRoaringBitmapHooks();
 
-	/* GUC name strings (from psprintf) must survive in TopMemoryContext. */
+	/* YB: GUC name strings (from psprintf) must survive in TopMemoryContext. */
 	MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
 	InitApiConfigurations("documentdb", "documentdb");
-	MemoryContextSwitchTo(oldctx);
+	MemoryContextSwitchTo(oldctx); /* YB */
 
 	InitializeSharedMemoryHooks();
 	MarkGUCPrefixReserved("documentdb");
