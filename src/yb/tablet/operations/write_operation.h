@@ -107,7 +107,7 @@ class WriteOperation : public OperationBase<OperationType::kWrite, LWWritePB>  {
 
   HybridTime WriteHybridTime() const override;
 
-  AsyncWriteCallback added_to_leader_callback_;
+  AsyncWriteCallback async_write_callback_;
 
   bool do_replicated_completed_ = false;
 };
