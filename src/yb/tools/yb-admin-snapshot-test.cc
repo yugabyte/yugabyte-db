@@ -857,9 +857,9 @@ class SnapshotAdminCliTest : public AdminCliTest {
 
 TEST_F_EX(AdminCliTest, TestListSnapshotWithNamespaceNameMigration, SnapshotAdminCliTest) {
   // Start with a table missing its namespace_name (as if created before 2.3).
-  FLAGS_TEST_create_table_with_empty_namespace_name = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_create_table_with_empty_namespace_name) = true;
   CreateTable(Transactional::kFalse);
-  FLAGS_TEST_create_table_with_empty_namespace_name = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_create_table_with_empty_namespace_name) = false;
   const string& table_name = table_.name().table_name();
   const string& keyspace = table_.name().namespace_name();
 

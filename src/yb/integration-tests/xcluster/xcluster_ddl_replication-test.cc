@@ -4682,7 +4682,7 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
 }
 
 TEST_F(XClusterDDLReplicationTest, VectorIndex) {
-  FLAGS_TEST_usearch_exact = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
   ASSERT_OK(SetUpClusters());
   ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
@@ -4797,7 +4797,7 @@ TEST_F(XClusterDDLReplicationTest, VectorIndex) {
 // index's hybrid_time, so the write can be missing from the vector index. This test verifies
 // the fix.
 TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
-  FLAGS_TEST_usearch_exact = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.start_yb_controller_servers = true;
   ASSERT_OK(SetUpClusters(params));

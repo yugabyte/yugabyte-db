@@ -555,7 +555,7 @@ TEST_F(CqlIndexTest, SlowIndexResponse) {
   constexpr auto kFixedCategory = 0;
   constexpr auto kTestReadDelayMs = 1;
 
-  FLAGS_client_read_write_timeout_ms = 100000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 100000 * kTimeMultiplier;
 
   {
     auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
