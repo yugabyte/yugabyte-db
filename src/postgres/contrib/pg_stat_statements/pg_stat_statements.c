@@ -352,6 +352,37 @@ static int	exec_nested_level = 0;
 /* Current nesting depth of planner calls */
 static int	plan_nested_level = 0;
 
+/*
+ * YB: Session-local set of queryIds whose queries contain constants that
+ * require normalization (i.e. clocations_count > 0 at parse time).
+ *
+ * An entry is added by pgss_post_parse_analyze when the query has constants
+ * needing normalization.
+ *
+ * pgss_store consults this set when the shared hash table entry is missing and
+ * jstate is NULL: if the queryId is present, the entry was evicted or reset
+ * and we discard stats rather than storing unnormalized text; if absent, the
+ * query never needed normalization and raw text is stored normally.
+ *
+ * A hash set keyed on queryId (rather than a single boolean) is needed so that
+ * the extended query protocol — where multiple queries with different
+ * normalization needs can be parsed before any are executed — is handled
+ * correctly.
+ *
+ * The set is session-local because it tracks what this backend has parsed;
+ * every backend must parse a query before executing it, so the set is always
+ * populated before it is read.  Session-local storage also avoids the need for
+ * shared-memory sizing, locking, and cleanup on backend exit.
+ *
+ * queryIds are never removed from this set; once recorded, an id remains until
+ * backend exit.  That is safe: at worst a recycled queryId is treated as
+ * needing normalization and we discard a few stats, never the reverse error of
+ * storing unnormalized text.
+ */
+typedef uint64 YbPgssQueryNeedingNormalization;
+
+static HTAB *yb_pgss_queries_needing_normalization = NULL;
+
 /* Saved hook values in case of unload */
 static shmem_request_hook_type prev_shmem_request_hook = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
@@ -525,6 +556,8 @@ static bool yb_track_nested_queries(void);
 static int	YbGetPgssNormalizedQueryText(Size query_offset, int actual_query_len, char *normalized_query);
 static char *yb_generate_normalized_backfill_query(YbBackfillIndexStmt *stmt,
 												   int *query_len_p);
+static void yb_pgss_mark_needs_normalization(uint64 queryId);
+static bool yb_pgss_needs_normalization(uint64 queryId);
 
 /*
  * Module load callback
@@ -1376,6 +1409,46 @@ error:
 }
 
 /*
+ * YB: Lazily initialize the session-local hash set that tracks which queryIds
+ * need normalization.
+ *
+ * There is no extension hook at connection startup to allocate this table, and
+ * many backends never execute a query with normalizable constants, so we create
+ * the hash on first use rather than at shared-memory attach time.
+ */
+static void
+yb_pgss_init_normalization_set(void)
+{
+	HASHCTL		ctl;
+
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(YbPgssQueryNeedingNormalization);
+	ctl.entrysize = sizeof(YbPgssQueryNeedingNormalization);
+	ctl.hcxt = TopMemoryContext;
+	yb_pgss_queries_needing_normalization = hash_create("YB pgss queries needing normalization",
+												16,
+												&ctl,
+												HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+}
+
+static void
+yb_pgss_mark_needs_normalization(uint64 queryId)
+{
+	if (!yb_pgss_queries_needing_normalization)
+		yb_pgss_init_normalization_set();
+	hash_search(yb_pgss_queries_needing_normalization, &queryId, HASH_ENTER, NULL);
+}
+
+static bool
+yb_pgss_needs_normalization(uint64 queryId)
+{
+	if (!yb_pgss_queries_needing_normalization)
+		return false;
+	return hash_search(yb_pgss_queries_needing_normalization, &queryId,
+					   HASH_FIND, NULL) != NULL;
+}
+
+/*
  * Post-parse-analysis hook: mark query with a queryId
  */
 static void
@@ -1408,6 +1481,8 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 	 * anyway, so there's no need for an early entry.
 	 */
 	if (jstate && jstate->clocations_count > 0)
+	{
+		yb_pgss_mark_needs_normalization(query->queryId);
 		pgss_store(pstate->p_sourcetext,
 				   query->queryId,
 				   query->stmt_location,
@@ -1420,6 +1495,7 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
 				   NULL,
 				   jstate,
 				   false /* yb_is_sensitive_stmt */ );
+	}
 }
 
 /*
@@ -1905,6 +1981,17 @@ pgss_store(const char *query, uint64 queryId,
 												   query_location,
 												   &query_len);
 			LWLockAcquire(pgss->lock, LW_SHARED);
+		}
+		else if (yb_pgss_needs_normalization(queryId))
+		{
+			/*
+			 * YB: This query has constants that require normalization, but its
+			 * shared hash table entry has been evicted or reset.  We can't
+			 * normalize without jstate, so discard the execution stats rather
+			 * than storing unnormalized literals.  The entry will be re-created
+			 * with proper normalization on the next full parse cycle.
+			 */
+			goto done;
 		}
 
 		/* Append new query text to file with only shared lock held */
