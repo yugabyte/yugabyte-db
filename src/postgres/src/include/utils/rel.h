@@ -337,6 +337,17 @@ typedef enum StdRdOptIndexCleanup
 	STDRD_OPTION_VACUUM_INDEX_CLEANUP_ON
 } StdRdOptIndexCleanup;
 
+/* Per-table overrides for the YB auto analyze service. */
+typedef struct YbAutoAnalyzeOpts
+{
+	bool		enabled;
+	int			threshold;
+	float8		scale_factor;
+	float8		cooldown_scale_factor;
+	int			min_cooldown_ms;
+	int			max_cooldown_ms;
+} YbAutoAnalyzeOpts;
+
 typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
@@ -354,6 +365,7 @@ typedef struct StdRdOptions
 	Oid			colocation_id;
 	Oid			table_oid;
 	Oid			row_type_oid;
+	YbAutoAnalyzeOpts yb_auto_analyze;	/* YB auto analyze options */
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10

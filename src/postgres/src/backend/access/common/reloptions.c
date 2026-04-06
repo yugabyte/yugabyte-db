@@ -210,6 +210,23 @@ static relopt_bool boolRelOpts[] =
 		},
 		false
 	},
+	/*
+	 * YB auto analyze reloptions are intentionally registered with
+	 * RELOPT_KIND_HEAP only. The auto analyze service like PG autovacuum
+	 * operates on tables partitions and does not accumulate mutations against
+	 * partitioned tables (parents). This matches PG's autovacuum_* reloptions
+	 * which are also not allowed on partitioned tables.
+	 */
+	{
+		{
+			"yb_auto_analyze_enabled",
+			"Enables YB auto analyze for this relation. "
+			"Only effective when auto analyze is globally enabled.",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		true
+	},
 	/* list terminator */
 	{{NULL}}
 };
@@ -288,6 +305,33 @@ static relopt_int intRelOpts[] =
 		{
 			"autovacuum_analyze_threshold",
 			"Minimum number of tuple inserts, updates or deletes prior to analyze",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0, INT_MAX
+	},
+	{
+		{
+			"yb_auto_analyze_threshold",
+			"Minimum number of mutations prior to YB auto analyze",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0, INT_MAX
+	},
+	{
+		{
+			"yb_auto_analyze_min_cooldown",
+			"Minimum cooldown in milliseconds between YB auto analyzes",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0, INT_MAX
+	},
+	{
+		{
+			"yb_auto_analyze_max_cooldown",
+			"Maximum cooldown in milliseconds between YB auto analyzes",
 			RELOPT_KIND_HEAP,
 			ShareUpdateExclusiveLock
 		},
@@ -502,6 +546,24 @@ static relopt_real realRelOpts[] =
 		{
 			"autovacuum_analyze_scale_factor",
 			"Number of tuple inserts, updates or deletes prior to analyze as a fraction of reltuples",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0.0, 100.0
+	},
+	{
+		{
+			"yb_auto_analyze_scale_factor",
+			"Fraction of reltuples to add to yb_auto_analyze_threshold",
+			RELOPT_KIND_HEAP,
+			ShareUpdateExclusiveLock
+		},
+		-1, 0.0, 100.0
+	},
+	{
+		{
+			"yb_auto_analyze_cooldown_scale_factor",
+			"Multiplier for exponential cooldown between YB auto analyzes",
 			RELOPT_KIND_HEAP,
 			ShareUpdateExclusiveLock
 		},
@@ -2107,6 +2169,19 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		{"colocation_id", RELOPT_TYPE_OID, offsetof(StdRdOptions, colocation_id)},
 		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
 		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},
+		{"yb_auto_analyze_enabled", RELOPT_TYPE_BOOL,
+		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, enabled)},
+		{"yb_auto_analyze_threshold", RELOPT_TYPE_INT,
+		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, threshold)},
+		{"yb_auto_analyze_scale_factor", RELOPT_TYPE_REAL,
+		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, scale_factor)},
+		{"yb_auto_analyze_cooldown_scale_factor", RELOPT_TYPE_REAL,
+		offsetof(StdRdOptions, yb_auto_analyze) +
+			offsetof(YbAutoAnalyzeOpts, cooldown_scale_factor)},
+		{"yb_auto_analyze_min_cooldown", RELOPT_TYPE_INT,
+		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, min_cooldown_ms)},
+		{"yb_auto_analyze_max_cooldown", RELOPT_TYPE_INT,
+		offsetof(StdRdOptions, yb_auto_analyze) + offsetof(YbAutoAnalyzeOpts, max_cooldown_ms)},
 	};
 
 	return (bytea *) build_reloptions(reloptions, validate, kind,
