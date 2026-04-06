@@ -49,6 +49,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
 
   // The current release resource being reconciled, used for associating secret dependencies.
   private KubernetesResourceDetails currentReconcileResource;
+  private UUID currentLocalInstanceUuid;
 
   public Set<KubernetesResourceDetails> getTrackedResources() {
     return resourceTracker.getTrackedResources();
@@ -83,7 +84,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   @Override
   public void onAdd(Release release) {
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
-    resourceTracker.trackResource(release);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(release, currentLocalInstanceUuid);
     currentReconcileResource = resourceDetails;
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
@@ -151,7 +153,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       return;
     }
     // Persist the latest resource YAML so the OperatorResource table stays current.
-    resourceTracker.trackResource(newRelease);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(newRelease, currentLocalInstanceUuid);
     if (confGetter.getGlobalConf(GlobalConfKeys.enableReleasesRedesign)) {
       String version = newRelease.getSpec().getConfig().getVersion();
       com.yugabyte.yw.models.Release ybRelease;
@@ -243,7 +246,9 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   @Override
   public void onDelete(Release release, boolean deletedFinalStateUnknown) {
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(release);
-    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
     log.info("Untracked release {} and orphaned dependencies: {}", resourceDetails, orphaned);
     operatorUtils.deleteReleaseCr(release);
   }
@@ -288,7 +293,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
                 awsSecret.getNamespace(),
                 "AWS_SECRET_ACCESS_KEY",
                 resourceTracker,
-                currentReconcileResource);
+                currentReconcileResource,
+                currentLocalInstanceUuid);
         if (secret != null) {
           s3File.secretAccessKey = secret;
         } else {
@@ -337,7 +343,8 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
                 gcsSecret.getNamespace(),
                 "CREDENTIALS_JSON",
                 resourceTracker,
-                currentReconcileResource);
+                currentReconcileResource,
+                currentLocalInstanceUuid);
         if (secret != null) {
           gcsFile.credentialsJson = secret;
         } else {

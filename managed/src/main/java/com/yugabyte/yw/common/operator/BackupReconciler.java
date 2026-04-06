@@ -115,7 +115,8 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
 
     // Track the resource only after confirming it should actually be processed.
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
-    resourceTracker.trackResource(backup);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(backup, localUuid);
     log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
 
     log.info("Creating backup {} ", backup);
@@ -188,7 +189,8 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       return;
     }
     // Persist the latest resource YAML so the OperatorResource table stays current.
-    resourceTracker.trackResource(newBackup);
+    resourceTracker.trackResource(
+        newBackup, operatorUtils.getLocalPlatformInstanceUuid().orElse(null));
     log.info(
         "Got backup update {} {}, ignoring as backup does not support update.",
         oldBackup,
@@ -203,7 +205,9 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
   private void handleDelete(Backup backup) {
     log.info("Got backup delete {}", backup);
     KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(backup);
-    Set<KubernetesResourceDetails> orphaned = resourceTracker.untrackResource(resourceDetails);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
     log.info("Untracked backup {} and orphaned dependencies: {}", resourceDetails, orphaned);
 
     BackupStatus status = backup.getStatus();
