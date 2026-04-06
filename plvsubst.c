@@ -91,7 +91,17 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	int		   *positions;
 	int			subst_mb_len;
 	int			subst_len;
+
+#if PG_VERSION_NUM >= 190000
+
+	const uint8 *bitmap;
+
+#else
+
 	const bits8 *bitmap;
+
+#endif
+
 	int			bitmask;
 
 	if (v != NULL && (ndims = ARR_NDIM(v)) > 0)
