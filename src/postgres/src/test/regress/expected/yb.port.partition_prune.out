@@ -3440,7 +3440,7 @@ create table listp_12_2 partition of listp_12 for values in(2);
 -- a nested Append node because the mixed parallel / non-parallel paths cannot
 -- be pulled into the top-level Append.
 alter table listp_12_1 set (parallel_workers = 0);
-NOTICE:  storage parameters are currently ignored in YugabyteDB
+NOTICE:  storage parameter parallel_workers is currently ignored for ALTER TABLE in YugabyteDB
 -- Ensure that listp_12_2 is not scanned.  (The nested Append is not seen in
 -- the plan as it's pulled in setref.c due to having just a single subnode).
 select explain_parallel_append('select * from listp where a = (select 1);');
