@@ -37,9 +37,11 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/timestamp.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
@@ -52,6 +54,10 @@ using yb::client::YBTableName;
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_mark_snapshot_as_failed);
 DECLARE_bool(TEST_use_custom_varz);
+DECLARE_bool(TEST_use_yb_controller);
+DECLARE_bool(enable_db_clone);
+DECLARE_bool(enable_pg_anonymizer);
+DECLARE_bool(ysql_beta_features);
 
 namespace yb {
 namespace tools {
@@ -924,6 +930,105 @@ TEST_P(YBBackupDuringAlterTable, RenameColumn) {
   ASSERT_EQ(std::get<1>(result[0]), "test");
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupWithAnonymizerTest : public YBBackupDuringDdl {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_pg_anonymizer) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_yb_controller) = true;
+    YBBackupDuringDdl::SetUp();
+    CreateDatabase(kBackupSourceDbName);
+  }
+
+ protected:
+  // Sets up the anonymizer extension with a masked role "Bob" and inserts test data.
+  Result<pgwrapper::PGConn> SetUpAnonymizer() {
+    auto conn = VERIFY_RESULT(ConnectToDB(kBackupSourceDbName));
+
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION anon"));
+    RETURN_NOT_OK(conn.Execute("CREATE TABLE test_table (oid SERIAL PRIMARY KEY, name TEXT)"));
+
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = TRUE"));
+    auto init_result = VERIFY_RESULT(
+        conn.FetchRow<bool>("SELECT anon.start_dynamic_masking()"));
+    SCHECK(init_result, IllegalState, "start_dynamic_masking() returned false");
+    RETURN_NOT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed = FALSE"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+
+    RETURN_NOT_OK(conn.Execute("CREATE ROLE Bob LOGIN"));
+    RETURN_NOT_OK(conn.Execute("SECURITY LABEL FOR anon ON ROLE Bob IS 'MASKED'"));
+    RETURN_NOT_OK(conn.Execute("GRANT pg_read_all_data TO Bob"));
+    RETURN_NOT_OK(conn.Execute(
+        "SECURITY LABEL FOR anon ON COLUMN test_table.name IS "
+        "'MASKED WITH FUNCTION anon.fake_last_name()'"));
+
+    RETURN_NOT_OK(conn.Execute(
+        "INSERT INTO test_table (name) SELECT 'name-' || g FROM generate_series(1, 100) g"));
+
+    return conn;
+  }
+};
+
+// Repro for https://github.com/yugabyte/yugabyte-db/issues/26555.
+// PG Anonymizer adds statements (e.g. GRANTs) to the ysql_dump output that reference roles by
+// name. When a role is renamed after the backup is taken, the dump replayed during restore
+// encounters "role does not exist" errors for the GRANT statements. The restore itself
+// should succeed and ignore the errors because --dump-role-checks is used.
+TEST_F(YBBackupWithAnonymizerTest, RestoreAfterRoleRenameWithAnonymizer) {
+  if (!UseYbController()) {
+    GTEST_SKIP() << "Test requires YBC";
+  }
+
+  auto conn = ASSERT_RESULT(SetUpAnonymizer());
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kBackupSourceDbName), "create"},
+      cluster_.get()));
+
+  ASSERT_OK(conn.Execute("ALTER ROLE Bob RENAME TO Eve"));
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace",
+       Format("ysql.$0", kRestoreTargetDbName), "restore"},
+      cluster_.get()));
+
+  auto restored_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  auto row_count = ASSERT_RESULT(
+      restored_conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
+  ASSERT_EQ(row_count, 100);
+}
+
+class YBCloneWithAnonymizerTest : public YBBackupWithAnonymizerTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_beta_features) = true;
+    YBBackupWithAnonymizerTest::SetUp();
+  }
+};
+
+// Same scenario as RestoreAfterRoleRenameWithAnonymizer but using database clone
+// instead of manual backup/restore.
+TEST_F(YBCloneWithAnonymizerTest, CloneAfterRoleRenameWithAnonymizer) {
+  auto conn = ASSERT_RESULT(SetUpAnonymizer());
+
+  ASSERT_RESULT(snapshot_util_->CreateSchedule(
+      kBackupSourceDbName, client::WaitSnapshot(true)));
+
+  auto clone_time = Timestamp(ASSERT_RESULT(WallClock()->Now()).time_point);
+  LOG(INFO) << "Clone AS OF time: " << clone_time.ToInt64();
+
+  ASSERT_OK(conn.Execute("ALTER ROLE Bob RENAME TO Eve"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2",
+      kRestoreTargetDbName, kBackupSourceDbName, clone_time.ToInt64()));
+
+  auto cloned_conn = ASSERT_RESULT(ConnectToDB(kRestoreTargetDbName));
+  auto row_count = ASSERT_RESULT(cloned_conn.FetchRow<int64_t>("SELECT count(*) FROM test_table"));
+  ASSERT_EQ(row_count, 100);
 }
 
 }  // namespace tools
