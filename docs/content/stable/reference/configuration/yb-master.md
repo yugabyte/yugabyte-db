@@ -218,7 +218,7 @@ Default: `true`
 
 ##### --master_ysql_operation_lease_ttl_ms
 
-Default: `30 * 1000` (30 secs)
+Default: `30 * 1000` (30 seconds)
 
 Specifies base YSQL lease Time-To-Live (TTL). The YB-Master leader uses this value to determine the validity of a YB-TServer's YSQL lease.
 
