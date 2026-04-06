@@ -3,6 +3,8 @@
 [build]
   # Default build command.
   command = "npm run build"
+  # Configure Netlify to ignore builds unless /docs folder changes.
+  ignore = "git diff --quiet HEAD^ HEAD -- . ':!docs/**'"
 
 # Deploy contexts
 # Environment variables here override variables set in the web UI.
