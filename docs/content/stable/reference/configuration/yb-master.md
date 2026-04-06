@@ -1329,25 +1329,30 @@ After adding a preview flag to the `allowed_preview_flags_csv` list, you still n
 
 ##### --ysql_index_backfill_rpc_timeout_ms
 
-Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
+Default: 300000
 
-Default: 60000 (1 minute)
+Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
 ##### --hide_dead_node_threshold_mins
 
-Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
-
 Default: 1440 (1 day)
+
+Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
 
 ##### --ysql_enable_write_pipelining
 
-{{<tags/feature/ea idea="1298">}} Enables concurrent replication of multiple write operations within a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
+{{% tags/wrap %}}
+{{<tags/feature/ea idea="1298">}}
+{{<tags/feature/restart-needed>}}
+{{% tags/feature/t-server %}}
+Default: `false`
+{{% /tags/wrap %}}
+
+Enables concurrent replication of multiple write operations within a transaction. Write requests to DocDB return immediately after completing on the leader, meanwhile the Raft quorum commit happens asynchronously in the background. This enables PostgreSQL to be able to send the next write or read request in parallel, which reduces overall latency. Note that this does not affect the transactional guarantees of the system. The COMMIT of the transaction waits and ensures all asynchronous quorum replication has completed.
 
 Note that this is a preview flag, so it also needs to be added to the [allowed_preview_flags_csv](#allowed-preview-flags-csv) list.
 
-This flag also needs to be enabled on [YB-Tserver servers](../yb-tserver/#ysql_enable_write_pipelining).
-
-Default: false
+This flag also needs to be enabled on [YB-TServer servers](../yb-tserver/#ysql_enable_write_pipelining).
 
 ## Admin UI
 
