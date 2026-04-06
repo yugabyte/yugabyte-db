@@ -191,8 +191,9 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
-- `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
+- `zone` — Use the private IP if destination node is located in the same cloud, region and zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
+- `cloud` - Use the private IP if destination node is located in the same cloud.
+- `region` — Use the private IP address if destination node is located in the same cloud and region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 ##### --webserver_interface
 
