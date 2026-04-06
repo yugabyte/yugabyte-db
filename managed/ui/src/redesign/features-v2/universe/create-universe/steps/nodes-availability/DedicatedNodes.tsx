@@ -7,6 +7,7 @@ import { StyledPanel } from '../../components/DefaultComponents';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { REPLICATION_FACTOR } from '../../fields/FieldNames';
 
 //icons
 import Return from '../../../../../assets/tree.svg';
@@ -54,6 +55,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
   const availabilityZones = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
   const nodeCount = getNodeCount(availabilityZones);
+  const replicationFactor = watch(REPLICATION_FACTOR) ?? 1;
 
   const getStyledToggleArea = () => (
     <>
@@ -78,7 +80,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Return />
               <NodesCount header>
-                <span>{nodeCount + resilienceAndRegionsSettings!.replicationFactor}</span>
+                <span>{nodeCount + replicationFactor}</span>
                 <span>{t('totalNodes')}</span>
               </NodesCount>
             </div>
@@ -100,7 +102,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
               <span style={{ fontSize: '15px', fontWeight: '500' }}>+</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <NodesCount>
-                  <span>{resilienceAndRegionsSettings?.replicationFactor}</span>
+                  <span>{replicationFactor}</span>
                 </NodesCount>
                 <span style={{ color: '#6D7C88' }}>{t('totalMaster')}</span>
                 <YBTooltip

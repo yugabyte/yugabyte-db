@@ -13,11 +13,26 @@
 #include <utils/guc.h>
 #include <limits.h>
 #include "configs/config_initialization.h"
+#include "vector/vector_configs.h"
+#include "index_am/documentdb_rum.h"
+
+/* YB includes */
+#include "pg_yb_utils.h"
+#include <postmaster/postmaster.h>
 
 /*
  * Externally defined GUC constants
  * TODO(OSS): Move these as appropriate.
  */
+
+/* Enum values for iterative scan mode */
+static const struct config_enum_entry VECTOR_ITERATIVE_SCAN_OPTIONS[] =
+{
+	{ "off", VectorIterativeScan_OFF, false },
+	{ "relaxed_order", VectorIterativeScan_RELAXED_ORDER, false },
+	{ "strict_order", VectorIterativeScan_STRICT_ORDER, false },
+	{ NULL, 0, false }
+};
 
 /*
  * enable_create_collection_on_insert GUC determines whether
@@ -67,7 +82,7 @@ int MaxSchemaValidatorSize = DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE;
 #define SCRAM_DEFAULT_SALT_LEN 28
 int ScramDefaultSaltLen = SCRAM_DEFAULT_SALT_LEN;
 
-#define MAX_USER_LIMIT 10
+#define MAX_USER_LIMIT 100
 int MaxUserLimit = MAX_USER_LIMIT;
 
 #define DEFAULT_TDIGEST_COMPRESSION_ACCURACY 1500
@@ -106,16 +121,110 @@ char *CurrentOpApplicationName = DEFAULT_CURRENT_OP_APPLICATION_NAME;
 #define DEFAULT_AGGREGATION_STAGES_LIMIT 1000
 int MaxAggregationStagesAllowed = DEFAULT_AGGREGATION_STAGES_LIMIT;
 
+#define DEFAULT_CURSOR_FIRST_PAGE_BATCH_SIZE 101
+int DefaultCursorFirstPageBatchSize = DEFAULT_CURSOR_FIRST_PAGE_BATCH_SIZE;
+
+#define DEFAULT_INDEX_TERM_COMPRESSION_THRESHOLD INT_MAX
+int IndexTermCompressionThreshold = DEFAULT_INDEX_TERM_COMPRESSION_THRESHOLD;
+
+#define DEFAULT_ENABLE_USER_CRUD true
+bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
+
+#define DEFAULT_VECTOR_ITERATIVE_SCAN_MODE VectorIterativeScan_RELAXED_ORDER
+int VectorPreFilterIterativeScanMode = DEFAULT_VECTOR_ITERATIVE_SCAN_MODE;
+
+#define DEFAULT_ENABLE_GEONEAR_FORCE_INDEX_PUSHDOWN true
+bool EnableGeonearForceIndexPushdown = DEFAULT_ENABLE_GEONEAR_FORCE_INDEX_PUSHDOWN;
+
+#define DEFAULT_ENABLE_EXTENDED_EXPLAIN_PLANS false
+bool EnableExtendedExplainPlans = DEFAULT_ENABLE_EXTENDED_EXPLAIN_PLANS;
+
+/* Note that this is explicitly left disabled
+ * This is primarily because the operator that sets default_transaction_readonly
+ * would want to avoid new writes (perhaps due to high disk usage) and a background
+ * job that can go and delete documents can produce WAL files and can exacerbate
+ * the issue by putting disk load. Make this explicitly opt-in.
+ */
+#define DEFAULT_ENABLE_TTL_JOBS_ON_READ_ONLY false
+bool EnableTtlJobsOnReadOnly = DEFAULT_ENABLE_TTL_JOBS_ON_READ_ONLY;
+
+#define DEFAULT_CURSOR_EXPIRY_TIME_LIMIT_SECONDS 60
+int DefaultCursorExpiryTimeLimitSeconds = DEFAULT_CURSOR_EXPIRY_TIME_LIMIT_SECONDS;
+
+#define DEFAULT_MAX_CURSOR_FILE_INTERMEDIATE_FILE_SIZE_MB 4 * 1024
+int MaxAllowedCursorIntermediateFileSizeMB =
+	DEFAULT_MAX_CURSOR_FILE_INTERMEDIATE_FILE_SIZE_MB;
+
+#define DEFAULT_MAX_CURSOR_FILE_COUNT 5000
+int MaxCursorFileCount = DEFAULT_MAX_CURSOR_FILE_COUNT;
+
+/* Starting pg18 use documentdb_extended_rum for the rum library */
+#if PG_VERSION_NUM >= 180000
+#define DEFAULT_RUM_LIBRARY_LOAD_OPTION RumLibraryLoadOption_RequireDocumentDBRum
+#else
+#define DEFAULT_RUM_LIBRARY_LOAD_OPTION RumLibraryLoadOption_None
+#endif
+
+RumLibraryLoadOptions DocumentDBRumLibraryLoadOption = DEFAULT_RUM_LIBRARY_LOAD_OPTION;
+
+#define DEFAULT_ENABLE_STATEMENT_TIMEOUT true
+bool EnableBackendStatementTimeout = DEFAULT_ENABLE_STATEMENT_TIMEOUT;
+
+static struct config_enum_entry rum_load_options[4] = {
+	{ "none", RumLibraryLoadOption_None, false },
+	{ "prefer_documentdb_extended_rum", RumLibraryLoadOption_PreferDocumentDBRum, false },
+	{ "require_documentdb_extended_rum", RumLibraryLoadOption_RequireDocumentDBRum,
+	  false },
+	{ NULL, 0, false }
+};
+
+/*
+ * Returns a connection string host parameter derived from the server's
+ * listen_addresses GUC.  Falls back to "host=localhost" when the listen
+ * address is a wildcard ("*", "0.0.0.0", "::") or unavailable.
+ */
+static const char *
+YBGetDefaultLocalhostConnStr(void)
+{
+	if (YBIsEnabledInPostgresEnvVar() &&
+		ListenAddresses != NULL &&
+		ListenAddresses[0] != '\0' &&
+		strcmp(ListenAddresses, "*") != 0 &&
+		strcmp(ListenAddresses, "0.0.0.0") != 0 &&
+		strcmp(ListenAddresses, "::") != 0)
+	{
+		/*
+		 * ListenAddresses may be comma-separated; take the first entry.
+		 */
+		char *copy = pstrdup(ListenAddresses);
+		char *comma = strchr(copy, ',');
+
+		if (comma != NULL)
+			*comma = '\0';
+
+		/* Trim leading whitespace */
+		while (*copy == ' ')
+			copy++;
+
+		if (*copy != '\0')
+			return psprintf("host=%s", copy);
+	}
+
+	return DEFAULT_LOCALHOST_CONN_STR;
+}
+
 void
 InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 {
+	const char *ybDefaultConnStr = YBGetDefaultLocalhostConnStr();
+
 	DefineCustomStringVariable(
 		psprintf("%s.localhost_connection_string", prefix),
 		gettext_noop("Sets the hostname (and potentially other parameters "
 					 "except port number and database name) when connecting "
 					 "back to itself for operations that needs to be done via "
 					 "a libpq connection."),
-		NULL, &LocalhostConnectionString, DEFAULT_LOCALHOST_CONN_STR,
+		NULL, &LocalhostConnectionString, ybDefaultConnStr,
 		PGC_SUSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
@@ -207,7 +316,7 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 	DefineCustomIntVariable(
 		psprintf("%s.maxIndexesPerCollection", prefix),
 		gettext_noop(
-			"Max number of indexes per collection."),
+			"Maximum allowed indexes for a given collection."),
 		NULL, &MaxIndexesPerCollection, DEFAULT_MAX_INDEXES_PER_COLLECTION, 0, 300,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
@@ -260,7 +369,7 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		psprintf("%s.maxUserLimit", newGucPrefix),
 		gettext_noop("The default number of users allowed."),
 		NULL, &MaxUserLimit,
-		MAX_USER_LIMIT, 1, 100,
+		MAX_USER_LIMIT, 1, 500,
 		PGC_SUSET,
 		0,
 		NULL, NULL, NULL);
@@ -304,5 +413,100 @@ InitializeSystemConfigurations(const char *prefix, const char *newGucPrefix)
 		&MaxAggregationStagesAllowed,
 		DEFAULT_AGGREGATION_STAGES_LIMIT, DEFAULT_AGGREGATION_STAGES_LIMIT,
 		5 * DEFAULT_AGGREGATION_STAGES_LIMIT, /* Ballpark number for max is 5 times, we should rarely need to update it*/
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.index_term_compression_threshold", newGucPrefix),
+		gettext_noop("The size in bytes above which index terms will be compressed."),
+		NULL,
+		&IndexTermCompressionThreshold,
+		DEFAULT_INDEX_TERM_COMPRESSION_THRESHOLD, 128,
+		INT_MAX,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableUserCrud", newGucPrefix),
+		gettext_noop(
+			"Enables user crud through the data plane."),
+		NULL, &EnableUserCrud, DEFAULT_ENABLE_USER_CRUD,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableTTLJobsOnReadOnly", newGucPrefix),
+		gettext_noop(
+			"Enables TTL jobs on read-only nodes. This will override"
+			" the default_transaction_readonly on the TTL job only."),
+		NULL, &EnableTtlJobsOnReadOnly, DEFAULT_ENABLE_TTL_JOBS_ON_READ_ONLY,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enable_force_push_geonear_index", newGucPrefix),
+		gettext_noop(
+			"Enables ensuring that geonear queries are always pushed to the geospatial index."),
+		NULL, &EnableGeonearForceIndexPushdown,
+		DEFAULT_ENABLE_GEONEAR_FORCE_INDEX_PUSHDOWN,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomEnumVariable(
+		psprintf("%s.vectorPreFilterIterativeScanMode", newGucPrefix),
+		gettext_noop(
+			"Set the iterative scan mode for vector pre-filtering. "
+			"Relaxed order allows results to be slightly out of order by distance, but provides better recall. "
+			"Strict order ensures results are in the exact order by distance"),
+		NULL, &VectorPreFilterIterativeScanMode, DEFAULT_VECTOR_ITERATIVE_SCAN_MODE,
+		VECTOR_ITERATIVE_SCAN_OPTIONS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.defaultCursorFirstPageBatchSize", newGucPrefix),
+		gettext_noop("The default batch size for the first page of a cursor."),
+		NULL, &DefaultCursorFirstPageBatchSize,
+		DEFAULT_CURSOR_FIRST_PAGE_BATCH_SIZE, 1, INT_MAX,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableExtendedExplainPlans", newGucPrefix),
+		gettext_noop(
+			"Enables extended explain plans for queries. "
+			"This will include additional information in the explain plans."),
+		NULL, &EnableExtendedExplainPlans, DEFAULT_ENABLE_EXTENDED_EXPLAIN_PLANS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.defaultCursorExpiryTimeLimitSeconds", newGucPrefix),
+		gettext_noop(
+			"Default expiry time limit for cursor."),
+		NULL, &DefaultCursorExpiryTimeLimitSeconds,
+		DEFAULT_CURSOR_EXPIRY_TIME_LIMIT_SECONDS,
+		1, 3600, PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomIntVariable(
+		psprintf("%s.maxCursorIntermediateFileSizeMB", newGucPrefix),
+		gettext_noop(
+			"Maximum size of intermediate file for cursor."),
+		NULL, &MaxAllowedCursorIntermediateFileSizeMB,
+		DEFAULT_MAX_CURSOR_FILE_INTERMEDIATE_FILE_SIZE_MB,
+		1, INT_MAX, PGC_USERSET, 0, NULL, NULL, NULL);
+	DefineCustomIntVariable(
+		psprintf("%s.maxCursorFileCount", newGucPrefix),
+		gettext_noop(
+			"Maximum number of cursor files allowed. set to 0 to disable cursor file limit."),
+		NULL, &MaxCursorFileCount,
+		DEFAULT_MAX_CURSOR_FILE_COUNT, 0, INT_MAX,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomEnumVariable(
+		psprintf("%s.rum_library_load_option", newGucPrefix),
+		gettext_noop("Specifies the RUM library load option for DocumentDB."),
+		NULL, (int *) &DocumentDBRumLibraryLoadOption,
+		DEFAULT_RUM_LIBRARY_LOAD_OPTION,
+		rum_load_options,
+		PGC_POSTMASTER, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableStatementTimeout", newGucPrefix),
+		gettext_noop(
+			"Whether to enable per statement backend timeout override in the backend."),
+		NULL, &EnableBackendStatementTimeout, DEFAULT_ENABLE_STATEMENT_TIMEOUT,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }

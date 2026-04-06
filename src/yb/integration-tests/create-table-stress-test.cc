@@ -370,7 +370,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
-  FLAGS_tablet_creation_timeout_ms = 10000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 10000 * kTimeMultiplier;
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 

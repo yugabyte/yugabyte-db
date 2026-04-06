@@ -660,6 +660,14 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
     assertEquals(1, p.getRegions().get(0).getZones().size());
 
+    Universe universe = ModelFactory.createUniverse("k8s-univ", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
+              k8sProvider.getUuid().toString();
+        });
+
     ObjectNode providerJson = (ObjectNode) Json.toJson(p);
     JsonNode region = providerJson.get("regions").get(0);
     ArrayNode zones = (ArrayNode) region.get("zones");
@@ -680,9 +688,50 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Provider p = Provider.getOrBadRequest(k8sProvider.getUuid());
     assertEquals(2, p.getRegions().get(0).getZones().size());
 
-    p.getRegions().get(0).getZones().get(1).setActive(false);
+    Universe universe = ModelFactory.createUniverse("k8s-univ", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
+              k8sProvider.getUuid().toString();
+        });
+
+    List<AvailabilityZone> zones = p.getRegions().get(0).getZones();
+    p.getRegions().get(0).setZones(Arrays.asList(zones.get(0)));
 
     verifyEditError(p, false, "Cannot change a multi-AZ Kubernetes provider to single-AZ.");
+  }
+
+  @Test
+  public void testK8sProviderAllowAZTransitionWithoutUniverses() throws InterruptedException {
+    // Single-AZ to multi-AZ should succeed without universes.
+    Provider singleAZProvider = createK8sProvider();
+    Provider p = Provider.getOrBadRequest(singleAZProvider.getUuid());
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+
+    ObjectNode providerJson = (ObjectNode) Json.toJson(p);
+    JsonNode region = providerJson.get("regions").get(0);
+    ArrayNode zones = (ArrayNode) region.get("zones");
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "us-west1-b");
+    zone.put("code", "us-west1-b");
+    zones.add(zone);
+
+    Result result = editProvider(providerJson, false);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, p.getRegions().get(0).getZones().size());
+
+    List<AvailabilityZone> azs = p.getRegions().get(0).getZones();
+    p.getRegions().get(0).setZones(Arrays.asList(azs.get(0)));
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+    UUID taskUUID2 = doEditProvider(p, false);
+    TaskInfo taskInfo2 = waitForTask(taskUUID2);
+    assertEquals(TaskInfo.State.Success, taskInfo2.getTaskState());
   }
 
   @Test

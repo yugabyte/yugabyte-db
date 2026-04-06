@@ -40,6 +40,7 @@
 #include "api_hooks.h"
 #include "commands/parse_error.h"
 #include "utils/feature_counter.h"
+#include "jsonschema/bson_json_schema_tree.h"
 
 #define CREATE_COLLECTION_FUNC_NARGS 2
 
@@ -102,6 +103,7 @@ static const uint32_t MaxDatabaseCollectionLength = 235;
 static const StringView SystemPrefix = { .length = 7, .string = "system." };
 
 extern bool UseLocalExecutionShardQueries;
+extern bool ForceLocalExecutionShardQueries;
 extern bool EnableSchemaValidation;
 extern int MaxSchemaValidatorSize;
 
@@ -173,7 +175,7 @@ InitializeCollectionsHash(void)
 	if (CollectionsCacheContext == NULL)
 	{
 		CollectionsCacheContext = AllocSetContextCreate(CacheMemoryContext,
-														"Collection cache context",
+														"Cache context for collection",
 														ALLOCSET_DEFAULT_SIZES);
 	}
 
@@ -390,11 +392,8 @@ GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMode)
 														  CollectionsCacheContext);
 	}
 
-	if (collection.viewDefinition != NULL)
-	{
-		collection.viewDefinition = CopyPgbsonIntoMemoryContext(collection.viewDefinition,
-																CollectionsCacheContext);
-	}
+	collection.mongoDataCreationTimeVarAttrNumber =
+		GetMongoDataCreationTimeVarAttrNumber(collection.relationId);
 
 	if (collection.schemaValidator.validator != NULL)
 	{
@@ -490,9 +489,10 @@ GetMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameDatum
 	if (collection != NULL && collection->viewDefinition != NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
-						errmsg("Namespace %s.%s is a view, not a collection",
-							   collection->name.databaseName,
-							   collection->name.collectionName)));
+						errmsg(
+							"The namespace %s.%s refers to a view object rather than a collection",
+							collection->name.databaseName,
+							collection->name.collectionName)));
 	}
 
 	return collection;
@@ -539,7 +539,7 @@ GetMongoCollectionShardOidsAndNames(MongoCollection *collection, ArrayType **sha
 Oid
 TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode)
 {
-	/* If we don't have a local shard, bail. */
+	/* Cannot proceed without a local shard available. */
 	if (collection->shardTableName[0] == '\0')
 	{
 		return InvalidOid;
@@ -554,7 +554,7 @@ TryGetCollectionShardTable(MongoCollection *collection, LOCKMODE lockMode)
 	 * This is because switching states between remote execution and local execution can produce
 	 * isolation issues. So only support this if we're a single command.
 	 */
-	if (IsTransactionBlock())
+	if (IsTransactionBlock() && !ForceLocalExecutionShardQueries)
 	{
 		return InvalidOid;
 	}
@@ -615,14 +615,14 @@ GetMongoCollectionByNameDatumCore(Datum databaseNameDatum, Datum collectionNameD
 	if (databaseNameLength >= MAX_DATABASE_NAME_LENGTH)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE), errmsg(
-							"database name is too long")));
+							"The provided database name exceeds the permitted length")));
 	}
 
 	int collectionNameLength = VARSIZE_ANY_EXHDR(collectionNameDatum);
 	if (collectionNameLength >= MAX_COLLECTION_NAME_LENGTH)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE), errmsg(
-							"collection name is too long")));
+							"The specified collection name exceeds the allowed length")));
 	}
 
 	MongoCollectionName qualifiedName;
@@ -796,14 +796,14 @@ GetTempMongoCollectionByNameDatum(Datum databaseNameDatum, Datum collectionNameD
 	if (databaseNameLength >= MAX_DATABASE_NAME_LENGTH)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"database name is too long")));
+							"The provided database name exceeds the permitted length")));
 	}
 
 	int collectionNameLength = VARSIZE_ANY_EXHDR(collectionNameDatum);
 	if (collectionNameLength >= MAX_COLLECTION_NAME_LENGTH)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"collection name is too long")));
+							"The specified collection name exceeds the allowed length")));
 	}
 
 	/* copy text bytes directly, buffers are already 0-initialized above */
@@ -834,9 +834,11 @@ IsDataTableCreatedWithinCurrentXact(const MongoCollection *collection)
 		SearchSysCache1(RELOID, ObjectIdGetDatum(collection->relationId));
 	if (!HeapTupleIsValid(pgCatalogTuple))
 	{
-		ereport(ERROR, (errmsg("data table for collection with id "
-							   UINT64_FORMAT " doesn't exist",
-							   collection->collectionId)));
+		ereport(ERROR, (errmsg(
+							"The data table associated with the collection identified by "
+							UINT64_FORMAT
+							" cannot be found.",
+							collection->collectionId)));
 	}
 
 	bool dataTableCreatedWithinCurrentXact =
@@ -895,21 +897,21 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 		Datum collectionNameDatum = heap_getattr(tuple, 2, tupleDescriptor, &isNull);
 		if (isNull)
 		{
-			ereport(ERROR, (errmsg("collection_name should not be NULL in catalog")));
+			ereport(ERROR, (errmsg("collection name must not be NULL")));
 		}
 
 		memcpy(collection->name.collectionName, VARDATA_ANY(collectionNameDatum),
 			   VARSIZE_ANY_EXHDR(collectionNameDatum));
 
-		/* Attr 3 is the collection_id */
+		/* Attribute 3 refers to the collection_id */
 		collection->collectionId = collectionId;
 
 		Datum shardKeyDatum = heap_getattr(tuple, 4, tupleDescriptor, &isNull);
 		if (!isNull)
 		{
-			pgbson *shardKeyBson = (pgbson *) DatumGetPointer(shardKeyDatum);
+			pgbson *shardKeyBson = DatumGetPgBson(shardKeyDatum);
 			collection->shardKey =
-				CopyPgbsonIntoMemoryContext(shardKeyBson, CurrentMemoryContext);
+				CopyPgbsonIntoMemoryContext(shardKeyBson, outerContext);
 		}
 
 		/* Attr 5 is the collection_uuid */
@@ -924,9 +926,9 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 			Datum viewDatum = heap_getattr(tuple, 6, tupleDescriptor, &isNull);
 			if (!isNull)
 			{
-				pgbson *viewDefinition = (pgbson *) DatumGetPointer(viewDatum);
+				pgbson *viewDefinition = DatumGetPgBson(viewDatum);
 				collection->viewDefinition =
-					CopyPgbsonIntoMemoryContext(viewDefinition, CurrentMemoryContext);
+					CopyPgbsonIntoMemoryContext(viewDefinition, outerContext);
 			}
 		}
 
@@ -937,10 +939,7 @@ GetMongoCollectionFromCatalogById(uint64 collectionId, Oid relationId,
 			Datum validatorDatum = heap_getattr(tuple, 7, tupleDescriptor, &isNull);
 			if (!isNull)
 			{
-				pgbson *validator = (pgbson *) DatumGetPointer(validatorDatum);
-
-				/* The pgbson returned by DatumGetPointer doesn't have 4B VARHDR, add it with cloning func */
-				validator = PgbsonCloneFromPgbson(validator);
+				pgbson *validator = DatumGetPgBson(validatorDatum);
 				collection->schemaValidator.validator =
 					CopyPgbsonIntoMemoryContext(validator, outerContext);
 			}
@@ -1060,7 +1059,7 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 		Datum shardKeyDatum = heap_getattr(tuple, 4, tupleDescriptor, &isNull);
 		if (!isNull)
 		{
-			pgbson *shardKeyBson = (pgbson *) DatumGetPointer(shardKeyDatum);
+			pgbson *shardKeyBson = DatumGetPgBson(shardKeyDatum);
 			collection->shardKey = CopyPgbsonIntoMemoryContext(shardKeyBson,
 															   outerContext);
 		}
@@ -1077,7 +1076,7 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 			Datum viewDatum = heap_getattr(tuple, 6, tupleDescriptor, &isNull);
 			if (!isNull)
 			{
-				pgbson *viewDefinition = (pgbson *) DatumGetPointer(viewDatum);
+				pgbson *viewDefinition = DatumGetPgBson(viewDatum);
 				collection->viewDefinition =
 					CopyPgbsonIntoMemoryContext(viewDefinition, outerContext);
 			}
@@ -1090,8 +1089,7 @@ GetMongoCollectionFromCatalogByNameDatum(Datum databaseNameDatum,
 			Datum validatorDatum = heap_getattr(tuple, 7, tupleDescriptor, &isNull);
 			if (!isNull)
 			{
-				pgbson *validator = (pgbson *) DatumGetPointer(validatorDatum);
-				validator = PgbsonCloneFromPgbson(validator);
+				pgbson *validator = DatumGetPgBson(validatorDatum);
 				collection->schemaValidator.validator =
 					CopyPgbsonIntoMemoryContext(validator, outerContext);
 			}
@@ -1179,8 +1177,8 @@ GetMongoDataCreationTimeVarAttrNumber(Oid collectionOid)
 
 	if (!HeapTupleIsValid(tuple))
 	{
-		/* If collection doesn't exist, we'll arrive here */
-		return (AttrNumber) 4;
+		/* creation_time column is not present */
+		return (AttrNumber) - 1;
 	}
 
 	Form_pg_attribute targetatt = (Form_pg_attribute) GETSTRUCT(tuple);
@@ -1249,11 +1247,11 @@ void
 ValidateCollectionNameForUnauthorizedSystemNs(const char *collectionName,
 											  Datum databaseNameDatum)
 {
-	/* Empty collection name*/
+	/* Collection name cannot be empty*/
 	if (strlen(collectionName) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Invalid empty namespace specified")));
+						errmsg("An invalid and empty namespace has been specified")));
 	}
 	for (int i = 0; i < NonWritableSystemCollectionNamesLength; i++)
 	{
@@ -1266,7 +1264,7 @@ ValidateCollectionNameForUnauthorizedSystemNs(const char *collectionName,
 
 			/* Need to disallow user writes on NonWritableSystemCollectionNames */
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-							errmsg("cannot write to %.*s.%s",
+							errmsg("Unable to write data to specified location %.*s.%s",
 								   databaseView.length, databaseView.string,
 								   NonWritableSystemCollectionNames[i])));
 		}
@@ -1303,7 +1301,7 @@ ValidateCollectionNameForValidSystemNamespace(StringView *collectionView,
 				.string = VARDATA_ANY(databaseNameDatum)
 			};
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-							errmsg("Invalid system namespace: %.*s.%.*s",
+							errmsg("System namespace provided is invalid: %.*s.%.*s",
 								   databaseView.length, databaseView.string,
 								   collectionView->length, collectionView->string)));
 		}
@@ -1313,7 +1311,7 @@ ValidateCollectionNameForValidSystemNamespace(StringView *collectionView,
 
 /*
  * command_collection_table returns the OID of a table that stores the data
- * for a given Mongo a collection and locks the table for reads.
+ * for a given Mongo collection and locks the table for reads.
  */
 Datum
 command_collection_table(PG_FUNCTION_ARGS)
@@ -1428,12 +1426,12 @@ GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews)
 			{
 				resultIsNulls[i - 1] = false;
 				resultValues[i - 1] = SPI_datumTransfer(resultDatum,
-														SPI_tuptable->tupdesc->attrs[i -
-																					 1].
-														attbyval,
-														SPI_tuptable->tupdesc->attrs[i -
-																					 1].
-														attlen);
+														TupleDescAttr(
+															SPI_tuptable->tupdesc, i -
+															1)->attbyval,
+														TupleDescAttr(
+															SPI_tuptable->tupdesc, i -
+															1)->attlen);
 			}
 		}
 
@@ -1451,9 +1449,10 @@ GetCollectionOrViewCore(PG_FUNCTION_ARGS, bool allowViews)
 		if (!allowViews && resultTupDesc->natts > 5 && !resultIsNulls[5])
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTEDONVIEW),
-							errmsg("Namespace %s.%s is a view, not a collection",
-								   TextDatumGetCString(databaseDatum),
-								   TextDatumGetCString(collectionName))));
+							errmsg(
+								"The namespace %s.%s refers to a view object rather than a collection",
+								TextDatumGetCString(databaseDatum),
+								TextDatumGetCString(collectionName))));
 		}
 
 		HeapTuple resultTup = heap_form_tuple(resultTupDesc, resultValues, resultIsNulls);
@@ -1478,7 +1477,7 @@ CreateCollection(Datum dbNameDatum, Datum collectionNameDatum)
 	if (collectionNameStr != NULL && strlen(collectionNameStr) == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Invalid empty namespace specified")));
+						errmsg("An invalid and empty namespace has been specified")));
 	}
 
 	const char *cmdStr = FormatSqlQuery("SELECT %s.create_collection($1, $2)",
@@ -1543,132 +1542,6 @@ RenameCollection(Datum dbNameDatum, Datum srcCollectionNameDatum, Datum
 	{
 		ereport(ERROR, (errmsg("rename_collection unexpectedly "
 							   "returned NULL datum")));
-	}
-}
-
-
-/*
- * DropStagingCollectionForOut is a C wrapper for dropping a TEMP non-mongo collection
- * created during $out. Typically, the temp collection is promoted to be the target
- * user collection if $out succeeds. But, we would need to delete it if $out fails for
- * some reason. On such a delete, we want to turn of change tracking.
- */
-void
-DropStagingCollectionForOut(Datum dbNameDatum, Datum srcCollectionNameDatum)
-{
-	/*
-	 *  Note that chage tracking is turned off for this delete
-	 *  ApiSchemaName.drop_collection(
-	 *      daatabaseName, collectionName, write_concern, uuid, track_changes)
-	 */
-	const char *cmdStr = FormatSqlQuery(
-		"SELECT %s.drop_collection($1, $2, null, null, false)",
-		ApiSchemaName);
-
-	Oid argTypes[2] = { TEXTOID, TEXTOID };
-	Datum argValues[2] = {
-		dbNameDatum,
-		srcCollectionNameDatum
-	};
-
-	/* all args are non-null */
-	char *argNulls = NULL;
-
-	bool isNull = true;
-	bool readOnly = false;
-	ExtensionExecuteQueryWithArgsViaSPI(cmdStr,
-										2,
-										argTypes, argValues, argNulls,
-										readOnly, SPI_OK_SELECT,
-										&isNull);
-	if (isNull)
-	{
-		ereport(ERROR, (errmsg("drop_collection unexpectedly "
-							   "returned NULL datum")));
-	}
-}
-
-
-/*
- * OverWriteDataFromStagingToDest is a C wrapper around copy_collection_data. It returns
- * whether whether data was copied from the source to the destination.
- */
-void
-OverWriteDataFromStagingToDest(Datum srcDbNameDatum, Datum srcCollectionNameDatum, Datum
-							   destDbNameDatum, Datum destCollectionNameDatum, bool
-							   dropSourceCollection)
-{
-	const char *cmdStr =
-		FormatSqlQuery("SELECT %s.copy_collection_data($1, $2, $3, $4, $5)",
-					   ApiInternalSchemaName);
-
-	Oid argTypes[5] = { TEXTOID, TEXTOID, TEXTOID, TEXTOID, BOOLOID };
-	Datum argValues[5] = {
-		srcDbNameDatum,
-		srcCollectionNameDatum,
-		destDbNameDatum,
-		destCollectionNameDatum,
-		BoolGetDatum(dropSourceCollection)
-	};
-
-	/* all args are non-null */
-	char *argNulls = NULL;
-
-	bool isNull = true;
-	bool readOnly = false;
-	ExtensionExecuteQueryWithArgsViaSPI(cmdStr,
-										5,
-										argTypes, argValues, argNulls,
-										readOnly, SPI_OK_SELECT,
-										&isNull);
-	if (isNull)
-	{
-		ereport(ERROR, (errmsg("copy_collection_data unexpectedly "
-							   "returned NULL datum")));
-	}
-}
-
-
-/*
- * CopyCollectionMetadata is a C wrapper around collection set method for $out. It returns
- * whether the destination collection was set up properly with the necessary indexes copied
- * from the source collection.
- */
-void
-SetupCollectionForOut(char *srcDbName, char *srcCollectionName, char *destDbName, char *
-					  destCollectionName, bool createTemporaryTable)
-{
-	const char *cmdStr = createTemporaryTable ?
-						 FormatSqlQuery(
-		"SELECT %s.setup_temporary_out_collection($1, $2, $3, $4)", ApiInternalSchemaName)
-						 :
-						 FormatSqlQuery(
-		"SELECT %s.setup_renameable_out_collection($1, $2, $3, $4)",
-		ApiInternalSchemaName);
-
-	Oid argTypes[4] = { TEXTOID, TEXTOID, TEXTOID, TEXTOID };
-	Datum argValues[4] = {
-		CStringGetTextDatum(srcDbName),
-		CStringGetTextDatum(srcCollectionName),
-		CStringGetTextDatum(destDbName),
-		CStringGetTextDatum(destCollectionName)
-	};
-
-	/* all args are non-null */
-	char *argNulls = NULL;
-
-	bool isNull = true;
-	bool readOnly = false;
-	ExtensionExecuteQueryWithArgsViaSPI(cmdStr,
-										4,
-										argTypes, argValues, argNulls,
-										readOnly, SPI_OK_SELECT,
-										&isNull);
-	if (isNull)
-	{
-		ereport(ERROR, (errmsg(
-							"Setup Collection For Out unexpected returned NULL datum. createTemporaryTable = %d",
-							createTemporaryTable)));
 	}
 }
 
@@ -1747,15 +1620,16 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 	if (collectionView.string == NULL || collectionView.length == 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Invalid namespace specified '%.*s.'",
+						errmsg("The specified namespace provided '%.*s.' is invalid.",
 							   databaseView.length, databaseView.string)));
 	}
 
 	if (StringViewStartsWith(&collectionView, '.'))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-						errmsg("Collection names cannot start with '.': %.*s",
-							   collectionView.length, collectionView.string)));
+						errmsg(
+							"Collection names must not begin with the '.' character: %.*s",
+							collectionView.length, collectionView.string)));
 	}
 
 	for (int i = 0; i < CharactersNotAllowedInCollectionNamesLength; i++)
@@ -1763,7 +1637,7 @@ ValidateDatabaseCollection(Datum databaseDatum, Datum collectionDatum)
 		if (StringViewContains(&collectionView, CharactersNotAllowedInCollectionNames[i]))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
-							errmsg("Invalid collection name: %.*s",
+							errmsg("Collection name provided is invalid: %.*s",
 								   collectionView.length, collectionView.string)));
 		}
 	}
@@ -1807,9 +1681,10 @@ validate_dbname(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DOCUMENTDB_DBALREADYEXISTS),
-					 errmsg("db already exists with different case already have: "
-							"[%s] trying to create [%.*s]", dbNameInTable,
-							databaseView.length, databaseView.string)));
+					 errmsg(
+						 "Database already exists but with a different case; existing entry: [%s], attempted creation: [%.*s]",
+						 dbNameInTable,
+						 databaseView.length, databaseView.string)));
 		}
 	}
 
@@ -1881,6 +1756,68 @@ UpsertSchemaValidation(Datum databaseDatum,
 }
 
 
+static void
+CheckSyntaxForValidator(const bson_iter_t *validator)
+{
+	if (bson_iter_type(validator) != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
+						errmsg("$jsonSchema must be of object type")));
+	}
+
+	bson_iter_t schemaIter;
+	if (bson_iter_recurse(validator, &schemaIter))
+	{
+		SchemaTreeState localTreeState = { };
+		BuildSchemaTree(&localTreeState, &schemaIter);
+	}
+}
+
+
+/*
+ * This function processes the $jsonSchema in the bson iter.
+ * It checks if the $jsonSchema is present and calls CheckSyntaxForValidator
+ * to validate the syntax of the validator.
+ */
+static void
+ProcessJsonschemaInIter(bson_iter_t *iter)
+{
+	CHECK_FOR_INTERRUPTS();
+	check_stack_depth();
+
+	bson_iter_t childIter, arrayIter;
+
+	if (bson_iter_recurse(iter, &childIter))
+	{
+		while (bson_iter_next(&childIter))
+		{
+			if (strcmp(bson_iter_key(&childIter), "$jsonSchema") == 0)
+			{
+				CheckSyntaxForValidator(&childIter);
+				return;
+			}
+			else if (BSON_ITER_HOLDS_ARRAY(&childIter) && bson_iter_recurse(&childIter,
+																			&arrayIter))
+			{
+				while (bson_iter_next(&arrayIter))
+				{
+					if (BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
+					{
+						bson_iter_t subIter;
+						if (bson_iter_recurse(&arrayIter, &subIter) &&
+							bson_iter_find(&subIter, "$jsonSchema"))
+						{
+							CheckSyntaxForValidator(&subIter);
+							return;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+
 /*
  * This function parses and checks the bson value for "validator" option
  * given in "create"/"collMod" command
@@ -1902,7 +1839,10 @@ ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *has
 	}
 
 	EnsureTopLevelFieldType(validatorName, iter, BSON_TYPE_DOCUMENT);
-	const bson_value_t *validator = bson_iter_value(iter);
+
+	/* Copy the bson value to make sure the validator is valid beyond the lifetime of iter */
+	bson_value_t *validator = palloc(sizeof(bson_value_t));
+	bson_value_copy(bson_iter_value(iter), validator);
 
 	/* Large and overly complex validation rules can impact database performance, especially during write operations. */
 	if (validator->value.v_doc.data_len > (uint32_t) MaxSchemaValidatorSize)
@@ -1916,7 +1856,7 @@ ParseAndGetValidatorSpec(bson_iter_t *iter, const char *validatorName, bool *has
 							MaxSchemaValidatorSize / 1024)));
 	}
 
-	/* Todo - Add more validation checks(operator syntax) for the validator, work item 3466925*/
+	ProcessJsonschemaInIter(iter);
 
 	*hasValue = true;
 	return validator;
@@ -1957,10 +1897,10 @@ ParseAndGetValidationActionOption(bson_iter_t *iter, const char *validationActio
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"Enumeration value '%s' for field '%s' is not a valid value.",
+							"The enumeration value '%s' provided for the field '%s' is invalid.",
 							validationAction, validationActionName),
 						errdetail_log(
-							"Enumeration value '%s' for field '%s' is not a valid value.",
+							"The enumeration value '%s' provided for the field '%s' is invalid.",
 							validationAction, validationActionName)));
 	}
 }
@@ -2001,10 +1941,10 @@ ParseAndGetValidationLevelOption(bson_iter_t *iter, const char *validationLevelN
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"Enumeration value '%s' for field '%s' is not a valid value.",
+							"The enumeration value '%s' provided for the field '%s' is invalid.",
 							validationLevel, validationLevelName),
 						errdetail_log(
-							"Enumeration value '%s' for field '%s' is not a valid value.",
+							"The enumeration value '%s' provided for the field '%s' is invalid.",
 							validationLevel, validationLevelName)));
 	}
 }

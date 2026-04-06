@@ -57,7 +57,7 @@ class CatalogManagerUtil {
   // multi AZ setup, else checks load distribution across tservers (single AZ).
   static Status IsLoadBalanced(const TSDescriptorVector& ts_descs);
 
-  static ReplicationInfoPB GetTableReplicationInfo(
+  static Result<ReplicationInfoPB> GetTableReplicationInfo(
       const scoped_refptr<const TableInfo>& table,
       const std::shared_ptr<const YsqlTablespaceManager>
           tablespace_manager,
@@ -169,6 +169,8 @@ class CatalogManagerUtil {
       const TableId& table_id, const std::string& table_name, const TableType& table_type,
       const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
       tablet::TableInfoPB* pb);
+
+  static size_t GetReplicationFactor(const ReplicationInfoPB& replication_info);
 
  private:
   CatalogManagerUtil();

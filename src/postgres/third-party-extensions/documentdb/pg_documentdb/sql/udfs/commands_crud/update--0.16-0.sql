@@ -1,6 +1,6 @@
 
 /*
- * __API_SCHEMA_V2__.update processes a Mongo update wire-protocol command.
+ * __API_SCHEMA_V2__.update processes a documentdb update wire-protocol command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.update(
     p_database_name text,

@@ -136,6 +136,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  dist_trace.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -250,6 +251,12 @@ set(UTIL_SRCS
   thread_holder.cc
   )
 
+set(OPENTELEMETRY_LIBRARIES
+  opentelemetry_trace
+  opentelemetry_exporter_otlp_http
+  opentelemetry_resources
+  opentelemetry_proto)
+
 set(UTIL_LIBS
   absl
   boost_system
@@ -268,7 +275,8 @@ set(UTIL_LIBS
   protobuf
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY})
+  ${OPENSSL_SSL_LIBRARY}
+  ${OPENTELEMETRY_LIBRARIES})
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
@@ -352,7 +360,10 @@ ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
-ADD_YB_TEST(cgroups-test)
+if (NOT APPLE)
+  # We disable this test when running on Apple platform as it does not support cgroups.
+  ADD_YB_TEST(cgroups-test)
+endif()
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)

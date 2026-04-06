@@ -76,6 +76,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -86,6 +87,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
@@ -379,6 +381,51 @@ public class OperatorUtils {
     } catch (IllegalArgumentException e) {
       log.warn("Invalid YBA resource ID in annotation: {}. Expected UUID format.", resourceId, e);
       return null;
+    }
+  }
+
+  /**
+   * Adds a YBA resource ID annotation to the given Kubernetes resource metadata. Uses {@code edit}
+   * to atomically read the latest resource state from the server and apply the annotation. If the
+   * resource already has the annotation, no modification is made.
+   *
+   * @param resource The Kubernetes resource to annotate
+   * @param resourceId The UUID to store as the YBA resource ID annotation
+   */
+  public static <T extends HasMetadata> void maybeAddYbaResourceId(
+      T resource,
+      UUID resourceId,
+      MixedOperation<T, KubernetesResourceList<T>, Resource<T>> resourceClient) {
+    ObjectMeta metadata = resource.getMetadata();
+    if (metadata == null) {
+      throw new RuntimeException(String.format("Metadata is null for resource: %s", resource));
+    }
+    Map<String, String> annotations = metadata.getAnnotations();
+    if (annotations != null && annotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      return;
+    }
+    try {
+      resourceClient
+          .inNamespace(metadata.getNamespace())
+          .withName(metadata.getName())
+          .edit(
+              r -> {
+                ObjectMeta serverMeta = r.getMetadata();
+                Map<String, String> serverAnnotations = serverMeta.getAnnotations();
+                if (serverAnnotations != null
+                    && serverAnnotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+                  return r;
+                }
+                r.setMetadata(
+                    new ObjectMetaBuilder(serverMeta)
+                        .addToAnnotations(
+                            ResourceAnnotationKeys.YBA_RESOURCE_ID, resourceId.toString())
+                        .build());
+                return r;
+              });
+    } catch (KubernetesClientException e) {
+      log.warn(
+          "Failed to add YBA resource ID '{}' annotation to resource: {}", resourceId, resource, e);
     }
   }
 

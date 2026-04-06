@@ -110,6 +110,8 @@ YB_STRONGLY_TYPED_BOOL(IncludeIntents);
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
 YB_STRONGLY_TYPED_BOOL(SkipSeek);
 
+using dockv::IncludeWriteTime;
+
 // Temporary typedef for lightweight protobuf migration
 using KeyValueWriteBatchMsg = KeyValueWriteBatchPB;
 using KeyValuePairMsg = KeyValuePairPB;

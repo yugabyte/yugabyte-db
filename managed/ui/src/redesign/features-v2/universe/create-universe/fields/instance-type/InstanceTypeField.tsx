@@ -1,4 +1,4 @@
-import { ChangeEvent, ReactElement } from 'react';
+import { ChangeEvent, ReactElement, useLayoutEffect } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -35,7 +35,7 @@ const { Box } = mui;
 const getOptionLabel = (op: Record<string, string> | string): string => {
   if (!op) return '';
 
-  const option = (op as unknown) as InstanceType;
+  const option = op as unknown as InstanceType;
   let result = option.instanceTypeCode;
   if (option.numCores && option.memSizeGB) {
     const cores = pluralize('core', option.numCores, true);
@@ -89,28 +89,57 @@ export const InstanceTypeField = ({
     ],
     () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
     {
-      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones,
-      onSuccess: (data) => {
-        if (!data.length) return;
-
-        const currentInstanceType = getValues(UPDATE_FIELD);
-
-        //do instance type exists on the last fetched list
-        const instanceExists = (instanceType: string) =>
-          !!data.find(
-            (instance: InstanceType) => instance.instanceTypeCode === instanceType // default instance type exists in the list
-          );
-
-        // set default/first item as instance type after provider changes
-        if (provider?.code && (!currentInstanceType || !instanceExists(currentInstanceType))) {
-          const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
-          if (instanceExists(defaultInstanceType))
-            setValue(UPDATE_FIELD, defaultInstanceType, { shouldValidate: true });
-          else setValue(UPDATE_FIELD, data[0].instanceTypeCode, { shouldValidate: true });
-        }
-      }
+      enabled: !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
     }
   );
+
+  useLayoutEffect(() => {
+    if (!data?.length || !provider?.code) return;
+
+    const instanceExists = (code: string | null | undefined) =>
+      !!code && !!data.find((instance) => instance.instanceTypeCode === code);
+
+    const currentInstanceType = getValues(UPDATE_FIELD);
+
+    if (!instanceExists(currentInstanceType)) {
+      const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
+      const code =
+        defaultInstanceType && instanceExists(defaultInstanceType)
+          ? defaultInstanceType
+          : data[0].instanceTypeCode;
+      setValue(UPDATE_FIELD, code, { shouldValidate: true });
+      const option = data.find((i) => i.instanceTypeCode === code);
+      if (option) {
+        setValue(
+          UPDATE_DEVICE_INFO_FIELD,
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
+          {
+            shouldValidate: true
+          }
+        );
+      }
+    } else if (!getValues(UPDATE_DEVICE_INFO_FIELD)) {
+      const option = data.find((i) => i.instanceTypeCode === currentInstanceType);
+      if (option) {
+        setValue(
+          UPDATE_DEVICE_INFO_FIELD,
+          getDeviceInfoFromInstance(option, providerRuntimeConfigs),
+          {
+            shouldValidate: true
+          }
+        );
+      }
+    }
+  }, [
+    data,
+    provider?.code,
+    providerRuntimeConfigs,
+    UPDATE_FIELD,
+    UPDATE_DEVICE_INFO_FIELD,
+    getValues,
+    setValue
+  ]);
+
   const instanceTypes = sortAndGroup(data, provider?.code);
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
@@ -127,6 +156,7 @@ export const InstanceTypeField = ({
         const value =
           instanceTypes.find((i: InstanceTypeWithGroup) => i.instanceTypeCode === field.value) ??
           '';
+
         return (
           <Box
             display="flex"
@@ -138,8 +168,8 @@ export const InstanceTypeField = ({
                 size="large"
                 loading={isLoading}
                 disabled={disabled}
-                value={(value as unknown) as Record<string, string>}
-                options={(instanceTypes as unknown) as Record<string, string>[]}
+                value={value as unknown as Record<string, string>}
+                options={instanceTypes as unknown as Record<string, string>[]}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
                 onChange={handleChange}

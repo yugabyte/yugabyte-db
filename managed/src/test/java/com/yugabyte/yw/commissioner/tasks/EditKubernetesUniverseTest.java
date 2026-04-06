@@ -133,6 +133,10 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
     }
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    // WaitForServer(YSQLSERVER) calls ysqlQueryExecutor.executeQueryInNodeShell; stub success.
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
+            any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "true");
@@ -299,12 +303,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
@@ -312,6 +310,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
@@ -336,15 +343,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

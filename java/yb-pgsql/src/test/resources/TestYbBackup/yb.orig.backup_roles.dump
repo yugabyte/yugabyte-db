@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.12-YB-2.27.0.0-b0
--- Dumped by ysql_dump version 15.12-YB-2.27.0.0-b0
+-- Dumped from database version 15.12-YB-2.29.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.29.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -100,8 +100,20 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'test_table',
 	'relpages', '0'::integer,
-	'reltuples', '-1'::real,
+	'reltuples', '3'::real,
 	'relallvisible', '0'::integer
+);
+SELECT * FROM pg_catalog.pg_restore_attribute_stats(
+	'version', '150012'::integer,
+	'schemaname', 'public',
+	'relname', 'test_table',
+	'attname', 'id',
+	'inherited', 'f'::boolean,
+	'null_frac', '0'::real,
+	'avg_width', '4'::integer,
+	'n_distinct', '-1'::real,
+	'histogram_bounds', '{1,2,3}'::text,
+	'correlation', '1'::real
 );
 
 
@@ -174,7 +186,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 	'schemaname', 'public',
 	'relname', 'test_table_pkey',
 	'relpages', '0'::integer,
-	'reltuples', '0'::real,
+	'reltuples', '3'::real,
 	'relallvisible', '0'::integer
 );
 
@@ -190,3 +202,4 @@ END $$;
 --
 -- YSQL database dump complete
 --
+

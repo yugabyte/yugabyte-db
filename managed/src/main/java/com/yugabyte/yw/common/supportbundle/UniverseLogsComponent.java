@@ -229,8 +229,7 @@ class UniverseLogsComponent implements SupportBundleComponent {
           new ProcessBuilder("grep", "-v", "AUDIT:", logFile.getAbsolutePath());
       grepProcess.redirectOutput(new File(logFile.getParent(), outputFileName)).start().waitFor();
     } catch (Exception e) {
-      log.error("Error while filtering pg log: {}", baseFileName);
-      e.printStackTrace();
+      log.error("Error while filtering pg log: {}", baseFileName, e);
     }
   }
 

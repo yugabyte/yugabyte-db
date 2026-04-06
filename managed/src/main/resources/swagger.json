@@ -145,6 +145,49 @@
       },
       "type" : "object"
     },
+    "AZUpgradeState" : {
+      "description" : "Availability zone software upgrade state",
+      "properties" : {
+        "azName" : {
+          "description" : "WARNING: This is a preview API that could change. Availability zone name for this upgrade state entry",
+          "type" : "string"
+        },
+        "azUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Availability zone UUID for this upgrade state entry",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "clusterUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Cluster UUID (primary or read replica) for this AZ",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "serverType" : {
+          "description" : "WARNING: This is a preview API that could change. Server type (MASTER or TSERVER) for this AZ",
+          "enum" : [
+            "MASTER",
+            "TSERVER",
+            "CONTROLLER",
+            "YQLSERVER",
+            "YSQLSERVER",
+            "REDISSERVER",
+            "EITHER"
+          ],
+          "type" : "string"
+        },
+        "status" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ upgrade status: NOT_STARTED; IN_PROGRESS before that AZ's upgrade subtasks run, then COMPLETED when done, or FAILED on task failure / YBA restart; COMPLETED; FAILED (subtask failure or stale IN_PROGRESS after upgrade failure / platform restart)",
+          "enum" : [
+            "NOT_STARTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "FAILED"
+          ],
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "AZUpgradeStep" : {
       "description" : "AZ upgrade step: order is list order; pauseAfterTserverUpgrade controls canary pause after this AZ",
       "properties" : {
@@ -2412,10 +2455,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -2455,6 +2494,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -2892,7 +2932,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -3764,10 +3806,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -4067,7 +4105,7 @@
     "BackupScheduleToggleParams" : {
       "properties" : {
         "runImmediateBackupOnResume" : {
-          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false (default), the full backup will instead run at its normally scheduled time.",
+          "description" : "Run a full or incremental backup if required when resuming a stopped schedule. When false, the full backup will instead run at its normally scheduled time. When true, the full backup will run immediately, and then the schedule will continue as normal. If not specified, the value is determined by the yb.backup.run_immediate_backup_on_resume runtime config.",
           "type" : "boolean"
         },
         "status" : {
@@ -4347,10 +4385,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -4677,10 +4711,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -5301,10 +5331,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -5350,6 +5376,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -5787,7 +5814,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -5923,10 +5952,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -6659,10 +6684,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -8426,10 +8447,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -8469,6 +8486,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -8906,7 +8924,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -9243,10 +9263,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -9286,6 +9302,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -9729,7 +9746,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -10779,10 +10798,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -10822,6 +10837,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -11262,7 +11278,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -11530,10 +11548,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -11573,6 +11587,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -12010,7 +12025,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -12885,10 +12902,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "pointInTimeRestoreEnabled" : {
@@ -15660,13 +15673,42 @@
         "canRollbackCatalogUpgrade" : {
           "type" : "boolean"
         },
+        "canaryPauseState" : {
+          "description" : "WARNING: This is a preview API that could change. Canary pause state when upgrade is paused at a canary point",
+          "enum" : [
+            "NOT_PAUSED",
+            "PAUSED_AFTER_MASTERS",
+            "PAUSED_AFTER_TSERVERS_AZ"
+          ],
+          "type" : "string"
+        },
+        "canaryUpgrade" : {
+          "type" : "boolean"
+        },
+        "masterAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ master upgrade progress (standard and canary)",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
+        },
         "softwareVersion" : {
           "type" : "string"
         },
         "targetUpgradeSoftwareVersion" : {
           "type" : "string"
+        },
+        "tserverAZUpgradeStatesList" : {
+          "description" : "WARNING: This is a preview API that could change. Per-AZ tserver upgrade progress (standard and canary)",
+          "items" : {
+            "$ref" : "#/definitions/AZUpgradeState"
+          },
+          "type" : "array"
         }
       },
+      "required" : [
+        "canaryUpgrade"
+      ],
       "type" : "object"
     },
     "Principal" : {
@@ -16030,10 +16072,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -16073,6 +16111,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -16510,7 +16549,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -16720,10 +16761,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -16763,6 +16800,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -17200,7 +17238,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -17773,10 +17813,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -17816,6 +17852,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -18259,7 +18296,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -18625,10 +18664,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -18668,6 +18703,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -19105,7 +19141,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -19350,10 +19388,6 @@
           "type" : "integer"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "prefixUUID" : {
@@ -19765,10 +19799,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -19826,6 +19856,20 @@
         "platformUrl",
         "sleepAfterMasterRestartMillis",
         "sleepAfterTServerRestartMillis"
+      ],
+      "type" : "object"
+    },
+    "ResumeCanaryUpgradeParams" : {
+      "description" : "Parameters to resume a paused canary software upgrade",
+      "properties" : {
+        "taskUUID" : {
+          "description" : "UUID of the paused upgrade task to resume",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [
+        "taskUUID"
       ],
       "type" : "object"
     },
@@ -20171,10 +20215,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -20214,6 +20254,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -20651,7 +20692,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -21315,7 +21358,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -21734,7 +21779,9 @@
               "CheckNodeCommandExecution",
               "CheckNodeDataDirDiskSpace",
               "OperatorImportResource",
-              "UpdateParentTaskParams"
+              "UpdateParentTaskParams",
+              "SaveSoftwareUpgradeProgress",
+              "CheckDuplicateInstance"
             ],
             "type" : "string"
           },
@@ -22302,7 +22349,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -22604,10 +22653,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -22647,6 +22692,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -23084,7 +23130,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -23766,10 +23814,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -23809,6 +23853,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -24246,7 +24291,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -24348,10 +24395,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -24654,7 +24697,8 @@
               "Failure",
               "Unknown",
               "Abort",
-              "Aborted"
+              "Aborted",
+              "Paused"
             ],
             "type" : "string"
           },
@@ -25103,10 +25147,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -25146,6 +25186,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -25583,7 +25624,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -25792,10 +25835,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -25835,6 +25874,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -26272,7 +26312,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -26450,10 +26492,6 @@
           "description" : "Error message",
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
           "format" : "uuid",
@@ -26620,10 +26658,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -26666,6 +26700,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -27103,7 +27138,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27276,10 +27313,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -27319,6 +27352,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -27756,7 +27790,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -27929,10 +27965,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -27972,6 +28004,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -28409,7 +28442,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -28712,6 +28747,10 @@
           "description" : "Universe name",
           "type" : "string"
         },
+        "platformVersion" : {
+          "description" : "YugabyteDB Anywhere platform software version for this YBA instance",
+          "type" : "string"
+        },
         "pricePerHour" : {
           "description" : "Price",
           "format" : "double",
@@ -28862,10 +28901,6 @@
           "type" : "string"
         },
         "platformUrl" : {
-          "type" : "string"
-        },
-        "platformVersion" : {
-          "readOnly" : true,
           "type" : "string"
         },
         "previousTaskUUID" : {
@@ -29092,10 +29127,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -29135,6 +29166,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -29572,7 +29604,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -30299,10 +30333,6 @@
         "platformUrl" : {
           "type" : "string"
         },
-        "platformVersion" : {
-          "readOnly" : true,
-          "type" : "string"
-        },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
           "description" : "WARNING: This is a preview API that could change. Previous software version related data"
@@ -30342,6 +30372,7 @@
             "Upgrading",
             "UpgradeFailed",
             "PreFinalize",
+            "Paused",
             "Finalizing",
             "FinalizeFailed",
             "RollingBack",
@@ -30787,7 +30818,9 @@
             "CheckNodeCommandExecution",
             "CheckNodeDataDirDiskSpace",
             "OperatorImportResource",
-            "UpdateParentTaskParams"
+            "UpdateParentTaskParams",
+            "SaveSoftwareUpgradeProgress",
+            "CheckDuplicateInstance"
           ],
           "type" : "string"
         },
@@ -47493,6 +47526,67 @@
           }
         ],
         "summary" : "Restart Universe",
+        "tags" : [
+          "Universe Upgrades Management"
+        ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/resume_canary" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Resumes a paused canary software upgrade. The request body must contain the task UUID of the paused upgrade.",
+        "operationId" : "resumeCanarySoftwareUpgrade",
+        "parameters" : [
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "cUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "format" : "uuid",
+            "in" : "path",
+            "name" : "uniUUID",
+            "required" : true,
+            "type" : "string"
+          },
+          {
+            "in" : "query",
+            "name" : "request",
+            "required" : false
+          },
+          {
+            "description" : "Resume Canary Upgrade Params",
+            "in" : "body",
+            "name" : "resume_canary_upgrade_params",
+            "required" : true,
+            "schema" : {
+              "$ref" : "#/definitions/ResumeCanaryUpgradeParams"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [
+          {
+            "apiKeyAuth" : [ ]
+          }
+        ],
+        "summary" : "Resume canary software upgrade",
         "tags" : [
           "Universe Upgrades Management"
         ]

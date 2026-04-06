@@ -401,7 +401,6 @@ YBXLogReadRecord(XLogReaderState *state, List *publication_names,
 	{
 		state->ReadRecPtr = record->lsn;
 		state->yb_virtual_wal_record = record;
-		TrackUnackedTransaction(record);
 	}
 
 	return record;
@@ -500,6 +499,11 @@ YBCReadRecord(List *publication_names)
 	record = &cached_records->rows[cached_records_last_sent_row_idx++];
 
 	MemoryContextSwitchTo(caller_context);
+
+	/* record should be non-null, but be conservative and check. */
+	if (record)
+		TrackUnackedTransaction(record);
+
 	return record;
 }
 

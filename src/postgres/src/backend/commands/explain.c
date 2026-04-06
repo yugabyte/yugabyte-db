@@ -131,7 +131,6 @@ static void show_buffer_usage(ExplainState *es, const BufferUsage *usage,
 							  bool planning);
 static void show_wal_usage(ExplainState *es, const WalUsage *usage);
 static void ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-									YbPlanInfo *yb_plan_info,
 									bool yb_is_agg_pushdown,
 									Scan *ybScan, /* YB */
 									ExplainState *es);
@@ -179,8 +178,8 @@ static void show_yb_rpc_stats(PlanState *planstate, ExplainState *es);
 static void YbAppendPgMemInfo(ExplainState *es, const Size peakMem);
 static void YbAggregateExplainableRPCRequestStat(ExplainState *es,
 												 const YbInstrumentation *instr);
-static void YbExplainSaopMerge(PlanState *planstate, List *indextlist,
-							   YbSaopMergeInfo *saop_merge_info,
+static void YbExplainMergeScan(PlanState *planstate, List *indextlist,
+							   YbMergeScanInfo *merge_scan_info,
 							   ExplainState *es, List *ancestors);
 static void YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 									   int yb_distinct_prefixlen,
@@ -2647,7 +2646,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 				YbExplainScanLocks(indexscan->yb_lock_mechanism, es);
 				ExplainIndexScanDetails(indexscan->indexid,
 										indexscan->indexorderdir,
-										&indexscan->yb_plan_info,
 										yb_is_agg_pushdown,
 										(Scan *) indexscan, /* YB */
 										es);
@@ -2660,7 +2658,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 				ExplainIndexScanDetails(indexonlyscan->indexid,
 										indexonlyscan->indexorderdir,
-										&indexonlyscan->yb_plan_info,
 										yb_is_agg_pushdown,
 										(Scan *) indexonlyscan, /* YB */
 										es);
@@ -2970,9 +2967,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexScan *) plan)->indexqualorig)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
-			YbExplainSaopMerge(planstate,
+			YbExplainMergeScan(planstate,
 							   ((IndexScan *) plan)->indextlist,
-							   ((IndexScan *) plan)->yb_saop_merge_info,
+							   ((IndexScan *) plan)->yb_merge_scan_info,
 							   es, ancestors);
 			/*
 			 * YB note: Quals are shown in the order they are applied: index
@@ -3008,9 +3005,9 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((IndexOnlyScan *) plan)->recheckqual)
 				show_instrumentation_count("Rows Removed by Index Recheck", 2,
 										   planstate, es);
-			YbExplainSaopMerge(planstate,
+			YbExplainMergeScan(planstate,
 							   ((IndexOnlyScan *) plan)->indextlist,
-							   ((IndexOnlyScan *) plan)->yb_saop_merge_info,
+							   ((IndexOnlyScan *) plan)->yb_merge_scan_info,
 							   es, ancestors);
 			show_scan_qual(((IndexOnlyScan *) plan)->indexorderby,
 						   "Order By", planstate, ancestors, es);
@@ -5254,7 +5251,7 @@ show_yb_rpc_stats(PlanState *planstate, ExplainState *es)
  */
 static void
 ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
-						YbPlanInfo *yb_plan_info, bool yb_is_agg_pushdown,
+						bool yb_is_agg_pushdown,
 						Scan *ybScan, /* YB */
 						ExplainState *es)
 {
@@ -5291,8 +5288,6 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (es->yb_debug && yb_enable_base_scans_cost_model)
-			show_yb_planning_stats(yb_plan_info, es);
 	}
 }
 
@@ -6721,8 +6716,8 @@ YbExplainDistinctPrefixLen(PlanState *planstate, List *indextlist,
 }
 
 static void
-YbExplainSaopMerge(PlanState *planstate, List *indextlist,
-				   YbSaopMergeInfo *saop_merge_info,
+YbExplainMergeScan(PlanState *planstate, List *indextlist,
+				   YbMergeScanInfo *merge_scan_info,
 				   ExplainState *es, List *ancestors)
 {
 	List	   *saop_keys = NIL;
@@ -6735,8 +6730,8 @@ YbExplainSaopMerge(PlanState *planstate, List *indextlist,
 	bool		useprefix;
 	int			keyno;
 
-	/* If no SAOP merge, nothing to do. */
-	if (!saop_merge_info)
+	/* If no merge scan, nothing to do. */
+	if (!merge_scan_info)
 		return;
 
 	initStringInfo(&sortkeybuf);
@@ -6747,9 +6742,9 @@ YbExplainSaopMerge(PlanState *planstate, List *indextlist,
 									   ancestors);
 	useprefix = (list_length(es->rtable) > 1 || es->verbose);
 
-	foreach(lc, saop_merge_info->saop_cols)
+	foreach(lc, merge_scan_info->saop_cols)
 	{
-		YbSaopMergeSaopColInfo *item = lfirst(lc);
+		YbMergeScanSaopColInfo *item = lfirst(lc);
 		TargetEntry *target = get_tle_by_resno(indextlist,
 											   item->indexcol + 1);
 		char	   *exprstr;
@@ -6765,7 +6760,7 @@ YbExplainSaopMerge(PlanState *planstate, List *indextlist,
 		num_streams *= item->num_elems;
 	}
 
-	YbSortInfo *sort_cols = saop_merge_info->sort_cols;
+	YbSortInfo *sort_cols = merge_scan_info->sort_cols;
 
 	/* Parts copied from show_sort_group_keys. */
 	for (keyno = 0; keyno < sort_cols->numCols; keyno++)

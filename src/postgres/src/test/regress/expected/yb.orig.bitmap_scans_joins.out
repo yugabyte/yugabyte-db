@@ -2,26 +2,12 @@
 -- Joins with YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 SET enable_bitmapscan = true;
 SET yb_enable_bitmapscan = true;
@@ -38,10 +24,13 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 -- Test Bitmap Scan as Outer Join table --
 --
 -- join PK to PK
-\set hint1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
-\set hint2 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set Q1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
+\set Q2 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -92,8 +81,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (4 rows)
 
 -- join index col to PK
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -144,8 +135,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (4 rows)
 
 -- join PK to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=2 loops=1)
@@ -192,8 +185,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (2 rows)
 
 -- join index col to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                     QUERY PLAN                                    
 ----------------------------------------------------------------------------------
  Sort (actual rows=4 loops=1)
@@ -247,12 +242,15 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 -- Test Bitmap Scan as Inner Join table --
 --
 -- join PK to PK
-\set hint1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint2 '/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint3 '/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint4 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set Q1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q2 '/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q3 '/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q4 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\set Pnext :iter_Q4
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -330,8 +328,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (4 rows)
 
 -- join index col to PK
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -409,8 +409,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (4 rows)
 
 -- join PK to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -488,8 +490,10 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 (4 rows)
 
 -- join index col to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
  Nested Loop (actual rows=4 loops=1)
@@ -569,14 +573,18 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 --
 -- Test joins where one of the paths is never executed
 --
-\set hint1 '/*+ BitmapScan(joinb) */'
+\set Q1 '/*+ BitmapScan(joinb) */'
 SELECT $$
+:P :Q1
 SELECT joina.a,
        (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
                                     AND joina.b = -1) -- unsatisfiable
-  FROM joina ORDER BY joina.a
+  FROM joina ORDER BY joina.a;
 $$ AS query \gset
-:explain1run1
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Index Scan using joina_a_idx on joina (actual rows=10 loops=1)
@@ -614,14 +622,17 @@ $$ AS query \gset
 CREATE TABLEGROUP tg1;
 CREATE TABLEGROUP tg2;
 ANALYZE pg_yb_tablegroup;
-\set hint1 '/*+ BitmapScan(gr) */'
+\set Q1 '/*+ BitmapScan(gr) */'
 SELECT $$
+:P :Q1
    SELECT grpname, is_colocated
      FROM pg_catalog.yb_table_properties(16384) p
 LEFT JOIN pg_catalog.pg_yb_tablegroup gr
-       ON gr.oid = p.tablegroup_oid
+       ON gr.oid = p.tablegroup_oid;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
  Nested Loop Left Join (actual rows=1 loops=1)
@@ -651,17 +662,20 @@ INSERT INTO test_join_filter VALUES (1, 4, 'v'), (2, 62, 'v'), (3, 7, 'c'), (4, 
                                     (11, 5, 'z'), (12, 2, 'c'), (13, 0, 'a'), (14, 1, 'q'), (15, 8, 'y'),
                                     (16, 1, NULL), (17, 1, 'r'), (18, 9, 'v'), (19, 1, NULL), (20, 5, 'r');
 -- we need a join filter here because the final scan does not contain all quals
-\set hint1 '/*+ BitmapScan(table2) SeqScan(table1) Leading(((table3 table2) table1)) */'
+\set Q1 '/*+ BitmapScan(table2) SeqScan(table1) Leading(((table3 table2) table1)) */'
 -- we don't need a join filter here because the final scan does satisfy all quals (because its a bitmap scan)
-\set hint2 '/*+ BitmapScan(table1) Leading(((table3 table2) table1)) */'
+\set Q2 '/*+ BitmapScan(table1) Leading(((table3 table2) table1)) */'
 SELECT $$
+:explain :Q
     SELECT table1.v, table1.b
       FROM test_join_filter AS table1
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
-     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b
+     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
 $$ AS query \gset
-:explain2
+\i :iter_Q2
+\set _echo_Q :ECHO
+\set ECHO none
                                                    QUERY PLAN                                                   
 ----------------------------------------------------------------------------------------------------------------
  Nested Loop (actual rows=173 loops=1)
@@ -700,10 +714,13 @@ $$ AS query \gset
 -- This test is based off #21526 identified by the random query generator.
 -- To speed up the test, don't bother creating new tables.
 --
-\set hint1 '/*+ BitmapScan(joina) */'
-\set hint2 '/*+ Set(enable_bitmapscan false) */'
-\set query 'SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k'
-:explain2run2
+\set Q1 '/*+ BitmapScan(joina) */'
+\set Q2 '/*+ Set(enable_bitmapscan false) */'
+\set query ':P :Q SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Sort (actual rows=6 loops=1)
@@ -758,9 +775,12 @@ $$ AS query \gset
 -- Test that BitmapIndexScan's StorageFilter is properly set upon rescan
 --
 \set explain 'EXPLAIN (COSTS OFF)'
-\set hint1 '/*+ BitmapScan(b) */'
-\set query 'SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2'
-:explain1run1
+\set Q1 '/*+ BitmapScan(b) */'
+\set query ':P :Q1 SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;'
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                              QUERY PLAN                             
 --------------------------------------------------------------------
  Nested Loop
@@ -822,10 +842,13 @@ CREATE INDEX c_int_key ON c USING lsm (col_int_key ASC);
 CREATE INDEX c_varchar_key ON c USING lsm (col_varchar_key ASC, col_int_key ASC);
 COPY bb (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_key, col_time_nokey, col_datetime_key, col_datetime_nokey, col_varchar_key, col_varchar_nokey) FROM stdin;
 COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_key, col_time_nokey, col_datetime_key, col_datetime_nokey, col_varchar_key, col_varchar_nokey) FROM stdin;
-\set hint1 '/*+ BitmapScan(subquery1_t1) */'
-\set hint2 '/*+ Set(enable_bitmapscan false) */'
-\set query 'SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key'
-:explain2run2
+\set Q1 '/*+ BitmapScan(subquery1_t1) */'
+\set Q2 '/*+ Set(enable_bitmapscan false) */'
+\set query ':P :Q SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;'
+\set Pnext :iter_Q2
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                                                             QUERY PLAN                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join (actual rows=1 loops=1)
@@ -980,11 +1003,14 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 --
 -- System Table Join where we don't require any values from the Bitmap table
 --
-\set hint1 '/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */'
+\set Q1 '/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */'
 SELECT $$
-SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class'
+:P :Q1 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
 $$ AS query \gset
-:explain1run1
+\set Pnext :iter_query
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                       QUERY PLAN                                       
 ---------------------------------------------------------------------------------------
  Nested Loop (actual rows=1 loops=1)

@@ -444,12 +444,14 @@ template<class T>
 concept CopyProtocolInt = requires (const T& t) { CopyStoreInt::Store(t, nullptr); };
 
 class CopyController {
+  static constexpr size_t kNumOfAlwaysAvailableBytes = CopyStoreInt::kMaxSize * 2;
+
  public:
   template<size_t N>
+  requires(N > kNumOfAlwaysAvailableBytes)
   CopyController(
-      PGconn* conn, std::array<char, N> buffer, std::string_view table, CopyOptions options)
+      PGconn* conn, std::span<char, N> buffer, std::string_view table, CopyOptions options)
       : conn_(conn), buffer_(buffer), pos_(&buffer_.front()) {
-    static_assert(N >= kNumOfAlwaysAvailableBytes);
     const auto command = Format(
         "COPY $0 FROM STDIN WITH (FORMAT BINARY$1)",
         table,
@@ -494,8 +496,6 @@ class CopyController {
 
  private:
   friend class RowMakerImpl;
-
-  static constexpr size_t kNumOfAlwaysAvailableBytes = CopyStoreInt::kMaxSize * 2;
 
   template<CopyProtocolInt T, CopyProtocolInt... Args>
   void Write(T v1, Args... v2) {
@@ -811,7 +811,8 @@ Status PGConn::DoCopyFromStdin(
   if (!copy_buffer_) {
     copy_buffer_ = std::make_unique<CopyBuffer>();
   }
-  libpq_utils::internal::CopyController controller{impl_.get(), *copy_buffer_, table, options};
+  libpq_utils::internal::CopyController controller{
+      impl_.get(), std::span{*copy_buffer_}, table, options};
   receiver(controller);
   return controller.Finalize();
 }

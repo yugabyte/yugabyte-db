@@ -220,3 +220,106 @@ $$;
 
 SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "findAndModify", "remove": false, "query": {"_id": 549}, "upsert": false, "update": {"$set": {"c": "foo"}}, "new": false, "fields": { "_id": 1 }}');
 SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "findAndModify", "remove": false, "query": {"_id": 549}, "upsert": false, "update": {"$set": {"c": "foo"}}, "new": false, "fields": { "_id": 1 }}');
+
+-- delete toasted document
+-- the document size is larger than 2000, so the tuple is toasted
+SELECT 1 FROM documentdb_api.insert_one('fam', 'large_toasted_coll', FORMAT('{"_id": %s, "a": "%s", "b": "%s"}', 1, (select string_agg('a', '') FROM generate_series(1, 1000)), (select string_agg('b', '') FROM generate_series(1, 1000)))::documentdb_core.bson);
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "large_toasted_coll", "query": null, "remove": true, "fields": {"_id": 0, "a": 0}}');
+
+SELECT 1 FROM documentdb_api.insert_one('fam', 'large_toasted_coll', FORMAT('{"_id": %s, "a": "%s", "b": "%s"}', 1, (select string_agg('a', '') FROM generate_series(1, 1000)), (select string_agg('b', '') FROM generate_series(1, 1000)))::documentdb_core.bson);
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "large_toasted_coll", "query": null, "remove": true}');
+
+-- delete non-toasted document
+SELECT 1 FROM documentdb_api.insert_one('fam', 'large_toasted_coll', FORMAT('{"_id": %s, "a": "%s", "b": "%s"}', 1, (select string_agg('a', '') FROM generate_series(1, 100)), (select string_agg('b', '') FROM generate_series(1, 100)))::documentdb_core.bson);
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "large_toasted_coll", "query": null, "remove": true, "fields": {"_id": 0, "a": 0}}');
+
+SELECT 1 FROM documentdb_api.insert_one('fam', 'large_toasted_coll', FORMAT('{"_id": %s, "a": "%s", "b": "%s"}', 1, (select string_agg('a', '') FROM generate_series(1, 100)), (select string_agg('b', '') FROM generate_series(1, 100)))::documentdb_core.bson);
+SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "large_toasted_coll", "query": null, "remove": true}');
+
+-- let support
+SELECT documentdb_api.insert_one('db', 'find_and_modify_let', '{"_id": 1, "a":"akura"}');
+SELECT documentdb_api.insert_one('db', 'find_and_modify_let', '{"_id": 2, "a":"adanko"}');
+SELECT documentdb_api.insert_one('db', 'find_and_modify_let', '{"_id": 3, "a":"odwan"}');
+SELECT documentdb_api.insert_one('db', 'find_and_modify_let', '{"_id": 4, "a":"okra"}');
+SELECT documentdb_api.insert_one('db', 'find_and_modify_let', '{"_id": 5, "a":"$$varRef"}');
+
+-- disable let support: turn off GUC
+SET documentdb.enableVariablesSupportForWriteCommands TO OFF;
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "let_support", "query": {"a": 1}, "update": {"$inc": {"b": 1}}, "new": true, "let": {"x": 10}}');
+
+-- enable let support: turn on GUC
+SET documentdb.enableVariablesSupportForWriteCommands TO ON;
+
+-- without $expr: variable won't evaluate to value
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": "$$varRef" }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef": "akura"}}');
+
+BEGIN;
+-- update
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef": "akura"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$gt": ["$a", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "camel"}, "let": {"varRef": "odwan"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$lte": [{ "$toInt": "$$varRef" }, "$_id"] } }, "sort": {"a": 1}, "update": {"c": "camel"}, "let": {"varRef": "4"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$and": [{"$eq": ["$_id", "$$varRef1"]}, {"$eq": ["$c", "$$varRef2"]}]}}, "sort": {"a": 1}, "update": {"c": "peacock"}, "let": {"varRef1": 4, "varRef2": "camel"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+BEGIN;
+-- update with aggregation pipeline
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": [{"$set": {"c": "$$varRef"}}], "let": {"varRef": 1}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "sort": {"a": 1}, "update": [{"$addFields": {"c": "$$varRef"}}], "let": {"varRef": "adanko"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+BEGIN;
+--- delete
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$eq": ["$a", "$$varRef"]}}, "sort": {"a": 1}, "remove": true, "let": {"varRef": "akura"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$lt": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef": 3}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$and": [{"$eq": ["$_id", "$$varRef1"]}, {"$lte": ["$a", "$$varRef2"]}]}}, "sort": {"a": 1}, "remove": true, "let": {"varRef1": 4, "varRef2": "okra"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+BEGIN;
+--- delete (2)
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$lt": ["$a", "$$varRef"] } }, "sort": {"a": 1}, "remove": true, "let": {"varRef": "okra"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$gte": [{ "$toInt": "$$varRef" }, "$_id"] } }, "sort": {"a": 1}, "remove": true, "let": {"varRef": "4"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$eq": ["$_id", "$$varRef"] }}, "sort": {"a": 1}, "remove": true, "let": {"varRef": 2}}');;
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+-- undefined variables
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$lt": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "ant"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"$expr": {"$lt": ["$_id", "$$varRef2"] } }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef1": 3}}');
+
+--- sharded collection
+SELECT documentdb_api.shard_collection('db', 'find_and_modify_let', '{ "_id": "hashed" }', false);
+
+BEGIN;
+-- update
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": "3", "$expr": {"$eq": [{"$toInt": "$$varRef"}, "$_id"] } }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef": "3"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 4, "$expr": {"$lt": ["$a", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "camel"}, "let": {"varRef": "odwan"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 1, "$expr": {"$and": [{"$eq": ["$_id", "$$varRef1"]}, {"$eq": ["$c", "$$varRef2"]}]}}, "sort": {"a": 1}, "update": {"c": "peacock"}, "let": {"varRef1": 4, "varRef2": "ant"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+BEGIN;
+-- update with aggregation pipeline
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 1, "$expr": {"$eq": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": [{"$set": {"c": "$$varRef"}}], "let": {"varRef": 1}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 2, "$expr": {"$eq": ["$a", "$$varRef"] } }, "sort": {"a": 1}, "update": [{"$addFields": {"c": "$$varRef"}}], "let": {"varRef": "adanko"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+
+BEGIN;
+--- delete
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 2, "$expr": {"$lt": ["$_id", "$$varRef"] } }, "sort": {"a": 1}, "update": {"c": "ant"}, "let": {"varRef": 3}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 1, "$expr": {"$and": [{"$eq": ["$_id", "$$varRef"]}, {"$eq": ["$a", "akura"]}]}}, "sort": {"a": 1}, "remove": true, "let": {"varRef": "akura"}}');
+SELECT documentdb_api.find_and_modify('db', '{"findAndModify": "find_and_modify_let", "query": {"_id": 4, "$expr": {"$and": [{"$eq": ["$_id", "$$varRef1"]}, {"$lte": ["$a", "$$varRef2"]}]}}, "sort": {"a": 1}, "remove": true, "let": {"varRef1": 4, "varRef2": "okra"}}');
+
+SELECT document from documentdb_api.collection('db', 'find_and_modify_let') ORDER BY document;
+ROLLBACK;
+
+RESET documentdb.enableVariablesSupportForWriteCommands;

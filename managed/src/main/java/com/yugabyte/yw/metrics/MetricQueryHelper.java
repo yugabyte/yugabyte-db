@@ -42,7 +42,6 @@ import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
@@ -171,6 +170,9 @@ public class MetricQueryHelper {
     }
     if (metricQueryParams.getEnd() != null) {
       params.put("end", String.valueOf(metricQueryParams.getEnd()));
+    }
+    if (metricQueryParams.getStep() != null) {
+      params.put("step", String.valueOf(metricQueryParams.getStep()));
     }
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
 
@@ -401,15 +403,19 @@ public class MetricQueryHelper {
     }
 
     long scrapeInterval = getScrapeIntervalSeconds(appConfig);
-    long timeDifference;
-    if (params.get("end") != null) {
-      timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
+    long timeDifference = 0;
+    String startParam = params.get("start");
+    String endParam = params.get("end");
+    if (endParam != null && !endParam.equals(startParam)) {
+      timeDifference = Long.parseLong(endParam) - Long.parseLong(startParam);
+      if (timeDifference <= 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Start time cannot be greater than the end time");
+      }
     } else {
-      String startTime = params.remove("start");
-      int endTime = Math.round(DateTime.now().getMillis() / 1000);
-      params.put("time", startTime);
-      params.put("_", Integer.toString(endTime));
-      timeDifference = endTime - Long.parseLong(startTime);
+      params.remove("start");
+      params.remove("end");
+      params.put("time", startParam);
     }
 
     long range = Math.max(scrapeInterval * 3, timeDifference);
@@ -417,10 +423,6 @@ public class MetricQueryHelper {
 
     String step = params.get("step");
     if (step == null) {
-      if (timeDifference <= 0) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Start time cannot be greater than the end time");
-      }
       int defaultPoints =
           confGetter.getConfForScope(customer, CustomerConfKeys.MetricsDefaultPoints);
       long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / defaultPoints));

@@ -140,6 +140,14 @@ log-level:
 ```
 
 | Log level for yb-voyager. <br>Accepted values: trace, debug, info, warn, error, fatal, panic <br>Default: info |
+| --restart-data-migration-source-target |
+
+```yaml {.nocopy}
+initiate-cutover-to-source:
+  restart-data-migration-source-target:
+```
+
+| PostgreSQL source only. Restarts source-to-target live data migration to prepare to cutover to target again. After cutover to source completes, Voyager initializes a new CDC-only streaming iteration from source to target without re-importing the snapshot. Not applicable for fall-forward workflow.  <br> Accepted values: true, false, yes, no, 1, 0 <br> Default: false.  |
 | -h, --help | — |Command line help for cutover. |
 | -c, --config-file | — | Path to a [configuration file](../../configuration-file). |
 

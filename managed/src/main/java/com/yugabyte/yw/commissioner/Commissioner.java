@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -408,7 +409,29 @@ public class Commissioner {
       // perspective, it is still running.
       responseJson.put("paused", true);
     }
+    attachSoftwareUpgradeProgressToTaskStatus(task, responseJson);
     return Optional.of(responseJson);
+  }
+
+  private void attachSoftwareUpgradeProgressToTaskStatus(
+      CustomerTask task, ObjectNode responseJson) {
+    if (task.getTargetType() != CustomerTask.TargetType.Universe) {
+      return;
+    }
+    if (task.getType() != CustomerTask.TaskType.SoftwareUpgradeYB
+        && task.getType() != CustomerTask.TaskType.SoftwareUpgrade) {
+      return;
+    }
+    Universe.maybeGet(task.getTargetUUID())
+        .ifPresent(
+            u -> {
+              SoftwareUpgradeProgress progress =
+                  SoftwareUpgradeProgress.fromPrevYBSoftwareConfigIfPresent(
+                      u.getUniverseDetails().prevYBSoftwareConfig);
+              if (progress != null) {
+                responseJson.set("softwareUpgradeProgress", Json.toJson(progress));
+              }
+            });
   }
 
   public boolean isTaskAbortable(TaskInfo taskInfo) {

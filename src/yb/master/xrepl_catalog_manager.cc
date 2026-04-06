@@ -1732,7 +1732,10 @@ Status CatalogManager::PopulateCDCStateTableOnNewTableCreation(
     SharedLock lock(mutex_);
     for (const auto& entry : cdc_stream_map_) {
       const auto& stream_info = entry.second;
-      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id) {
+      if (stream_info->IsCDCSDKStream() && stream_info->namespace_id() == namespace_id &&
+          IsTableEligibleForCDCSDKStream(
+              table, table->LockForRead(), /*check_schema=*/true,
+              stream_info->IsTablesWithoutPrimaryKeyAllowed())) {
         streams.emplace_back(stream_info);
       }
     }
@@ -2421,9 +2424,13 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     return false;
   }
 
-  if (!table_info->IsUserTable(lock)) {
+  if (!(table_info->IsUserTable(lock) || (lock->namespace_name() == kYbSystemDbName &&
+                                          lock->name() == kPgYbNotificationsTableName))) {
     // Non-user tables like indexes, system tables etc should not be added as they are not
     // supported for streaming.
+    // System table yb_system.pg_yb_notifications is just like any other user table except that it
+    // is meant for YB's internal use for LISTEN/NOTIFY. Creating CDC streams on it is supported.
+    // Allow this as it is a prerequisite for LISTEN to work.
     return false;
   }
 

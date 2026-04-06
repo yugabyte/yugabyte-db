@@ -180,6 +180,8 @@ public class ScheduledBackupReconciler extends AbstractReconciler<BackupSchedule
       createScheduleTask(scheduleParams, backupSchedule, cust, universe);
     } else {
       Schedule schedule = optionalSchedule.get();
+      OperatorUtils.maybeAddYbaResourceId(
+          backupSchedule, schedule.getScheduleUUID(), resourceClient);
       log.debug("Schedule: {} current state: {}", schedule.getScheduleName(), schedule.getStatus());
       if (schedule.getStatus() == Schedule.State.Error && !universe.universeIsLocked()) {
         // TODO(Vivek): Improve on this once we have the "prevState" of schedule available

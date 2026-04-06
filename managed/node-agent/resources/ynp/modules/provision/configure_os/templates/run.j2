@@ -199,5 +199,63 @@ if ! grep -q "^DefaultLimitMEMLOCK=" /etc/systemd/user.conf; then
     echo 'DefaultLimitMEMLOCK=500000' | tee -a /etc/systemd/user.conf
 fi
 
+# Enable linger for user-level systemd services
+{% if use_system_level_systemd == 'False' %}
+yb_user_id=$(id -u {{ yb_user }})
+runtime_dir="/run/user/${yb_user_id}"
+xdg_runtime_env="export XDG_RUNTIME_DIR=$runtime_dir"
+
+# Add XDG_RUNTIME_DIR to .bashrc if not present
+if ! grep -qxF "${xdg_runtime_env}" {{ yb_home_dir }}/.bashrc >/dev/null 2>&1; then
+    su - {{ yb_user }} -c "echo '${xdg_runtime_env}' >> {{ yb_home_dir }}/.bashrc"
+fi
+
+# Determine the PLATFORM_ID
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
+
+if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+    # Stop user systemd service
+    su - {{ yb_user }} -c "XDG_RUNTIME_DIR=$runtime_dir systemctl --user exit >/dev/null 2>&1" || true
+    
+    status_cmd="XDG_RUNTIME_DIR=$runtime_dir systemctl --user status --no-pager >/dev/null 2>&1"
+    count=0
+    
+    # Wait for user systemd to stop
+    while su - {{ yb_user }} -c "$status_cmd"; do
+        count=$((count + 1))
+        if [ $count -gt 10 ]; then
+            echo "User systemd service failed to stop after $count attempts."
+            exit 1
+        fi
+        echo "Waiting for user systemd service to stop..."
+        sleep 2
+    done
+    
+    count=0
+    # Enable linger and start user systemd with retries
+    until su - {{ yb_user }} -c "$status_cmd"; do
+        if ! loginctl enable-linger {{ yb_user }}; then
+            echo "Failed to enable linger for user {{ yb_user }}"
+            exit 1
+        fi
+        systemctl start user@${yb_user_id}.service
+        count=$((count + 1))
+        if [ $count -gt 10 ]; then
+            echo "User systemd service failed to start after $count attempts."
+            exit 1
+        fi
+        echo "Waiting for user systemd service to become active..."
+        sleep 2
+    done
+else
+    # Non el8/el9 - just enable linger
+    if ! loginctl enable-linger {{ yb_user }}; then
+        echo "Failed to enable linger for user {{ yb_user }}"
+        exit 1
+    fi
+fi
+
+{% endif %}
+
 echo "Kernel settings configured."
 echo "OS Configuration applied successfully."

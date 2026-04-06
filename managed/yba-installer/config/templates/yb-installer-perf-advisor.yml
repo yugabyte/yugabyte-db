@@ -56,8 +56,8 @@ services:
       pa.web.hsts.enabled={{ yamlPath "perfAdvisor.tls.hsts" }}
       {{ end }}
 
-      pa.metrics.export.jsonl.directory="{{ .DataDir }}/collected/metrics"
-      pa.support-bundle.path="{{ .DataDir }}/support-bundle"
+      pa.metrics.export.jsonl.directory={{ .DataDir }}/collected/metrics
+      pa.support-bundle.path={{ .DataDir }}/support-bundle
 
   - name: perfAdvisorMetricsExportTopology
     fileName: "{{ .MetricExportConfLocation }}"

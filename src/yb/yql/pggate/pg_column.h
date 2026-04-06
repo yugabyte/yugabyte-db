@@ -78,11 +78,11 @@ class PgColumn {
   PgColumn(std::reference_wrapper<const Schema> schema, size_t index);
 
   // Bindings for write requests.
-  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocKeyBindPB(LWPgsqlWriteRequestPB *write_req);
   Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlWriteRequestPB* write_req, PgExpr* expr);
 
   // Bindings for read requests.
-  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlReadRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocKeyBindPB(LWPgsqlReadRequestPB *write_req);
   Result<LWPgsqlExpressionPB*> AllocBindPB(LWPgsqlReadRequestPB* read_req, PgExpr* expr);
 
   // Bindings for read requests.
@@ -143,7 +143,7 @@ class PgColumn {
   }
 
   bool is_partition() const;
-  bool is_primary() const;
+  bool is_key() const;
   bool is_virtual_column() const;
 
   void set_pg_type_info(int typid, int typmod, int collid) {
@@ -172,19 +172,19 @@ class PgColumn {
   template <class Req>
   Result<LWPgsqlExpressionPB*> DoAllocBindPB(Req* req, PgExpr* expr);
   template <class Req>
-  LWPgsqlExpressionPB *DoAllocPrimaryBindPB(Req *req);
+  LWPgsqlExpressionPB *DoAllocKeyBindPB(Req *req);
 
   const Schema& schema_;
   const size_t index_;
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.
-  // - In DocDB API, for primary columns, their associated values in protobuf expression list must
+  // - In DocDB API, for key columns, their associated values in protobuf expression list must
   //   strictly follow the order that was specified by CREATE TABLE statement while Postgres DML
   //   statements will not follow this order. Therefore, we reserve the spaces in protobuf
-  //   structures for associated expressions of the primary columns in the specified order.
+  //   structures for associated expressions of the key columns in the specified order.
   // - During DML execution, the reserved expression spaces will be filled with actual values.
-  // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
+  // - The data-member "key_exprs" is to map column id with the reserved expression spaces.
   LWPgsqlExpressionPB *bind_pb_ = nullptr;
   LWPgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
 

@@ -56,6 +56,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
@@ -780,33 +781,41 @@ public class UpgradeUniverseHandler {
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
 
-      // For Kubernetes provider, verify the universe version is compatible with otel exporter.
-      if (userIntent.providerType.equals(CloudType.kubernetes)
-          && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
-        String errorMessage =
-            String.format(
-                "Query log exporter is not supported for universe '%s' running version '%s'. Please"
-                    + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
-                    + " only enable query logs on the universe.",
-                universe.getUniverseUUID(),
-                userIntent.ybSoftwareVersion,
-                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
-                KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+      // Block k8s PGLE till 2026.1.2
+      if (userIntent.providerType.equals(CloudType.kubernetes)) {
+        String errorMessage = "Query log export is not supported for kubernetes based universes.";
         log.error(errorMessage);
         throw new PlatformServiceException(BAD_REQUEST, errorMessage);
       }
+
+      // // For Kubernetes provider, verify the universe version is compatible with otel exporter.
+      // if (userIntent.providerType.equals(CloudType.kubernetes)
+      //     && !KubernetesUtil.isExporterSupported(userIntent.ybSoftwareVersion)) {
+      //   String errorMessage =
+      //       String.format(
+      //           "Query log exporter is not supported for universe '%s' running version '%s'.
+      // Please"
+      //               + " upgrade to version '%s' or '%s'. Alternatively, disable the exporter to"
+      //               + " only enable query logs on the universe.",
+      //           universe.getUniverseUUID(),
+      //           userIntent.ybSoftwareVersion,
+      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_STABLE,
+      //           KubernetesUtil.MIN_VERSION_OTEL_SUPPORT_PREVIEW);
+      //   log.error(errorMessage);
+      //   throw new PlatformServiceException(BAD_REQUEST, errorMessage);
+      // }
     }
 
     requestParams.verifyParams(universe, true);
     userIntent.queryLogConfig = requestParams.queryLogConfig;
-    if (userIntent.providerType.equals(CloudType.kubernetes)) {
-      return submitUpgradeTask(
-          TaskType.ModifyKubernetesQueryLoggingConfig,
-          CustomerTask.TaskType.ModifyQueryLoggingConfig,
-          requestParams,
-          customer,
-          universe);
-    }
+    // if (userIntent.providerType.equals(CloudType.kubernetes)) {
+    //   return submitUpgradeTask(
+    //       TaskType.ModifyKubernetesQueryLoggingConfig,
+    //       CustomerTask.TaskType.ModifyQueryLoggingConfig,
+    //       requestParams,
+    //       customer,
+    //       universe);
+    // }
     ExportTelemetryConfigParams exportParams =
         buildExportTelemetryConfigParamsFromUniverse(universe);
     // Override the query log config in the export params with the requested config.
@@ -1108,6 +1117,58 @@ public class UpgradeUniverseHandler {
 
   private static String booleanToStr(boolean toggle) {
     return toggle ? "ON" : "OFF";
+  }
+
+  /**
+   * Resumes a paused canary software upgrade task. Re-submits the same task UUID without deleting
+   * existing subtasks so the task continues from the remaining work.
+   */
+  public UUID resumeCanarySoftwareUpgrade(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (taskInfo.getTaskState() != TaskInfo.State.Paused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Task is not in Paused state. Only paused canary upgrade tasks can be resumed.");
+    }
+    TaskType taskType = taskInfo.getTaskType();
+    if (taskType != TaskType.SoftwareUpgradeYB
+        && taskType != TaskType.SoftwareKubernetesUpgradeYB) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Task is not a software upgrade task. Only SoftwareUpgradeYB or"
+              + " SoftwareKubernetesUpgradeYB can be resumed.");
+    }
+    SoftwareUpgradeParams params =
+        Json.fromJson(taskInfo.getTaskParams(), SoftwareUpgradeParams.class);
+    if (!universeUUID.equals(params.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Task does not belong to the specified universe.");
+    }
+    if (universe.getUniverseDetails().softwareUpgradeState
+        != UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Universe is not in Paused software upgrade state.");
+    }
+    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Task does not match the universe's updating task.");
+    }
+    params.setPreviousTaskUUID(taskUUID);
+    params.expectedUniverseVersion = -1;
+    UUID newTaskUUID = commissioner.submit(taskType, params, taskUUID);
+    CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
+    if (customerTask != null) {
+      customerTask.updateTaskUUID(newTaskUUID);
+      customerTask.resetCompletionTime();
+    }
+    log.info(
+        "Resumed canary software upgrade task {} (new task {}) for universe {}.",
+        taskUUID,
+        newTaskUUID,
+        universe.getUniverseUUID());
+    return newTaskUUID;
   }
 
   /**

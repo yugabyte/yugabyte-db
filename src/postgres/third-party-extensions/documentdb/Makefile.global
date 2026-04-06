@@ -4,6 +4,10 @@
 EXTRA_CLEAN += $(addprefix src/,*.gcno *.gcda) $(addprefix src/**/,*.gcno *.gcda)
 EXTRA_CLEAN += build/ .deps/
 
+ifneq ($(EXTRA_INCLUDE),)
+include $(EXTRA_INCLUDE)
+endif
+
 PG_CONFIG ?= pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)

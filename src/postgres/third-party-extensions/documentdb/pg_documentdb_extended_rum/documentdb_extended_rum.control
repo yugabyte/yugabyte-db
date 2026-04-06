@@ -1,0 +1,4 @@
+comment = 'DocumentDB Extended RUM index access method'
+default_version = '0.109-0'
+module_pathname = '$libdir/pg_documentdb_extended_rum'
+relocatable = true

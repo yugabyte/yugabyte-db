@@ -614,8 +614,8 @@ class UniverseDetail extends Component {
       isUniverseStatusPending ||
       ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
         !isGFlagAllowDuringPrefinalize) ||
-      hasAsymmetricPrimaryCluster ||
-      hasAsymmetricAsyncCluster ||
+      ((hasAsymmetricPrimaryCluster || hasAsymmetricAsyncCluster) &&
+        !(isKubernetesUniverse && enableAzOverridesK8s)) ||
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.EDIT_FLAGS) ||
       isK8ActionsDisabled;
     const isEditK8Overrides = isUniverseStatusPending || isK8ActionsDisabled;
@@ -1198,7 +1198,8 @@ class UniverseDetail extends Component {
                     >
                       <YBTooltip
                         title={
-                          hasAsymmetricPrimaryCluster
+                          hasAsymmetricPrimaryCluster &&
+                          !(isKubernetesUniverse && enableAzOverridesK8s)
                             ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                             : ''
                         }
@@ -1230,7 +1231,8 @@ class UniverseDetail extends Component {
                     >
                       <YBTooltip
                         title={
-                          hasAsymmetricPrimaryCluster
+                          (hasAsymmetricPrimaryCluster) &&
+                          !(isKubernetesUniverse && enableAzOverridesK8s)
                             ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                             : ''
                         }
@@ -1511,7 +1513,8 @@ class UniverseDetail extends Component {
                       >
                         <YBTooltip
                           title={
-                            hasAsymmetricPrimaryCluster
+                            hasAsymmetricPrimaryCluster &&
+                            !(isKubernetesUniverse && enableAzOverridesK8s)
                               ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
                               : ''
                           }

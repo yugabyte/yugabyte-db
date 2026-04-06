@@ -268,6 +268,9 @@ message ReadRequestPB {
   optional int64 raft_config_opid_index = 18;
 
   optional int64 leader_term = 19;
+
+  // If this read requires to perform write operations like locking rows, then use async write.
+  optional bool use_async_write = 20;
 }
 
 message ReadResponsePB {
@@ -297,6 +300,11 @@ message ReadResponsePB {
 
   // key causing read restart. Present when restart_read_time is.
   optional string restart_read_key = 12;
+
+  // Only set if use_async_write is true and the read requires a write operation like a lock.
+  // If this is set, then the client needs to wait for the async write to
+  // complete using WaitForAsyncWrite before committing the transaction.
+  optional OpIdPB async_write_op_id = 13;
 }
 
 message GetTabletKeyRangesRequestPB {

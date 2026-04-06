@@ -17,7 +17,7 @@ interface TimeSyncProps {
 
 const TIME_SYNC_FIELD = 'useTimeSync';
 
-export const TimeSyncField: FC<TimeSyncProps> = ({ provider }) => {
+export const TimeSyncField: FC<TimeSyncProps> = ({ provider, disabled }) => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation();
 
@@ -38,7 +38,7 @@ export const TimeSyncField: FC<TimeSyncProps> = ({ provider }) => {
         control={control}
         label={t('createUniverseV2.instanceSettings.useTimeSync', stringMap)}
         size="large"
-        disabled={isChronyEnabled}
+        disabled={isChronyEnabled || disabled}
         dataTestId="time-sync-field"
       />
     </Box>

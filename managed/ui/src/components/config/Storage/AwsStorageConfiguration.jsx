@@ -67,6 +67,7 @@ class AwsStorageConfiguration extends Component {
       iamInstanceToggle,
       iamRoleEnabled,
       enablePathStyleAccess,
+      enableChunkedEncoding,
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
@@ -236,6 +237,20 @@ class AwsStorageConfiguration extends Component {
                   name="PATH_STYLE_ACCESS"
                   component={YBToggle}
                   isReadOnly={this.disableInputFields(isEdited, 'PATH_STYLE_ACCESS')}
+                />
+              </Col>
+            </Row>
+          )}
+          {enableChunkedEncoding && (
+            <Row className="config-provider-row">
+              <Col lg={2}>
+                <div className="form-item-custom-label">S3 Chunked Encoding</div>
+              </Col>
+              <Col lg={9}>
+                <Field
+                  name="USE_CHUNKED_ENCODING"
+                  component={YBToggle}
+                  isReadOnly={this.disableInputFields(isEdited, 'USE_CHUNKED_ENCODING')}
                 />
               </Col>
             </Row>

@@ -13,6 +13,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -33,31 +34,27 @@ class PgClient;
 class PgGlobalViewRead : public PgMemctx::Registrable {
  public:
   PgGlobalViewRead(
-      PgClient& pg_client, const char* query, std::vector<std::string> tserver_uuids);
-  ~PgGlobalViewRead() = default;
+    const char* database_name, std::vector<std::string>&& tserver_uuids);
 
   void ResetScan();
 
   // Set text-format parameter values for parameterized queries.
   // A nullptr entry means the corresponding parameter is NULL.
-  void SetParams(int num_params, const char** values);
+  void SetParams(std::span<const char*> values);
 
   // Executes the query on the next tserver and returns the serialized
   // PgResultPB as a byte buffer. Advances the tserver index by one.
   // Returns {nullptr, 0, false} when all tservers are exhausted.
-  YbcRemotePgExecResult ExecScan();
+  YbcRemotePgExecResult ExecScan(PgClient& client, std::string_view query);
 
   bool is_eof() const { return next_tserver_idx_ >= tserver_uuids_.size(); }
 
  private:
-  PgClient& pg_client_;
-  std::string_view query_;
+  std::string database_name_;
   std::vector<std::string> tserver_uuids_;
-  size_t next_tserver_idx_ = 0;
-  // Holds the serialized PgResultPB between ExecScan and the caller's
-  // deserialization.
-  std::string serialized_result_;
-
+  size_t next_tserver_idx_{0};
+  // Holds the serialized PgResultPB between ExecScan and the caller's deserialization.
+  std::vector<uint8_t> serialized_result_;
   std::vector<std::optional<std::string>> params_;
 };
 

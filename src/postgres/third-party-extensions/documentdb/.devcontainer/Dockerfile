@@ -1,11 +1,11 @@
-FROM --platform=linux/amd64 mcr.microsoft.com/mirror/docker/library/ubuntu:20.04
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04
 ARG POSTGRES_INSTALL_ARG=
-ARG PG_VERSION=
-ARG CITUS_VERSION=
+ARG PG_VERSION=16
+ARG CITUS_VERSION=12
 
 # declare installed PG version and Citus version
-ENV PG_VERSION=16
-ENV CITUS_VERSION=12
+ENV PG_VERSION=${PG_VERSION}
+ENV CITUS_VERSION=${CITUS_VERSION}
 
 # Install build essentials - Compiler, debugger, make, etc.
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
@@ -20,8 +20,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     pkg-config \
     cmake \
     git \
-	locales \
-	gcc \
+    locales \
+    gcc \
     gdb \
     libipc-run-perl \
     unzip \
@@ -43,6 +43,12 @@ RUN echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg m
     apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
+# install mongosh
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl https://downloads.mongodb.com/compass/mongodb-mongosh_2.5.6_${ARCH}.deb -o mongodb-mongosh_2.5.6_${ARCH}.deb && \
+    dpkg -i mongodb-mongosh_2.5.6_${ARCH}.deb && \
+    rm mongodb-mongosh_2.5.6_${ARCH}.deb
+
 # Prepare for running install scripts
 ENV CLEANUP_SETUP=1
 ENV INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
@@ -62,9 +68,9 @@ COPY scripts/utils.sh /tmp/install_setup/
 COPY scripts/install_setup_postgres.sh /tmp/install_setup/
 RUN [ "bin/bash", "-c", "/tmp/install_setup/install_setup_postgres.sh -d \"/usr/lib/postgresql/${PG_VERSION}\" $POSTGRES_INSTALL_ARG -v ${PG_VERSION}" ]
 
-# Install RUM from source
+# Install RUM from source (only for PG versions < 18)
 COPY scripts/install_setup_rum_oss.sh /tmp/install_setup/
-RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_rum_oss.sh" ]
+RUN [ "bin/bash", "-c", "if [ \"${PG_VERSION:-0}\" -lt 18 ]; then PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_rum_oss.sh; else echo 'Skipping public RUM install for PG_VERSION' ${PG_VERSION}; fi" ]
 
 # Install citus
 COPY scripts/install_setup_citus_core_oss.sh /tmp/install_setup/
@@ -74,9 +80,11 @@ RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_
 COPY scripts/install_citus_indent.sh /tmp/install_setup/
 RUN [ "bin/bash", "-c", "/tmp/install_setup/install_citus_indent.sh" ]
 
-# Install SYSTEM_ROWS
-COPY scripts/install_setup_system_rows.sh /tmp/install_setup/
-RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_system_rows.sh" ]
+# Install contrib extensions
+COPY scripts/install_setup_contrib_extensions_core.sh /tmp/install_setup/
+COPY scripts/install_setup_contrib_extensions.sh /tmp/install_setup/
+RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_contrib_extensions.sh" ]
+
 
 # Install PG_CRON
 COPY scripts/install_setup_pg_cron.sh /tmp/install_setup/
@@ -95,13 +103,15 @@ COPY scripts/install_setup_pgvector.sh /tmp/install_setup/
 RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_pgvector.sh" ]
 
 # Install PostGIS from source
-RUN add-apt-repository -y ppa:ubuntugis/ppa && apt-get update && \
+RUN apt-get update && \
     apt-get install -qy \
     libproj-dev \
     libxml2-dev \
     libjson-c-dev \
-    libgeos++-dev libgeos-3.9.1 libgeos-c1v5 libgeos-dev \
+    libgeos++-dev \
+    libgeos-dev \
     && rm -rf /var/lib/apt/lists/*
+    
 COPY scripts/install_setup_postgis.sh /tmp/install_setup/
 RUN [ "bin/bash", "-c", "PGVERSION=$PG_VERSION /tmp/install_setup/install_setup_postgis.sh" ]
 
@@ -123,6 +133,33 @@ RUN cat /etc/sudoers | grep secure_path | sed "s/\:\/bin\:/\:\/bin\:\/usr\/lib\/
 
 # Add PG to the path
 ENV PATH=$PATH:/usr/lib/postgresql/$PG_VERSION/bin
+
+# Install LLVM for Rust language
+COPY scripts/install_llvm.sh /tmp/install_setup/
+RUN [ "bin/bash", "-c", "/tmp/install_setup/install_llvm.sh" ]
+
+# Set environment for Rust toolchain
+ENV RUSTUP_HOME=/home/documentdb/.rustup
+ENV CARGO_HOME=/home/documentdb/.cargo
+RUN mkdir -p $RUSTUP_HOME && mkdir -p $CARGO_HOME
+ENV PATH=$PATH:$CARGO_HOME/bin
+
+# Install Rust toolchain
+COPY scripts/install_rustup.sh /tmp/install_setup/
+COPY rust-toolchain.toml /
+RUN [ "bin/bash", "-c", "/tmp/install_setup/install_rustup.sh --install-toolchain" ]
+RUN chown -R documentdb:documentdb /home/documentdb/.cargo /home/documentdb/.rustup
+
+ENV PGRX_HOME=/home/documentdb/.pgrx
+RUN mkdir -p $PGRX_HOME
+
+# Install pgrx
+COPY scripts/install_pgrx.sh /tmp/install_setup/
+COPY pg_documentdb_gw_host/Cargo.toml /tmp/install_setup/
+RUN [ "bin/bash", "-c", "/tmp/install_setup/install_pgrx.sh -d /tmp/install_setup/ -v $PG_VERSION" ]
+
+# Change Rust tooling to non-root user
+RUN [ "bin/bash", "-c", "chown -R documentdb:documentdb $CARGO_HOME && chown -R documentdb:documentdb $RUSTUP_HOME && chown -R documentdb:documentdb $PGRX_HOME" ]
 
 USER documentdb
 WORKDIR /home/documentdb

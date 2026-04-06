@@ -487,7 +487,56 @@ public class OtelCollectorConfigGenerator {
 
   public Map<String, Object> getOtelHelmValues(
       AuditLogConfig auditLogConfig, String logLinePrefix) {
-    return getOtelHelmValues(auditLogConfig, null, logLinePrefix, null);
+    // only DBAL is supported via k8s
+    // For K8s, we don't need to generate the entire config file.
+    // We just need exporterCofigs and receiverConfigs.
+    if (auditLogConfig == null) {
+      return null;
+    }
+    Map<String, Object> otelConfig = new HashMap<>();
+
+    if (!auditLogConfig.isExportActive()) {
+      otelConfig.put("enabled", false);
+    } else {
+
+      otelConfig.put("enabled", true);
+      // Recievers
+      Map<String, Object> receivers = new HashMap<>();
+      OtelCollectorConfigFormat.RegexOperator regexOperator =
+          getRegexOperator(logLinePrefix, ExportType.AUDIT_LOGS);
+      if (auditLogConfig.getYsqlAuditConfig() != null
+          && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
+        Map<String, Object> ysqlReciever = new HashMap<>();
+        ysqlReciever.put("regex", regexOperator.getRegex());
+        ysqlReciever.put("timestamp", regexOperator.getTimestamp());
+        ysqlReciever.put("lineStartPattern", generateLineStartPattern(logLinePrefix));
+        receivers.put(LOG_TYPE_YSQL, ysqlReciever);
+      }
+      otelConfig.put("recievers", receivers);
+
+      // Exporters
+      OtelCollectorConfigFormat collectorConfigFormat = new OtelCollectorConfigFormat();
+      List<Object> secretEnv = new ArrayList<>();
+      if (CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+        auditLogConfig
+            .getUniverseLogsExporterConfig()
+            .forEach(
+                config -> {
+                  TelemetryProvider telemetryProvider =
+                      telemetryProviderService.getOrBadRequest(config.getExporterUuid());
+                  String exporterName =
+                      appendExporterConfig(
+                          telemetryProvider,
+                          collectorConfigFormat,
+                          new ArrayList<>(),
+                          ExportType.AUDIT_LOGS);
+                  appendSecretEnv(telemetryProvider, secretEnv);
+                });
+        otelConfig.put("exporters", collectorConfigFormat.getExporters());
+        otelConfig.put("secretEnv", secretEnv);
+      }
+    }
+    return otelConfig;
   }
 
   public Map<String, Object> getOtelHelmValues(

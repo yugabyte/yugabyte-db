@@ -36,7 +36,7 @@ command_rename_collection(PG_FUNCTION_ARGS)
 {
 	if (PG_ARGISNULL(0))
 	{
-		ereport(ERROR, (errmsg("db name cannot be NULL")));
+		ereport(ERROR, (errmsg("Database name must not be NULL")));
 	}
 
 	if (PG_ARGISNULL(1))
@@ -89,15 +89,16 @@ command_rename_collection(PG_FUNCTION_ARGS)
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACEEXISTS),
-							errmsg("collection %s.%s already exists",
-								   TextDatumGetCString(database_datum),
-								   TextDatumGetCString(
-									   new_collection_datum))));
+							errmsg(
+								"The collection %s.%s is already present in the system",
+								TextDatumGetCString(database_datum),
+								TextDatumGetCString(
+									new_collection_datum))));
 		}
 	}
 
 	/*
-	 * Update the collection name.
+	 * Update the specified collection name.
 	 */
 	UpdateMongoCollectionName(
 		TextDatumGetCString(database_datum),
@@ -109,7 +110,7 @@ command_rename_collection(PG_FUNCTION_ARGS)
 
 
 /*
- * Drops a collection from a database.
+ * Drops a collection
  */
 static void
 DropMongoCollection(char *database_name, char *target_collection_name)
@@ -136,7 +137,7 @@ DropMongoCollection(char *database_name, char *target_collection_name)
 
 
 /*
- * Updates the name of a collection in a database.
+ * Update the name of a specified collection in the database.
  */
 static void
 UpdateMongoCollectionName(char *database_name, char *collection_name, char *new_name)

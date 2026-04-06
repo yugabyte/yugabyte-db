@@ -5,26 +5,12 @@
 -- Logical test on small size table, using column-ref expression index.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_pq :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (COSTS OFF)'
 CREATE TABLE text_books ( id int PRIMARY KEY, author text, year int);
 CREATE INDEX text_books_author_first_name ON text_books (author);
@@ -41,9 +27,11 @@ INSERT INTO text_books (id, author, year)
   VALUES (5, '{ "first_name": "Stephen", "last_name": "Hawking" }', 1988);
 --
 SELECT $$
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+:P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                             QUERY PLAN                             
 -------------------------------------------------------------------
  Sort
@@ -57,10 +45,12 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+:P SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                            QUERY PLAN                                           
 ------------------------------------------------------------------------------------------------
  Sort
@@ -78,9 +68,11 @@ $$ AS query \gset
 -- Drop INDEX and run again.
 DROP index text_books_author_first_name;
 SELECT $$
-SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year
+:P SELECT id FROM text_books WHERE author = 'Hello World' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                        QUERY PLAN                       
 --------------------------------------------------------
  Sort
@@ -94,10 +86,12 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT id FROM text_books
-  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year
+:P SELECT id FROM text_books
+  WHERE author = '{ "first_name": "William", "last_name": "Shakespeare" }' ORDER BY year;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                              QUERY PLAN                                             
 ----------------------------------------------------------------------------------------------------
  Sort
@@ -146,10 +140,12 @@ INSERT INTO books (id, details)
                 "genre": "science",
                 "editors": ["Melisa", "Mark", "John"] }');
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort
@@ -163,10 +159,12 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                           QUERY PLAN                                          
 ----------------------------------------------------------------------------------------------
  Sort
@@ -184,10 +182,12 @@ $$ AS query \gset
 -- Drop INDEX and run again.
 DROP index books_author_first_name;
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Hello World'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                               QUERY PLAN                                              
 ------------------------------------------------------------------------------------------------------
  Sort
@@ -201,10 +201,12 @@ $$ AS query \gset
 (0 rows)
 
 SELECT $$
-SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
-  ORDER BY details->>'name'
+:P SELECT id FROM books WHERE details->'author'->>'first_name' = 'Charles'
+  ORDER BY details->>'name';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
+\set _echo_P :ECHO
+\set ECHO none
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
  Sort

@@ -1,0 +1,68 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+
+#pragma once
+
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "yb/util/result.h"
+
+namespace yb {
+namespace tserver {
+
+class TabletServerIf;
+
+struct YsqlCallHomeQuery {
+  std::string_view key;
+  std::string_view query;
+};
+
+struct YsqlClusterQueries {
+  static constexpr YsqlCallHomeQuery kClusterLevel[] = {
+      {"databases",
+       "SELECT datname AS name, pg_encoding_to_char(encoding) AS encoding "
+       "FROM pg_database WHERE datistemplate = false"},
+  };
+
+  static constexpr YsqlCallHomeQuery kDbLevel[] = {
+      {"extensions",
+       "SELECT extname AS name, extversion AS version, nspname AS schema "
+       "FROM pg_extension e "
+       "JOIN pg_namespace n ON e.extnamespace = n.oid "
+       "WHERE extname != 'plpgsql'"},
+  };
+};
+
+struct YsqlNodeQueries {
+  static constexpr YsqlCallHomeQuery kNodeLevel[] = {
+      {"connections",
+       "SELECT COUNT(*) AS total, "
+       "COUNT(*) FILTER (WHERE state = 'active') AS active, "
+       "COUNT(*) FILTER (WHERE state = 'idle') AS idle, "
+       "COUNT(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction, "
+       "(SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max_connections "
+       "FROM pg_stat_activity WHERE datname IS NOT NULL"},
+  };
+};
+
+std::string BuildStatsJson(
+    TabletServerIf* server, const std::vector<std::string>& databases,
+    std::span<const YsqlCallHomeQuery> aggregate_queries,
+    std::span<const YsqlCallHomeQuery> per_db_queries);
+
+Result<std::string> CollectYsqlClusterStatsJson(TabletServerIf* server);
+
+}  // namespace tserver
+}  // namespace yb

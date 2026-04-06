@@ -158,10 +158,10 @@ SetResultValueForDollarBinarySize(bson_value_t *inputArgument, bson_value_t *res
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51276), errmsg(
-							"$binarySize requires a string or BinData argument, found: %s",
+							"The $binarySize operator expects either a string or BinData argument, but received: %s",
 							BsonTypeName(inputArgument->value_type)),
 						errdetail_log(
-							"$binarySize requires a string or BinData argument, found: %s",
+							"The $binarySize operator expects either a string or BinData argument, but received: %s",
 							BsonTypeName(inputArgument->value_type))));
 	}
 }
@@ -182,10 +182,11 @@ SetResultValueForDollarBsonSize(bson_value_t *inputArgument, bson_value_t *resul
 	if (inputArgument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION31393), errmsg(
-							"$bsonSize requires a document input, found: %s",
+							"Expected 'document' type for $bsonSize but found '%s' type",
 							BsonTypeName(inputArgument->value_type)),
-						errdetail_log("$bsonSize requires a document input, found: %s",
-									  BsonTypeName(inputArgument->value_type))));
+						errdetail_log(
+							"Expected 'document' type for $bsonSize but found '%s' type",
+							BsonTypeName(inputArgument->value_type))));
 	}
 
 	/* Result type is int32 as the max document we can store is for 16MB and that size in bytes is less than INT32_MAX. */

@@ -33,7 +33,7 @@ set local documentdb.forceUseIndexIfAvailable to on;
 \i sql/bson_dollar_ops_basic_compare_tests_explain_core.sql
 /* validate explain */
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a.b": 1 }';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -47,7 +47,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a.b": 1 }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -61,7 +61,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a.b": 1 }';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -75,7 +75,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a.b": 1 }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -89,7 +89,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a.b": 1 }';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -103,7 +103,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a.b": 1 }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -117,7 +117,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ 1, 2, true ]}'::bson;
-                                                                             QUERY PLAN                                                                             
+                                                                                  QUERY PLAN                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -132,7 +132,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 /* validate explain for the individual items as well */
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": 1 } }';
-                                                               QUERY PLAN                                                                
+                                                                    QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -146,7 +146,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -160,7 +160,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @> '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                           QUERY PLAN                                                                                            
+                                                                                                QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -174,7 +174,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": 1 } }';
-                                                                QUERY PLAN                                                                
+                                                                     QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -188,7 +188,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                             
+                                                                 QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -202,7 +202,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                            QUERY PLAN                                                                                            
+                                                                                                 QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -216,7 +216,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": 1 } }';
-                                                               QUERY PLAN                                                                
+                                                                    QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -230,7 +230,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -244,7 +244,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @< '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                           QUERY PLAN                                                                                            
+                                                                                                QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -258,7 +258,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": 1 } }';
-                                                                QUERY PLAN                                                                
+                                                                     QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -272,7 +272,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                             
+                                                                 QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -286,7 +286,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                            QUERY PLAN                                                                                            
+                                                                                                 QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -300,7 +300,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": 1 } }';
-                                                               QUERY PLAN                                                                
+                                                                    QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -314,7 +314,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -328,7 +328,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                           QUERY PLAN                                                                                            
+                                                                                                QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -342,7 +342,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": 1 } }';
-                                                                QUERY PLAN                                                                
+                                                                     QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -356,7 +356,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": [ true, false ] } }';
-                                                            QUERY PLAN                                                             
+                                                                 QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -370,7 +370,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
-                                                                                            QUERY PLAN                                                                                            
+                                                                                                 QUERY PLAN                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -384,7 +384,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
-                                                                                                            QUERY PLAN                                                                                                            
+                                                                                                                 QUERY PLAN                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -398,7 +398,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @!*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
-                                                                                                            QUERY PLAN                                                                                                             
+                                                                                                                 QUERY PLAN                                                                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -412,7 +412,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 1 }';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -426,7 +426,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 0 }';
-                                                           QUERY PLAN                                                            
+                                                                QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -440,7 +440,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [1] }';
-                                                              QUERY PLAN                                                              
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -454,7 +454,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [0, 1] }';
-                                                                          QUERY PLAN                                                                          
+                                                                               QUERY PLAN                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -468,7 +468,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [[0]] }';
-                                                                QUERY PLAN                                                                
+                                                                     QUERY PLAN                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -482,17 +482,15 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [] }';
-                                                   QUERY PLAN                                                   
+                                                     QUERY PLAN                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
    Tasks Shown: All
    ->  Task
          Node: host=localhost port=58070 dbname=regression
-         ->  Bitmap Heap Scan on documents_5100_510006 collection
-               Recheck Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [  ] }'::documentdb_core.bson)
-               ->  Bitmap Index Scan on index_2
-                     Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [  ] }'::documentdb_core.bson)
-(9 rows)
+         ->  Index Scan using index_2 on documents_5100_510006 collection
+               Index Cond: (document OPERATOR(documentdb_api_catalog.@&=) '{ "a.b" : [  ] }'::documentdb_core.bson)
+(7 rows)
 
 ROLLBACK;

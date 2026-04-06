@@ -2080,8 +2080,8 @@ TEST_F(QLTabletTest, LeaderHtLeaseRevocation) {
 class GetTabletKeyRangesTest : public QLTabletRf1TestToggleEnablePackedRow {
  protected:
   void SetUp() override {
-    FLAGS_db_block_size_bytes = 4_KB;
-    FLAGS_db_write_buffer_size = 200_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 4_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 200_KB;
     QLTabletRf1TestToggleEnablePackedRow::SetUp();
   }
 

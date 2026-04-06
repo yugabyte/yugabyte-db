@@ -170,11 +170,11 @@ class PgDmlRead : public PgDml {
 
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   [[nodiscard]] bool IsConcreteRowRead() const;
-  Status ProcessEmptyPrimaryBinds();
-  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
+  Status ProcessEmptyKeyBinds();
+  [[nodiscard]] bool IsAllKeyColumnsBound() const;
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromKeyBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids();
+  Status SubstituteKeyBindsWithYbctids();
   Result<dockv::DocKey> EncodeRowKeyForBound(
       YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
 
@@ -212,7 +212,7 @@ class PgDmlRead : public PgDml {
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
 
-  bool primary_binds_processed_ = false;
+  bool key_binds_processed_ = false;
 
   MergeSortKeysPtr merge_sort_keys_;
 

@@ -37,6 +37,7 @@ import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -604,6 +605,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
   public void testStartupParameterPrecedence() throws Exception {
     // Test the precedence between guc setting specified through "options" key and one specified
     // directly in the startup packet. pgJDBC driver only allows us to use the former method.
@@ -835,6 +837,84 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
       } catch (Exception e) {
         assertTrue("Expected error about parameter cannot be set after connection start",
             e.getMessage().contains("cannot be set after connection start"));
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCSession() throws Exception {
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 500", 500, value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_yb_ash_sample_size", "600");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 600", 600, value);
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackend() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("allowed_preview_flags_csv", "ysql_conn_mgr_alter_guc_adoption_strategy,"
+            + "ysql_conn_mgr_alter_guc_stale_backend_ttl_ms");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false", value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_pg_conf_csv", "ignore_system_indexes=true");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
+      }
+
+      try (
+          Connection newConn =
+              getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                  .withUser("yugabyte").withDatabase("yugabyte").connect();
+          Statement newStmt = newConn.createStatement()) {
+        try (ResultSet rs = newStmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("expected one row for ignore_system_indexes", rs.next());
+          boolean value = rs.getBoolean(1);
+          assertTrue("ignore_system_indexes should be true in the new session", value);
+        }
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
       }
     }
   }

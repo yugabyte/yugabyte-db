@@ -116,4 +116,105 @@ TEST_F(DocumentDBTest, SimpleCollection) {
   ASSERT_EQ(get_document_count(), 4);
 }
 
+TEST_F(DocumentDBTest, DropCollectionAndDatabase) {
+  const auto db_name = "testdropdb";
+  const auto collection_name = "dropcoll";
+
+  // Insert a document to create the collection.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "key": "value1" }]}');
+  )",
+      db_name, collection_name));
+
+  // Verify the collection has 1 document.
+  auto count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM documentdb_api.collection('$0','$1')", db_name, collection_name)));
+  ASSERT_EQ(count, 1);
+
+  // Drop the collection.
+  auto drop_result = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      "SELECT documentdb_api.drop_collection('$0', '$1')", db_name, collection_name)));
+  ASSERT_TRUE(drop_result);
+
+  // Recreate the same collection with different data and verify only new data is returned.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"$1", "documents":[
+    { "key": "new_value1" },
+    { "key": "new_value2" }]}');
+  )",
+      db_name, collection_name));
+
+  count = ASSERT_RESULT(conn_->FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM documentdb_api.collection('$0','$1')", db_name, collection_name)));
+  ASSERT_EQ(count, 2);
+
+  // Verify old data ("value1") is gone and only new data exists.
+  auto get_key_value = [&](const std::string& filter_key) {
+    return CHECK_RESULT(conn_->FetchRow<std::string>(Format(
+        R"(
+      SELECT (((cursorpage->>'cursor')::bson->>'firstBatch')::bson->>'0')::bson->>'key'
+        FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1",
+          "filter" : {"key":"$2"}}');
+      )",
+        db_name, collection_name, filter_key)));
+  };
+
+  // Old data should not be found.
+  auto old_data_found = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      R"(
+    SELECT jsonb_array_length(((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb) > 0
+      FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "$1",
+        "filter" : {"key":"value1"}}');
+    )",
+      db_name, collection_name)));
+  ASSERT_FALSE(old_data_found);
+
+  // New data should be present.
+  ASSERT_EQ(get_key_value("new_value1"), "new_value1");
+  ASSERT_EQ(get_key_value("new_value2"), "new_value2");
+
+  // Drop the recreated collection before the drop_database test.
+  drop_result = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      "SELECT documentdb_api.drop_collection('$0', '$1')", db_name, collection_name)));
+  ASSERT_TRUE(drop_result);
+
+  // Insert documents into two collections for drop_database test.
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"coll_a", "documents":[
+    { "a": 1 }]}');
+  )",
+      db_name));
+  ASSERT_OK(conn_->FetchFormat(
+      R"(
+  SELECT documentdb_api.insert('$0', '{"insert":"coll_b", "documents":[
+    { "b": 2 }]}');
+  )",
+      db_name));
+
+  // Drop the entire database.
+  ASSERT_OK(conn_->FetchFormat(
+      "SELECT documentdb_api.drop_database('$0')", db_name));
+
+  // Verify both collections are gone after drop_database.
+  auto coll_a_exists = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      R"(
+    SELECT jsonb_array_length(((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb) > 0
+      FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "coll_a"}');
+    )",
+      db_name)));
+  ASSERT_FALSE(coll_a_exists);
+
+  auto coll_b_exists = ASSERT_RESULT(conn_->FetchRow<bool>(Format(
+      R"(
+    SELECT jsonb_array_length(((cursorpage->>'cursor')::bson->>'firstBatch')::jsonb) > 0
+      FROM documentdb_api.find_cursor_first_page('$0', '{ "find" : "coll_b"}');
+    )",
+      db_name)));
+  ASSERT_FALSE(coll_b_exists);
+}
+
 }  // namespace yb

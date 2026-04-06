@@ -447,7 +447,7 @@ Triggers manual compaction on a table.
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
-    compact_table <db-type>.<namespace> <table> [<timeout-in-seconds>] [ADD_INDEXES]
+    compact_table <db-type>.<namespace> <table> [<timeout-in-seconds>] [ADD_INDEXES] [ADD_VECTOR_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
@@ -455,7 +455,8 @@ yb-admin \
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
-* ADD_INDEXES: Whether to compact the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to compact the secondary indexes associated with the table. YCQL only.
+* ADD_VECTOR_INDEXES: Indicates to compact the [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) associated with the table.
 
 **Example**
 
@@ -474,13 +475,14 @@ Compacted [yugabyte.table_name] tables.
 ```sh
 yb-admin \
     --master_addresses <master-addresses> \
-    compact_table tableid.<table-id> [<timeout-in-seconds>] [ADD_INDEXES]
+    compact_table tableid.<table-id> [<timeout-in-seconds>] [ADD_INDEXES] [ADD_VECTOR_INDEXES]
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: The unique UUID associated with the table.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
-* ADD_INDEXES: Whether to compact the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to compact the secondary indexes associated with the table. YCQL only.
+* ADD_VECTOR_INDEXES: Indicates to compact the [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) associated with the table.
 
 **Example**
 
@@ -488,6 +490,36 @@ yb-admin \
 ./bin/yb-admin \
     --master_addresses $MASTER_RPC_ADDRS \
     compact_table tableid.000033eb000030008000000000004002
+```
+
+```output
+Compacted [000033eb000030008000000000004002] tables.
+```
+
+#### compact_table_by_id
+
+Triggers manual compaction on a table by table ID (without resolving namespace and table name).
+
+**Syntax**
+
+```sh
+yb-admin \
+    --master_addresses <master-addresses> \
+    compact_table_by_id <table-id> [<timeout-in-seconds>] [ADD_INDEXES] [ADD_VECTOR_INDEXES]
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
+* *table-id*: The unique UUID associated with the table.
+* *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
+* ADD_INDEXES: Indicates to compact the secondary indexes associated with the table. YCQL only.
+* ADD_VECTOR_INDEXES: Indicates to compact the [vector indexes](/stable/additional-features/pg-extensions/extension-pgvector/) (pgvector) associated with the table.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    --master_addresses $MASTER_RPC_ADDRS \
+    compact_table_by_id 000033eb000030008000000000004002 ADD_VECTOR_INDEXES
 ```
 
 ```output
@@ -690,7 +722,7 @@ yb-admin \
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
-* ADD_INDEXES: Whether to flush the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to flush the secondary indexes associated with the table.
 
 **Example**
 
@@ -716,7 +748,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: The unique UUID associated with the table.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
-* ADD_INDEXES: Whether to flush the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to flush the secondary indexes associated with the table.
 
 **Example**
 

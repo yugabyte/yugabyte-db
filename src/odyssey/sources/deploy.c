@@ -77,9 +77,8 @@ static int yb_send_set_guc_defaults(od_client_t *client, od_server_t *server)
 	for (int i = 0; i < client_startup_vars->size; i++) {
 		kiwi_var_t *client_var = &client_startup_vars->vars[i];
 		kiwi_var_t *server_var;
-		server_var = yb_kiwi_vars_get(
-			server_default_vars, client_var->name,
-			yb_od_instance_should_lowercase_guc_name(instance));
+		server_var = yb_kiwi_vars_get(server_default_vars,
+					      client_var->name);
 
 		if (kiwi_var_compare(client_var, server_var))
 			continue;
@@ -172,8 +171,7 @@ int od_deploy(od_client_t *client, char *context)
 	if (instance->config.yb_optimized_session_parameters &&
 	    yb_check_reset_needed(
 		    &client->yb_vars_startup, &client->yb_vars_session,
-		    &server->yb_vars_default, &server->yb_vars_session,
-		    yb_od_instance_should_lowercase_guc_name(instance))) {
+		    &server->yb_vars_default, &server->yb_vars_session)) {
 		od_debug(&instance->logger, context, client, server,
 			 "deploy: Reset to transaction backend default");
 		rc = yb_send_reset_query(server);
@@ -208,8 +206,7 @@ int od_deploy(od_client_t *client, char *context)
 	int query_size;
 	query_size = kiwi_vars_cas(
 		&client->yb_vars_session, &server->yb_vars_session, query,
-		yb_max_query_size,
-		yb_od_instance_should_lowercase_guc_name(instance));
+		yb_max_query_size);
 
 	if (query_size > 0) {
 		query[query_size] = 0;

@@ -355,4 +355,22 @@ tserver::ConnectivityStateResponsePB MasterTabletServer::ConnectivityState() {
   return tserver::ConnectivityStateResponsePB{};
 }
 
+ReplicationInfoPB MasterTabletServer::GetClusterReplicationInfo() const {
+  auto config = master_->catalog_manager()->GetClusterConfig();
+  if (!config.ok()) {
+    LOG(WARNING) << "Failed to get cluster config for replication info: " << config.status();
+    return {};
+  }
+  return config->replication_info();
+}
+
+int32_t MasterTabletServer::cluster_config_version() const {
+  auto config = master_->catalog_manager()->GetClusterConfig();
+  if (!config.ok()) {
+    LOG(WARNING) << "Failed to get cluster config version: " << config.status();
+    return -1;
+  }
+  return config->version();
+}
+
 } // namespace yb::master

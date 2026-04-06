@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckDuplicateInstance;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodesAreSafeToTakeDown;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckTabletsMovementAvailable;
@@ -49,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
@@ -90,6 +92,8 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -4371,5 +4375,100 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
+  }
+
+  /**
+   * Check if any of the given nodes has or may have a duplicate instance in the cloud.
+   *
+   * @param universe the universe.
+   * @param nodes the nodes to check.
+   * @return the subtask group with the check tasks.
+   */
+  protected SubTaskGroup createCheckDuplicateInstances(
+      Universe universe, Collection<NodeDetails> nodes) {
+    // Cache cloud types for clusters to avoid multiple provider lookups.
+    final Map<UUID, CloudType> cloudTypes = new HashMap<>();
+    return doInPrecheckSubTaskGroup(
+        "CheckDuplicateInstances",
+        subTaskGroup -> {
+          for (NodeDetails node : nodes) {
+            Cluster cluster = universe.getCluster(node.placementUuid);
+            CloudType cloudType =
+                cloudTypes.computeIfAbsent(
+                    node.placementUuid,
+                    k ->
+                        Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider))
+                            .getCloudCode());
+            if (!cloudType.isPublicCloud()) {
+              log.debug(
+                  "Skipping duplicate instance check for non-CSP node {} in cluster {}",
+                  node.nodeName,
+                  cluster.uuid);
+              continue;
+            }
+            UserIntent userIntent =
+                universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+            if (userIntent == null) {
+              log.warn(
+                  "User intent is null for cluster {}. Skipping duplicate instance check for node"
+                      + " {}",
+                  cluster.uuid,
+                  node.nodeName);
+              continue;
+            }
+            CheckDuplicateInstance.Params params = new CheckDuplicateInstance.Params();
+            params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+            params.azUuid = node.azUuid;
+            params.placementUuid = node.placementUuid;
+            params.nodeName = node.nodeName;
+            params.nodeUuid = node.nodeUuid;
+            params.nodeState = node.state;
+            params.setUniverseUUID(taskParams().getUniverseUUID());
+            CheckDuplicateInstance task = createTask(CheckDuplicateInstance.class);
+            task.initialize(params);
+            subTaskGroup.addSubTask(task);
+          }
+        });
+  }
+
+  /**
+   * Persists software upgrade AZ progress to universe {@code prevYBSoftwareConfig}. When {@code
+   * pauseAfter} is true, the subtask group pauses after this step (canary).
+   */
+  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
+      boolean isCanaryUpgrade,
+      CanaryPauseState canaryPauseState,
+      List<AZUpgradeState> masterAZUpgradeStatesList,
+      List<AZUpgradeState> tserverAZUpgradeStatesList,
+      boolean pauseAfter) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("SaveSoftwareUpgradeProgress", SubTaskGroupType.UpgradingSoftware);
+    if (pauseAfter) {
+      subTaskGroup.setPausedAfter(true);
+    }
+    SaveSoftwareUpgradeProgress.Params params = new SaveSoftwareUpgradeProgress.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.isCanaryUpgrade = isCanaryUpgrade;
+    params.canaryPauseState = canaryPauseState;
+    params.masterAZUpgradeStatesList =
+        masterAZUpgradeStatesList != null
+            ? new ArrayList<>(masterAZUpgradeStatesList)
+            : new ArrayList<>();
+    params.tserverAZUpgradeStatesList =
+        tserverAZUpgradeStatesList != null
+            ? new ArrayList<>(tserverAZUpgradeStatesList)
+            : new ArrayList<>();
+    params.pauseAfter = pauseAfter;
+    SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Clears software upgrade AZ progress fields in {@code prevYBSoftwareConfig} (task API). */
+  protected void createClearSoftwareUpgradeProgressTask() {
+    createSaveSoftwareUpgradeProgressTask(
+        false, null, Collections.emptyList(), Collections.emptyList(), false);
   }
 }

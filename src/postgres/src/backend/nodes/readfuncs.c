@@ -1973,6 +1973,7 @@ _readIndexOnlyScan(void)
 	READ_NODE_FIELD(yb_pushdown.quals);
 	READ_NODE_FIELD(yb_pushdown.colrefs);
 	READ_INT_FIELD(yb_distinct_prefixlen);
+	READ_INT_FIELD(yb_num_decoded_pk_cols);
 
 	READ_DONE();
 }
@@ -2966,10 +2967,10 @@ _readYbUpdateAffectedEntities(void)
 	READ_DONE();
 }
 
-static YbSaopMergeInfo *
-_readYbSaopMergeInfo(void)
+static YbMergeScanInfo *
+_readYbMergeScanInfo(void)
 {
-	READ_LOCALS(YbSaopMergeInfo);
+	READ_LOCALS(YbMergeScanInfo);
 
 	READ_NODE_FIELD(saop_cols);
 	READ_NODE_FIELD(sort_cols);
@@ -2977,10 +2978,10 @@ _readYbSaopMergeInfo(void)
 	READ_DONE();
 }
 
-static YbSaopMergeSaopColInfo *
-_readYbSaopMergeSaopColInfo(void)
+static YbMergeScanSaopColInfo *
+_readYbMergeScanSaopColInfo(void)
 {
-	READ_LOCALS(YbSaopMergeSaopColInfo);
+	READ_LOCALS(YbMergeScanSaopColInfo);
 
 	READ_NODE_FIELD(saop);
 	READ_INT_FIELD(indexcol);
@@ -3294,10 +3295,10 @@ parseNodeString(void)
 		return_value = _readYbSkippableEntities();
 	else if (MATCH("YBUPDATEAFFECTEDENTITIES", 24))
 		return_value = _readYbUpdateAffectedEntities();
-	else if (MATCH("YBSAOPMERGEINFO", 15))
-		return_value = _readYbSaopMergeInfo();
-	else if (MATCH("YBSAOPMERGESAOPCOLINFO", 22))
-		return_value = _readYbSaopMergeSaopColInfo();
+	else if (MATCH("YBMERGESCANINFO", 15))
+		return_value = _readYbMergeScanInfo();
+	else if (MATCH("YBMERGESCANSAOPCOLINFO", 22))
+		return_value = _readYbMergeScanSaopColInfo();
 	else if (MATCH("YBSORTINFO", 10))
 		return_value = _readYbSortInfo();
 	else

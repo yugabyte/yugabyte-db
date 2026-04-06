@@ -37,6 +37,8 @@ struct XClusterSetupUniverseReplicationData;
 
 class XClusterTargetManager {
  public:
+  friend class XClusterFailoverTask;
+
   // XCluster Safe Time.
   void CreateXClusterSafeTimeTableAndStartService();
 
@@ -55,6 +57,13 @@ class XClusterTargetManager {
 
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
       const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const;
+
+  Status XClusterFailover(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const LeaderEpoch& epoch,
+      CoarseTimePoint deadline,
+      ThreadPool* background_tasks_thread_pool,
+      XClusterFailoverResponsePB* resp);
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch);
 

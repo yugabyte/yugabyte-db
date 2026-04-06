@@ -2302,8 +2302,36 @@ yb_agg_pushdown_supported(AggState *aggstate)
 
 			if (IsA(tle->expr, Var))
 			{
+				Var		   *var = castNode(Var, tle->expr);
+
 				check_outer_plan = true;
-				type = castNode(Var, tle->expr)->vartype;
+				type = var->vartype;
+
+				/*
+				 * If the aggregate argument refers to a decoded PK column,
+				 * disable pushdown and return early.
+				 */
+				if (IsA(ss, IndexOnlyScanState))
+				{
+					IndexOnlyScanState *ioss =
+						castNode(IndexOnlyScanState, ss);
+
+					if (ioss->yb_ioss_num_decoded_pk_cols > 0)
+					{
+						int			phys_natts = RelationGetDescr(ioss->ioss_RelationDesc)->natts;
+						List *tlist = outerPlanState(aggstate)->plan->targetlist;
+						TargetEntry *target = list_nth_node(TargetEntry, tlist, var->varattno - 1);
+
+						/*
+						 * This check only applies to Vars, since Consts are
+						 * not affected by decoding and other nodes cannot be
+						 * pushed down regardless.
+						 */
+						if (IsA(target->expr, Var) &&
+							castNode(Var, target->expr)->varattno > phys_natts)
+							return;
+					}
+				}
 			}
 			else if (IsA(tle->expr, Const))
 			{

@@ -564,6 +564,9 @@ public class CloudProviderHelper {
       throw new PlatformServiceException(
           BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
     }
+    if (existingProvider.getUniverseCount() == 0) {
+      return;
+    }
     long existingAZCount =
         existingProvider.getRegions().stream().flatMap(r -> r.getZones().stream()).count();
     long newAZCount =

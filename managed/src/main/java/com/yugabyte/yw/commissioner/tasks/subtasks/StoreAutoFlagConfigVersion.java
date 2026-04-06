@@ -80,13 +80,16 @@ public class StoreAutoFlagConfigVersion extends UniverseTaskBase {
               }
 
               UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
-                  new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+                  universeDetails.prevYBSoftwareConfig;
+              if (ybSoftwareConfig == null) {
+                ybSoftwareConfig = new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+                universeDetails.prevYBSoftwareConfig = ybSoftwareConfig;
+              }
               ybSoftwareConfig.setSoftwareVersion(
                   universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion);
               ybSoftwareConfig.setAutoFlagConfigVersion(autoFlagConfigVersion);
               ybSoftwareConfig.setTargetUpgradeSoftwareVersion(
                   taskParams().targetUpgradeSoftwareVersion);
-              universeDetails.prevYBSoftwareConfig = ybSoftwareConfig;
 
               universe.setUniverseDetails(universeDetails);
             }

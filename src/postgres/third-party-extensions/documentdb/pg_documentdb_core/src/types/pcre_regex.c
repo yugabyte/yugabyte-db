@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/types/pcre_regex.c
+ * src/types/pcre_regex.c
  *
  * PCRE2 wrappers (Perl Compatible Regular Expression)
  *
@@ -97,7 +97,7 @@ RegexCompileDuringPlanning(char *regexPatternStr, char *options)
 						  REGEX_MAX_PATTERN_LENGTH, PCRE2_NO_AUTO_CAPTURE))
 	{
 		InvalidRegexError(ERRCODE_DOCUMENTDB_LOCATION51091,
-						  "Regular expression is invalid",
+						  "The provided regular expression format is invalid",
 						  pcreErrorCode, pcreData);
 	}
 	pcre2_compile_context_free(pcreData->compileContext);
@@ -116,7 +116,7 @@ RegexCompile(char *regexPatternStr, char *options)
 						  REGEX_MAX_PATTERN_LENGTH, PCRE2_NO_AUTO_CAPTURE))
 	{
 		InvalidRegexError(ERRCODE_DOCUMENTDB_LOCATION51091,
-						  "Regular expression is invalid",
+						  "The provided regular expression format is invalid",
 						  pcreErrorCode, pcreData);
 	}
 
@@ -188,7 +188,6 @@ RegexCompileCore(char *regexPatternStr, char *options, PcreData **pcreData,
 	 * register the PG's memory management functions with PCRE2 lib */
 	CreatePcreCompileContext(*pcreData);
 
-	/* Limit according to jstests\core\regex_limit.js */
 	pcre2_set_max_pattern_length((*pcreData)->compileContext, maxPatternLength);
 
 	(*pcreData)->compiledRegex =
@@ -237,7 +236,7 @@ PcreRegexExecute(char *regexPatternStr, char *options,
 	if (returnCode == PCRE2_ERROR_RECURSIONLIMIT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION51156), errmsg(
-							"Error occurred while executing the regular expression. Result code: -21")));
+							"An error was encountered during the execution of the regular expression, result code: -21")));
 	}
 
 	if (returnCode < 0)
@@ -362,8 +361,7 @@ ProcessRegexCompileOptions(char *options)
 
 				default:
 				{
-					/* Unknown options to be ignored to match the behavior
-					 * in Native MongoDB */
+					/* Unknown options to be ignored */
 				}
 			}
 		}

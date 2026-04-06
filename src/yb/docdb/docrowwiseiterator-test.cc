@@ -2003,7 +2003,7 @@ SubDocKey(DocKey([], ["row2", 22222]), [SystemColumnId(0); HT{ physical: 1000 }]
   // - max_nexts_to_avoid_seek: 0, 1, ..., kNumNonKeyCols - 1.
   // - use_seek_forward: false, true.
   for (bool use_fast_next : {false, true}) {
-    FLAGS_use_fast_next_for_iteration = use_fast_next;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_next_for_iteration) = use_fast_next;
     for (FLAGS_max_nexts_to_avoid_seek = 0;
          FLAGS_max_nexts_to_avoid_seek <= kNumNonKeyCols + 1;
          ++FLAGS_max_nexts_to_avoid_seek) {

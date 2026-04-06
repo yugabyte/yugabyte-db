@@ -42,7 +42,8 @@ extern void yb_extract_pushdown_clauses(List *restrictinfo_list,
 										IndexOptInfo *indexinfo, bool bitmapindex,
 										List **local_quals, List **rel_remote_quals,
 										List **rel_colrefs, List **idx_remote_quals,
-										List **idx_colrefs, Oid relid);
+										List **idx_colrefs, Oid relid,
+										Bitmapset *non_pushable_attnums);
 
 /* YbSkippableEntities helper functions */
 extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);

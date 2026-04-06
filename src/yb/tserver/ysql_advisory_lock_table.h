@@ -29,6 +29,8 @@
 
 namespace yb::tserver {
 
+YB_DEFINE_ENUM(AdvisoryLockTableSchemaVersion, (kDbIdHash)(kAllColsHash));
+
 constexpr std::string_view kPgAdvisoryLocksTableName = "pg_advisory_locks";
 
 struct YsqlAdvisoryLocksTableLockId {
@@ -51,11 +53,12 @@ class YsqlAdvisoryLocksTable {
   Result<client::YBPgsqlLockOpPtr> MakeUnlockOp(
       const LockId& lock_id, AdvisoryLockMode mode) EXCLUDES(mutex_);
 
-  Result<client::YBPgsqlLockOpPtr> MakeUnlockAllOp(uint32_t db_oid) EXCLUDES(mutex_);
+  Result<std::vector<client::YBOperationPtr>> MakeUnlockAllOps(uint32_t db_oid) EXCLUDES(mutex_);
 
   auto TEST_GetTable() { return GetTable(); }
 
-  Result<std::vector<TabletId>> LookupAllTablets(CoarseTimePoint deadline) EXCLUDES(mutex_);
+  Result<std::vector<client::internal::RemoteTabletPtr>> LookupAllTablets(
+      CoarseTimePoint deadline) EXCLUDES(mutex_);
 
  private:
   Result<client::YBTablePtr> GetTable() EXCLUDES(mutex_);
@@ -63,7 +66,10 @@ class YsqlAdvisoryLocksTable {
   std::mutex mutex_;
   client::YBTablePtr table_ GUARDED_BY(mutex_);
   std::shared_future<client::YBClient*> client_future_;
-  std::vector<TabletId> tablet_ids_;
+  std::vector<client::internal::RemoteTabletPtr> tablet_ptrs_;
+  // The client request for lock/unlock has to be set based on the advisory lock table schema
+  // which changed at some point. The below field helps achieve it.
+  AdvisoryLockTableSchemaVersion schema_version_;
 };
 
 } // namespace yb::tserver

@@ -3,6 +3,7 @@ ErrorMapping,ErrorName
 2,BadValue
 5,GraphContainsCycle
 9,FailedToParse
+13,Unauthorized
 14,TypeMismatch
 15,Overflow
 16,InvalidLength
@@ -34,6 +35,7 @@ ErrorMapping,ErrorName
 115,CommandNotSupported
 118,NamespaceNotSharded
 121,DocumentFailedValidation
+143,CursorInUse
 146,ExceededMemoryLimit
 159,DurationOverflow
 165,ViewDepthLimitExceeded
@@ -50,12 +52,14 @@ ErrorMapping,ErrorName
 361,CollectionUUIDMismatch
 8000,UserCountLimitExceeded
 10065,Location10065
+10107,NotWritablePrimary
 10334,BsonObjectTooLarge
 11000,DuplicateKey
 12587,BackgroundOperationInProgressForNamespace
 13026,Location13026
 13027,Location13027
 13068,Location13068
+13103,Location13103
 13111,Location13111
 13113,MergeStageNoMatchingDocument
 13297,DbAlreadyExists
@@ -124,6 +128,7 @@ ErrorMapping,ErrorName
 17276,Location17276
 17308,Location17308
 17310,Location17310
+17385,Location17385
 17419,DocumentAfterUpdateLargerThanMaxSize
 17420,DocumentToUpsertLargerThanMaxSize
 18533,Location18533
@@ -198,6 +203,9 @@ ErrorMapping,ErrorName
 31271,Location31271
 31276,Location31276
 31308,Location31308
+31319,Location31319
+31320,Location31320
+31321,Location31321
 31325,Location31325
 31393,Location31393
 31395,Location31395
@@ -288,6 +296,18 @@ ErrorMapping,ErrorName
 40236,Location40236
 40237,Location40237
 40238,Location40238
+40239,Location40239
+40240,Location40240
+40241,Location40241
+40242,Location40242
+40243,Location40243
+40244,Location40244
+40245,Location40245
+40246,Location40246
+40257,Location40257
+40258,Location40258
+40260,Location40260
+40261,Location40261
 40272,Location40272
 40319,Location40319
 40321,Location40321
@@ -333,6 +353,7 @@ ErrorMapping,ErrorName
 40603,Location40603
 40647,ChangeStreamBadResumeToken
 40684,Location40684
+42501,InsufficientPrivilege
 50694,Location50694
 50695,Location50695
 50696,Location50696
@@ -342,6 +363,7 @@ ErrorMapping,ErrorName
 50752,Location50752
 50759,Location50759
 50989,Location50989
+51002,Location51002
 51003,Location51003
 51024,Location51024
 51044,Location51044
@@ -412,6 +434,7 @@ ErrorMapping,ErrorName
 4161107,Location4161107
 4161108,Location4161108
 4161109,Location4161109
+4341107,Location4341107
 4890500,Location4890500
 4940400,Location4940400
 4940401,Location4940401

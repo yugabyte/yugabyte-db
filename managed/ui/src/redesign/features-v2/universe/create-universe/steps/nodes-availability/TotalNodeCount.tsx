@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useContext } from 'react';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { ResilienceFormMode } from '../resilence-regions/dtos';
+import { REPLICATION_FACTOR } from '../../fields/FieldNames';
 
 const { styled } = mui;
 
@@ -34,14 +35,18 @@ export const TotalNodeCount = () => {
 
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const az = watch('availabilityZones');
+  const useDedicatedNodes = watch('useDedicatedNodes');
+  const replicationFactor = watch(REPLICATION_FACTOR);
   const totalNodeCount = getNodeCount(az);
+  const totalNodesLabel = useDedicatedNodes ? t('totalNodesTserver') : t('totalNodes');
   if (resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
     return null;
   }
   return (
     <NodesCount>
-      <span>{t('totalNodes')}</span>
+      <span>{totalNodesLabel}</span>
       {totalNodeCount}
+      {useDedicatedNodes && <span style={{ marginLeft: '8px' }}>{replicationFactor}</span>}
     </NodesCount>
   );
 };

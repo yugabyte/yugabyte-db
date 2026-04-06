@@ -1,0 +1,16 @@
+title: ClusterResizeStorageSpec
+description: 'Storage volume specification that is used for tserver nodes in this cluster. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec.'
+type: object
+properties:
+  volume_size:
+    description: The size of each volume in each instance. Could be modified in payload for /resize_node API call
+    type: integer
+    format: int32
+  disk_iops:
+    description: 'Desired IOPS for the volumes mounted on this aws, gcp or azu instance'
+    type: integer
+    format: int32
+  throughput:
+    description: 'Desired throughput for the volumes mounted on this aws, gcp or azu instance'
+    type: integer
+    format: int32

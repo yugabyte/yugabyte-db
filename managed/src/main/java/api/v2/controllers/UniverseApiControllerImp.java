@@ -26,8 +26,10 @@ import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
 import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseResourceDetails;
 import api.v2.models.UniverseRestart;
+import api.v2.models.UniverseResumeCanaryUpgrade;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -126,6 +128,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask rollbackSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
     return universeUpgradeHandler.rollbackSoftwareUpgrade(request, cUUID, uniUUID, req);
+  }
+
+  @Override
+  public YBATask resumeCanarySoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) throws Exception {
+    return universeUpgradeHandler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req);
   }
 
   @Override
@@ -313,5 +321,11 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
         .collectionUuid(collectionUUID)
         .nodesCleaned(nodesCleaned)
         .message(message);
+  }
+
+  @Override
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws Exception {
+    return universeUpgradeHandler.resizeNodes(request, cUUID, uniUUID, spec);
   }
 }

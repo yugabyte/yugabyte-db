@@ -38,7 +38,7 @@ ybgincostestimate(struct PlannerInfo *root, struct IndexPath *path,
 				  Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	Assert(!path->yb_index_path_info.saop_merge_saop_cols);
+	Assert(!path->yb_index_path_info.merge_scan_saop_cols);
 
 	gincostestimate(root, path, loop_count, indexStartupCost, indexTotalCost,
 					indexSelectivity, indexCorrelation, indexPages);

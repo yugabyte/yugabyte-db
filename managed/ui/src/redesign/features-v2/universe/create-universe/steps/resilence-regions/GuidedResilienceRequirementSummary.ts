@@ -40,7 +40,7 @@ export function getGuidedResilienceRequirementSummary(
         displayReplicationFactor: n
       };
     case FaultToleranceType.NODE_LEVEL: {
-      const maxAzForNodeLevel = resilienceFactor * 2;
+      const maxAzForNodeLevel = Math.max(1, n - 1);
       return {
         tags: [
           { kind: 'az_range_node_level', maxAz: maxAzForNodeLevel },

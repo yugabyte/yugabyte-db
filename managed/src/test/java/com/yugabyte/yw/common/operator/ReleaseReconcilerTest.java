@@ -69,7 +69,7 @@ public class ReleaseReconcilerTest extends FakeDBApplication {
     when(releaseInformer.getIndexer()).thenReturn(indexer);
     when(resourceClient.inNamespace(anyString())).thenReturn(inNamespaceResource);
     when(inNamespaceResource.resource(any(Release.class))).thenReturn(releaseResource);
-    // when(inNamespaceResource.withName(anyString())).thenReturn(releaseResource);
+    when(inNamespaceResource.withName(anyString())).thenReturn(releaseResource);
     releaseReconciler =
         new ReleaseReconciler(
             releaseInformer,

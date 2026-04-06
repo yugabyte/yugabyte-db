@@ -2011,6 +2011,7 @@ Status DBImpl::RecoverLogFiles(const std::vector<uint64_t>& log_numbers,
 Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
                                            MemTable* mem, VersionEdit* edit) {
   mutex_.AssertHeld();
+  mem->MarkImmutable();
   const uint64_t start_micros = env_->NowMicros();
   FileMetaData meta;
   Status s;
@@ -6408,6 +6409,12 @@ yb::storage::UserFrontierPtr DBImpl::CalcMemTableFrontier(
   InstrumentedMutexLock l(&mutex_);
   auto cfd = default_cf_handle_->cfd();
   return cfd->imm()->GetFrontier(cfd->mem()->GetFrontier(frontier_type), frontier_type);
+}
+
+UserFrontierRange DBImpl::CalcMemTableFrontiers() {
+  InstrumentedMutexLock l(&mutex_);
+  auto cfd = default_cf_handle_->cfd();
+  return cfd->imm()->MergeFrontiersWith(cfd->mem()->GetFrontiers());
 }
 
 yb::storage::UserFrontierPtr DBImpl::GetMutableMemTableFrontier(

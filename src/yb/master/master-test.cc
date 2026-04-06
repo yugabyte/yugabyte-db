@@ -184,7 +184,7 @@ TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
 
 class MasterTestSkipUniverseUuidCheck : public MasterTest {
   void SetUp() override {
-    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
     MasterTest::SetUp();
   }
 };
@@ -199,7 +199,7 @@ TEST_F(MasterTestSkipUniverseUuidCheck, TestUniverseUuidUpgrade) {
 
   ASSERT_OK(mini_master_->Restart(true));
 
-  FLAGS_master_enable_universe_uuid_heartbeat_check = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = true;
 
   config.Clear();
   ASSERT_OK(WaitFor([this]() {
@@ -222,7 +222,7 @@ TEST_F(MasterTest, TestUniverseUuidDisabled) {
     // Try a heartbeat with an invalid universe_uuid passed into the request. When
     // FLAGS_master_enable_universe_uuid_heartbeat_check is false, the response should still be
     // valid.
-    FLAGS_master_enable_universe_uuid_heartbeat_check = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_enable_universe_uuid_heartbeat_check) = false;
     TSHeartbeatRequestPB req;
     TSHeartbeatResponsePB resp;
     req.mutable_common()->CopyFrom(common);
@@ -1215,8 +1215,8 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
@@ -1259,8 +1259,8 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
   ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   auto table = mini_master_->catalog_manager_impl().GetTableInfo(table_id);
   int num_live_replicas = 0, num_read_replicas = 0;
-  mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
-      table, &num_live_replicas, &num_read_replicas);
+  ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTable(
+      table, &num_live_replicas, &num_read_replicas));
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
   for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {

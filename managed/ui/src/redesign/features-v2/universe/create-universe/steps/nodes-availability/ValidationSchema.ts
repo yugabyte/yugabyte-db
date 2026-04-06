@@ -93,21 +93,30 @@ export const NodesAvailabilitySchema = (resilienceAndRegionsProps?: ResilienceAn
         }
       }
 
-      // Node-level resilience: exactly one region with exactly one AZ (no multi-AZ placement).
+      // Node-level resilience: placement only in one region; guided mode caps total AZs at RF-1.
       if (
         resilienceAndRegionsProps?.faultToleranceType === FaultToleranceType.NODE_LEVEL &&
         resilienceType === ResilienceType.REGULAR
       ) {
+        const nodeLevelAzCap = Math.max(1, faultToleranceNeeded - 1);
         const regionsWithZones = values(availabilityZones).filter(
           (zones) => zones && zones.length > 0
         );
-        const invalidNodeLevelPlacement =
-          regionsWithZones.length !== 1 || regionsWithZones[0].length !== 1;
-        if (invalidNodeLevelPlacement) {
+        if (regionsWithZones.length !== 1) {
           fieldErrors.push(
             createError({
               path,
               message: 'errMsg.nodeLevelOneRegionOneAz'
+            })
+          );
+        } else if (
+          resilienceAndRegionsProps?.resilienceFormMode === ResilienceFormMode.GUIDED &&
+          azCounts > nodeLevelAzCap
+        ) {
+          fieldErrors.push(
+            createError({
+              path,
+              message: 'errMsg.nodeLevelAzTooMany'
             })
           );
         }

@@ -3,8 +3,11 @@
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_ybgin.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (costs off)'
 
 -- Always choose index scan.
 SET enable_seqscan = off;
@@ -34,29 +37,29 @@ INSERT INTO vectors (v) VALUES
     (to_tsvector('simple', 'cc')); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'a & e') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb | cc') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'bb & !ccc') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i
+:P SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'cc:*') ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a')
+:P SELECT count(*) FROM vectors WHERE v @@ to_tsquery('simple', 'a');
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- array
@@ -72,25 +75,25 @@ INSERT INTO arrays (a) VALUES
     ('{10, 20, 30}'); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a && '{1, 100, 3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a @> '{5, 3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i
+:P SELECT * FROM arrays WHERE a <@ '{5, 4, 3, 2}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM arrays WHERE a = '{3}' ORDER BY i
+:P SELECT * FROM arrays WHERE a = '{3}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM arrays WHERE a = '{3}'
+:P SELECT count(*) FROM arrays WHERE a = '{3}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- jsonb
@@ -106,37 +109,37 @@ INSERT INTO jsonbs (j) VALUES
     ('{"aaa":{"bbb":[2,4], "ccc":{"ddd":6}}, "eee":8}'); -- test aminsert
 -- test amgetbitmap
 SELECT $$
-SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"bbb":[4]}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM jsonbs WHERE j ? 'aaa'
+:P SELECT count(*) FROM jsonbs WHERE j ? 'aaa';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- jsonb_path
@@ -149,17 +152,17 @@ EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ? 'aaa' ORDER BY i;
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?| '{"ggg", "eee"}' ORDER BY i;
 EXPLAIN (costs off) SELECT * FROM jsonbs WHERE j ?& '{"aaa", "eee"}' ORDER BY i;
 SELECT $$
-SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @> '{"aaa":{"bbb":[4]}}' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @? '$.aaa[*] ? (@ == 2)' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i
+:P SELECT * FROM jsonbs WHERE j @@ '$.ggg starts with "aa"' ORDER BY i;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- Multicolumn
@@ -184,17 +187,17 @@ CREATE INDEX ON expression USING ybgin (
 INSERT INTO expression VALUES
     (to_tsvector('simple', 'a a'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 SELECT $$
-SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b']
+:P SELECT count(*) FROM expression WHERE tsvector_to_array(v) && ARRAY['b'];
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e'
+:P SELECT count(*) FROM expression WHERE array_to_tsvector(a) @@ 'e';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h'
+:P SELECT count(*) FROM expression WHERE jsonb_to_tsvector('simple', j, '["string"]') @@ 'h';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 --
 -- Partial index
@@ -207,29 +210,29 @@ CREATE INDEX ON partial USING ybgin (j) WHERE a && ARRAY['f']; -- test ambuild
 INSERT INTO partial VALUES
     (to_tsvector('simple', 'a b c'), ARRAY['d', 'd'], '{"g":"g"}'); -- test aminsert
 SELECT $$
-SELECT count(*) FROM partial WHERE v @@ 'b'
+:explain SELECT count(*) FROM partial WHERE v @@ 'b';
 $$ AS query \gset
-:explain1
+:query
 SELECT $$
-SELECT count(*) FROM partial WHERE v @@ 'c'
+:P SELECT count(*) FROM partial WHERE v @@ 'c';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM partial WHERE a && ARRAY['e']
+:explain SELECT count(*) FROM partial WHERE a && ARRAY['e'];
 $$ AS query \gset
-:explain1
+:query
 SELECT $$
-SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}'
+:P SELECT count(*) FROM partial WHERE a && ARRAY['e'] and j @> '{"g":["i"]}';
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 SELECT $$
-SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")'
+:explain SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")';
 $$ AS query \gset
-:explain1
+:query
 SELECT $$
-SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f']
+:P SELECT count(*) FROM partial WHERE j @? '$.g[*] ? (@ == "h")' and a && ARRAY['f'];
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 -- Don't clean up the tables as they'll be used in later tests.
 

@@ -111,6 +111,12 @@ class XClusterManager : public XClusterManagerIf,
   Result<HybridTime> GetXClusterSafeTimeForNamespace(
       const NamespaceId& namespace_id, const XClusterSafeTimeFilter& filter) const override;
 
+  Status XClusterFailover(
+      const XClusterFailoverRequestPB* req,
+      XClusterFailoverResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
   Status SetupUniverseReplication(
@@ -302,6 +308,13 @@ class XClusterManager : public XClusterManagerIf,
   Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
   void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
 
+  Status RegisterUniqueFailoverTask(
+      const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task)
+      EXCLUDES(monitored_tasks_mutex_);
+  void UnRegisterFailoverTask(
+      const xcluster::ReplicationGroupId& replication_group_id, server::MonitoredTaskPtr task)
+      EXCLUDES(monitored_tasks_mutex_);
+
   Status ProcessCreateTableReq(
       const CreateTableRequestPB& req, SysTablesEntryPB& table_pb, const TableId& table_id,
       const NamespaceId& namespace_id) const;
@@ -324,6 +337,8 @@ class XClusterManager : public XClusterManagerIf,
 
   std::mutex monitored_tasks_mutex_;
   std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
+  std::unordered_map<xcluster::ReplicationGroupId, std::weak_ptr<server::MonitoredTask>>
+      failover_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
 } // namespace yb::master

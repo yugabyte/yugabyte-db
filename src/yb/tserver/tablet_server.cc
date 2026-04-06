@@ -847,10 +847,14 @@ Result<YSQLLeaseInfo> TabletServer::GetYSQLLeaseInfo() const {
 }
 
 Status TabletServer::RestartPG() const {
-  if (pg_restarter_) {
-    return pg_restarter_();
+  if (!pg_restarter_) {
+    return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
   }
-  return STATUS(IllegalState, "PG restarter callback not registered, cannot restart PG");
+  RETURN_NOT_OK(pg_restarter_());
+  if (!conn_manager_restarter_) {
+    return Status::OK();
+  }
+  return conn_manager_restarter_();
 }
 
 Status TabletServer::KillPg() const {
@@ -2140,6 +2144,22 @@ Status TabletServer::XClusterPopulateMasterHeartbeatRequest(
   return Status::OK();
 }
 
+Status TabletServer::ClusterConfigHandleMasterHeartbeatResponse(
+  const master::TSHeartbeatResponsePB& resp) {
+  if (!resp.has_cluster_config_version() || !resp.has_cluster_replication_info()) {
+    return Status::OK();
+  }
+  const auto v = resp.cluster_config_version();
+  if (v > cluster_config_.version.load(std::memory_order_acquire)) {
+    std::lock_guard l(cluster_config_.mutex);
+    if (v > cluster_config_.version.load(std::memory_order_acquire)) {
+      cluster_config_.replication_info = resp.cluster_replication_info();
+      cluster_config_.version.store(v, std::memory_order_release);
+    }
+  }
+  return Status::OK();
+}
+
 Status TabletServer::XClusterHandleMasterHeartbeatResponse(
     const master::TSHeartbeatResponsePB& resp) {
   xcluster_context_->UpdateSafeTimeMap(resp.xcluster_namespace_to_safe_time());
@@ -2216,15 +2236,13 @@ SchemaVersion TabletServer::GetMinXClusterSchemaVersion(const TableId& table_id,
   return xcluster_consumer_->GetMinXClusterSchemaVersion(table_id, colocation_id);
 }
 
+ReplicationInfoPB TabletServer::GetClusterReplicationInfo() const {
+  std::lock_guard l(cluster_config_.mutex);
+  return cluster_config_.replication_info;
+}
+
 int32_t TabletServer::cluster_config_version() const {
-  std::lock_guard l(xcluster_consumer_mutex_);
-  // If no CDC consumer, we will return -1, which will force the master to send the consumer
-  // registry if one exists. If we receive one, we will create a new CDC consumer in
-  // SetConsumerRegistry.
-  if (!xcluster_consumer_) {
-    return -1;
-  }
-  return xcluster_consumer_->cluster_config_version();
+  return cluster_config_.version.load(std::memory_order_acquire);
 }
 
 Result<uint32_t> TabletServer::XClusterConfigVersion() const {
@@ -2280,6 +2298,10 @@ void TabletServer::RegisterPgProcessRestarter(std::function<Status(void)> restar
 
 void TabletServer::RegisterPgProcessKiller(std::function<Status(void)> killer) {
   pg_killer_ = std::move(killer);
+}
+
+void TabletServer::RegisterConnectionManagerRestarter(std::function<Status(void)> restarter) {
+  conn_manager_restarter_ = std::move(restarter);
 }
 
 Status TabletServer::StartYSQLLeaseRefresher() {

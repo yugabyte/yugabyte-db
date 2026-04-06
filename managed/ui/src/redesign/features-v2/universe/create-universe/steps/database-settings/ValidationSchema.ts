@@ -1,9 +1,10 @@
 import * as Yup from 'yup';
 import { useTranslation } from 'react-i18next';
 import { DatabaseSettingsProps } from './dtos';
-import { YSQL_FIELD } from '../../fields';
+import { YSQL_FIELD } from '../../fields/FieldNames';
 
-const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
+const PASSWORD_REGEX =
+  /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
 
 export const DatabaseValidationSchema = () => {
   const { t } = useTranslation();

@@ -15,7 +15,6 @@ DOCUMENTDB_DISTRIBUTED_INC_DIR = $(DOCUMENTDB_DISTRIBUTED_DIR)/include
 
 PG_CPPFLAGS = -I$(libpq_srcdir) -Isrc -Iinclude -Ibuild/include/
 # YB: Replace libbson-static-1.0 and intelmathlib with yb thirdparty based bson and bid libs.
-# YB (#26948): Add pcre2 to yb thirdparty and remove use of -L/usr/lib.
 PG_LDFLAGS = -lbson-1.0 $(YB_THIRDPARTY_DIR)/installed/uninstrumented/lib/libbid.a \
                 $(YB_THIRDPARTY_DIR)/installed/uninstrumented/lib/libpcre2-8.a -L$(YB_BUILD_ROOT)/lib \
                 -L/usr/lib -lyb_pggate -lyb_pggate_util
@@ -40,14 +39,15 @@ PG_LDFLAGS += -l:pg_documentdb_distributed.so -L $(DOCUMENTDB_DISTRIBUTED_DIR)
 endif
 
 ifeq ($(CC),gcc)
-    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-missing-variable-declarations
 else
-    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough -Wno-missing-variable-declarations
 endif
 
 # YB: Suppress warnings from the extension itself, since yb builds have stricter warning levels by default.
 PG_CFLAGS += -Wno-typedef-redefinition -Wno-unused-function -Wno-tautological-overlap-compare
-PG_CFLAGS += -Wno-tautological-unsigned-enum-zero-compare
+PG_CFLAGS += -Wno-tautological-unsigned-enum-zero-compare -Wno-strlcpy-strlcat-size
+PG_CFLAGS += -Wno-incompatible-pointer-types
 
 ifneq ($(SKIP_API_SCHEMA),yes)
     ifndef API_SCHEMA_NAME
@@ -90,12 +90,20 @@ ifneq ($(SKIP_API_SCHEMA),yes)
     $(error API_READONLY_ROLE is not set)
     endif
 
+    ifndef API_BG_WORKER_ROLE
+    $(error API_BG_WORKER_ROLE is not set)
+    endif
+
     ifndef POSTGIS_SCHEMA_NAME
     $(error POSTGIS_SCHEMA_NAME is not set)
     endif
 
     ifndef API_GUC_PREFIX
     $(error API_GUC_PREFIX is not set)
+    endif
+
+    ifndef API_GUC_PREFIX_V2
+    $(error API_GUC_PREFIX_V2 is not set)
     endif
 
     EXTENSION_SQL_ONLY_DEFINES = -D__API_CATALOG_SCHEMA__=$(API_CATALOG_SCHEMA_NAME) \
@@ -108,8 +116,10 @@ ifneq ($(SKIP_API_SCHEMA),yes)
                                  -D__API_ADMIN_ROLE__=$(API_ADMIN_ROLE) \
                                  -D__API_ADMIN_ROLE_V2__=$(API_ADMIN_ROLE_V2) \
                                  -D__API_READONLY_ROLE__=$(API_READONLY_ROLE) \
+                                 -D__API_BG_WORKER_ROLE__=$(API_BG_WORKER_ROLE) \
                                  -D__POSTGIS_SCHEMA_NAME__=$(POSTGIS_SCHEMA_NAME) \
-                                 -D__API_GUC_PREFIX__=$(API_GUC_PREFIX)
+                                 -D__API_GUC_PREFIX__=$(API_GUC_PREFIX) \
+                                 -D__API_GUC_PREFIX_V2__=$(API_GUC_PREFIX_V2)
 endif
 
 ifdef API_DISTRIBUTED_SCHEMA_NAME
@@ -134,14 +144,22 @@ ifndef CORE_SCHEMA_NAME_V2
     CORE_SCHEMA_NAME_V2=$(CORE_SCHEMA_NAME)
 endif
 
+ifdef API_OPCLASS_SCHEMA
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_OPCLASS_SCHEMA__=$(API_OPCLASS_SCHEMA)
+else
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_OPCLASS_SCHEMA__=$(API_CATALOG_SCHEMA_NAME)
+endif
 
+ifdef API_OPCLASS_INTERNAL_SCHEMA
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_OPCLASS_INTERNAL_SCHEMA__=$(API_OPCLASS_INTERNAL_SCHEMA)
+else
+    EXTENSION_SQL_ONLY_DEFINES += -D__API_OPCLASS_INTERNAL_SCHEMA__=$(API_SCHEMA_INTERNAL_NAME_V2)
+endif
+
+EXTENSION_SQL_ONLY_DEFINES += -D__API_INDEX_PREFIX_NAME__=rum
 EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX__=$(EXTENSION_OBJECT_PREFIX)
 EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX_V2__=$(EXTENSION_OBJECT_PREFIX_V2)
 EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA__=$(CORE_SCHEMA_NAME)
 EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA_V2__=$(CORE_SCHEMA_NAME_V2)
 
 SQL_DEFINES = $(EXTENSION_SQL_ONLY_DEFINES)
-
-ifneq ($(EXTRA_INCLUDE),)
-include $(EXTRA_INCLUDE)
-endif

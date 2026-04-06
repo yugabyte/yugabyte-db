@@ -396,6 +396,7 @@ public class CustomerTaskManager {
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
+              + "AND ti.task_state != 'Paused' "
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
@@ -487,6 +488,16 @@ public class CustomerTaskManager {
       if (placementModificationTaskUuid != null) {
         CustomerTask placementModificationTask =
             CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
+        Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(placementModificationTask.getTaskUUID());
+        if (taskInfo.isPresent()) {
+          TaskInfo lastTaskInfo = taskInfo.get();
+          if (lastTaskInfo.getTaskState().equals(TaskInfo.State.Failure)
+              || lastTaskInfo.getTaskState().equals(TaskInfo.State.Aborted)) {
+            if (isSoftwareUpgradeTaskForAzProgress(lastTaskInfo.getTaskType())) {
+              markSoftwareUpgradeAzInProgressAsFailedInPrevConfig(uuid);
+            }
+          }
+        }
         SoftwareUpgradeState state =
             getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
@@ -498,6 +509,28 @@ public class CustomerTaskManager {
         }
       }
     }
+  }
+
+  private static boolean isSoftwareUpgradeTaskForAzProgress(TaskType taskType) {
+    return Arrays.asList(
+            TaskType.SoftwareUpgrade,
+            TaskType.SoftwareUpgradeYB,
+            TaskType.SoftwareKubernetesUpgrade,
+            TaskType.SoftwareKubernetesUpgradeYB)
+        .contains(taskType);
+  }
+
+  private void markSoftwareUpgradeAzInProgressAsFailedInPrevConfig(UUID universeUuid) {
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          if (details.prevYBSoftwareConfig != null) {
+            details.prevYBSoftwareConfig.markInProgressAzUpgradeStatusesAsFailed();
+          }
+          universe.setUniverseDetails(details);
+        },
+        false);
   }
 
   private SoftwareUpgradeState getUniverseSoftwareUpgradeStateBasedOnTask(

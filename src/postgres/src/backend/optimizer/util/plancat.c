@@ -439,6 +439,63 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			/* Build targetlist using the completed indexprs data */
 			info->indextlist = build_index_tlist(root, info, relation);
 
+			/*
+			 * YB: Check if this is an LSM secondary index. If it is, append the base
+			 * table's primary key columns as decodable from ybidxbasectid.
+			 */
+			if (IsYBRelation(relation) && !index->indisprimary &&
+				info->relam == LSM_AM_OID &&
+				yb_enable_primary_key_decode_from_index)
+			{
+				Bitmapset  *pk_bms = YBGetTablePrimaryKeyBms(relation);
+
+				if (pk_bms != NULL)
+				{
+					int			bms_idx = -1;
+					int			missing_pk_count = 0;
+					AttrNumber	missing_pk_attnums[INDEX_MAX_KEYS];
+					Bitmapset  *idx_keys_bms = NULL;
+
+					/* Only check through user columns (attnum > 0), skip system columns. */
+					for (int j = 0; j < ncolumns; j++)
+						if (info->indexkeys[j] > 0)
+							idx_keys_bms = bms_add_member(idx_keys_bms, info->indexkeys[j]);
+
+					/* Scan for primary keys not in the index. */
+					while ((bms_idx = bms_next_member(pk_bms, bms_idx)) >= 0)
+					{
+						AttrNumber	pk_attnum = bms_idx +
+							YBGetFirstLowInvalidAttributeNumber(relation);
+
+						if (!bms_is_member(pk_attnum, idx_keys_bms) &&
+							missing_pk_count < INDEX_MAX_KEYS - ncolumns)
+							missing_pk_attnums[missing_pk_count++] = pk_attnum;
+					}
+					bms_free(idx_keys_bms);
+
+					/* Rebuild indextlist with the extra columns. */
+					if (missing_pk_count > 0)
+					{
+						int			new_ncols = ncolumns + missing_pk_count;
+
+						info->indexkeys = (int *)
+							repalloc(info->indexkeys, sizeof(int) * new_ncols);
+						info->canreturn = (bool *)
+							repalloc(info->canreturn, sizeof(bool) * new_ncols);
+
+						for (int j = 0; j < missing_pk_count; j++)
+						{
+							info->indexkeys[ncolumns + j] = missing_pk_attnums[j];
+							info->canreturn[ncolumns + j] = true;
+						}
+
+						info->ncolumns = new_ncols;
+						info->yb_num_decoded_pk_cols = missing_pk_count;
+						info->indextlist = build_index_tlist(root, info, relation);
+					}
+				}
+			}
+
 			info->indrestrictinfo = NIL;	/* set later, in indxpath.c */
 			info->predOK = false;	/* set later, in indxpath.c */
 			info->unique = index->indisunique;

@@ -563,6 +563,46 @@ TEST_F(PgMiniTestBase, DisallowWriteDMLsWithYbReadTime) {
   ASSERT_OK(conn.Execute("DELETE FROM t WHERE k=1"));
 }
 
+// Test that nextval and setval on sequences are disallowed in a time travel session
+// (when yb_read_time is set to non-zero).
+TEST_F(PgMiniTestBase, DisallowSequenceWritesWithYbReadTime) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE test_seq"));
+
+  LOG(INFO) << "Calling nextval to advance the sequence";
+  auto val = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('test_seq')"));
+  LOG(INFO) << "nextval returned: " << val;
+
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint"));
+  LOG(INFO) << "Current timestamp in micros: " << t1;
+
+  LOG(INFO) << "Calling nextval again before setting yb_read_time";
+  val = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('test_seq')"));
+  LOG(INFO) << "nextval returned: " << val;
+
+  LOG(INFO) << "Setting yb_read_time to " << t1;
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_time TO $0", t1));
+
+  LOG(INFO) << "Trying nextval when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.Execute("SELECT nextval('test_seq')"));
+
+  LOG(INFO) << "Trying setval when yb_read_time is set (should fail)";
+  ASSERT_NOK(conn.FetchRow<int64_t>("SELECT setval('test_seq', 100)"));
+
+  LOG(INFO) << "Resetting yb_read_time to 0";
+  ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
+
+  LOG(INFO) << "Trying nextval after resetting yb_read_time (should succeed)";
+  val = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('test_seq')"));
+  LOG(INFO) << "nextval returned: " << val;
+
+  LOG(INFO) << "Trying setval after resetting yb_read_time (should succeed)";
+  ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT setval('test_seq', 200)"));
+  val = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT nextval('test_seq')"));
+  ASSERT_EQ(val, 201);
+}
+
 // Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
 // 1- Create two tables
 // 2- Get the current timestamp t

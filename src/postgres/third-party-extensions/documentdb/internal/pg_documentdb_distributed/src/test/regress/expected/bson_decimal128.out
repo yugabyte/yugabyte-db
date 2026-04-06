@@ -45,13 +45,13 @@ SELECT 1 FROM documentdb_api.insert_one('db', 'decimal128', '{"a": { "$numberDec
         1
 (1 row)
 
-SELECT 1 FROM documentdb_api.insert_one('db', 'decimal128', '{"a": { "$numberDecimal": "2345678901234567890.12345678901234" },"_id":8,"b":8}');
+SELECT 1 FROM documentdb_api.insert_one('db', 'decimal128', '{"a": { "$numberDecimal": "2234567832345678423.28293013835682" },"_id":8,"b":8}');
  ?column? 
 ---------------------------------------------------------------------
         1
 (1 row)
 
-SELECT 1 FROM documentdb_api.insert_one('db', 'decimal128', '{"a": { "$numberDecimal": "123456789.123456e2001" },"_id":9,"b":9}');
+SELECT 1 FROM documentdb_api.insert_one('db', 'decimal128', '{"a": { "$numberDecimal": "141592653.950332e2013" },"_id":9,"b":9}');
  ?column? 
 ---------------------------------------------------------------------
         1
@@ -192,10 +192,10 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "15" } } | { "_id" : { "$numberInt" : "15" }, "a" : { "$numberDouble" : "-1.0" }, "b" : { "$numberInt" : "15" } }
 (4 rows)
 
-SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @= '{ "a": {"$numberDecimal": "2345678901234567890.12345678901234"} }';
+SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @= '{ "a": {"$numberDecimal": "2234567832345678423.28293013835682"} }';
             object_id            |                                                              document                                                               
 ---------------------------------------------------------------------
- { "" : { "$numberInt" : "8" } } | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "8" } } | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
 (1 row)
 
 --find with order by
@@ -217,8 +217,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') OR
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
 (18 rows)
 
@@ -226,8 +226,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') OR
             object_id             |                                                                                                  document                                                                                                   
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
@@ -253,8 +253,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -273,8 +273,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -297,8 +297,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -317,8 +317,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -344,16 +344,16 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
             object_id            |                                                              document                                                               
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "6" } } | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
- { "" : { "$numberInt" : "8" } } | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } } | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } } | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } } | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
 (3 rows)
 
 SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @@ '{ "a": {"$gte" : {"$numberDecimal": "5.00001"}} }';
             object_id             |                                                                                                  document                                                                                                   
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
 (4 rows)
 
@@ -408,8 +408,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "5" } }  | { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "NaN" }, "b" : { "$numberInt" : "5" } }
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -427,8 +427,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "4" } }  | { "_id" : { "$numberInt" : "4" }, "a" : { "$numberDecimal" : "NaN" }, "b" : { "$numberInt" : "4" } }
  { "" : { "$numberInt" : "5" } }  | { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "NaN" }, "b" : { "$numberInt" : "5" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "13" } } | { "_id" : { "$numberInt" : "13" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "13" } }
@@ -444,8 +444,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
  { "" : { "$numberInt" : "1" } }  | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1.0" }, "b" : { "$numberInt" : "1" } }
  { "" : { "$numberInt" : "2" } }  | { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1" }, "b" : { "$numberInt" : "2" } }
  { "" : { "$numberInt" : "3" } }  | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "-1.0" }, "b" : { "$numberInt" : "3" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "10" } } | { "_id" : { "$numberInt" : "10" }, "a" : { "$numberDecimal" : "0" }, "b" : { "$numberInt" : "10" } }
  { "" : { "$numberInt" : "11" } } | { "_id" : { "$numberInt" : "11" }, "a" : { "$numberLong" : "1" }, "b" : { "$numberInt" : "11" } }
  { "" : { "$numberInt" : "12" } } | { "_id" : { "$numberInt" : "12" }, "a" : { "$numberLong" : "-1" }, "b" : { "$numberInt" : "12" } }
@@ -461,8 +461,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
  { "" : { "$numberInt" : "7" } }  | { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "-Infinity" }, "b" : { "$numberInt" : "7" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
 (5 rows)
 
@@ -498,8 +498,8 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
             object_id             |                                                                                                  document                                                                                                   
 ---------------------------------------------------------------------
  { "" : { "$numberInt" : "6" } }  | { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "Infinity" }, "b" : { "$numberInt" : "6" } }
- { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2345678901234567890.12345678901234" }, "b" : { "$numberInt" : "8" } }
- { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.23456789123456E+2009" }, "b" : { "$numberInt" : "9" } }
+ { "" : { "$numberInt" : "8" } }  | { "_id" : { "$numberInt" : "8" }, "a" : { "$numberDecimal" : "2234567832345678423.28293013835682" }, "b" : { "$numberInt" : "8" } }
+ { "" : { "$numberInt" : "9" } }  | { "_id" : { "$numberInt" : "9" }, "a" : { "$numberDecimal" : "1.41592653950332E+2021" }, "b" : { "$numberInt" : "9" } }
  { "" : { "$numberInt" : "17" } } | { "_id" : { "$numberInt" : "17" }, "a" : [ { "$numberDecimal" : "1.00" }, { "$numberDecimal" : "2.00" }, { "$numberDecimal" : "3.50" }, { "$numberDecimal" : "5.00001" } ], "b" : { "$numberInt" : "17" } }
 (4 rows)
 
@@ -519,9 +519,9 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
 -- Update operations with $mul and $inc
 BEGIN;
 SELECT documentdb_api.update('db', '{"update": "decimal128", "updates":[{"q": {"a": -1},"u":{"$mul":{"a": {"$numberDecimal": "11.1"}}},"multi":true}]}');
-                                                                update                                                                
+                                                               update                                                               
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""4"" }, ""n"" : { ""$numberLong"" : ""4"" } }",t)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""4"" }, ""n"" : { ""$numberInt"" : ""4"" } }",t)
 (1 row)
 
 SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gte": { "$numberDecimal" : "-11.1"}}}, {"a" : {"$lte" : { "$numberDecimal" : "11.1"}}}] }';
@@ -543,9 +543,9 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
 ROLLBACK;
 BEGIN;
 SELECT documentdb_api.update('db', '{"update": "decimal128", "updates":[{"q": {"a": 1},"u":{"$inc":{"a": {"$numberDecimal": "50.012e2"}}},"multi":true}]}');
-                                                                                                                                                                                      update                                                                                                                                                                                      
+                                                                                                                                                                                                              update                                                                                                                                                                                                              
 ---------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0"" }, ""n"" : { ""$numberLong"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67108893"" }, ""errmsg"" : ""Cannot apply $inc to a value of non-numeric type. { _id: 17 } has the field 'a' of non-numeric type array"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""0"" }, ""n"" : { ""$numberInt"" : ""0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67108893"" }, ""errmsg"" : ""Operation $inc cannot be performed because the target value is not numeric. Document { _id: 17 } contains the field 'a' which is of non-numeric type array."" } ] }",f)
 (1 row)
 
 SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gte": {"$numberInt": "5000"}}}, {"a" : {"$lte" : {"$numberInt": "5003"}}}] }';
@@ -555,30 +555,30 @@ SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WH
 
 ROLLBACK;
 -- Overflow operation with decimal128
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "9.999999999999999999999999999999999e6144"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "2"} } } }', '{}');
-                                 bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "9.999999999999999999999999999999999e6144"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "2"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                 update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "Infinity" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document  FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-9.999999999999999999999999999999999e6144"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "2"} } } }', '{}');
-                                  bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-9.999999999999999999999999999999999e6144"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "2"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                  update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-Infinity" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document  FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "9.999999999999999999999999999999999e6144"} } }',
-                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "1.111111111111111111111111111111111e6144"} } } }', '{}');
-                                 bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "9.999999999999999999999999999999999e6144"} } }',
+                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "1.111111111111111111111111111111111e6144"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                 update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "Infinity" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document  FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-9.999999999999999999999999999999999e6144"} } }',
-                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "-1.111111111111111111111111111111111e6144"} } } }', '{}');
-                                  bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-9.999999999999999999999999999999999e6144"} } }',
+                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "-1.111111111111111111111111111111111e6144"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                  update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-Infinity" } } }
 (1 row)
@@ -603,7 +603,7 @@ set local enable_seqscan TO off;
 set local documentdb.forceRumIndexScantoBitmapHeapScan TO OFF;
 -- EXPLAIN QUERIES
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @< '{ "a": {"$numberDecimal": "Infinity"} }';
-                                                             QUERY PLAN                                                             
+                                                                  QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -615,7 +615,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @<= '{ "a": {"$numberDecimal": "Infinity"} }';
-                                                             QUERY PLAN                                                              
+                                                                  QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -627,7 +627,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @> '{ "a": {"$numberDecimal": "Infinity"} }';
-                                                             QUERY PLAN                                                             
+                                                                  QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -639,7 +639,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @> '{ "a": {"$numberDecimal": "-Infinity"} }';
-                                                             QUERY PLAN                                                              
+                                                                  QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -651,7 +651,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @>= '{ "a": {"$numberDecimal": "-Infinity"} }';
-                                                              QUERY PLAN                                                              
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -663,7 +663,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @< '{ "a": {"$numberDecimal": "-Infinity"} }';
-                                                             QUERY PLAN                                                              
+                                                                  QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -675,7 +675,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gt": { "$numberDecimal" : "-Infinity"}}}, {"a" : {"$lt" : { "$numberDecimal" : "Infinity"}}}] }';
-                                                                                                                 QUERY PLAN                                                                                                                  
+                                                                                                                      QUERY PLAN                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -687,7 +687,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'decimal128') WHERE document @@ '{ "$and": [{ "a": {"$gt": { "$numberDecimal" : "-2"}}}, {"a" : {"$lt" : { "$numberDecimal" : "2"}}}] }';
-                                                                                                          QUERY PLAN                                                                                                           
+                                                                                                               QUERY PLAN                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -699,91 +699,91 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (7 rows)
 
 ROLLBACK;
--- Testing cases where decimal128 operations will signal exception with intel math lib and validating if these matches native mongo behavior
+-- Testing cases where decimal128 operations will signal exception with intel math lib and validating if these matches protocol defined behavior
 -- Testing to decimal128 conversion methods using $mul, because $convert is not implemented yet (decimal128 to other types can't be tested now)
 -- TODO Add proper test after implementing $convert
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberInt": "2147483647"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                  bson_update_document                                   
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberInt": "2147483647"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                  update_bson_document                                   
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "2147483647" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberInt": "-2147483648"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                   bson_update_document                                   
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberInt": "-2147483648"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                   update_bson_document                                   
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-2147483648" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "9223372036854775807"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                       bson_update_document                                       
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberLong": "9223372036854775807"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                       update_bson_document                                       
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "9223372036854775807" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberLong": "-9223372036854775808"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                       bson_update_document                                        
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberLong": "-9223372036854775808"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                       update_bson_document                                        
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-9223372036854775808" } } }
 (1 row)
 
 -- normal & inexact double conversion
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDouble": "-9.99000000000000000e+02"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                      bson_update_document                                      
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDouble": "-9.99000000000000000e+02"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                      update_bson_document                                      
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-999.000000000000" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDouble": "9.123456789e+301"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}');
-                                        bson_update_document                                        
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDouble": "9.535874331e+301"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "1"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                        update_bson_document                                        
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "9.12345678900000E+301" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "9.53587433100000E+301" } } }
 (1 row)
 
 -- Inexact result
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+6773078873905278122E-6176"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+4218806809033408381691831445749503E+2026"} } } }', '{}');
-                                                  bson_update_document                                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+6794057649266099302E-6176"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+4548926796094754899573057849605421E+2026"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                                  update_bson_document                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "2.857431127135191736638064013692004E-4098" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "3.090567089495909909951447112206867E-4098" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+6773078873905278122E-6176"} } }',
-                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "+4218806809033408381691831445749503E+2026"} } } }', '{}');
-                                                  bson_update_document                                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+6794057649266099302E-6176"} } }',
+                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "+4548926796094754899573057849605421E+2026"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                                  update_bson_document                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "4.218806809033408381691831445749503E+2059" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "4.548926796094754899573057849605421E+2059" } } }
 (1 row)
 
 -- Overflow signal with inexact
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+9989989898899999889000000000000000E+6111"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+1010000001000011010011101110101011E+6111"} } } }', '{}');
-                                 bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+9579756848909076089047118570486504E+6111"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+1938648456739575048278564590634903E+6111"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                 update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "Infinity" } } }
 (1 row)
 
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+9989989898899999889000000000000000E+6111"} } }',
-                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "+1010000001000011010011101110101011E+6111"} } } }', '{}');
-                                 bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "+9579756848909076089047118570486504E+6111"} } }',
+                                                '{ "": { "$inc": { "a.b": {"$numberDecimal": "+1938648456739575048278564590634903E+6111"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                 update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "Infinity" } } }
 (1 row)
 
 -- Underflow signal with inexact (no test case found for $inc)
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-7319761911613150738145430666036579E-6119"} } }',
-                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+9558201494193483389468498381551623E-2164"} } } }', '{}');
-                                 bson_update_document                                  
+SELECT documentdb_api_internal.update_bson_document('{"_id": 1, "a": { "b": {"$numberDecimal": "-7548269564658974956438658719038456E-6120"} } }',
+                                                '{ "": { "$mul": { "a.b": {"$numberDecimal": "+9875467895987245907845734785643106E-2179"} } } }', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson,NULL::TEXT);
+                                 update_bson_document                                  
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberDecimal" : "-0E-6176" } } }
 (1 row)
 
--- Invalid exceptions are skipped because no valid test cases found (this is generally signalled if "SNaN" is part of operation which is not valid Decimal128 value to store in Native mongo)
+-- Invalid exceptions are skipped because no valid test cases found (this is generally signalled if "SNaN" is part of operation which is not valid Decimal128 value to store)
 -- TEST for double and decimal128 ordering
 SELECT documentdb_api.delete('db', '{"delete":"decimal128", "deletes":[{"q":{},"limit":0}]}');
                                          delete                                          

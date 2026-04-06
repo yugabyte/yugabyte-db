@@ -99,8 +99,15 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
 
-    if (!ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(
-        universe.getUniverseDetails().softwareUpgradeState)) {
+    Set<SoftwareUpgradeState> allowedStates = ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET;
+    if (canaryUpgradeConfig != null) {
+      allowedStates =
+          ImmutableSet.of(
+              SoftwareUpgradeState.Ready,
+              SoftwareUpgradeState.UpgradeFailed,
+              SoftwareUpgradeState.Paused);
+    }
+    if (!allowedStates.contains(universe.getUniverseDetails().softwareUpgradeState)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Software upgrade cannot be preformed on universe in state "
@@ -161,6 +168,12 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     }
   }
 
+  /**
+   * Validates canary upgrade config when present. primaryClusterAZSteps and
+   * readReplicaClusterAZSteps are optional: when null, the executor uses default AZ order (sortAZs)
+   * and no AZ-level pause points (see CanaryUpgradeConfig API docs). Only non-null step lists are
+   * validated for AZ membership.
+   */
   private void validateCanaryUpgradeConfig(Universe universe) {
     UniverseDefinitionTaskParams details = universe.getUniverseDetails();
     UUID primaryClusterUuid = details.getPrimaryCluster().uuid;

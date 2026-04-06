@@ -23,17 +23,26 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/scope_exit.h"
 
-extern "C" void YBCPgSaveMessageField(PGresult* res, char code, const char* value);
-
-namespace yb {
+namespace yb::pggate {
 
 namespace {
 
-void SetPGresultError(PGresult* pgresult, const char* message) {
-  YBCPgSaveMessageField(pgresult, PG_DIAG_MESSAGE_PRIMARY, message);
-  YBCPgSaveMessageField(pgresult, PG_DIAG_SEVERITY, "ERROR");
-  YBCPgSaveMessageField(pgresult, PG_DIAG_SEVERITY_NONLOCALIZED, "ERROR");
+void SetPGresultError(PGresult* pgresult, const std::string& msg) {
+  YbPQsaveMessageField(pgresult, PG_DIAG_MESSAGE_PRIMARY, msg.c_str(), /* translate= */ false);
+  YbPQsaveMessageField(pgresult, PG_DIAG_SEVERITY, "ERROR", /* translate=*/ true);
+  YbPQsaveMessageField(pgresult, PG_DIAG_SEVERITY_NONLOCALIZED, "ERROR", /* translate=*/ false);
+}
+
+// If PgResultFromPB can be called from multiple threads, this is a data race
+// But currently this is only called from the main thread of PG backends
+auto SetResultAttrs(PGresult* pgresult, int ncols) {
+  static std::vector<PGresAttDesc> default_attrs(64, PGresAttDesc{});
+  if (default_attrs.size() < make_unsigned(ncols)) {
+    default_attrs.resize(ncols, PGresAttDesc{});
+  }
+  return PQsetResultAttrs(pgresult, ncols, default_attrs.data());
 }
 
 } // namespace
@@ -90,8 +99,10 @@ bool PgResultToPB(PGresult* pg_result, PgResultPB* result_pb, size_t max_resp_si
   return true;
 }
 
+// This shouldn't be called from multiple threads because of SetResultAttrs
+// See comment in SetResultAttrs
 PGresult* PgResultFromPB(const PgResultPB& result_pb) {
-  auto exec_status = static_cast<ExecStatusType>(result_pb.exec_status());
+  const auto exec_status = static_cast<ExecStatusType>(result_pb.exec_status());
   PGresult* pgresult = PQmakeEmptyPGresult(nullptr, exec_status);
   if (!pgresult) {
     return nullptr;
@@ -99,34 +110,38 @@ PGresult* PgResultFromPB(const PgResultPB& result_pb) {
 
   if (exec_status != PGRES_TUPLES_OK) {
     if (!result_pb.error_message().empty()) {
-      SetPGresultError(pgresult, result_pb.error_message().c_str());
+      SetPGresultError(pgresult, result_pb.error_message());
     }
     return pgresult;
   }
 
-  int nrows = result_pb.rows_size();
-  int ncols = nrows > 0 ? result_pb.rows(0).columns_size() : 0;
+  CancelableScopeExit clear_result([&pgresult] { PQclear(pgresult); });
+  const auto& rows = result_pb.rows();
+  if (!SetResultAttrs(pgresult, rows.empty() ? 0 : rows.begin()->columns_size())) {
+    return nullptr;
+  }
 
-  std::vector<PGresAttDesc> attrs(ncols, PGresAttDesc{});
-  PQsetResultAttrs(pgresult, ncols, attrs.data());
-
-  for (int row = 0; row < nrows; ++row) {
-    const auto& row_pb = result_pb.rows(row);
-    for (int col = 0; col < ncols; ++col) {
-      const auto& col_pb = row_pb.columns(col);
-      if (!col_pb.has_value()) {
-        PQsetvalue(pgresult, row, col, nullptr, -1);
-      } else {
-        PQsetvalue(pgresult, row, col,
-                   const_cast<char*>(col_pb.value().data()),
-                   static_cast<int>(col_pb.value().size()));
+  int row = 0;
+  for (const auto& row_pb : result_pb.rows()) {
+    int col = 0;
+    for (const auto& col_pb : row_pb.columns()) {
+      char* data = nullptr;
+      int data_len = -1; // NULL_LEN = -1 from libpq-int.h
+      if (col_pb.has_value()) {
+        data = const_cast<char*>(col_pb.value().data());
+        data_len = narrow_cast<int>(col_pb.value().size());
+      }
+      if (!PQsetvalue(pgresult, row, col++, data, data_len)) {
+        return nullptr;
       }
     }
+    ++row;
   }
+  clear_result.Cancel();
   return pgresult;
 }
 
-} // namespace yb
+} // namespace yb::pggate
 
 extern "C" {
 
@@ -140,7 +155,7 @@ struct pg_result* YBCPgResultFromPB(const uint8_t* buf, size_t size) {
     LOG(WARNING) << "Failed to parse PgResultPB from buffer";
     return nullptr;
   }
-  return yb::PgResultFromPB(pb);
+  return yb::pggate::PgResultFromPB(pb);
 }
 
 }  // extern "C"

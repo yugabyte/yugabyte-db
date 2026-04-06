@@ -329,6 +329,7 @@ class MemTable {
   // After MarkImmutable() is called, you should not attempt to
   // write anything to this MemTable().  (Ie. do not call Add() or Update()).
   void MarkImmutable() {
+    immutable_ = true;
     table_->MarkReadOnly();
     allocator_.DoneAllocating();
   }
@@ -363,8 +364,9 @@ class MemTable {
   // Frontiers accessors might return stale frontiers if invoked after records have been written to
   // the memtable, but before frontiers are updated.
   yb::storage::UserFrontierPtr GetFrontier(yb::storage::UpdateUserValueType type) const;
+  UserFrontierRange GetFrontiers() const;
 
-  const yb::storage::UserFrontiers* Frontiers() const { return frontiers_.get(); }
+  const yb::storage::UserFrontiers* Frontiers() const;
 
   std::string ToString() const;
 
@@ -390,6 +392,7 @@ class MemTable {
   ConcurrentArena arena_;
   MemTableAllocator allocator_;
   std::unique_ptr<MemTableRep> table_;
+  std::atomic<bool> immutable_{false};
 
   // Total data size of all data inserted
   std::atomic<uint64_t> data_size_;

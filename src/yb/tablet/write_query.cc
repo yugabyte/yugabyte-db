@@ -303,26 +303,29 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
-  if (client_request_ && client_request_->use_async_write()) {
-    VLOG(2) << "Performing Async write: " << client_request_->ShortDebugString();
-    operation_->SetAsyncWrite(
-        [query = this](Result<OpId> opid) -> void {
-          // TODO: Add metrics for async writes.
-          // Query is still pending, but we are ready to invoke the callback.
+  if (use_async_write_ || (client_request_ && client_request_->use_async_write())) {
+    LOG_IF(DFATAL, !response_) << "Response is not set for async write query";
+    if (response_) {
+      VLOG(2) << "Performing Async write: "
+              << (client_request_ ? client_request_->ShortDebugString() : "Internal request");
+      operation_->SetAsyncWrite([query = this](Result<OpId> opid) -> void {
+        // TODO: Add metrics for async writes.
+        // Query is still pending, but we are ready to invoke the callback.
 
-          Status status;
-          if (opid.ok()) {
-            query->context_->RegisterAsyncWrite(*opid);
-            opid->ToPB(query->response_->mutable_async_write_op_id());
-          } else {
-            status = std::move(opid.status());
-          }
+        Status status;
+        if (opid.ok()) {
+          query->context_->RegisterAsyncWrite(*opid);
+          opid->ToPB(query->response_->mutable_async_write_op_id());
+        } else {
+          status = std::move(opid.status());
+        }
 
-          TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
-          TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
-          query->InvokeCallback(status);
-          TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");
-        });
+        TEST_SYNC_POINT("WriteQuery::BeforeCallbackInvoke");
+        TEST_SYNC_POINT_CALLBACK("WriteQuery::SetCallbackStatus", &status);
+        query->InvokeCallback(status);
+        TEST_SYNC_POINT("WriteQuery::AfterCallbackInvoke");
+      });
+    }
   }
 
   TRACE_FUNC();
@@ -791,8 +794,15 @@ docdb::ConflictManagementPolicy GetConflictManagementPolicy(
 }
 
 Status WriteQuery::ExecuteUnlock() {
+  const auto& lock_it = client_request_->pgsql_lock_batch().begin();
+  // Unlock all request could be different based on if the advisory lock table is still on
+  // older schema or the new schema where all columns are hashed. Hence, need to handle both.
+  //
+  // Older schema - unlock all has dbid populated, other range columns are left empty
+  // New schema - unlock all doesn't populate any columns
   bool unlock_all =
-      client_request_->pgsql_lock_batch().begin()->lock_id().lock_range_column_values_size() == 0;
+      lock_it->lock_id().lock_range_column_values().empty() &&
+      lock_it->lock_id().lock_partition_column_values_size() <= 1;
   if (unlock_all) {
     request().mutable_write_batch()->add_lock_pairs()->set_is_lock(false);
     return Status::OK();

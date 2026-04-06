@@ -1366,7 +1366,7 @@ You can specify additional `archive changes` parameters in the `archive-changes`
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
+yb-voyager archive changes --export-dir <EXPORT-DIR> --policy <POLICY-TYPE>
 ```
 
   {{% /tab %}}

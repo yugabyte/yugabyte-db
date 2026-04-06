@@ -176,6 +176,7 @@
 | "Standby Prometheus scrape interval" | "yb.metrics.scrape_interval_standby" | "GLOBAL" | "Need to increase it in case federation metrics request takes more time  than main Prometheus scrape period to complete" | "String" |
 | "Enable viewing metrics in timezone selected at the metrics page" | "yb.ui.metrics.enable_timezone" | "GLOBAL" | "Enable viewing metrics in timezone selected at the metrics page and will be preserved at session level" | "Boolean" |
 | "Enable Path Access Style for Amazon S3" | "yb.ui.feature_flags.enable_path_style_access" | "GLOBAL" | "Enable Path Access Style for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
+| "Enable Chunked Encoding for Amazon S3" | "yb.ui.feature_flags.enable_chunked_encoding" | "GLOBAL" | "Enable Chunked Encoding for Amazon S3, mainly used when configuring S3 compatible storage." | "Boolean" |
 | "Restore YBA postgres metadata during Yugaware container restart" | "yb.ha.k8s_restore_skip_dump_file_delete" | "GLOBAL" | "Restore YBA postgres metadata during Yugaware container restart" | "Boolean" |
 | "Node Agent Server Cert Expiry Notice" | "yb.node_agent.server_cert_expiry_notice" | "GLOBAL" | "Duration to start notifying about expiry before node agent server cert actually expires" | "Duration" |
 | "Disable Node Agent Configure Server" | "yb.node_agent.disable_configure_server" | "GLOBAL" | "Disable server configuration RPCs in node agent. Defaults to ansible if it is enabled." | "Boolean" |
@@ -354,6 +355,7 @@
 | "Common Name Required for Certificates" | "yb.tls.cert_manager.common_name_required" | "UNIVERSE" | "If true, YBA will add commonName to the CertificateRequest sent to cert manager." | "Boolean" |
 | "Skip OpenTelemetry Operator Check" | "yb.universe.skip_otel_operator_check" | "UNIVERSE" | "If true, YBA will skip checking for Opentelemetry operator installation on the cluster." | "Boolean" |
 | "Max memory for OpenTelemetry Collector process." | "yb.universe.otel_collector_max_memory" | "UNIVERSE" | "Hard memory limit for the OpenTelemetry Collector process in the systemd unit file." | "Integer" |
+| "Allow disable master on non-master node subtask" | "yb.universe.allow_disable_master_on_non_master_node_subtask" | "UNIVERSE" | "If true, YBA runs the subtask that stops the YB-Master process on nodes that are not master nodes in the cluster configuration or YBA configuration." | "Boolean" |
 | "Wait Attempts for major catalog upgrade" | "yb.upgrade.wait_attempts_for_major_catalog_upgrade" | "UNIVERSE" | "Wait Attempts for major catalog upgrade" | "Integer" |
 | "PG Upgrade Check Timeout" | "yb.upgrade.pg_upgrade_check_timeout_secs" | "UNIVERSE" | "Timeout for pg_upgrade check in seconds" | "Integer" |
 | "Allow users to disable DB APIs" | "yb.configure_db_api.allow_disable" | "UNIVERSE" | "Allow users to disable DB APIs" | "Boolean" |
@@ -377,6 +379,9 @@
 | "Auto Recover from Pending Upgrade" | "yb.helm.auto_recover_from_pending_upgrade" | "UNIVERSE" | "If true, YBA will automatically recover from stuck Helm upgrades before performing Helm upgrade operations" | "Boolean" |
 | "Upgrade Master Sleep Time Per AZ" | "yb.upgrade.upgrade_master_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading masters in each AZ" | "Long" |
 | "Upgrade TServer Sleep Time Per AZ" | "yb.upgrade.upgrade_tserver_stage_pause_duration_ms" | "UNIVERSE" | "Time to sleep after upgrading tservers in each AZ" | "Long" |
+| "Delay between master restarts in rolling operations" | "yb.upgrade.sleep_after_master_restart_ms" | "UNIVERSE" | "Default delay (ms) between master restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
+| "Delay between tserver restarts in rolling operations" | "yb.upgrade.sleep_after_tserver_restart_ms" | "UNIVERSE" | "Default delay (ms) between tserver restarts in rolling operations (Delay Between Servers). Used when task params do not override." | "Integer" |
 | "Enables new Performance Monitoring UI via Performance Tab if universe is registered with Perf Advisor Service" | "yb.ui.feature_flags.enable_new_perf_advisor_ui" | "UNIVERSE" | "Enables new Performance Monitoring UI via Performance Tab" | "Boolean" |
 | "Enable Canary Upgrade" | "yb.upgrade.enable_canary_upgrade" | "UNIVERSE" | "Enable canary upgrade for the universe" | "Boolean" |
 | "Number of nodes to move in a given batch during full move" | "yb.task.full_move.roll_batch_size" | "UNIVERSE" | "Set numer of nodes to move in a given batch during full move. Default is 0 which means no batching, i.e. move all pods in a single go" | "Long" |
+| "Run Immediate Backup On Schedule Resume" | "yb.backup.run_immediate_backup_on_resume" | "UNIVERSE" | "When true, resumes a stopped backup schedule by running a full or incremental backup immediately instead of waiting for the next scheduled time. This will only change the default functionality, and which can still be overwritten with an api payload." | "Boolean" |

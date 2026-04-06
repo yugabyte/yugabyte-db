@@ -58,6 +58,10 @@ typedef struct ExpressionVariableContext
 
 	/* the expression's parent to be  able to traverse if the variable is not found in the current context. */
 	const struct ExpressionVariableContext *parent;
+
+	/* A flag to indicate if we should not destroy the context's hash table evaluation in ExpressionResultSetValue */
+	/* Currently set in only $let */
+	bool preserveVariableTable;
 } ExpressionVariableContext;
 
 /* Func that will handle evaluating a given operator on a document. */
@@ -203,9 +207,9 @@ typedef struct TimeSystemVariables
 	bson_value_t nowValue;
 } TimeSystemVariables;
 
-
 /* Func that is called after every aggregation expression is parsed to check if it is valid on the current context, i.e let in top level commands like find can't have path expressions ($a) nor use $$CURRENT/$$ROOT system variables. */
-typedef void (*ValidateParsedAggregationExpression)(AggregationExpressionData *data);
+typedef void (*ValidateParsedAggregationExpression)(AggregationExpressionData *data,
+													HTAB *operatorVariables);
 
 /* Struct to pass down at parse time of the aggregation expressions that sets the information of what kind of expressions were found on the expression tree.*/
 typedef struct ParseAggregationExpressionContext
@@ -221,6 +225,9 @@ typedef struct ParseAggregationExpressionContext
 
 	/* collationString to be used by comparison operators */
 	const char *collationString;
+
+	/* A cummulative list of variables defined by a current operator or preceding operators. */
+	HTAB *operatorVariables;
 } ParseAggregationExpressionContext;
 
 
@@ -241,9 +248,10 @@ void VariableContextSetVariableData(ExpressionVariableContext *variableContext, 
 									VariableData *variableData);
 void ValidateVariableName(StringView name);
 
-void GetTimeSystemVariablesFromVariableSpec(pgbson *variableSpec,
+void GetTimeSystemVariablesFromVariableSpec(const pgbson *variableSpec,
 											TimeSystemVariables *timeSystemVariables);
 pgbson * ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec,
-										 TimeSystemVariables *timeSystemVariables);
+										 TimeSystemVariables *timeSystemVariables,
+										 bool isWriteCommand);
 
 #endif

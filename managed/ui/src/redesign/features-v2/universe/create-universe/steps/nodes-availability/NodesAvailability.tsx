@@ -119,6 +119,7 @@ export const NodesAvailability = forwardRef<
   const lesserNodesTransValues = {
     faultToleranceNeeded,
     required_zones: faultToleranceNeeded,
+    max_az: faultToleranceNeeded - 1,
     nodeCount: totalAzCount,
     availability_zone: totalAzCount,
     selected_regions: regions.length

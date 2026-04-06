@@ -41,7 +41,7 @@
 #include "executor/ybExpr.h"
 #include "optimizer/planmain.h"
 #include "optimizer/tlist.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "rewrite/rewriteHandler.h"
@@ -1254,7 +1254,7 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	bool		yb_supports_distinct_pushdown;
 	int			yb_distinct_prefixlen;
 	int			yb_distinct_nkeys;
-	List	   *yb_saop_merge_saop_cols = NIL;
+	List	   *yb_merge_scan_saop_cols = NIL;
 
 	/*
 	 * Check that index supports the desired scan type(s)
@@ -1460,11 +1460,11 @@ build_index_paths(PlannerInfo *root, RelOptInfo *rel,
 		index_pathkeys = build_index_pathkeys(root, index,
 											  ForwardScanDirection,
 											  &yb_distinct_nkeys,
-											  &yb_saop_merge_saop_cols);
+											  &yb_merge_scan_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		if (yb_saop_merge_saop_cols && useful_pathkeys != NIL)
+		if (yb_merge_scan_saop_cols && useful_pathkeys != NIL)
 		{
 			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
 																  rel,
@@ -1528,7 +1528,7 @@ yb_step_4:
 								  outer_relids,
 								  loop_count,
 								  false,
-								  yb_saop_merge_saop_cols);
+								  yb_merge_scan_saop_cols);
 
 		/*
 		 * YB: Generate a distinct index path.
@@ -1555,11 +1555,11 @@ yb_step_4:
 		/*
 		 * If appropriate, consider parallel index scan.  We don't allow
 		 * parallel index scan for bitmap index scans.
-		 * YB: Also, SAOP merge conflicts with parallel scan
+		 * YB: Also, merge scan conflicts with parallel scan
 		 */
 		if (index->amcanparallel &&
 			rel->consider_parallel && outer_relids == NULL &&
-			yb_saop_merge_saop_cols == NIL &&
+			yb_merge_scan_saop_cols == NIL &&
 			scantype != ST_BITMAPSCAN)
 		{
 			ipath = create_index_path(root, index,
@@ -1575,7 +1575,7 @@ yb_step_4:
 									  outer_relids,
 									  loop_count,
 									  true,
-									  yb_saop_merge_saop_cols);
+									  yb_merge_scan_saop_cols);
 
 			/*
 			 * if, after costing the path, we find that it's not worth using
@@ -1588,22 +1588,22 @@ yb_step_4:
 		}
 
 		/*
-		 * 4.5. YB: In case SAOP merge index paths were created, try creating
-		 * them without.
+		 * 4.5. YB: In case merge index paths were created, try creating them
+		 * without.
 		 */
-		if (yb_saop_merge_saop_cols != NIL)
+		if (yb_merge_scan_saop_cols != NIL)
 		{
-			/* Get useful_pathkeys without SAOP merge. */
+			/* Get useful_pathkeys without merge scan. */
 			yb_distinct_nkeys =
 				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 			index_pathkeys = build_index_pathkeys(root, index,
 												  ForwardScanDirection,
 												  &yb_distinct_nkeys,
-												  NULL);	/* yb_saop_merge_saop_cols */
+												  NULL);	/* yb_merge_scan_saop_cols */
 			useful_pathkeys = truncate_useless_pathkeys(root, rel,
 														index_pathkeys,
 														yb_distinct_nkeys);
-			yb_saop_merge_saop_cols = NIL;
+			yb_merge_scan_saop_cols = NIL;
 
 			goto yb_step_4;
 		}
@@ -1611,12 +1611,12 @@ yb_step_4:
 
 	/*
 	 * YB: It is possible that there are no index clauses or useful pathkeys
-	 * but SAOP merge SAOP cols are derived for the above forward scan case.
+	 * but merge scan SAOP cols are derived for the above forward scan case.
 	 * Clear that state before attempting backwards scan.  Don't bother freeing
 	 * memory as it's negligible and will be cleaned up with the memory context
 	 * after the query.
 	 */
-	yb_saop_merge_saop_cols = NIL;
+	yb_merge_scan_saop_cols = NIL;
 
 	/*
 	 * 5. If the index is ordered, a backwards scan might be interesting.
@@ -1631,11 +1631,11 @@ yb_step_4:
 		index_pathkeys = build_index_pathkeys(root, index,
 											  BackwardScanDirection,
 											  &yb_distinct_nkeys,
-											  &yb_saop_merge_saop_cols);
+											  &yb_merge_scan_saop_cols);
 		useful_pathkeys = truncate_useless_pathkeys(root, rel,
 													index_pathkeys,
 													yb_distinct_nkeys);
-		if (yb_saop_merge_saop_cols && useful_pathkeys != NIL)
+		if (yb_merge_scan_saop_cols && useful_pathkeys != NIL)
 		{
 			useful_pathkeys = yb_truncate_embedded_index_pathkeys(root,
 																  rel,
@@ -1656,7 +1656,7 @@ yb_step_5:
 									  outer_relids,
 									  loop_count,
 									  false,
-									  yb_saop_merge_saop_cols);
+									  yb_merge_scan_saop_cols);
 
 			/*
 			 * YB: Generate a backwards scanning distinct index path.
@@ -1678,7 +1678,7 @@ yb_step_5:
 			/* If appropriate, consider parallel index scan */
 			if (index->amcanparallel &&
 				rel->consider_parallel && outer_relids == NULL &&
-				yb_saop_merge_saop_cols == NIL &&
+				yb_merge_scan_saop_cols == NIL &&
 				scantype != ST_BITMAPSCAN)
 			{
 				ipath = create_index_path(root, index,
@@ -1692,7 +1692,7 @@ yb_step_5:
 										  outer_relids,
 										  loop_count,
 										  true,
-										  yb_saop_merge_saop_cols);
+										  yb_merge_scan_saop_cols);
 
 				/*
 				 * if, after costing the path, we find that it's not worth
@@ -1706,22 +1706,22 @@ yb_step_5:
 		}
 
 		/*
-		 * 5.5. YB: In case SAOP merge index paths were created, try creating
+		 * 5.5. YB: In case merge scan index paths were created, try creating
 		 * them without.
 		 */
-		if (yb_saop_merge_saop_cols != NIL)
+		if (yb_merge_scan_saop_cols != NIL)
 		{
-			/* Get useful_pathkeys without SAOP merge. */
+			/* Get useful_pathkeys without merge scan. */
 			yb_distinct_nkeys =
 				index->nhashcolumns ? -1 : yb_distinct_prefixlen;
 			index_pathkeys = build_index_pathkeys(root, index,
 												  BackwardScanDirection,
 												  &yb_distinct_nkeys,
-												  NULL);	/* yb_saop_merge_saop_cols */
+												  NULL);	/* yb_merge_scan_saop_cols */
 			useful_pathkeys = truncate_useless_pathkeys(root, rel,
 														index_pathkeys,
 														yb_distinct_nkeys);
-			yb_saop_merge_saop_cols = NIL;
+			yb_merge_scan_saop_cols = NIL;
 
 			goto yb_step_5;
 		}

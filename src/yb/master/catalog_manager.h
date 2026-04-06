@@ -1074,9 +1074,9 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                                               int* num_read_replicas);
 
   // Get the number of live and read replicas for a given table.
-  void GetExpectedNumberOfReplicasForTable(const scoped_refptr<TableInfo>& table,
-                                           int* num_live_replicas,
-                                           int* num_read_replicas);
+  Status GetExpectedNumberOfReplicasForTable(const scoped_refptr<TableInfo>& table,
+                                             int* num_live_replicas,
+                                             int* num_read_replicas);
 
   // API to check if all the live tservers have similar tablet workload.
   Status IsLoadBalanced(const IsLoadBalancedRequestPB* req,
@@ -1298,9 +1298,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const ReplicationInfoPB& table_replication_info,
       const TablespaceId& tablespace_id) override;
 
-  Result<ReplicationInfoPB> GetTableReplicationInfo(const TableInfoPtr& table) override;
+  ReplicationInfoPB GetTableReplicationInfoWithDefault(const TableInfoPtr& table) const override;
 
-  Result<size_t> GetTableReplicationFactor(const TableInfoPtr& table) const override;
+  Result<ReplicationInfoPB> GetTableReplicationInfoNoDefault(
+      const TableInfoPtr& table) const override;
 
   Result<std::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
@@ -2995,6 +2996,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const xrepl::StreamId& stream_id, bool force_delete) REQUIRES_SHARED(mutex_);
 
   Status FillHeartbeatResponseEncryption(
+      const SysClusterConfigEntryPB& cluster_config,
+      const TSHeartbeatRequestPB& req,
+      TSHeartbeatResponsePB* resp);
+
+  void FillHeartbeatResponseClusterConfig(
       const SysClusterConfigEntryPB& cluster_config,
       const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);

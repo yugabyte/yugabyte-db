@@ -14,7 +14,6 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.SQLException;

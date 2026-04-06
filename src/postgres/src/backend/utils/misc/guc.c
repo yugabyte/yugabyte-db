@@ -122,9 +122,10 @@
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
+#include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
@@ -172,6 +173,10 @@ static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
 static double yb_transaction_priority = 0.0;
 static int	yb_tcmalloc_sample_period = 1024 * 1024;	/* 1MB */
+
+/* YB: ConnMgr variables used to track SIGHUP */
+uint64_t	yb_conn_mgr_sighup_logical_client_version = 0;
+bool		yb_conn_mgr_sighup_had_backend_guc_change = false;
 
 static int	GUC_check_errcode_value;
 
@@ -298,6 +303,8 @@ static void assign_yb_enable_base_scans_cost_model(bool new_value, void *extra);
 
 static bool check_yb_disable_pg_snapshot_mgmt_in_repeatable_read(bool *newval, void **extra, GucSource source);
 static bool check_yb_enable_advisory_locks(bool *newval, void **extra, GucSource source);
+static bool check_yb_dist_tracecontext(char **newval, void **extra, GucSource source);
+static void assign_yb_dist_tracecontext(const char *newval, void *extra);
 
 static void assign_yb_silence_advisory_locks_not_supported_error(bool newval, void *extra);
 
@@ -2583,6 +2590,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_use_cluster_config_for_geolocation_costing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When no tablespace is assigned to table, use cluster "
+						 "replication info to estimate network costs"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_use_cluster_config_for_geolocation_costing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("DEPRECATED: no-op."),
 			NULL,
@@ -3019,6 +3038,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_primary_key_decode_from_index", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow Index Only Scans to decode base table primary "
+						 "key columns from secondary index entries."),
+			gettext_noop("When enabled, PK columns are decoded from "
+						 "ybidxbasectid in secondary index entries."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_primary_key_decode_from_index,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		/* Intended for rolling upgrade scenarios; tied to an auto-flag. */
 		{"yb_enable_index_aggregate_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported index aggregate operations to DocDB."),
@@ -3068,7 +3100,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("If true, derives additional scalar array operation "
 						 "conditions from table constraints and adds them to "
 						 "queries to improve performance."),
-			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			gettext_noop("Has no impact in case yb_max_merge_scan_streams is 0."),
 			GUC_EXPLAIN
 		},
 		&yb_enable_derived_saops,
@@ -3768,7 +3800,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_hash_sharded,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3779,7 +3811,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_range_sharded,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4153,6 +4185,32 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_walsender_poll_sleep_duration_empty_ms,
 		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_notifications_poll_sleep_duration_nonempty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications poller"
+						 " process waits before polling again in case the last"
+						 " poll returned notifications."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poll_sleep_duration_nonempty_ms,
+		1, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_notifications_poll_sleep_duration_empty_ms", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("Time in milliseconds for which the notifications poller"
+						 " process waits before polling again in case the last"
+						 " poll returned no notifications."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_notifications_poll_sleep_duration_empty_ms,
+		100, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -5948,18 +6006,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"yb_max_merge_scan_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
-						 "scalar array operation merge."),
+						 "merge scan."),
 			gettext_noop("For YB LSM index scans, when multiple "
-						 "SAOP-mergeable scalar array operations are "
-						 "involved, they are added to SAOP merge until their "
-						 "cartesian product's cardinality reaches this limit. "
-						 "Scalar array operation merge is per index scan, and "
+						 "merge-scan-eligible scalar array operations are "
+						 "involved, they are combined until their cartesian "
+						 "product's cardinality reaches this limit. "
+						 "Merge scan is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
 						 "to 0 to disable."),
 		},
-		&yb_max_saop_merge_streams,
+		&yb_max_merge_scan_streams,
 		0, 0, 1024,
 		NULL, NULL, NULL
 	},
@@ -7251,6 +7309,19 @@ static struct config_string ConfigureNamesString[] =
 		yb_set_neg_catcache_ids, NULL
 	},
 
+	{
+		{"yb_dist_tracecontext", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Sets the W3C trace context (traceparent) for distributed tracing."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_dist_tracecontext,
+		NULL,
+		check_yb_dist_tracecontext,
+		assign_yb_dist_tracecontext,
+		NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL
@@ -7759,7 +7830,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL,
 			GUC_EXPLAIN
 		},
-		&yb_qpm_configuration.track, YB_QPM_TRACK_NONE, yb_qpm_track_options,
+		&yb_qpm_configuration.track, YB_QPM_TRACK_ALL, yb_qpm_track_options,
 		NULL, NULL, NULL
 	},
 
@@ -7775,7 +7846,7 @@ static struct config_enum ConfigureNamesEnum[] =
 
 	{
 		{"yb_pg_stat_plans_cache_replacement_algorithm", PGC_POSTMASTER, STATS_MONITORING,
-			gettext_noop("Enable true LRU in Query Plan Management."),
+			gettext_noop("Specifies cache replacement policy for Query Plan Management."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
@@ -7803,6 +7874,7 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_enable_parallel_append", "enable_parallel_append",
+	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
 	NULL
 };
 
@@ -11024,6 +11096,16 @@ set_config_option_ext(const char *name, const char *value,
 				 */
 				if (IsUnderPostmaster && changeVal && !is_reload)
 					return -1;
+
+				/*
+				 * YB: We need to increment local LCV for ConnMgr here since
+				 * this change will only take effect in new backends
+				 * This will fire even if the variable value in config is not
+				 * changed, which is acceptable since config reloads are rare
+				 */
+				if (YbIsYsqlConnMgrEnabled() && !IsUnderPostmaster && changeVal &&
+					!is_reload)
+					yb_conn_mgr_sighup_had_backend_guc_change = true;
 			}
 			else if (context != PGC_POSTMASTER &&
 					 context != PGC_BACKEND &&
@@ -16846,6 +16928,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
 	yb_legacy_bnl_cost = false;
+	yb_use_cluster_config_for_geolocation_costing = false;
 
 	switch (new_value)
 	{
@@ -16884,6 +16967,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	 *  - yb_enable_bitmapscan to on
 	 *  - yb_parallel_range_rows to 10000
 	 *  - yb_enable_update_reltuples_after_create_index to on
+	 *  - yb_use_cluster_config_for_geolocation_costing to on
 	 */
 	if (new_value == YB_COST_MODEL_ON)
 	{
@@ -16893,12 +16977,15 @@ assign_yb_enable_cbo(int new_value, void *extra)
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "on",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 	/*
 	 * When disabling CBO, also reset:
 	 *  - yb_enable_bitmapscan
 	 *  - yb_parallel_range_rows
 	 *  - yb_enable_update_reltuples_after_create_index
+	 *  - yb_use_cluster_config_for_geolocation_costing
 	 */
 	else
 	{
@@ -16907,6 +16994,8 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		SetConfigOption("yb_parallel_range_rows", "0",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "off",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }
@@ -17152,6 +17241,72 @@ static void
 assign_yb_enable_pg_stat_statements_rpc_stats(bool newval, void *extra)
 {
 	YbToggleSessionStatsTimer(newval);
+}
+
+static bool
+check_yb_dist_tracecontext(char **newval, void **extra, GucSource source)
+{
+	if (newval == NULL || *newval == NULL)
+	{
+		*extra = NULL;
+		return true;
+	}
+
+	if (!YBCIsDistTraceEnabled())
+	{
+		GUC_check_errdetail("distributed tracing is not enabled. " \
+							"Set otel_collector_traces_endpoint flag to enable " \
+							"distributed tracing.");
+		return false;
+	}
+
+	if ((*newval)[0] == '\0')
+	{
+		GUC_check_errdetail("yb_dist_tracecontext must not be empty");
+		return false;
+	}
+
+	char		traceparent[YB_TRACEPARENT_VALUE_LEN + 1] = {0};
+	YbTraceparentResult tp_result =
+		YbGetTraceparentFromTraceContext(*newval, strlen(*newval), traceparent);
+
+	if (tp_result != YB_TRACEPARENT_OK)
+	{
+		GUC_check_errdetail("%s", YbGetTraceparentResultErrmsg(tp_result));
+		return false;
+	}
+
+	bool		is_valid_and_remote = YBCIsTraceParentValidAndRemote(traceparent);
+
+	if (!is_valid_and_remote)
+	{
+		GUC_check_errdetail("traceparent format is invalid");
+		return false;
+	}
+
+	char	   *myextra = (char *) guc_malloc(ERROR, YB_TRACEPARENT_VALUE_LEN + 1);
+	memcpy(myextra, traceparent, YB_TRACEPARENT_VALUE_LEN + 1);
+	*extra = (void *) myextra;
+
+	return true;
+}
+
+static void
+assign_yb_dist_tracecontext(const char *newval, void *extra)
+{
+	if (yb_guc_remote_span_ctx)
+	{
+		YBCDestroySpanContext(yb_guc_remote_span_ctx);
+		yb_guc_remote_span_ctx = NULL;
+	}
+
+	if (extra == NULL)
+		return;
+
+	/* YB: Storing span context in TopMemoryContext to ensure it persists across query executions */
+	MemoryContext oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	yb_guc_remote_span_ctx = YBCGetValidSpanContext((const char *) extra);
+	MemoryContextSwitchTo(oldcontext);
 }
 
 #include "guc-file.c"

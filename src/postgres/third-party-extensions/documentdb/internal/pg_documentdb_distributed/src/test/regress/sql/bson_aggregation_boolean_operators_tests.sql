@@ -86,13 +86,13 @@ SELECT * FROM bson_dollar_project('{"a": false, "b": false, "c": false}', '{"res
 SELECT * FROM bson_dollar_project('{"a": { "b": false, "c": false}}', '{"result": { "$or": ["$z", "$a.b", "$a.c"]}}');
 SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$or": [{"$add": [0, 0]}, "$a.c"]}}');
 
--- If nested expression parses to a constant that evaluates to an error, the error from the nested expression will be thrown. 
+-- If nested expression parses to a constant that evaluates to an error should get that error.
 SELECT * FROM bson_dollar_project('{"a": false, "b": false, "c": false}', '{"result": { "$or": ["$a", "$b", "$c", {"$divide": []}]}}');
 SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$or": [false, {"$divide": [1, 0]}, "$a.c"]}}');
 SELECT * FROM bson_dollar_project('{"a": { "c": true}}', '{"result": { "$or": [false, "$a.c", {"$subtract": [1, {"$date": {"$numberLong": "11232"}}]}]}}');
 SELECT * FROM bson_dollar_project('{"a": { "c": false}}', '{"result": { "$or": [{"$add": [0, 1]}, "$a.c", {"$not": [1,2]}]}}');
 
--- If nested expression parses to a non-constant (eg: path) that eventually evaluates to an error, shortcircuit evaluation will occur.
+-- If nested expression parses to a non-constant should error.
 SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$or": [true, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
 SELECT * FROM bson_dollar_project('{"a": { "c": 0}}', '{"result": { "$or": [false, {"$divide": [1, "$a.c"]}, "$a.c"]}}');
 

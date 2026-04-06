@@ -84,9 +84,12 @@ class PgIndexBackfillTest : public LibPqTestBase, public ::testing::WithParamInt
     options->extra_master_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_master_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_master_flags.push_back("--master_ysql_operation_lease_ttl_ms=10000");
     options->extra_tserver_flags.push_back("--ysql_disable_index_backfill=false");
     options->extra_tserver_flags.push_back(
         Format("--ysql_num_shards_per_tserver=$0", kTabletsPerServer));
+    options->extra_tserver_flags.push_back(
+        "--wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms=20000");
 
     const bool enable_table_locks = EnableTableLocks();
     options->extra_tserver_flags.push_back(

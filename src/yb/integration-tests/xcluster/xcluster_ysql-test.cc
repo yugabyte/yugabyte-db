@@ -117,6 +117,7 @@ DECLARE_uint32(xcluster_max_old_schema_versions);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
+DECLARE_bool(TEST_usearch_exact);
 
 namespace yb {
 
@@ -2480,9 +2481,9 @@ TEST_F(XClusterYsqlTest, DeletingDatabaseContainingReplicatedTable) {
   namespace_name = "test_namespace";
 
   SetupParams params{
-      .num_consumer_tablets = {1, 1},
-      .num_producer_tablets = {1, 1},
-      .replication_factor = 1,
+    .num_consumer_tablets = {1, 1},
+    .num_producer_tablets = {1, 1},
+    .replication_factor = 1,
   };
   ASSERT_OK(SetUpClusters(params));
 
@@ -3508,6 +3509,52 @@ TEST_F(XClusterYsqlTest, ValidatePartitionType) {
   ASSERT_NOK_STR_CONTAINS(
       AlterUniverseReplication(kReplicationGroupId, {new_producer_table}, /*add_tables=*/true),
       "Source and target schemas don\\'t match");
+}
+
+TEST_F(XClusterYsqlTest, VectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+
+  SetupParams params{
+    .extra_columns = "embedding vector(3)",
+    .create_vector_extension = true,
+  };
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(SetupUniverseReplication({producer_table_}));
+
+  auto table_name = producer_table_->name();
+  auto p_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(table_name.namespace_name()));
+
+  ASSERT_OK(p_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  for (int i = 0; i != 10; ++i) {
+    ASSERT_OK(p_conn.ExecuteFormat(
+        "INSERT INTO $0 VALUES ($1, '[$1, $2, $3]')", table_name.table_name(), i, i * 2, i * 3));
+  }
+  ASSERT_OK(p_conn.CommitTransaction());
+  ASSERT_OK(VerifyWrittenRecords());
+
+  ASSERT_OK(p_conn.ExecuteFormat(
+      "CREATE INDEX CONCURRENTLY vec_idx ON $0 USING ybhnsw (embedding vector_l2_ops)",
+      table_name.table_name()));
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(table_name.namespace_name()));
+  ASSERT_OK(c_conn.ExecuteFormat(
+      "CREATE INDEX CONCURRENTLY vec_idx ON $0 USING ybhnsw (embedding vector_l2_ops)",
+      table_name.table_name()));
+
+  // Verify consumer uses the vector index.
+  auto c_explain = ASSERT_RESULT(c_conn.FetchAllAsString(Format(
+      "EXPLAIN (COSTS OFF) SELECT key FROM $0 "
+      "ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5", table_name.table_name())));
+  ASSERT_STR_CONTAINS(c_explain, "vec_idx");
+
+  // Verify search results match.
+  auto p_search = ASSERT_RESULT(p_conn.FetchAllAsString(Format(
+      "SELECT key FROM $0 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5",
+      table_name.table_name())));
+  auto c_search = ASSERT_RESULT(c_conn.FetchAllAsString(Format(
+      "SELECT key FROM $0 ORDER BY embedding <-> '[0, 0, 0]' LIMIT 5",
+      table_name.table_name())));
+  ASSERT_EQ(p_search, c_search);
+  ASSERT_EQ(p_search, "0; 1; 2; 3; 4");
 }
 
 }  // namespace yb

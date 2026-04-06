@@ -33,8 +33,8 @@ constexpr auto kBackfillSleepSec = 10 * kTimeMultiplier;
 class PgVectorIndexITest : public LibPqTestBase {
  public:
   void SetUp() override {
-    FLAGS_vector_index_enable_compactions = true;
-    FLAGS_vector_index_num_compactions_limit = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
     LibPqTestBase::SetUp();
   }
 

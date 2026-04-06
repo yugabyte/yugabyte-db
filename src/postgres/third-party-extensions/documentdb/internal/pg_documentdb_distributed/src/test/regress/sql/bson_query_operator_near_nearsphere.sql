@@ -20,6 +20,19 @@ SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 13, "a": { "geo": 
 SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 14, "a": { "geo": {"type": "MultiLineString", "coordinates": [[[35.83, 35.84], [32.3, 30.6]]]}} }', NULL);
 SELECT documentdb_api.insert_one('db','near_sphere','{ "_id": 15, "a": { "geo": {"type": "MultiPolygon", "coordinates": [[[[35.312, 35.441], [38.644, 35.3231], [38.71, 39.32], [35.312, 35.441]]]]}} }', NULL);
 
+-- Test near and nearsphere with index and runtime flags
+
+-- Should fail
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0]}}}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0]}}}');
+
+BEGIN;
+-- Should pass
+SET LOCAL documentdb.enable_force_push_geonear_index to off;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$near": [0, 0]}}}');
+SELECT document FROM bson_aggregation_find('db', '{ "find": "near_sphere", "filter": { "a.b": { "$nearSphere": [0, 0]}}}');
+ROLLBACK;
+
 -- $near and $nearSphere enforce index usage
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "near_sphere", "indexes": [{"key": {"a.b": "2d"}, "name": "my_2d_ab_idx" }, {"key": {"a.b": "2dsphere"}, "name": "my_2ds_ab_idx" }, {"key": {"a.geo": "2dsphere"}, "name": "my_2ds_ageo_idx" }]}', true);
 SELECT documentdb_distributed_test_helpers.drop_primary_key('db','near_sphere');

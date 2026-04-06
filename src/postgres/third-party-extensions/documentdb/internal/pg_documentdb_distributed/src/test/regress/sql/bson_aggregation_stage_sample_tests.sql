@@ -7,12 +7,12 @@ SET documentdb.next_collection_id TO 7000;
 SET documentdb.next_collection_index_id TO 7000;
 
 -- Insert data
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 1, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 2, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 3, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 4, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 5, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
-SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds", "price" : 1, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 1, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 2, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 3, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 4, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 5, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','sampleTest',' { "_id" : 6, "product" : "beer", "unitPrice" : 1, "stock" : 1 }', NULL);
 
 -- Tests and explain for collection with data
 -- SYSTEM sampling method, SYSTEM_ROWS performs block-level sampling,
@@ -21,15 +21,15 @@ SELECT documentdb_api.insert_one('db','sample',' { "_id" : 6, "item" : "almonds"
 -- https://www.postgresql.org/docs/current/tsm-system-rows.html
 
 -- Sample with cursor for unsharded collection not supported - use persisted cursor
-SELECT * FROM documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
+SELECT * FROM documentdb_api.aggregate_cursor_first_page(database => 'db', commandSpec => '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ], "cursor": { "batchSize": 1 } }', cursorId => 4294967294);
 
 -- Shard orders collection on item 
-SELECT documentdb_api.shard_collection('db','sample', '{"item":"hashed"}', false);
+SELECT documentdb_api.shard_collection('db','sampleTest', '{"product":"hashed"}', false);
 
 -- If the collection is sharded, have to call TABLESAMPLE SYSTEM_ROWS(n) LIMIT n
 -- SYSTEM_ROWS(n) may always be optimal, but important, as one but all shards may be 
 -- emptty. If we use SYSTEM_ROWS(<n), we might have to go back to get more data.
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
 SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
-EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sample", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
+EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "sampleTest", "pipeline": [ { "$sample": { "size": 3 } }, { "$project": { "_id": 0 } } ] }');
 $Q$);

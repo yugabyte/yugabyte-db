@@ -6,6 +6,9 @@ description: CDC using YugabyteDB PostgreSQL replication protocol.
 headcontent: Capture changes made to data in the database
 aliases:
   - /stable/explore/change-data-capture/using-logical-replication/
+cascade:
+  tags:
+    feature: early-access
 menu:
   stable:
     identifier: explore-change-data-capture-logical-replication

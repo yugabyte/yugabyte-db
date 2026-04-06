@@ -1,7 +1,7 @@
 /* -------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/io/bson_analyze.c
+ * src/io/bson_analyze.c
  *
  * Implementation of the BSON analyze logic.
  *

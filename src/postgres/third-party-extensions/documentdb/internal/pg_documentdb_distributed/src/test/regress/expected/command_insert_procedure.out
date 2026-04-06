@@ -1,0 +1,456 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 129000;
+SET documentdb.next_collection_id TO 1290;
+SET documentdb.next_collection_index_id TO 1290;
+-- Run inside transaction
+BEGIN;
+CALL documentdb_api.insert_bulk('db', '{"insert":"salaries", "documents":[{ "_id" : 1 }]}');
+ERROR:  the insert procedure cannot be used in transactions. Please use the insert function instead
+END;
+-- exercise invalid insert syntax errors
+CALL documentdb_api.insert_bulk('db', NULL);
+ERROR:  insert document cannot be NULL
+CALL documentdb_api.insert_bulk(NULL, '{"insert":"collection", "documents":[{"a":1}]}');
+ERROR:  Database name must not be NULL value
+CALL documentdb_api.insert_bulk('db', '{"documents":[{"a":1}]}');
+ERROR:  The BSON field 'insert.insert' is required but not provided
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection"}');
+ERROR:  BSON field 'insert.documents' is missing but a required field
+CALL documentdb_api.insert_bulk('db', '{"insert":["collection"], "documents":[{"a":1}]}');
+ERROR:  Collection name contains an invalid data type array
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection", "documents":{"a":1}}');
+ERROR:  The BSON field 'insert.documents' has an incorrect type 'object'; it should be of type 'array'.
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection", "documents":[{"a":1}], "extra":1}');
+ERROR:  The BSON field 'insert.extra' is not recognized as a valid field.
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection", "documents":[4]}');
+ERROR:  The BSON field 'insert.documents.0' has an incorrect type 'int'; it should be of type 'object'.
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection", "documents":[{"a":1}],"ordered":1}');
+ERROR:  The BSON field 'insert.ordered' has an incorrect type 'int'; it should be of type 'bool'.
+-- Disallow system.views, system.profile writes
+CALL documentdb_api.insert_bulk('db', '{"insert":"system.views", "documents":[{"a":1}],"ordered":true}');
+ERROR:  Unable to write data to specified location db.system.views
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+CALL documentdb_api.insert_bulk('db', '{"insert":"system.profile", "documents":[{"a":1}],"ordered":true}');
+ERROR:  Unable to write data to specified location db.system.profile
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- regular single-row insert
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection0", "documents":[{"_id":99,"a":99}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection0') where document @@ '{}';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "99" }, "a" : { "$numberInt" : "99" } }
+(1 row)
+
+-- batch scenario
+set documentdb.batchWriteSubTransactionCount TO 5;
+-- when single batch has no issue
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl0", "documents":[{"_id":1}, {"_id":2}, {"_id":3},  {"_id":4},  {"_id":5}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "5" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl0') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" } }
+(5 rows)
+
+-- when multiple batches have no issue
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl1", "documents":[{"_id":1}, {"_id":2}, {"_id":3},  {"_id":4},  {"_id":5}, {"_id":6}, {"_id":7}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "7" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl1') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "7" } }
+(7 rows)
+
+-- when single batch has issue _id 2 is duplicated
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl2", "documents":[{"_id":1}, {"_id":2}, {"_id":2},  {"_id":4},  {"_id":5}]}');
+NOTICE:  creating collection
+                                                                                                                        p_result                                                                                                                         | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "2" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl2') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- when multiple batches have no _id 2 is duplicated and _id 6 is duplicated
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl3", "documents":[{"_id":1}, {"_id":2}, {"_id":2},  {"_id":4},  {"_id":5}, {"_id":6}, {"_id":6}]}');
+NOTICE:  creating collection
+                                                                                                                        p_result                                                                                                                         | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "2" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl3') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- when single batch has issue _id 2 is duplicated and ordered false
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl4", "documents":[{"_id":1}, {"_id":2}, {"_id":2},  {"_id":4},  {"_id":5}], "ordered":false}');
+NOTICE:  creating collection
+                                                                                                                        p_result                                                                                                                         | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "4" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "2" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl4') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" } }
+(4 rows)
+
+-- when multiple batches have no _id 2 is duplicated and _id 6 is duplicated and ordered false
+CALL documentdb_api.insert_bulk('batchDB', '{"insert":"batchColl5", "documents":[{"_id":1}, {"_id":2}, {"_id":2},  {"_id":4},  {"_id":5}, {"_id":6}, {"_id":6}], "ordered":false}');
+NOTICE:  creating collection
+                                                                                                                                                                                                        p_result                                                                                                                                                                                                        | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "5" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "2" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" }, { "index" : { "$numberInt" : "6" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+select document from documentdb_api.collection('batchDB','batchColl5') where document @@ '{}';
+              document              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "6" } }
+(5 rows)
+
+-- end batch test rest GUC
+set documentdb.batchWriteSubTransactionCount TO 512;
+-- Insert collection a db with same name and different case and collection being same. Expect to error
+CALL documentdb_api.insert_bulk('dB', '{"insert":"collection0", "documents":[{"_id":99,"a":99}]}');
+ERROR:  Database already exists but with a different case; existing entry: [db], attempted creation: [dB]
+CONTEXT:  SQL statement "SELECT documentdb_api_internal.validate_dbname(NEW.database_name)"
+PL/pgSQL function trigger_validate_dbname() line 3 at PERFORM
+SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- Insert collection a db with same name and different case and collection being different. Expect to error
+CALL documentdb_api.insert_bulk('dB', '{"insert":"collection9", "documents":[{"_id":99,"a":99}]}');
+ERROR:  Database already exists but with a different case; existing entry: [db], attempted creation: [dB]
+CONTEXT:  SQL statement "SELECT documentdb_api_internal.validate_dbname(NEW.database_name)"
+PL/pgSQL function trigger_validate_dbname() line 3 at PERFORM
+SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+-- Insert collection same db and new collection.
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection8", "documents":[{"_id":99,"a":99}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection0", "documents":[{"_id":1,"a":1}]}',NULL,'insert-1');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection0", "documents":[{"_id":1,"a":1}]}',NULL,'insert-1');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection0') where document @@ '{}';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "99" }, "a" : { "$numberInt" : "99" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(2 rows)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection1", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection1') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection2", "documents":[{"_id":1,"$a":1},{"_id":2,"a":2}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection2') where document @@ '{}' order by document-> '_id';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "$a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection3", "documents":[{"_id":1,"$a":1},{"_id":2,"a":2}],"ordered":false}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection3') where document @@ '{}' order by document-> '_id';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "$a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- shard the collection by _id
+select documentdb_api.shard_collection('db', 'collection4', '{"_id":"hashed"}', false);
+NOTICE:  creating collection
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection4", "documents":[{"_id":1,"a":1}]}',NULL,'insert-2');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection4", "documents":[{"_id":1,"a":1}]}',NULL,'insert-2');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection4') where document @@ '{}';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+-- single-row insert with retry and auto-generated _id
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection5", "documents":[{"a":1}]}',NULL,'insert-2');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection5", "documents":[{"a":1}]}',NULL,'insert-2');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select count(*) from documentdb_api.collection('db','collection5') where document @@ '{}';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+-- multi-row insert collection different shards
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection6", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection6') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+select document from documentdb_api.collection('db','collection6') where document @@ '{"a":1}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+(1 row)
+
+select document from documentdb_api.collection('db','collection6') where document @@ '{"a":2}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(1 row)
+
+-- insert with documents in special section
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection7"}', '{ "": [{"_id":1,"a":1},{"_id":2,"a":2}] }');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+select document from documentdb_api.collection('db','collection7') where document @@ '{}' order by document-> '_id';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" } }
+(2 rows)
+
+-- insert with both docs specified.
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection9", "documents":[{"_id":1,"a":1},{"_id":2,"a":2}]}', '{ "": [{"_id":1,"a":1},{"_id":2,"a":2}] }');
+ERROR:  Both 'documents' and 'insert.documents' cannot be specified.
+-- insert with id undefined skips
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection9", "documents":[{"_id":{ "$undefined": true } }]}');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+CALL documentdb_api.insert_bulk('db', '{"insert":"collection9"}', '{ "": [ {"_id":{ "$undefined": true } } ]}');
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+-- insert with invalid database
+CALL documentdb_api.insert_bulk('Invalid Database Name', '{"insert":"notexists", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Database Invalid Database Name has an invalid character  
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+CALL documentdb_api.insert_bulk('db', '{"insert":"system.othercoll", "documents":[{"_id":1,"a":1}]}');
+ERROR:  System namespace provided is invalid: db.system.othercoll
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+CALL documentdb_api.insert_bulk('db', '{"insert":"random$name", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Collection name provided is invalid: random$name
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+CALL documentdb_api.insert_bulk('db', '{"insert":".randomname", "documents":[{"_id":1,"a":1}]}');
+ERROR:  Collection names must not begin with the '.' character: .randomname
+CONTEXT:  SQL statement "INSERT INTO documentdb_api_catalog.collections ( database_name, collection_name, collection_uuid ) VALUES ($1, $2, gen_random_uuid()) RETURNING collection_id"
+SQL statement "SELECT documentdb_api.create_collection($1, $2)"
+CALL documentdb_api.insert_bulk('verylongdatabasenameformeasuringthelimitsofdatabasenamesinmongodb', '{"insert":"coll", "documents":[{"_id":1,"a":1}]}');
+ERROR:  The provided database name exceeds the permitted length
+CALL documentdb_api.insert_bulk('verylongdatabasenameformeasuringlimitsofdatabasenamesinmongoda', '{"insert":"verylongcollectionnameformeasuringthelimitsofcollectionnamesinmongodb", "documents":[{"_id":1,"a":1}]}');
+NOTICE:  creating collection
+                               p_result                               | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+-- when multiple batches and after multiple intermidate commits also things are fine
+SET documentdb.batchWriteSubTransactionCount TO 2;
+SELECT  documentdb_api.create_collection('commitDb', 'commitColl');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- insert 10 documents
+CALL documentdb_api.insert_bulk('commitDb', '{"insert":"commitColl", "documents":[{"_id":1}, {"_id":2}, {"_id":3},  {"_id":4},  {"_id":5}, {"_id":6}, {"_id":7}, {"_id":8}, {"_id":9}, {"_id":10}]}');
+                               p_result                                | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "10" }, "ok" : { "$numberDouble" : "1.0" } } | t
+(1 row)
+
+-- first one is duplicate and rest 9 are inserted
+CALL documentdb_api.insert_bulk('commitDb', '{"insert":"commitColl", "documents":[{"_id":1}, {"_id":12}, {"_id":13},  {"_id":14},  {"_id":15}, {"_id":16}, {"_id":17}, {"_id":18}, {"_id":19}, {"_id":20}], "ordered":false}');
+                                                                                                                        p_result                                                                                                                         | p_success 
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "9" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index '_id_'" } ] } | f
+(1 row)
+
+-- total doc count should be 10+9 
+SELECT count(document) FROM documentdb_api.collection('commitDb','commitColl');
+ count 
+---------------------------------------------------------------------
+    19
+(1 row)
+
+-- clean the collections
+SELECT documentdb_api.drop_collection('db', 'collection0');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection1');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection2');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection3');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection4');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection5');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection6');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection7');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'collection8');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+

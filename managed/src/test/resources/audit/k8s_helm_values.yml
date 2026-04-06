@@ -1,15 +1,9 @@
-transform:
-  log_statements:
-  - context: log
-    statements: ['replace_pattern(body, "^otho8Aut", "")']
-receivers:
-  filelog/ysql:
+recievers:
+  ysql:
     regex: '(?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3} \w{3})[
       ][[](?P<process_id>\d+)[]][ ](?P<log_level>\w+):  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>(.|\n|\r|\s)*)'
     lineStartPattern: ([A-Z]\d{4})|((?P<timestamp_with_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.]\d{3}
       \w{3})[ ][[](?P<process_id>\d+)[]][ ])
-    attributes: {yugabyte.audit_log_type: ysql}
-    filters: ['body not matches "^.*\\w+:  AUDIT:(.|\\n|\\r|\\s)*$"']
     timestamp: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$OperatorTimestamp {
       layout: '%Y-%m-%d %H:%M:%S.%L %Z', parse_from: attributes.timestamp_with_ms}
 secretEnv:
@@ -17,10 +11,10 @@ secretEnv:
 - {envName: AWS_SECRET_ACCESS_KEY, envValue: c2VjcmV0X2tleQ==}
 enabled: true
 exporters:
-  awscloudwatchlogs/00000000-0000-0000-0000-000000000000:
+  awscloudwatchlogs/00000000-0000-0000-0000-000000000000: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AWSCloudWatchExporter
+    endpoint: endpoint
     log_group_name: logGroup
     log_stream_name: logStream
-    endpoint: endpoint
-    receivers: [filelog/ysql]
     region: us-west2
-    retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m, max_elapsed_time: 1800m}
+    retry_on_failure: {enabled: true, initial_interval: 1m, max_elapsed_time: 1800m,
+      max_interval: 1800m}

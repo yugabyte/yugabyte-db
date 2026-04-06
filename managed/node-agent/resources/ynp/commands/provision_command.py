@@ -72,6 +72,9 @@ class ProvisionCommand(Command):
             loglevel = context.get('loglevel')
             if loglevel == "DEBUG":
                 temp_file.write("set -x\n")
+            # Add /usr/sbin to PATH for cases where warning is issued when sudo is not used and
+            # sbin is not in PATH.
+            temp_file.write("export PATH=\"$PATH:/usr/sbin\"\n")
             if create_subshell:
                 # Initialize parent exit code and errors array.
                 temp_file.write("parent_exit_code=0\n")

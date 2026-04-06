@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.OperatorResource;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
+import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Indexer;
@@ -39,6 +40,12 @@ public class BackupReconcilerTest extends FakeDBApplication {
 
   @Mock SharedIndexInformer<Backup> backupInformer;
   @Mock MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> resourceClient;
+
+  @Mock
+  NonNamespaceOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>>
+      inNamespaceResourceClient;
+
+  @Mock Resource<Backup> backupResource;
   @Mock BackupHelper backupHelper;
   @Mock ValidatingFormFactory formFactory;
   @Mock SharedIndexInformer<StorageConfig> scInformer;
@@ -131,6 +138,8 @@ public class BackupReconcilerTest extends FakeDBApplication {
         new io.yugabyte.operator.v1alpha1.BackupStatus();
     status.setResourceUUID(UUID.randomUUID().toString());
     backup.setStatus(status);
+    when(resourceClient.inNamespace(any())).thenReturn(inNamespaceResourceClient);
+    when(inNamespaceResourceClient.withName(any())).thenReturn(backupResource);
 
     backupReconciler.onAdd(backup);
 

@@ -27,7 +27,7 @@ typedef enum QueryCursorType
 	QueryCursorType_Streamable = 1,
 
 	/*
-	 * Whether or not it's a single batch query.
+	 * Indicates whether this is processed as a single batch query.
 	 */
 	QueryCursorType_SingleBatch,
 
@@ -63,6 +63,9 @@ typedef struct
 	 */
 	int cursorStateParamNumber;
 
+	/* Optional cursor state const param */
+	pgbson *cursorStateConst;
+
 	/*
 	 * The namespaceName associated with the query.
 	 */
@@ -82,26 +85,32 @@ typedef struct
 } QueryData;
 
 
-Query * GenerateFindQuery(Datum database, pgbson *findSpec, QueryData *queryData,
+Query * GenerateFindQuery(text *database, pgbson *findSpec, QueryData *queryData,
 						  bool addCursorParams, bool setStatementTimeout);
-Query * GenerateCountQuery(Datum database, pgbson *countSpec, bool setStatementTimeout);
-Query * GenerateDistinctQuery(Datum database, pgbson *distinctSpec, bool
+Query * GenerateGetMoreQuery(text *database, pgbson *getMoreSpec,
+							 pgbson *continuationSpec,
+							 QueryData *queryData, bool addCursorParams, bool
+							 setStatementTimeout);
+Query * BuildAggregationCursorGetMoreQuery(text *database, pgbson *getMoreSpec,
+										   pgbson *continuationSpec);
+Query * GenerateCountQuery(text *database, pgbson *countSpec, bool setStatementTimeout);
+Query * GenerateDistinctQuery(text *database, pgbson *distinctSpec, bool
 							  setStatementTimeout);
-Query * GenerateListCollectionsQuery(Datum database, pgbson *listCollectionsSpec,
+Query * GenerateListCollectionsQuery(text *database, pgbson *listCollectionsSpec,
 									 QueryData *queryData,
 									 bool addCursorParams, bool setStatementTimeout);
-Query * GenerateListIndexesQuery(Datum database, pgbson *listIndexesSpec,
+Query * GenerateListIndexesQuery(text *database, pgbson *listIndexesSpec,
 								 QueryData *queryData,
 								 bool addCursorParams, bool setStatementTimeout);
 
-Query * GenerateAggregationQuery(Datum database, pgbson *aggregationSpec,
+Query * GenerateAggregationQuery(text *database, pgbson *aggregationSpec,
 								 QueryData *queryData, bool addCursorParams,
 								 bool setStatementTimeout);
 
-int64_t ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
+int64_t ParseGetMore(text **databaseName, pgbson *getMoreSpec, QueryData *queryData, bool
 					 setStatementTimeout);
 
-void ValidateAggregationPipeline(Datum databaseDatum, const StringView *baseCollection,
+void ValidateAggregationPipeline(text *databaseDatum, const StringView *baseCollection,
 								 const bson_value_t *pipelineValue);
 
 void LookupExtractCollectionAndPipeline(const bson_value_t *lookupValue,
@@ -124,4 +133,17 @@ void ParseInputForNGroupAccumulators(const bson_value_t *inputDocument,
 									 bson_value_t *input,
 									 bson_value_t *elementsToFetch,
 									 const char *opName);
+
+extern int DefaultCursorFirstPageBatchSize;
+
+/* Generates a base QueryData used for the first page */
+inline static QueryData
+GenerateFirstPageQueryData(void)
+{
+	QueryData queryData = { 0 };
+	queryData.batchSize = DefaultCursorFirstPageBatchSize;
+	return queryData;
+}
+
+
 #endif

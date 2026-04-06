@@ -2,6 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle } from 'react';
 import { upperCase } from 'lodash';
 import { FormProvider, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, YBAccordion, YBCheckboxField } from '@yugabyte-ui-library/core';
 import {
@@ -22,13 +23,15 @@ import {
   EBSKmsConfigField
 } from '@app/redesign/features-v2/universe/create-universe/fields';
 import { useRuntimeConfigValues } from '@app/redesign/features-v2/universe/create-universe/helpers/utils';
+import { QUERY_KEY, api } from '@app/redesign/features/universe/universe-form/utils/api';
+import { useGetZones } from '@app/redesign/features-v2/universe/create-universe/fields/instance-type/InstanceTypeFieldHelper';
+import { CloudType, Placement } from '@app/redesign/features/universe/universe-form/utils/dto';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   CreateUniverseSteps,
   StepsRef
 } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
-import { CloudType } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { ProviderType } from '@app/redesign/features-v2/universe/create-universe/steps/general-settings/dtos';
 import { ResilienceType } from '@app/redesign/features-v2/universe/create-universe/steps/resilence-regions/dtos';
 import { InstanceSettingProps } from '@app/redesign/features-v2/universe/create-universe/steps/hardware-settings/dtos';
@@ -42,7 +45,8 @@ import {
   MASTER_K8_NODE_SPEC_FIELD,
   TSERVER_K8_NODE_SPEC_FIELD,
   MASTER_TSERVER_SAME_FIELD,
-  ENABLE_EBS_CONFIG_FIELD
+  ENABLE_EBS_CONFIG_FIELD,
+  CPU_ARCH_FIELD
 } from '@app/redesign/features-v2/universe/create-universe/fields/FieldNames';
 
 const { Box, Typography, CircularProgress } = mui;
@@ -85,7 +89,7 @@ export const InstanceSettings = forwardRef<
   const [
     { instanceSettings, generalSettings, nodesAvailabilitySettings, resilienceAndRegionsSettings },
     { moveToNextPage, moveToPreviousPage, saveInstanceSettings, setActiveStep }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const provider = generalSettings?.providerConfiguration;
   const isK8s = provider?.code === CloudType.kubernetes;
@@ -120,6 +124,31 @@ export const InstanceSettings = forwardRef<
   const instanceType = watch(INSTANCE_TYPE_FIELD);
   const nodeSpec = watch(TSERVER_K8_NODE_SPEC_FIELD);
   const ebsEnabled = watch(ENABLE_EBS_CONFIG_FIELD);
+  const cpuArch = watch(CPU_ARCH_FIELD);
+
+  const needsInstanceTypes = !isK8s || !useK8CustomResources;
+  const { zones, isLoadingZones } = useGetZones(provider, resilienceAndRegionsSettings?.regions);
+  const zoneNames = zones.map((zone: Placement) => zone.name);
+  const hasRegionsForZones = (resilienceAndRegionsSettings?.regions?.length ?? 0) > 0;
+
+  const { isLoading: isLoadingInstanceTypes } = useQuery(
+    [
+      QUERY_KEY.getInstanceTypes,
+      provider?.uuid,
+      JSON.stringify(zoneNames),
+      osPatchingEnabled ? cpuArch : null
+    ],
+    () => api.getInstanceTypes(provider?.uuid, zoneNames, osPatchingEnabled ? cpuArch : null),
+    {
+      enabled: needsInstanceTypes && !!provider?.uuid && zoneNames.length > 0 && !isLoadingZones
+    }
+  );
+
+  const showInstanceTypesLoader =
+    needsInstanceTypes &&
+    !!provider?.uuid &&
+    hasRegionsForZones &&
+    (isLoadingZones || isLoadingInstanceTypes);
 
   useEffect(() => {
     if (osPatchingEnabled && provider && !isImgBundleSupportedByProvider(provider)) {
@@ -150,14 +179,12 @@ export const InstanceSettings = forwardRef<
           moveToNextPage();
         })(),
       onPrev: () => {
-        methods.handleSubmit((data) => {
-          saveInstanceSettings(data);
-          if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
-            setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
-          } else {
-            moveToPreviousPage();
-          }
-        })();
+        saveInstanceSettings(methods.getValues());
+        if (resilienceAndRegionsSettings?.resilienceType === ResilienceType.SINGLE_NODE) {
+          setActiveStep(CreateUniverseSteps.RESILIENCE_AND_REGIONS);
+        } else {
+          moveToPreviousPage();
+        }
       }
     }),
     []
@@ -169,7 +196,7 @@ export const InstanceSettings = forwardRef<
   const Panel = editMode ? Box : StyledPanel;
   const Content = editMode ? Box : StyledContent;
 
-  if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading) {
+  if (isRuntimeConfigLoading || isProviderRuntimeConfigLoading || showInstanceTypesLoader) {
     return (
       <Panel>
         <StyledHeader />

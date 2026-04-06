@@ -819,9 +819,8 @@ SELECT pg_stat_statements_reset(0,0,0);
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
                                     query                                     | calls | rows 
 ------------------------------------------------------------------------------+-------+------
- SELECT pg_stat_statements_reset(0,0,0)                                       |     1 |    1
  SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C" |     0 |    0
-(2 rows)
+(1 row)
 
 --
 -- cleanup

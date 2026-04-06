@@ -37,8 +37,9 @@
 #include "utils/builtins.h"
 #include "utils/jsonfuncs.h"
 #include "utils/memutils.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include <float.h>
-
 
 /* Hash table for information about each tablespace */
 static HTAB *TableSpaceCacheHash = NULL;
@@ -194,20 +195,65 @@ get_tablespace(Oid spcid)
 	return spc;
 }
 
-
-/*
- * get_tablespace_distance
- *
- *		Returns a YbGeolocationDistance indicating how far away a given
- *		tablespace is from the current node.
- */
-YbGeolocationDistance
-get_tablespace_distance(Oid spcid)
+static bool
+yb_strcmp(const char *str1, const char *str2)
 {
-	Assert(IsYugaByteEnabled());
-	if (spcid == InvalidOid)
-		return UNKNOWN_DISTANCE;
+	return (str1 != NULL && str2 != NULL && strcmp(str1, str2) == 0);
+}
 
+static YbGeolocationDistance
+get_distance_between_zones(const YbcCloudInfo *source,
+						   const YbcCloudInfo *target)
+{
+	if (!yb_strcmp(source->cloud, target->cloud))
+		return INTER_CLOUD;
+
+	if (!yb_strcmp(source->region, target->region))
+		return CLOUD_LOCAL;
+
+	if (!yb_strcmp(source->zone, target->zone))
+		return REGION_LOCAL;
+
+	return ZONE_LOCAL;
+}
+
+YbGeolocationDistance
+get_geolocation_distance_from_cluster_config(const YbcCloudInfo *current_node)
+{
+	const YbcReplicationInfo *replication_info = YBCGetClusterReplicationInfo();
+	int32_t num_zones = replication_info->num_affinitized_leaders;
+	const YbcCloudInfo *zones = replication_info->affinitized_leaders;
+
+	if (!num_zones)
+	{
+		/* No affinitized leades, so we need to check all live replicas */
+		num_zones = replication_info->num_live_replicas;
+		zones = replication_info->live_replicas;
+	}
+
+	YbGeolocationDistance farthest = ZONE_LOCAL;
+	for (int i = 0; i < num_zones; ++i)
+	{
+		const YbGeolocationDistance current_distance =
+			get_distance_between_zones(current_node, &zones[i]);
+
+		if (current_distance > farthest)
+			farthest = current_distance;
+	}
+	return farthest;
+}
+
+static const char *
+YbJsonGetAsCStr(text *json, char *key)
+{
+	const text *value = json_get_denormalized_value(json, key);
+	return value ? text_to_cstring(value) : NULL;
+}
+
+YbGeolocationDistance
+get_geolocation_distance_from_tablespace_options(Oid spcid,
+		const YbcCloudInfo *current_node)
+{
 	TableSpaceCacheEntry *spc = get_tablespace(spcid);
 
 	if (spc->opts.yb_opts == NULL)
@@ -221,19 +267,10 @@ get_tablespace_distance(Oid spcid)
 		return spc->ts_distance;
 	}
 
-	const char *current_cloud = YBGetCurrentCloud();
-	const char *current_region = YBGetCurrentRegion();
-	const char *current_zone = YBGetCurrentZone();
-
-	if (current_cloud == NULL || current_region == NULL || current_zone == NULL)
-	{
-		/* no placement info specified, so nothing to do */
-		return UNKNOWN_DISTANCE;
-	}
-
-	MemoryContext tablespaceDistanceContext = AllocSetContextCreate(CurrentMemoryContext,
-																	"tablespace distance calculation",
-																	ALLOCSET_SMALL_SIZES);
+	MemoryContext tablespaceDistanceContext =
+			AllocSetContextCreate(CurrentMemoryContext,
+								  "tablespace distance calculation",
+								  ALLOCSET_SMALL_SIZES);
 
 	MemoryContext oldContext = MemoryContextSwitchTo(tablespaceDistanceContext);
 
@@ -274,22 +311,10 @@ get_tablespace_distance(Oid spcid)
 			if (!preferred && leader_pref_exists)
 				continue;
 
-			YbGeolocationDistance current_dist;
-
-			const text *tsp_cloud_text = json_get_denormalized_value(json_element,
-																	 cloudKey);
-			const char *tsp_cloud = (tsp_cloud_text != NULL) ?
-				text_to_cstring(tsp_cloud_text) : NULL;
-
-			const text *tsp_region_text = json_get_denormalized_value(json_element,
-																	  regionKey);
-			const char *tsp_region = (tsp_region_text != NULL) ?
-				text_to_cstring(tsp_region_text) : NULL;
-
-			const text *tsp_zone_text = json_get_denormalized_value(json_element,
-																	zoneKey);
-			const char *tsp_zone = (tsp_zone_text != NULL) ?
-				text_to_cstring(tsp_zone_text) : NULL;
+			const YbcCloudInfo tsp_cloud_info = {
+					YbJsonGetAsCStr(json_element, cloudKey),
+					YbJsonGetAsCStr(json_element, regionKey),
+					YbJsonGetAsCStr(json_element, zoneKey)};
 
 			/*
 			 * The region/zone values may be set to the wildcard value '*'. In
@@ -299,30 +324,9 @@ get_tablespace_distance(Oid spcid)
 			 * cloud.region.zone even if the current placement zone is indeed
 			 * zone.
 			 */
-			if (tsp_cloud != NULL && strcmp(tsp_cloud, current_cloud) == 0)
-			{
-				/* are the current region and the given region the same */
-				if (tsp_region != NULL && strcmp(tsp_region, current_region) == 0)
-				{
-					/* are the current cloud and the given zone the same */
-					if (tsp_zone != NULL && strcmp(tsp_zone, current_zone) == 0)
-					{
-						current_dist = ZONE_LOCAL;
-					}
-					else
-					{
-						current_dist = REGION_LOCAL;
-					}
-				}
-				else
-				{
-					current_dist = CLOUD_LOCAL;
-				}
-			}
-			else
-			{
-				current_dist = INTER_CLOUD;
-			}
+			YbGeolocationDistance current_dist =
+				get_distance_between_zones(current_node,
+										   &tsp_cloud_info);
 
 			/*
 			 * YB: If this is the first preferred placement we find,
@@ -352,6 +356,40 @@ get_tablespace_distance(Oid spcid)
 }
 
 /*
+ * get_geolocation_distance
+ *
+ *		Returns a YbGeolocationDistance indicating how far away a given
+ *		tablespace is from the current node.
+ */
+YbGeolocationDistance
+get_geolocation_distance(Oid spcid)
+{
+	Assert(IsYugaByteEnabled());
+	YbcCloudInfo current_node = {
+		YBGetCurrentCloud(),
+		YBGetCurrentRegion(),
+		YBGetCurrentZone()
+	};
+
+	if (!current_node.cloud ||
+		!current_node.region ||
+		!current_node.zone)
+	{
+		/* no placement info specified, so nothing to do */
+		return UNKNOWN_DISTANCE;
+	}
+
+	if (!OidIsValid(spcid))
+	{
+		return (yb_use_cluster_config_for_geolocation_costing) ?
+			get_geolocation_distance_from_cluster_config(&current_node) :
+			UNKNOWN_DISTANCE;
+	}
+	return get_geolocation_distance_from_tablespace_options(spcid,
+															&current_node);
+}
+
+/*
  * get_yb_tablespace_cost
  *
  *		Costs per-tuple access on a given tablespace. Currently we score a
@@ -375,7 +413,7 @@ get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost)
 		return false;
 	}
 
-	YbGeolocationDistance distance = get_tablespace_distance(spcid);
+	YbGeolocationDistance distance = get_geolocation_distance(spcid);
 	double		cost;
 
 	switch (distance)

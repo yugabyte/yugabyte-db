@@ -39,6 +39,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
@@ -60,6 +61,8 @@ DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_int32(TEST_pause_at_start_of_setup_replication_group_ms);
@@ -74,6 +77,8 @@ DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_block_apply_intent);
 
 using namespace std::chrono_literals;
 
@@ -1458,6 +1463,11 @@ TEST_F(XClusterDDLReplicationTest, CreateColocatedIndexes) {
 
   // Pause DDL replication to test that we handle the index data correctly.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_ddl) = true;
+
+  ANNOTATE_UNPROTECTED_WRITE(
+      FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms) = 20000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ysql_operation_lease_ttl_ms) = 10000;
+
   // Create index on column a and insert some more rows.
   ASSERT_OK(producer_conn.ExecuteFormat("CREATE INDEX ON $0(a DESC)", kNewTableName));
   ASSERT_OK(producer_conn.ExecuteFormat(
@@ -2450,8 +2460,53 @@ TEST_F(XClusterDDLReplicationSwitchoverTest, PgCron) {
 
 using XClusterDDLReplicationFailoverTest = XClusterDDLReplicationSwitchoverTest;
 
-TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
-  // Set up replication from A to B.
+YB_DEFINE_ENUM(FailoverMethod, (kManualWithPITR)(kOnDemandSnapshot));
+
+class XClusterDDLReplicationFailoverParamTest
+    : public XClusterDDLReplicationSwitchoverTest,
+      public testing::WithParamInterface<FailoverMethod> {
+ public:
+  Status MaybeEnablePITR() {
+    if (GetParam() == FailoverMethod::kManualWithPITR) {
+      return EnablePITROnClusters();
+    }
+    return Status::OK();
+  }
+
+  Status PerformFailover() {
+    auto namespace_id_B =
+        VERIFY_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
+
+    if (GetParam() == FailoverMethod::kOnDemandSnapshot) {
+      LOG(INFO) << "===== Failover via on-demand snapshot";
+      RETURN_NOT_OK(XClusterFailover(kReplicationGroupId));
+      RETURN_NOT_OK(WaitForReadOnlyModeOnAllTServers(
+          namespace_id_B, /*is_read_only=*/false, &consumer_cluster_));
+      return VerifyUniverseReplicationDeleted(
+          consumer_cluster_.mini_cluster_.get(), consumer_client(), kReplicationGroupId,
+          kRpcTimeout * 1000);
+    }
+
+    LOG(INFO) << "===== Failover via manual PITR: pausing replication";
+    RETURN_NOT_OK(ToggleUniverseReplication(
+        consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
+
+    auto safe_time = VERIFY_RESULT(GetXClusterSafeTime());
+    LOG(INFO) << "===== Failover via manual PITR: restoring B to safe time " << safe_time;
+    RETURN_NOT_OK(PerformPITROnConsumerCluster(safe_time));
+
+    LOG(INFO) << "===== Failover via manual PITR: deleting replication";
+    RETURN_NOT_OK(DeleteUniverseReplication(
+        kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+    return WaitForInValidSafeTimeOnAllTServers(namespace_id_B);
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    FailoverMethod, XClusterDDLReplicationFailoverParamTest,
+    ::testing::Values(FailoverMethod::kManualWithPITR, FailoverMethod::kOnDemandSnapshot));
+
+TEST_P(XClusterDDLReplicationFailoverParamTest, FailoverWithPendingAlterDDLs) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   auto& sync_point = *SyncPoint::GetInstance();
@@ -2459,12 +2514,10 @@ TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
       {{.predecessor = "XClusterDDLQueueHandler::DDLQueryProcessed",
         .successor = "FailoverWithPendingAlterDDLs::WaitForDDLToExecute"}});
 
-  ASSERT_OK(EnablePITROnClusters());
+  ASSERT_OK(MaybeEnablePITR());
 
   auto ddl_queue_table_A = ASSERT_RESULT(GetYsqlTable(
       cluster_A_, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
-  auto ddl_queue_table_B = ASSERT_RESULT(GetYsqlTable(
-      cluster_B_, namespace_name, xcluster::kDDLQueuePgSchemaName, xcluster::kDDLQueueTableName));
 
   LOG(INFO) << "===== Create table and write rows";
   auto conn_A = ASSERT_RESULT(cluster_A_->ConnectToDB(namespace_name));
@@ -2505,30 +2558,9 @@ TEST_F(XClusterDDLReplicationFailoverTest, FailoverWithPendingAlterDDLs) {
   TEST_SYNC_POINT("FailoverWithPendingAlterDDLs::WaitForDDLToExecute");
   sync_point.DisableProcessing();
 
-  const auto initial_safe_time = ASSERT_RESULT(GetXClusterSafeTime());
-  LOG(INFO) << "===== xCluster safe time before pause: " << initial_safe_time;
+  ASSERT_OK(PerformFailover());
 
-  LOG(INFO) << "===== Failover: Pausing Replication";
-  ASSERT_OK(ToggleUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
-
-  const auto safe_time = ASSERT_RESULT(GetXClusterSafeTime());
-  LOG(INFO) << "===== xCluster safe time after pause: " << safe_time;
-  // Safe time must be greater since we would have bumped it up to the commit time of the table
-  // rename before pausing the ddl_queue poller.
-  ASSERT_GT(safe_time, initial_safe_time);
-
-  LOG(INFO) << "===== Failover: Restoring B to xCluster safe time";
-  ASSERT_OK(PerformPITROnConsumerCluster(safe_time));
-
-  LOG(INFO) << "===== Failover: Deleting replication from A to B";
-  ASSERT_OK(DeleteUniverseReplication(
-      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
-  auto namespace_id_B =
-      ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
-  ASSERT_OK(WaitForInValidSafeTimeOnAllTServers(namespace_id_B));
-
-  LOG(INFO) << "===== Failover: Verifying table on B";
+  LOG(INFO) << "===== Verifying table on B";
   auto conn_B = ASSERT_RESULT(cluster_B_->ConnectToDB(namespace_name));
 
   ASSERT_NOK_STR_CONTAINS(
@@ -2543,7 +2575,6 @@ TEST_F(XClusterDDLReplicationFailoverTest, ColocatedFailoverWithPendingCreate) {
   auto params = XClusterDDLReplicationTestBase::kDefaultParams;
   params.is_colocated = true;
   ASSERT_OK(SetUpClustersAndReplication(params));
-  ASSERT_OK(EnablePITROnClusters());
 
   // Increase the retention interval to ensure nothing is cleaned up early.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 100 * 60 * 60;
@@ -2567,22 +2598,20 @@ TEST_F(XClusterDDLReplicationFailoverTest, ColocatedFailoverWithPendingCreate) {
   ASSERT_OK(conn_A.ExecuteFormat("CREATE TABLE $0 (key int primary key)", unreplicated_table_name));
   ASSERT_OK(conn_A.ExecuteFormat(
       "INSERT INTO $0 SELECT i FROM generate_series(1, 200) as i", unreplicated_table_name));
-  const auto initial_data2 = ASSERT_RESULT(
-      conn_A.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", unreplicated_table_name)));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
   ASSERT_NOK_STR_CONTAINS(
       conn_B.FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", unreplicated_table_name)),
       "does not exist");
 
-  // Failover to B.
-  ASSERT_OK(ToggleUniverseReplication(
-      consumer_cluster(), consumer_client(), kReplicationGroupId, /*is_enabled=*/false));
-  ASSERT_OK(PerformPITROnConsumerCluster(ASSERT_RESULT(GetXClusterSafeTime())));
-  ASSERT_OK(DeleteUniverseReplication(
-      kReplicationGroupId, consumer_client(), consumer_cluster_.mini_cluster_.get()));
+  // Failover to B using xCluster failover API.
   auto namespace_id_B =
       ASSERT_RESULT(XClusterTestUtils::GetNamespaceId(*cluster_B_->client_, namespace_name));
-  ASSERT_OK(WaitForInValidSafeTimeOnAllTServers(namespace_id_B));
+  ASSERT_OK(XClusterFailover(kReplicationGroupId));
+  ASSERT_OK(WaitForReadOnlyModeOnAllTServers(
+      namespace_id_B, /*is_read_only=*/false, &consumer_cluster_));
+  ASSERT_OK(VerifyUniverseReplicationDeleted(
+      consumer_cluster_.mini_cluster_.get(), consumer_client(), kReplicationGroupId,
+      kRpcTimeout * 1000));
 
   // Verify that first table still exists with all its data.
   result = ASSERT_RESULT(conn_B.FetchAllAsString("SELECT * FROM my_table ORDER BY key"));
@@ -4650,6 +4679,178 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
     }
   }
   ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
+}
+
+TEST_F(XClusterDDLReplicationTest, VectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    return Status::OK();
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id serial PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES "
+      "('[1.0, 2.0, 3.0]'), ('[4.0, 5.0, 6.0]'), ('[7.0, 8.0, 9.0]'), "
+      "('[1.5, 2.5, 3.5]'), ('[0.1, 0.2, 0.3]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 5);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 5);
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vec_test "
+      "ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx");
+
+  // Vector search after backfill.
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Vector search after INSERT.
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES ('[0.5, 1.5, 2.5]'), ('[2.0, 3.0, 4.0]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Vector search after UPDATE.
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = '[1.1, 2.1, 3.1]' WHERE id = 1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto p_table = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id, embedding FROM vec_test ORDER BY id"));
+  auto c_table = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id, embedding FROM vec_test ORDER BY id"));
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  ASSERT_EQ(p_search, c_search);
+
+  // DELETE.
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM vec_test WHERE id = 3"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto p_count = ASSERT_RESULT(
+      producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  auto c_count = ASSERT_RESULT(
+      consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  ASSERT_EQ(p_count, c_count);
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Drop and recreate index.
+  auto p_search_before_drop = p_search;
+  ASSERT_OK(producer_conn_->Execute("DROP INDEX vec_test_idx"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  ASSERT_EQ(p_search, c_search);
+  // Recreated index should match pre-drop results.
+  ASSERT_EQ(p_search, p_search_before_drop);
+
+  // Insert after recreated index. d
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES "
+      "('[10, 20, 30]'), ('[40, 50, 60]'), ('[70, 80, 90]'), "
+      "('[15, 25, 35]'), ('[55, 65, 75]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_count = ASSERT_RESULT(
+      producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  c_count = ASSERT_RESULT(
+      consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  ASSERT_EQ(p_count, c_count);
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// When updating the vector index during apply intent, we skip the row if commit_ht is less than
+// the vector index's hybrid_time, to avoid double write since backfill will handle the committed
+// intents. However, this is an issue on xCluster target: backfill on target does not see committed
+// intents from the source, and commit_ht from the source can be less than the target vector
+// index's hybrid_time, so the write can be missing from the vector index. This test verifies
+// the fix.
+TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    return Status::OK();
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Block DDL queue so create index runs on producer only.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vector_test_idx ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_apply_intent) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vector_test (id, embedding) VALUES (1, '[1.0, 2.0, 3.0]');"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  constexpr auto kIndexStateWait = 30s;
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+        return conn.FetchRow<bool>(
+            "SELECT EXISTS (SELECT 1 FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "WHERE c.relname = 'vector_test_idx' AND i.indisready AND i.indisvalid)");
+      },
+      kIndexStateWait,
+      "consumer vector index backfill"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_apply_intent) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify consumer uses the index (LIMIT forces the index path).
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vector_test "
+      "ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  ASSERT_STR_CONTAINS(c_explain, "vector_test_idx");
+
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  ASSERT_EQ(p_search, c_search)
+      << "Producer and consumer vector search should match (commit_ht < index ht case).";
 }
 
 }  // namespace yb

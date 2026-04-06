@@ -2,21 +2,31 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.AZUpgradeStatus;
+import com.yugabyte.yw.forms.AZUpgradeStep;
+import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
 import com.yugabyte.yw.models.TaskInfo;
@@ -24,8 +34,17 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
+import play.libs.Json;
 
 public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
 
@@ -106,6 +125,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
     assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
     verifyPayload();
+
+    Optional<ObjectNode> doneStatus = getTaskStatus(taskInfo.getUuid());
+    assertTrue(doneStatus.isPresent());
+    assertFalse(
+        "Task status API should omit softwareUpgradeProgress after a successful standard upgrade",
+        doneStatus.get().has("softwareUpgradeProgress"));
   }
 
   @Test
@@ -279,6 +304,150 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertFalse(universe.getUniverseDetails().isSoftwareRollbackAllowed);
   }
 
+  @Test
+  public void testCanarySoftwareUpgradeMasterPauseThenFirstAzPause() throws InterruptedException {
+    updateProviderDetailsForCreateUniverse(OLD_VERSION_WITH_ROLLBACK);
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.ybSoftwareVersion = OLD_VERSION_WITH_ROLLBACK;
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initAndStartPayload(universe);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    List<UUID> azOrder =
+        PlacementInfoUtil.getAZsSortedByNumNodes(primaryCluster.getOverallPlacement()).stream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toList());
+    assertTrue("Expected multi-AZ placement for canary AZ steps", azOrder.size() >= 3);
+    UUID firstAz = azOrder.get(0);
+
+    List<AZUpgradeStep> steps = new ArrayList<>();
+    for (UUID azUuid : azOrder) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUuid;
+      step.pauseAfterTserverUpgrade = azUuid.equals(firstAz);
+      steps.add(step);
+    }
+
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.ybSoftwareVersion = PG_11_DB_VERSION;
+    params.sleepAfterMasterRestartMillis = 2000;
+    params.sleepAfterTServerRestartMillis = 2000;
+    params.clusters.add(primaryCluster);
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+
+    UUID taskUuid =
+        upgradeUniverseHandler.upgradeDBVersion(
+            params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
+    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertTrue(allMasterAzsCompleted(prev));
+    assertTrue(
+        "No tserver AZs completed yet after master pause",
+        countPrimaryCompletedTserverAzs(prev, universe) == 0);
+
+    assertNotNull(prev.getTserverAZUpgradeStatesList());
+    assertFalse(
+        "Expected non-empty tserver AZ progress after initial snapshot",
+        prev.getTserverAZUpgradeStatesList().isEmpty());
+    UUID primaryUuid = primaryCluster.uuid;
+    for (AZUpgradeState s : prev.getTserverAZUpgradeStatesList()) {
+      if (primaryUuid.equals(s.getClusterUUID())) {
+        assertEquals(
+            "Tserver AZs should be NOT_STARTED after master pause",
+            AZUpgradeStatus.NOT_STARTED,
+            s.getStatus());
+      }
+    }
+
+    assertTaskStatusSoftwareUpgradeProgressMatchesUniverse(taskUuid, universe);
+
+    UUID resumedUuid =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), taskUuid);
+    waitForTask(resumedUuid, TaskInfo.State.Paused, 500, 3600);
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    assertNotNull(prev);
+    assertTrue(
+        "First AZ should be in completed AZs after tserver pause",
+        primaryTserverAzCompleted(prev, universe, firstAz));
+
+    assertTaskStatusSoftwareUpgradeProgressMatchesUniverse(resumedUuid, universe);
+
+    UUID resumed2Uuid =
+        upgradeUniverseHandler.resumeCanarySoftwareUpgrade(
+            customer.getUuid(), universe.getUniverseUUID(), resumedUuid);
+    TaskInfo finalTask = waitForTask(resumed2Uuid, universe);
+    assertEquals(Success, finalTask.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.PreFinalize, universe.getUniverseDetails().softwareUpgradeState);
+
+    Optional<ObjectNode> finalStatus = getTaskStatus(finalTask.getUuid());
+    assertTrue(finalStatus.isPresent());
+    assertFalse(
+        "Task status should omit softwareUpgradeProgress after software upgrade phase completes",
+        finalStatus.get().has("softwareUpgradeProgress"));
+  }
+
+  /**
+   * Task status JSON matching {@link com.yugabyte.yw.commissioner.Commissioner#buildTaskStatus}
+   * without {@link com.yugabyte.yw.commissioner.Commissioner#mayGetStatus}, which uses PostgreSQL
+   * {@code ::jsonb} SQL that H2 cannot run in local tests.
+   */
+  private Optional<ObjectNode> getTaskStatus(UUID taskUUID) {
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    if (task == null) {
+      return Optional.empty();
+    }
+    TaskInfo taskInfo = task.getTaskInfo();
+    Map<UUID, Set<String>> updatingTasks = new HashMap<>();
+    Map<UUID, CustomerTask> lastTaskByTarget = new HashMap<>();
+    lastTaskByTarget.put(
+        task.getTargetUUID(), CustomerTask.getLastTaskByTargetUuid(task.getTargetUUID()));
+    return commissioner.buildTaskStatus(
+        task, taskInfo.getSubTasks(), updatingTasks, lastTaskByTarget);
+  }
+
+  /**
+   * Ensures task status (via {@link #getTaskStatus}) exposes the same {@link
+   * SoftwareUpgradeProgress} as {@link SoftwareUpgradeProgress#fromPrevYBSoftwareConfigIfPresent}
+   * on the universe (task monitoring / UI poll path).
+   */
+  private void assertTaskStatusSoftwareUpgradeProgressMatchesUniverse(
+      UUID taskUuid, Universe universe) {
+    PrevYBSoftwareConfig prev = universe.getUniverseDetails().prevYBSoftwareConfig;
+    SoftwareUpgradeProgress expected =
+        SoftwareUpgradeProgress.fromPrevYBSoftwareConfigIfPresent(prev);
+    assertNotNull(expected);
+    Optional<ObjectNode> opt = getTaskStatus(taskUuid);
+    assertTrue(opt.isPresent());
+    assertTrue(
+        "Task status should include softwareUpgradeProgress while upgrade is in progress",
+        opt.get().has("softwareUpgradeProgress"));
+    SoftwareUpgradeProgress actual =
+        Json.fromJson(opt.get().get("softwareUpgradeProgress"), SoftwareUpgradeProgress.class);
+    assertEquals(expected, actual);
+  }
+
   private void addRelease(String dbVersion, String dbVersionUrl) {
     String downloadURL = String.format(dbVersionUrl, os, arch);
     downloadAndSetUpYBSoftware(os, arch, downloadURL, dbVersion);
@@ -286,6 +455,44 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         (ObjectNode) YugawareProperty.get(ReleaseManager.CONFIG_TYPE.name()).getValue();
     releases.set(dbVersion, getMetadataJson(dbVersion, false).get(dbVersion));
     YugawareProperty.addConfigProperty(ReleaseManager.CONFIG_TYPE.name(), releases, "release");
+  }
+
+  private static boolean allMasterAzsCompleted(PrevYBSoftwareConfig prev) {
+    if (prev.getMasterAZUpgradeStatesList() == null
+        || prev.getMasterAZUpgradeStatesList().isEmpty()) {
+      return false;
+    }
+    return prev.getMasterAZUpgradeStatesList().stream()
+        .allMatch(s -> s.getStatus() == AZUpgradeStatus.COMPLETED);
+  }
+
+  private static boolean primaryTserverAzCompleted(
+      PrevYBSoftwareConfig prev, Universe universe, UUID azUuid) {
+    UUID primaryUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
+    if (prev.getTserverAZUpgradeStatesList() == null) {
+      return false;
+    }
+    return prev.getTserverAZUpgradeStatesList().stream()
+        .anyMatch(
+            s ->
+                primaryUuid.equals(s.getClusterUUID())
+                    && azUuid.equals(s.getAzUUID())
+                    && s.getStatus() == AZUpgradeStatus.COMPLETED);
+  }
+
+  private static long countPrimaryCompletedTserverAzs(PrevYBSoftwareConfig prev, Universe u) {
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    if (prev.getTserverAZUpgradeStatesList() == null) {
+      return 0;
+    }
+    return prev.getTserverAZUpgradeStatesList().stream()
+        .filter(
+            s ->
+                primaryUuid.equals(s.getClusterUUID())
+                    && s.getStatus() == AZUpgradeStatus.COMPLETED)
+        .map(AZUpgradeState::getAzUUID)
+        .distinct()
+        .count();
   }
 
   private void updateProviderDetailsForCreateUniverse(String dbVersion) {

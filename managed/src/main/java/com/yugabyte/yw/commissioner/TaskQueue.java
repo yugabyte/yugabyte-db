@@ -373,8 +373,13 @@ public class TaskQueue {
         if (queue != null) {
           while (queue.size() > 0) {
             Node head = queue.peek();
-            if (head.taskRunnable.hasTaskCompleted()) {
-              log.debug("Removing completed task {}", head.taskRunnable.getTaskType());
+            if (head.taskRunnable.hasTaskCompleted()
+                || head.taskRunnable.getTaskState() == State.Paused) {
+              if (head.taskRunnable.getTaskState() == State.Paused) {
+                log.info("Task {} is paused. Skipping submission", head.taskRunnable.getTaskType());
+              } else {
+                log.debug("Removing completed task {}", head.taskRunnable.getTaskType());
+              }
               queue.remove(head);
             } else {
               log.debug("Submitting next task {}", head.taskRunnable.getTaskType());

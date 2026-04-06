@@ -21,14 +21,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 
 public class UniverseTaskParams extends AbstractTaskParams {
-  public static final int DEFAULT_SLEEP_AFTER_RESTART_MS = 180000;
+  @Nullable public Integer sleepAfterMasterRestartMillis;
 
-  public Integer sleepAfterMasterRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
-  public Integer sleepAfterTServerRestartMillis = DEFAULT_SLEEP_AFTER_RESTART_MS;
+  @Nullable public Integer sleepAfterTServerRestartMillis;
 
   @ApiModel(description = "Communication ports")
   public static class CommunicationPorts {

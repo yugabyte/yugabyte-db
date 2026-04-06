@@ -44,7 +44,8 @@ typedef struct ProjectionOpHandlerContext
 extern BuildBsonPathTreeFunctions FindPathTreeFunctions;
 
 
-void * GetPathTreeStateForFind(pgbson *querySpec);
+void * GetPathTreeStateForFind(pgbson *querySpec,
+							   const char *collationString);
 int PostProcessStateForFind(BsonProjectDocumentFunctions *projectDocumentFuncs,
 							BuildBsonPathTreeContext *context);
 
