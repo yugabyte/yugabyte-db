@@ -59,7 +59,8 @@
      "(^src/yb/tools/.*pl$)",
      "(^yugabyted-ui/ui/package-lock.json)",
      "(^managed/node-agent/resources/.*\\.ini$)",
-     "(^managed/node-agent/resources/.*\\.j2$)"
+     "(^managed/node-agent/resources/.*\\.j2$)",
+     "(^managed/src/main/java/com/yugabyte/yw/common/operator/resources/.*\\.yaml$)"
   ],
   "linters": {
     "go-files": {
