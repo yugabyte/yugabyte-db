@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -19,12 +21,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -36,6 +40,8 @@ import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
@@ -1077,6 +1083,80 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testCanaryUpgradeRejectedWhenStagePauseDurationNonZero() throws InterruptedException {
+    updateDefaultUniverseTo5Nodes(true);
+    when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
+        .thenReturn(true);
+
+    List<AZUpgradeStep> steps = new ArrayList<>();
+    for (UUID azUUID : Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid())) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUUID;
+      step.pauseAfterTserverUpgrade = false;
+      steps.add(step);
+    }
+
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.21.0.0-b2";
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.sleepAfterMasterRestartMillis = 5;
+    taskParams.sleepAfterTServerRestartMillis = 5;
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    taskParams.canaryUpgradeConfig.pauseAfterMasters = false;
+    taskParams.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    try {
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "5000");
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+
+      PlatformServiceException ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
+      assertThat(ex.getMessage(), containsString("per-AZ stage pause durations are non-zero"));
+
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "5000");
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+
+      ex =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams));
+      assertThat(ex.getMessage(), containsString("per-AZ stage pause durations are non-zero"));
+
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+
+      mockDBServerVersion(
+          defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+          taskParams.ybSoftwareVersion,
+          defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+
+      UUID taskUUID = commissioner.submit(TaskType.SoftwareUpgradeYB, taskParams);
+      assertNotNull(taskUUID);
+      TaskInfo taskInfo = waitForTask(taskUUID);
+      assertEquals(Success, taskInfo.getTaskState());
+    } finally {
+      defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeMasterStagePauseDurationMs.getKey(), "0");
+      RuntimeConfigEntry.upsert(
+          defaultUniverse, UniverseConfKeys.upgradeTServerStagePauseDurationMs.getKey(), "0");
+    }
+  }
+
+  @Test
   public void testCanaryResumeAfterMasters() throws InterruptedException {
     updateDefaultUniverseTo5Nodes(true);
     when(mockSoftwareUpgradeHelper.checkUpgradeRequireFinalize(anyString(), anyString()))
@@ -1399,6 +1479,61 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         SoftwareUpgradeState.PreFinalize,
         defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testCanaryPauseBlocksDisallowedTasksAndAllowsRollback() throws InterruptedException {
+    updateDefaultUniverseTo5Nodes(true);
+    PrevYBSoftwareConfig prev = new PrevYBSoftwareConfig();
+    prev.setSoftwareVersion("2.21.0.0-b1");
+    prev.setTargetUpgradeSoftwareVersion("2.21.0.0-b2");
+    prev.setCanRollbackCatalogUpgrade(true);
+    prev.setAllTserversUpgradedToYsqlMajorVersion(true);
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams d = universe.getUniverseDetails();
+              d.softwareUpgradeState = SoftwareUpgradeState.Paused;
+              d.isSoftwareRollbackAllowed = true;
+              d.prevYBSoftwareConfig = prev;
+              d.updateInProgress = false;
+              universe.setUniverseDetails(d);
+            });
+
+    GFlagsUpgradeParams gflagsParams = new GFlagsUpgradeParams();
+    gflagsParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    gflagsParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    gflagsParams.creatingUser = defaultUser;
+    gflagsParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
+    gflagsParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t1");
+    gflagsParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+
+    PlatformServiceException gflagsEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> commissioner.submit(TaskType.GFlagsUpgrade, gflagsParams));
+    assertThat(gflagsEx.getMessage(), containsString("paused canary software upgrade"));
+
+    RollbackUpgradeParams rollbackParams = new RollbackUpgradeParams();
+    rollbackParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    rollbackParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    rollbackParams.creatingUser = defaultUser;
+    rollbackParams.sleepAfterMasterRestartMillis = 5;
+    rollbackParams.sleepAfterTServerRestartMillis = 5;
+
+    mockDBServerVersion(
+        "2.21.0.0-b2",
+        "2.21.0.0-b1",
+        defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    TaskInfo rollbackTaskInfo =
+        submitTask(
+            rollbackParams, TaskType.RollbackUpgrade, commissioner, defaultUniverse.getVersion());
+    assertEquals(Success, rollbackTaskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
   private static boolean allMasterAzsCompleted(PrevYBSoftwareConfig prev) {

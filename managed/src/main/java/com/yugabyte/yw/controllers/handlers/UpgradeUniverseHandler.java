@@ -230,6 +230,9 @@ public class UpgradeUniverseHandler {
   public UUID upgradeDBVersion(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
 
+    if (requestParams.canaryUpgradeConfig != null) {
+      ensureCanaryUpgradeEnabled(universe);
+    }
     requestParams =
         setSoftwareUpgradeRequestParams(requestParams, universe, requestParams.rollbackSupport);
     TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
@@ -1119,6 +1122,16 @@ public class UpgradeUniverseHandler {
     return toggle ? "ON" : "OFF";
   }
 
+  private void ensureCanaryUpgradeEnabled(Universe universe) {
+    if (!Boolean.TRUE.equals(
+        confGetter.getConfForScope(universe, UniverseConfKeys.enableCanaryUpgrade))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Canary upgrade is disabled for this universe. Enable yb.upgrade.enable_canary_upgrade"
+              + " to use canary or resume canary APIs.");
+    }
+  }
+
   /**
    * Resumes a paused canary software upgrade task. Re-submits the same task UUID without deleting
    * existing subtasks so the task continues from the remaining work.
@@ -1126,6 +1139,7 @@ public class UpgradeUniverseHandler {
   public UUID resumeCanarySoftwareUpgrade(UUID customerUUID, UUID universeUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    ensureCanaryUpgradeEnabled(universe);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     if (taskInfo.getTaskState() != TaskInfo.State.Paused) {
       throw new PlatformServiceException(

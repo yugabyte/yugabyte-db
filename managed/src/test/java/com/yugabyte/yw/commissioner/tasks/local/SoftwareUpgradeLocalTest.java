@@ -3,29 +3,37 @@
 package com.yugabyte.yw.commissioner.tasks.local;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.AZUpgradeState;
 import com.yugabyte.yw.forms.AZUpgradeStatus;
 import com.yugabyte.yw.forms.AZUpgradeStep;
 import com.yugabyte.yw.forms.CanaryUpgradeConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ScopedRuntimeConfig;
@@ -318,6 +326,12 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
         "false",
         true);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.enableCanaryUpgrade.getKey(),
+        "true",
+        true);
 
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
@@ -406,6 +420,163 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     assertFalse(
         "Task status should omit softwareUpgradeProgress after software upgrade phase completes",
         finalStatus.get().has("softwareUpgradeProgress"));
+  }
+
+  /**
+   * Canary upgrade with {@link CanaryUpgradeConfig#pauseAfterMasters} and no per-AZ tserver pauses,
+   * left in {@link SoftwareUpgradeState#Paused} after masters complete.
+   */
+  private Universe createUniversePausedAfterCanaryMasterPhase() throws InterruptedException {
+    updateProviderDetailsForCreateUniverse(OLD_VERSION_WITH_ROLLBACK);
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.ybSoftwareVersion = OLD_VERSION_WITH_ROLLBACK;
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initAndStartPayload(universe);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.useNodesAreSafeToTakeDown.getKey(),
+        "false",
+        true);
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.enableCanaryUpgrade.getKey(),
+        "true",
+        true);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    List<UUID> azOrder =
+        PlacementInfoUtil.getAZsSortedByNumNodes(primaryCluster.getOverallPlacement()).stream()
+            .map(az -> az.uuid)
+            .collect(Collectors.toList());
+    assertTrue("Expected multi-AZ placement for canary AZ steps", azOrder.size() >= 3);
+
+    List<AZUpgradeStep> steps = new ArrayList<>();
+    for (UUID azUuid : azOrder) {
+      AZUpgradeStep step = new AZUpgradeStep();
+      step.azUUID = azUuid;
+      step.pauseAfterTserverUpgrade = false;
+      steps.add(step);
+    }
+
+    SoftwareUpgradeParams params = getBaseUpgradeParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.ybSoftwareVersion = PG_11_DB_VERSION;
+    params.sleepAfterMasterRestartMillis = 2000;
+    params.sleepAfterTServerRestartMillis = 2000;
+    params.clusters.add(primaryCluster);
+    params.canaryUpgradeConfig = new CanaryUpgradeConfig();
+    params.canaryUpgradeConfig.pauseAfterMasters = true;
+    params.canaryUpgradeConfig.primaryClusterAZSteps = steps;
+
+    UUID taskUuid =
+        upgradeUniverseHandler.upgradeDBVersion(
+            params, customer, Universe.getOrBadRequest(universe.getUniverseUUID()));
+    waitForTask(taskUuid, TaskInfo.State.Paused, 500, 3600);
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Paused, universe.getUniverseDetails().softwareUpgradeState);
+    return universe;
+  }
+
+  @Test
+  public void testCanaryUpgradePauseThenRollback() throws InterruptedException {
+    Universe universe = createUniversePausedAfterCanaryMasterPhase();
+
+    RollbackUpgradeParams rollbackParams = new RollbackUpgradeParams();
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    TaskInfo rollbackTask =
+        waitForTask(
+            upgradeUniverseHandler.rollbackUpgrade(
+                rollbackParams, customer, Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(Success, rollbackTask.getTaskState());
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
+    assertEquals(
+        OLD_VERSION_WITH_ROLLBACK,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
+    verifyPayload();
+  }
+
+  @Test
+  public void testCanaryPauseBlocksGFlagsAndEditUniverse() throws InterruptedException {
+    Universe universe = createUniversePausedAfterCanaryMasterPhase();
+
+    runtimeConfService.setKey(
+        customer.getUuid(),
+        universe.getUniverseUUID(),
+        UniverseConfKeys.allowGFlagsOverrideDuringPreFinalize.getKey(),
+        "true",
+        true);
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    GFlagsUpgradeParams gFlagsUpgradeParams =
+        UniverseControllerRequestBinder.deepCopy(
+            universe.getUniverseDetails(), GFlagsUpgradeParams.class);
+    gFlagsUpgradeParams.setUniverseUUID(universe.getUniverseUUID());
+    gFlagsUpgradeParams.upgradeOption = UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE;
+    gFlagsUpgradeParams.expectedUniverseVersion = universe.getVersion();
+    gFlagsUpgradeParams.clusters = universe.getUniverseDetails().clusters;
+    gFlagsUpgradeParams.sleepAfterMasterRestartMillis = 10000;
+    gFlagsUpgradeParams.sleepAfterTServerRestartMillis = 10000;
+    Map<String, String> master = new HashMap<>(GFLAGS);
+    master.put("load_balancer_max_over_replicated_tablets", "16");
+    Map<String, String> tserver = new HashMap<>(GFLAGS);
+    tserver.put("load_balancer_max_over_replicated_tablets", "16");
+    gFlagsUpgradeParams.getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(master, tserver);
+
+    // After canary pause the upgrade task leaves the per-universe queue; the next task runs
+    // immediately and validateParams fails inside TaskExecutor.submit before a UUID is returned,
+    // so the handler throws PlatformServiceException synchronously (not an async failed task).
+    final UUID gflagsUniverseUuid = universe.getUniverseUUID();
+    PlatformServiceException gflagsEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                upgradeUniverseHandler.upgradeGFlags(
+                    gFlagsUpgradeParams, customer, Universe.getOrBadRequest(gflagsUniverseUuid)));
+    assertThat(gflagsEx.getMessage(), containsString("paused canary software upgrade"));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    changeNumberOfNodesInPrimary(universe, 1);
+    final Universe universeForEdit = universe;
+    PlatformServiceException editEx =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer,
+                    Universe.getOrBadRequest(universeForEdit.getUniverseUUID()),
+                    universeForEdit.getUniverseDetails()));
+    assertThat(editEx.getMessage(), containsString("paused canary software upgrade"));
+
+    RollbackUpgradeParams rollbackParams = new RollbackUpgradeParams();
+    rollbackParams.setUniverseUUID(universe.getUniverseUUID());
+    rollbackParams.expectedUniverseVersion = -1;
+    TaskInfo rollbackTask =
+        waitForTask(
+            upgradeUniverseHandler.rollbackUpgrade(
+                rollbackParams, customer, Universe.getOrBadRequest(universe.getUniverseUUID())));
+    assertEquals(Success, rollbackTask.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    assertEquals(SoftwareUpgradeState.Ready, universe.getUniverseDetails().softwareUpgradeState);
+  }
+
+  private void changeNumberOfNodesInPrimary(Universe universe, int increment) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.numNodes += increment;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
   }
 
   /**
