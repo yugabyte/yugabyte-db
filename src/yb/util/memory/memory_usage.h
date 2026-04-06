@@ -67,7 +67,8 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
     return 0;
   } else {
 #if defined(__linux__)
-    // gperftools tcmalloc allocates 16*n bytes for std::string capacity from [16*(n - 1); 16*n - 1].
+    // gperftools tcmalloc allocates 16*n bytes for std::string capacity
+    // from [16*(n - 1); 16*n - 1].
     // 48 bytes for capacity in [32; 47], 64 bytes for capacity in [48; 63] and so on...
     return (capacity + 16) & ~(size_t(0xf));
 #else
