@@ -13,6 +13,7 @@
 
 #include "yb/master/xcluster/xcluster_failover_task.h"
 
+#include "yb/common/constants.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_replication.pb.h"
@@ -27,8 +28,14 @@ DEFINE_RUNTIME_uint32(xcluster_failover_restoration_poll_interval_ms, 1000,
     "Delay, in milliseconds, between polls for the xCluster failover restoration state.");
 DEFINE_RUNTIME_uint32(xcluster_failover_snapshot_delete_retry_secs, 30,
     "Number of seconds to keep retrying to delete an xCluster failover snapshot before giving up.");
+DEFINE_RUNTIME_uint32(xcluster_failover_task_timeout_secs, 600,
+    "Maximum number of seconds for the xCluster failover task to complete pre-restoration steps "
+    "(pausing replication, creating and waiting for snapshots).");
 DEFINE_RUNTIME_int32(xcluster_failover_snapshot_retention_hours, 1,
     "Retention time, in hours, for snapshots created during xCluster failover restore.");
+
+DEFINE_test_flag(bool, pause_xcluster_failover_before_delete_replication, false,
+    "If true, pause the xCluster failover task before deleting the replication group.");
 DEFINE_test_flag(string, xcluster_failover_fail_restore_namespace_id, "",
     "If set, fail the xCluster failover restore when the given namespace id is being restored.");
 DEFINE_test_flag(bool, xcluster_failover_fail_create_snapshot, false,
@@ -46,14 +53,15 @@ XClusterFailoverTask::XClusterFailoverTask(
     XClusterManager& xcluster_manager, XClusterTargetManager& target_manager,
     const xcluster::ReplicationGroupId& replication_group_id,
     std::vector<NamespaceId> namespaces, const LeaderEpoch& epoch,
-    CoarseTimePoint deadline, StdStatusCallback completion_callback)
+    StdStatusCallback completion_callback)
     : MultiStepMonitoredTask(async_task_pool, messenger),
       master_(DCHECK_NOTNULL(master)),
       xcluster_manager_(xcluster_manager),
       target_manager_(target_manager),
       replication_group_id_(replication_group_id),
       epoch_(epoch),
-      deadline_(deadline) {
+      deadline_(CoarseMonoClock::now() +
+                MonoDelta::FromSeconds(FLAGS_xcluster_failover_task_timeout_secs)) {
   completion_callback_ = std::move(completion_callback);
   for (auto& namespace_id : namespaces) {
     FailoverInfo info;
@@ -98,7 +106,8 @@ Status XClusterFailoverTask::ValidateRunnable() {
 Status XClusterFailoverTask::PauseReplicationAndFetchSafeTimes() {
   RETURN_NOT_OK(target_manager_.SetReplicationGroupEnabled(
       replication_group_id_, /*is_enabled=*/false, epoch_, deadline_));
-  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline_));
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForSnapshotRestore(
+      deadline_, kXClusterFailoverFeatureName));
   RETURN_NOT_OK(target_manager_.RefreshXClusterSafeTimeMap(epoch_));
 
   for (auto& failover : failovers_) {
@@ -247,6 +256,8 @@ Status XClusterFailoverTask::PollForCurrentRestoration() {
 }
 
 Status XClusterFailoverTask::DeleteReplicationStep() {
+  TEST_PAUSE_IF_FLAG(TEST_pause_xcluster_failover_before_delete_replication);
+
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_failover_fail_delete_replication)) {
     return STATUS_FORMAT(
         InternalError,
@@ -306,11 +317,29 @@ void XClusterFailoverTask::TryCleanupSnapshots() {
 }
 
 void XClusterFailoverTask::TaskCompleted(const Status& status) {
+  master_->tablet_split_manager().ReenableSplittingFor(kXClusterFailoverFeatureName);
+
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING)
         << "Failover task failed (" << status << "), cleaning up snapshot state.";
     TryCleanupSnapshots();
-    // Leave replication paused so the next failover can re-assert the desired state.
+
+    auto replication_info =
+        master_->catalog_manager_impl()->GetUniverseReplication(replication_group_id_);
+    if (replication_info) {
+      auto repl_info_lock = replication_info->LockForWrite();
+      repl_info_lock.mutable_data()->pb.set_failover_in_progress(false);
+      StatusToPB(
+          status, repl_info_lock.mutable_data()->pb.mutable_last_failover_completion_status());
+      auto upsert_status =
+          master_->catalog_manager_impl()->sys_catalog()->Upsert(epoch_, replication_info.get());
+      if (upsert_status.ok()) {
+        repl_info_lock.Commit();
+      } else {
+        LOG_WITH_PREFIX(WARNING)
+            << "Failed to persist failover failure status: " << upsert_status;
+      }
+    }
   }
   MultiStepMonitoredTask::TaskCompleted(status);
 }

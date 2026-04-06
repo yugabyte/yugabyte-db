@@ -89,6 +89,12 @@ YbcStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
+// Get cluster replication info
+const YbcReplicationInfo *YBCGetClusterReplicationInfo();
+
+// Update the snapshot cluster configuration if needed
+void YBCRefreshClusterReplicationInfo();
+
 // Set global catalog_version to the local tserver's catalog version
 // stored in shared memory.
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
@@ -532,8 +538,8 @@ YbcStatus YbPgDmlAppendColumnRef(
 //     of the same allocated statement.
 //
 //   Case 2: SELECT / UPDATE / DELETE <WHERE key = "key_expr">
-//   - BindColumn() can only be used for primary-key columns.
-//   - This bind-column function is used to bind the primary column "key" with "key_expr" that can
+//   - BindColumn() can only be used for key columns.
+//   - This bind-column function is used to bind the key column "key" with "key_expr" that can
 //     contain bind-variables (placeholders) and constants whose values can be updated for each
 //     execution of the same allocated statement.
 //
@@ -606,6 +612,15 @@ YbcStatus YBCPgDmlExecWriteOp(YbcPgStatement handle, int32_t *rows_affected_coun
 
 // This function returns the tuple id (ybctid) of a Postgres tuple.
 YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor* data, uint64_t *ybctid);
+
+// Decode primary key column values by calling DecodePKColumnsFromBasectid.
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs);
 
 // DB Operations: WHERE, ORDER_BY, GROUP_BY, etc.
 // + The following operations are run by DocDB.
@@ -1091,7 +1106,7 @@ YbcStatus YBCQueryAutoAnalyze(
 // PgGlobalViewRead: scan interface for federated YugabyteDB global views.
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle);
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle);
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle);
 void YBCPgGlobalViewReadSetParams(
     YbcPgGlobalViewRead handle, int num_params, const char** param_values);

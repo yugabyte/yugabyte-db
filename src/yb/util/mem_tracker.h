@@ -60,6 +60,7 @@ class MetricEntity;
 using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
 static const std::string kTCMallocTrackerNamePrefix = "TCMalloc ";
+static const std::string kUntrackedTrackerName = "Untracked memory";
 
 // Garbage collector is used by MemTracker to free memory allocated by caches when reached
 // soft memory limit.
@@ -472,6 +473,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       AddToParent add_to_parent,
       CreateMetrics create_metrics,
       const std::string& metric_name);
+
+  std::shared_ptr<MemTracker> InsertChildUnlocked(
+    const std::string& id, std::shared_ptr<MemTracker> child);
 
   bool ShouldForceUpdateConsumption() const;
   void IncrementBy(int64_t amount);

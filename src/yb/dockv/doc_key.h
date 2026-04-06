@@ -693,7 +693,14 @@ class SubDocKey {
 
   Status FullyDecodeFromKeyWithOptionalHybridTime(const Slice& slice);
 
-  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
+  std::string ToString(
+      AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse,
+      IncludeWriteTime include_write_time = IncludeWriteTime::kTrue) const;
+
+  std::string ToString(IncludeWriteTime include_write_time) const {
+    return ToString(AutoDecodeKeys::kFalse, include_write_time);
+  }
+
   static std::string DebugSliceToString(Slice slice);
   static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 

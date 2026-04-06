@@ -122,9 +122,10 @@
 #include "commands/copy.h"
 #include "common/pg_yb_param_status_flags.h"
 #include "executor/ybModifyTable.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
+#include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
@@ -2589,6 +2590,18 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_use_cluster_config_for_geolocation_costing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When no tablespace is assigned to table, use cluster "
+						 "replication info to estimate network costs"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_use_cluster_config_for_geolocation_costing,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_pushdown_strict_inequality", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("DEPRECATED: no-op."),
 			NULL,
@@ -3025,6 +3038,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_enable_primary_key_decode_from_index", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Allow Index Only Scans to decode base table primary "
+						 "key columns from secondary index entries."),
+			gettext_noop("When enabled, PK columns are decoded from "
+						 "ybidxbasectid in secondary index entries."),
+			GUC_EXPLAIN
+		},
+		&yb_enable_primary_key_decode_from_index,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		/* Intended for rolling upgrade scenarios; tied to an auto-flag. */
 		{"yb_enable_index_aggregate_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported index aggregate operations to DocDB."),
@@ -3074,7 +3100,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("If true, derives additional scalar array operation "
 						 "conditions from table constraints and adds them to "
 						 "queries to improve performance."),
-			gettext_noop("Has no impact in case yb_max_saop_merge_streams is 0."),
+			gettext_noop("Has no impact in case yb_max_merge_scan_streams is 0."),
 			GUC_EXPLAIN
 		},
 		&yb_enable_derived_saops,
@@ -3774,7 +3800,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_hash_sharded,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -3785,7 +3811,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_EXPLAIN
 		},
 		&yb_enable_parallel_scan_range_sharded,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -5980,18 +6006,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"yb_max_saop_merge_streams", PGC_USERSET, QUERY_TUNING_METHOD,
+		{"yb_max_merge_scan_streams", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Sets the maximum number of streams tolerated for "
-						 "scalar array operation merge."),
+						 "merge scan."),
 			gettext_noop("For YB LSM index scans, when multiple "
-						 "SAOP-mergeable scalar array operations are "
-						 "involved, they are added to SAOP merge until their "
-						 "cartesian product's cardinality reaches this limit. "
-						 "Scalar array operation merge is per index scan, and "
+						 "merge-scan-eligible scalar array operations are "
+						 "involved, they are combined until their cartesian "
+						 "product's cardinality reaches this limit. "
+						 "Merge scan is per index scan, and "
 						 "the limit applies per index scan, not globally. Set "
 						 "to 0 to disable."),
 		},
-		&yb_max_saop_merge_streams,
+		&yb_max_merge_scan_streams,
 		0, 0, 1024,
 		NULL, NULL, NULL
 	},
@@ -7804,7 +7830,7 @@ static struct config_enum ConfigureNamesEnum[] =
 			NULL,
 			GUC_EXPLAIN
 		},
-		&yb_qpm_configuration.track, YB_QPM_TRACK_NONE, yb_qpm_track_options,
+		&yb_qpm_configuration.track, YB_QPM_TRACK_ALL, yb_qpm_track_options,
 		NULL, NULL, NULL
 	},
 
@@ -7848,6 +7874,7 @@ static const char *const map_old_guc_names[] = {
 	"sort_mem", "work_mem",
 	"vacuum_mem", "maintenance_work_mem",
 	"yb_enable_parallel_append", "enable_parallel_append",
+	"yb_max_saop_merge_streams", "yb_max_merge_scan_streams",
 	NULL
 };
 
@@ -16901,6 +16928,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
 	yb_legacy_bnl_cost = false;
+	yb_use_cluster_config_for_geolocation_costing = false;
 
 	switch (new_value)
 	{
@@ -16939,6 +16967,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	 *  - yb_enable_bitmapscan to on
 	 *  - yb_parallel_range_rows to 10000
 	 *  - yb_enable_update_reltuples_after_create_index to on
+	 *  - yb_use_cluster_config_for_geolocation_costing to on
 	 */
 	if (new_value == YB_COST_MODEL_ON)
 	{
@@ -16948,12 +16977,15 @@ assign_yb_enable_cbo(int new_value, void *extra)
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "on",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 	/*
 	 * When disabling CBO, also reset:
 	 *  - yb_enable_bitmapscan
 	 *  - yb_parallel_range_rows
 	 *  - yb_enable_update_reltuples_after_create_index
+	 *  - yb_use_cluster_config_for_geolocation_costing
 	 */
 	else
 	{
@@ -16962,6 +16994,8 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		SetConfigOption("yb_parallel_range_rows", "0",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "off",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }

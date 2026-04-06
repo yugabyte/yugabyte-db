@@ -17,15 +17,15 @@ POINTER=""
 
 PYTHON_REQUIREMENTS_FILE=""
 
-# Generate the PEX file that support multiple platforms and Python Versions.
-# Currently supports all Linux Platforms newer than manylinux_2014, and all Python
-# Versions from 3.6 to 3.11. macOS support might also be added in the future.
+# Generate the PEX file that supports multiple platforms and Python versions.
+# Currently targets manylinux_2_28 and Python versions listed in common.sh
+# (currently 3.10 through 3.13). macOS support might also be added in the future.
 function generateMultiPlatformPex {
 
     echo "Generating the PEX file ... "
     # Executable command to generate the PEX file. Components:
     # -r Required Python dependencies (python3_requirements_frozen.txt)
-    # --python Required Python versions (3.6, 3.7, 3.8, 3.9, 3.10, 3.11)
+    # --python Required Python versions (currently 3.10, 3.11, 3.12, 3.13)
     # --platform Required Linux Platforms (manyLinux2014, one for each Python version)
     # -D Data directories to bundle into the PEX (opscli)
     # --resolve-local-platforms flag (Ensure wheels built in the pex match platform specifications)
@@ -50,6 +50,9 @@ function generateMultiPlatformPex {
 function repairPexWheels {
     pexFile=$POINTER
     unzip $pexFile -d pexEnv
+    find . -type f \( -name "*.key" -o -name "*.pem" \) \
+        \( -path "*/slapdtest/certs/*" -o -path "*/httplib2/tests/tls/*" \) \
+        -delete 2>/dev/null || true
     cd pexEnv/.deps
     mkdir extractedWheels
     for whl in *; do
@@ -112,6 +115,10 @@ function reconstructPex {
     rm -rf wheelhouse
     cd /code/pex/
     rm -rf pexEnv.pex
+    cd ..
+    find . -type f \( -name "*.key" -o -name "*.pem" \) \
+        \( -path "*/slapdtest/certs/*" -o -path "*/httplib2/tests/tls/*" \) -delete
+    cd /code/pex
 
 }
 

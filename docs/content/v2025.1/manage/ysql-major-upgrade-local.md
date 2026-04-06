@@ -60,6 +60,8 @@ Performing a YSQL major upgrade on a universe with [CDC with logical replication
 
 - If you have PITR enabled, delete the configuration before performing the upgrade. Recreate it only after the major upgrade is either finalized or rolled back.
 
+- Drop the `pg_stat_monitor` extension before upgrading (`DROP EXTENSION pg_stat_monitor;`) and re-enable it after the upgrade is finalized (`CREATE EXTENSION pg_stat_monitor;`).
+
 ### Precheck
 
 New PostgreSQL major versions add many new features and performance improvements, but also remove some older unsupported features and data types. You can only upgrade after you remove all deprecated features and data types from your databases.
@@ -93,6 +95,8 @@ Checking for invalid "sql_identifier" user columns          ok
 
 *Clusters are compatible*
 ```
+
+If the precheck flags any extensions as being incompatible, drop the extensions and run the precheck again. You can re-enable them after the upgrade is finalized.
 
 {{<tip title="Backup">}}
 Back up your cluster at this time. Refer to [Distributed snapshots for YSQL](../backup-restore/snapshot-ysql/).

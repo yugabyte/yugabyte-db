@@ -1560,6 +1560,19 @@ YbcStatus YBCPgBuildYBTupleId(const YbcPgYBTupleIdDescriptor *source, uint64_t *
   });
 }
 
+YbcStatus YBCPgDecodePKColumnsFromBasectid(
+    YbcPgOid database_oid,
+    YbcPgOid table_relfilenode_oid,
+    const char *basectid_data,
+    int64_t basectid_len,
+    int num_attrs,
+    YbcPgAttrValueDescriptor *attrs) {
+  return ToYBCStatus(pgapi->DecodePKColumnsFromBasectid(
+      PgObjectId(database_oid, table_relfilenode_oid),
+      Slice(basectid_data, basectid_len),
+      num_attrs, attrs));
+}
+
 YbcStatus YBCPgNewSample(
     const YbcPgOid database_oid, const YbcPgOid table_relfilenode_oid,
     YbcPgTableLocalityInfo locality_info,
@@ -2192,6 +2205,14 @@ bool YBCGetDisableTransparentCacheRefreshRetry() {
   return pgapi->GetDisableTransparentCacheRefreshRetry();
 }
 
+const YbcReplicationInfo *YBCGetClusterReplicationInfo() {
+  return &pgapi->replication_info_snapshot().Value();
+}
+
+void YBCRefreshClusterReplicationInfo() {
+  pgapi->replication_info_snapshot().Refresh();
+}
+
 YbcStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version) {
   return ExtractValueFromResult(pgapi->GetSharedCatalogVersion(), catalog_version);
 }
@@ -2442,7 +2463,10 @@ void YBCStopSysTablePrefetching() {
 }
 
 bool YBCIsSysTablePrefetchingStarted() {
-  return pgapi->IsSysTablePrefetchingStarted();
+  // https://github.com/yugabyte/yugabyte-db/issues/30880
+  // YBCIsSysTablePrefetchingStarted can be called during PG backend shutdown
+  // via YBCIsLegacyModeForCatalogOps when pgapi is already set to nullptr.
+  return pgapi && pgapi->IsSysTablePrefetchingStarted();
 }
 
 void YBCRegisterSysTableForPrefetching(
@@ -3370,8 +3394,8 @@ YbcFlushDebugContext YBCMakeFlushDebugContextEndOfTopLevelStmt() {
 // PgGlobalViewRead C API wrappers
 // ---------------------------------------------------------------------------
 
-YbcStatus YBCPgNewGlobalViewRead(YbcPgGlobalViewRead* handle) {
-  return ToYBCStatus(pgapi->NewGlobalViewRead(handle));
+YbcStatus YBCPgNewGlobalViewRead(const char* database_name, YbcPgGlobalViewRead* handle) {
+  return ToYBCStatus(pgapi->NewGlobalViewRead(database_name, handle));
 }
 
 void YBCPgGlobalViewReadResetScan(YbcPgGlobalViewRead handle) {

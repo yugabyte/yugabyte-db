@@ -554,15 +554,10 @@ class CDCServiceImpl::Impl {
     return std::nullopt;
   }
 
-  Status EraseTabletAndStreamEntry(const TabletStreamInfo& info) {
+  void EraseTabletAndStreamEntry(const TabletStreamInfo& info) {
     std::lock_guard l(mutex_);
-    // Here we just remove the entries of the tablet from the in-memory caches. The deletion from
-    // the 'cdc_state' table will happen when the hidden parent tablet will be deleted
-    // asynchronously.
     tablet_checkpoints_.erase(info);
     cdc_state_metadata_.erase(info);
-
-    return Status::OK();
   }
 
   std::optional<OpId> GetLastCheckpoint(const TabletStreamInfo& producer_tablet) {
@@ -1639,7 +1634,7 @@ void CDCServiceImpl::GetChanges(
   status = CheckTabletValidForStream(producer_tablet);
   if (!status.ok()) {
     RPC_STATUS_RETURN_ERROR(
-        CheckTabletValidForStream(producer_tablet), resp->mutable_error(),
+        status, resp->mutable_error(),
         status.IsTabletSplit() ? CDCErrorPB::TABLET_SPLIT : CDCErrorPB::INVALID_REQUEST, context);
   }
 
@@ -2105,9 +2100,10 @@ void CDCServiceImpl::GetChanges(
       have_more_messages, throughput_metrics);
 
   if (report_tablet_split) {
-    RPC_STATUS_RETURN_ERROR(
-        impl_->EraseTabletAndStreamEntry(producer_tablet), resp->mutable_error(),
-        CDCErrorPB::INTERNAL_ERROR, context);
+    // Here we just remove the entries of the tablet from the in-memory caches. The deletion from
+    // the 'cdc_state' table will happen when the hidden parent tablet will be deleted
+    // asynchronously.
+    impl_->EraseTabletAndStreamEntry(producer_tablet);
 
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -2487,6 +2483,25 @@ void CDCServiceImpl::UpdateMetrics() {
           continue;
         }
         RemoveXReplTabletMetrics(tablet_stream_info.stream_id, tablet_peer);
+
+        // If the cdc_state row for this tablet-stream pair has been deleted (stream deletion or
+        // table drop), we will clear the in-memory caches for this pair. If we don't do this, a
+        // subsequent GetChanges RPC would pass (because the check CheckStreamActive() passes as it
+        // finds stale cached active_time) and then would re-create the metric objects we just
+        // removed.
+        //
+        // We intentionally skip this for expired entries whose cdc_state rows still exist, because:
+        // - Erasing the cache would force every subsequent GetChanges RPC to read the
+        // tablet-stream entry from the cdc_state table (via CheckStreamActive() ->
+        // GetLastActiveTime()), adding unnecessary RPCs.
+        // - Keeping the cache also allows the stream to resume correctly if the expiry window is
+        // later widened (by increasing cdc_intent_retention_ms).
+        if (!latest_tablet_stream_entries.contains(tablet_stream_info)) {
+          VLOG_WITH_FUNC(1) << "Erasing tablet-stream cache entry for stream "
+                            << tablet_stream_info.stream_id << " tablet "
+                            << tablet_stream_info.tablet_id;
+          impl_->EraseTabletAndStreamEntry(tablet_stream_info);
+        }
       }
     }
   } else {
@@ -4714,6 +4729,8 @@ void CDCServiceImpl::RemoveXReplTabletMetrics(
 
   // Removing the metadata still leaves the metric_entity in metric_registry_, but that will be
   // cleaned up as part of RetireOldMetrics(), as the metric_registry_ will be the only ref left.
+  VLOG_WITH_FUNC(2) << "Removing xrepl metrics key: " << GetXreplMetricsKey(stream_id)
+                    << " for tablet: " << tablet_peer->tablet_id() << " and stream: " << stream_id;
   tablet->RemoveAdditionalMetadata(GetXreplMetricsKey(stream_id));
 }
 

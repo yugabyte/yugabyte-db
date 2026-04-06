@@ -66,7 +66,7 @@ class PgGlobalViewsTest : public LibPqTestBase {
         )
         SERVER gv_server
         OPTIONS (schema_name 'public', table_name 'partial_pgss_with_tserver_uuid'))"));
-    return conn_->Execute(R"(
+    RETURN_NOT_OK(conn_->Execute(R"(
         CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_ash" (
             sample_time TIMESTAMPTZ,
             root_request_id UUID,
@@ -87,7 +87,20 @@ class PgGlobalViewsTest : public LibPqTestBase {
             ysql_userid OID
         )
         SERVER gv_server
-        OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history'))");
+        OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history'))"));
+    RETURN_NOT_OK(conn_->Execute(R"(
+        CREATE VIEW partial_pg_stat_all_tables AS
+            SELECT
+                schemaname,
+                relname
+            FROM pg_stat_all_tables)"));
+    return conn_->Execute(R"(
+        CREATE FOREIGN TABLE IF NOT EXISTS "gv$partial_pg_stat_all_tables" (
+            schemaname NAME,
+            relname NAME
+        )
+        SERVER gv_server
+        OPTIONS (schema_name 'public', table_name 'partial_pg_stat_all_tables'))");
   }
 
   Status LoadData() {
@@ -272,6 +285,32 @@ TEST_F(PgGlobalViewsTest, TestQueryingFromAnyDb) {
     }
     prev_result = result;
   }
+}
+
+TEST_F(PgGlobalViewsTest, TestPgStatAllTablesIsDbSpecific) {
+  constexpr auto kDb1Name = "db1";
+  constexpr auto kDb2Name = "db2";
+  constexpr auto kDb1TableName = "db1_only_tbl";
+  constexpr auto kDb2TableName = "db2_only_tbl";
+
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0", kDb1Name));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE DATABASE $0", kDb2Name));
+
+  auto db1_conn = ASSERT_RESULT(cluster_->ConnectToDB(kDb1Name));
+  auto db2_conn = ASSERT_RESULT(cluster_->ConnectToDB(kDb2Name));
+  ASSERT_OK(db1_conn.ExecuteFormat("CREATE TABLE $0 (k INT)", kDb1TableName));
+  ASSERT_OK(db2_conn.ExecuteFormat("CREATE TABLE $0 (k INT)", kDb2TableName));
+
+  const auto count_table_rows = [](PGConn& conn, const std::string& relname) -> Result<int64_t> {
+    return conn.FetchRow<int64_t>(Format(R"#(
+        SELECT COUNT(*) FROM "gv$$partial_pg_stat_all_tables"
+        WHERE relname = '$0')#", relname));
+  };
+
+  ASSERT_EQ(ASSERT_RESULT(count_table_rows(db1_conn, kDb1TableName)), GetNumTabletServers());
+  ASSERT_EQ(ASSERT_RESULT(count_table_rows(db1_conn, kDb2TableName)), 0);
+  ASSERT_EQ(ASSERT_RESULT(count_table_rows(db2_conn, kDb2TableName)), GetNumTabletServers());
+  ASSERT_EQ(ASSERT_RESULT(count_table_rows(db2_conn, kDb1TableName)), 0);
 }
 
 TEST_F(PgGlobalViewsTest, TestOneTServerTimingOut) {

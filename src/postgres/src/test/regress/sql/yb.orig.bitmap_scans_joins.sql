@@ -2,8 +2,10 @@
 -- Joins with YB Bitmap Scans (bitmap index scans + YB bitmap table scans)
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 
 SET enable_bitmapscan = true;
@@ -26,58 +28,62 @@ INSERT INTO joinb SELECT i, i * 2, i * 3 FROM generate_series(1, 10) i;
 --
 
 -- join PK to PK
-\set hint1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
-\set hint2 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set Q1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
+\set Q2 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joina) */'
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\set Pnext :iter_Q2
+\i :iter_P2
 
 -- join index col to PK
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 -- join PK to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 -- join index col to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a'
-:explain2run2
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 --
 -- Test Bitmap Scan as Inner Join table --
 --
 
 -- join PK to PK
-\set hint1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint2 '/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint3 '/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set hint4 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set Q1 '/*+ NestLoop(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q2 '/*+ MergeJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q3 '/*+ HashJoin(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set Q4 '/*+ YbBatchedNL(joina joinb) Leading(joina joinb) BitmapScan(joinb) */'
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\set Pnext :iter_Q4
+\i :iter_P2
 
 -- join index col to PK
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.k WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 -- join PK to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.k = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 -- join index col to index col
-\set query 'SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a'
-:explain4run4
+\set query ':P :Q SELECT * FROM joina JOIN joinb ON joina.a = joinb.c WHERE joina.a < 10 OR joina.b < 15 OR joinb.c < 10 OR joinb.d < 15 ORDER BY joina.a;'
+\i :iter_P2
 
 --
 -- Test joins where one of the paths is never executed
 --
-\set hint1 '/*+ BitmapScan(joinb) */'
+\set Q1 '/*+ BitmapScan(joinb) */'
 SELECT $$
+:P :Q1
 SELECT joina.a,
        (SELECT joinb.c FROM joinb WHERE (joina.k = joinb.k OR joinb.d = 1)
                                     AND joina.b = -1) -- unsatisfiable
-  FROM joina ORDER BY joina.a
+  FROM joina ORDER BY joina.a;
 $$ AS query \gset
-:explain1run1
+\set Pnext :iter_query
+\i :iter_P2
 
 --
 -- test joins with a function scan
@@ -88,14 +94,15 @@ CREATE TABLEGROUP tg1;
 CREATE TABLEGROUP tg2;
 ANALYZE pg_yb_tablegroup;
 
-\set hint1 '/*+ BitmapScan(gr) */'
+\set Q1 '/*+ BitmapScan(gr) */'
 SELECT $$
+:P :Q1
    SELECT grpname, is_colocated
      FROM pg_catalog.yb_table_properties(16384) p
 LEFT JOIN pg_catalog.pg_yb_tablegroup gr
-       ON gr.oid = p.tablegroup_oid
+       ON gr.oid = p.tablegroup_oid;
 $$ AS query \gset
-:explain1run1
+\i :iter_P2
 
 DROP TABLEGROUP tg1;
 DROP TABLEGROUP tg2;
@@ -113,36 +120,39 @@ INSERT INTO test_join_filter VALUES (1, 4, 'v'), (2, 62, 'v'), (3, 7, 'c'), (4, 
                                     (16, 1, NULL), (17, 1, 'r'), (18, 9, 'v'), (19, 1, NULL), (20, 5, 'r');
 
 -- we need a join filter here because the final scan does not contain all quals
-\set hint1 '/*+ BitmapScan(table2) SeqScan(table1) Leading(((table3 table2) table1)) */'
+\set Q1 '/*+ BitmapScan(table2) SeqScan(table1) Leading(((table3 table2) table1)) */'
 -- we don't need a join filter here because the final scan does satisfy all quals (because its a bitmap scan)
-\set hint2 '/*+ BitmapScan(table1) Leading(((table3 table2) table1)) */'
+\set Q2 '/*+ BitmapScan(table1) Leading(((table3 table2) table1)) */'
 SELECT $$
+:explain :Q
     SELECT table1.v, table1.b
       FROM test_join_filter AS table1
 INNER JOIN (( test_join_filter AS table2 INNER JOIN test_join_filter AS table3 ON (( table3.v = table2.v ) OR ( table3.b = table2.a ) ) ) )
         ON (( table3.a >= table2.a ) AND (table3.a <> table2.b ) )
-     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b
+     WHERE ( table1.v = 'g' AND table1.v = 's' ) OR table1.a <= table2.b;
 $$ AS query \gset
-:explain2
+\i :iter_Q2
 
 --
 -- Rescans where we don't need the actual rows
 -- This test is based off #21526 identified by the random query generator.
 -- To speed up the test, don't bother creating new tables.
 --
-\set hint1 '/*+ BitmapScan(joina) */'
-\set hint2 '/*+ Set(enable_bitmapscan false) */'
-\set query 'SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k'
-:explain2run2
+\set Q1 '/*+ BitmapScan(joina) */'
+\set Q2 '/*+ Set(enable_bitmapscan false) */'
+\set query ':P :Q SELECT * FROM joinb  WHERE EXISTS (SELECT FROM joina WHERE joina.a >= joinb.d) OR joinb.c = 1 ORDER BY joinb.k;'
+\set Pnext :iter_Q2
+\i :iter_P2
 
 --
 -- GHI #26210
 -- Test that BitmapIndexScan's StorageFilter is properly set upon rescan
 --
 \set explain 'EXPLAIN (COSTS OFF)'
-\set hint1 '/*+ BitmapScan(b) */'
-\set query 'SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2'
-:explain1run1
+\set Q1 '/*+ BitmapScan(b) */'
+\set query ':P :Q1 SELECT b.* FROM (VALUES (2,2), (12,12), (4,4), (16,16), (6,6), (20,20), (8,8)) v(c1, c2) JOIN joinb b ON v.c1 = b.c WHERE b.c + 5 > v.c2;'
+\set Pnext :iter_query
+\i :iter_P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)'
 
 --
@@ -211,10 +221,11 @@ COPY c (pk, col_int_nokey, col_int_key, col_date_key, col_date_nokey, col_time_k
 20	6	5	1995-10-10	1995-10-10	20:58:33.049572	20:58:33.049572	2020-03-27 09:32:04.056959	2020-03-27 09:32:04.056959	r	r
 \.
 
-\set hint1 '/*+ BitmapScan(subquery1_t1) */'
-\set hint2 '/*+ Set(enable_bitmapscan false) */'
-\set query 'SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key'
-:explain2run2
+\set Q1 '/*+ BitmapScan(subquery1_t1) */'
+\set Q2 '/*+ Set(enable_bitmapscan false) */'
+\set query ':P :Q SELECT table1.pk AS pk FROM ( ( SELECT SUBQUERY1_t1 .* FROM ( C AS SUBQUERY1_t1 INNER JOIN BB ON ( BB.col_int_key = SUBQUERY1_t1.pk ) ) ) AS table1 JOIN ( SELECT * FROM C ) AS table2 ON ( table2.col_varchar_key = table1.col_varchar_key ) ) WHERE table1.col_int_key IN ( SELECT col_int_nokey FROM C AS C WHERE C.col_varchar_key != table2.col_varchar_key AND C.col_varchar_nokey >= table2.col_varchar_nokey ) AND table1.pk = table2 .col_int_key OR table1.col_int_key = table2.col_int_key;'
+\set Pnext :iter_Q2
+\i :iter_P2
 
 --
 -- Semi Join
@@ -241,11 +252,12 @@ SELECT joina.a FROM joina WHERE NOT EXISTS (SELECT FROM joinb WHERE joinb.c >= j
 --
 -- System Table Join where we don't require any values from the Bitmap table
 --
-\set hint1 '/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */'
+\set Q1 '/*+ NestLoop(c ns) SeqScan(c) BitmapScan(ns) */'
 SELECT $$
-SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class'
+:P :Q1 SELECT c.relname FROM pg_class c, pg_namespace ns WHERE ns.oid = c.relnamespace AND c.relname = 'pg_class';
 $$ AS query \gset
-:explain1run1
+\set Pnext :iter_query
+\i :iter_P2
 
 RESET enable_bitmapscan;
 RESET yb_prefer_bnl;

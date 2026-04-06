@@ -136,7 +136,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
                  docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(docdb::IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
-  tablet()->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &source_docdb_dump);
+  tablet()->TEST_DocDBDumpToContainer(source_docdb_dump, docdb::IncludeIntents::kTrue);
 
   std::unordered_set<std::string> source_rows;
   for (const auto& row : ASSERT_RESULT(SelectAll(tablet().get()))) {
@@ -212,7 +212,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
     // After compaction split tablets' RocksDB instances should have no overlap and no unexpected
     // data.
     std::unordered_set<std::string> split_docdb_dump;
-    split_tablet->TEST_DocDBDumpToContainer(docdb::IncludeIntents::kTrue, &split_docdb_dump);
+    split_tablet->TEST_DocDBDumpToContainer(split_docdb_dump, docdb::IncludeIntents::kTrue);
     for (const auto& entry : split_docdb_dump) {
       ASSERT_EQ(source_docdb_dump.erase(entry), 1);
     }

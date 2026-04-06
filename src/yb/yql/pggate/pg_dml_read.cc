@@ -181,7 +181,7 @@ void PgDmlRead::PrepareBinds() {
   }
 
   for (auto& col : bind_.columns()) {
-    col.AllocPrimaryBindPB(read_req_.get());
+    col.AllocKeyBindPB(read_req_.get());
   }
 }
 
@@ -271,7 +271,7 @@ void PgDmlRead::SetColumnRefs() {
 // Postgres may bind the key to any of the following: scalar value (equality condition),
 // tuple of values (IN condition), tuple of tuples (ROW IN condition).
 // DocDB supports only scalar value, so other variants need to be transformed.
-// There are two available transformations for the primary binds.
+// There are two available transformations for the key binds.
 // One is to move the condition into condition_expr as an operand of the top level AND operator.
 // Other is to build permutations: if there're multiple IN and equality conditions like these:
 //   k1 IN (a, b, c)
@@ -288,7 +288,7 @@ void PgDmlRead::SetColumnRefs() {
 // original condition.
 // The permutations transformation is currently used if there are IN conditions on the hash columns
 // and for merge sort. While the permutations transformation occurs later in the execution process,
-// the PgDmlRead::ProcessEmptyPrimaryBinds must keep relevant original conditions in
+// the PgDmlRead::ProcessEmptyKeyBinds must keep relevant original conditions in
 // partition_column_values and range_column_values to set up the permutations transformation.
 // Irrelevant condition must be moved into condition_expr regardless.
 // TODO revisit to find out if we can combine the parts of such split logic.
@@ -298,7 +298,7 @@ void PgDmlRead::SetColumnRefs() {
 // DocDB takes values in the range_column_values as the prefix of the range key columns, no null
 // values allowed. So if one of the key columns are not bound, all conditions on following columns
 // must be moved to the condition_expr, even if they are simple scalars.
-Status PgDmlRead::ProcessEmptyPrimaryBinds() {
+Status PgDmlRead::ProcessEmptyKeyBinds() {
   if (!bind_) {
     // This query does not have any binds.
     read_req_->mutable_partition_column_values()->clear();
@@ -514,11 +514,11 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
 
   SetColumnRefs();
 
-  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound()) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
-  } else if (!primary_binds_processed_) {
-    RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-    primary_binds_processed_ = true;
+  if (doc_op_ && !ybctid_provider() && IsAllKeyColumnsBound()) {
+    RETURN_NOT_OK(SubstituteKeyBindsWithYbctids());
+  } else if (!key_binds_processed_) {
+    RETURN_NOT_OK(ProcessEmptyKeyBinds());
+    key_binds_processed_ = true;
   }
 
   VLOG_WITH_FUNC(3)
@@ -695,8 +695,8 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
   }
 
   for (const PgColumn& curr_col : cols) {
-    // Check primary column bindings
-    if (curr_col.is_primary() && curr_col.ValueBound()) {
+    // Check key column bindings
+    if (curr_col.is_key() && curr_col.ValueBound()) {
       LOG(DFATAL) << Format("Column $0 is already bound to another value", curr_col.attr_num());
     }
   }
@@ -706,9 +706,9 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
   // we only bind this condition to the first column in the IN. The nature of that
   // column (hash or range) will decide how this tuple IN condition will be processed.
   PgColumn& col = cols.front();
-  bool col_is_primary = col.is_primary();
+  bool col_is_key = col.is_key();
 
-  if (col_is_primary) {
+  if (col_is_key) {
     // Alloc the protobuf.
     auto* bind_pb = col.bind_pb();
     if (!bind_pb) {
@@ -737,7 +737,7 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
       // Note that except for constants and place_holders, all other expressions can be setup
       // just one time during prepare.
       // Examples:
-      // - Bind values for primary columns in where clause.
+      // - Bind values for key columns in where clause.
       //     WHERE hash = ?
       // - Bind values for a column in INSERT statement.
       //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
@@ -812,8 +812,8 @@ Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
-  SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromPrimaryBinds()));
+Status PgDmlRead::SubstituteKeyBindsWithYbctids() {
+  SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromKeyBinds()));
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }
@@ -822,10 +822,10 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
   return Status::OK();
 }
 
-// Function builds vector of ybctids from primary key binds.
+// Function builds vector of ybctids from key column binds.
 // Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
-Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
+Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromKeyBinds() {
   auto num_hash_key_columns = bind_->num_hash_key_columns();
   LWQLValuePBContainer hashed_values(num_hash_key_columns);
   dockv::KeyEntryValues hashed_components;
@@ -887,7 +887,7 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
 
 // Returns true in case not more than one range key component has the IN operator
 // and all other key components are set.
-bool PgDmlRead::IsAllPrimaryKeysBound() const {
+bool PgDmlRead::IsAllKeyColumnsBound() const {
   if (!bind_) {
     return false;
   }
@@ -1029,7 +1029,7 @@ bool PgDmlRead::IsReadFromYsqlCatalog() const {
 
 bool PgDmlRead::IsIndexOrderedScan() const {
   auto* secondary_index = SecondaryIndexQuery();
-  return secondary_index && !secondary_index->IsAllPrimaryKeysBound();
+  return secondary_index && !secondary_index->IsAllKeyColumnsBound();
 }
 
 bool PgDmlRead::ActualValueForIsForSecondaryIndexArg(bool is_for_secondary_index) const {

@@ -182,6 +182,9 @@ service TabletServerService {
   }
 
   rpc PgRemoteExec(PgRemoteExecRequestPB) returns (PgRemoteExecResponsePB);
+
+  rpc CollectYsqlCallHomeStats(CollectYsqlCallHomeStatsRequestPB)
+      returns (CollectYsqlCallHomeStatsResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -708,10 +711,22 @@ message PgRemoteExecRequestPB {
   // One entry per query parameter ($1, $2, ...).
   // A param with no value set represents SQL NULL.
   repeated PgQueryParamPB params = 3;
+  required string database_name = 4;
 }
 
 message PgRemoteExecResponsePB {
   optional TabletServerErrorPB error = 1;
   optional PgResultPB pg_result = 2;
   optional bool reached_size_limit = 3;
+}
+
+message CollectYsqlCallHomeStatsRequestPB {
+}
+
+message CollectYsqlCallHomeStatsResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  // JSON string containing the collected YSQL cluster statistics.
+  // Format: {"aggregate": {...}, "databases": [...]}
+  optional string json_stats = 2;
 }

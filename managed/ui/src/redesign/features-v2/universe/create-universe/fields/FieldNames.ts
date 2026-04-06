@@ -50,3 +50,16 @@ export const NTON_CERT_TYPE_FIELD = 'certTypeNtoN';
 export const ENABLE_CTON_FIELD = 'enableClientToNodeEncryption';
 export const CTON_CERT_FIELD = 'rootCToNCertificate';
 export const CTON_CERT_TYPE_FIELD = 'certTypeCToN';
+
+export const YSQL_FIELD = 'ysql.enable';
+export const YSQL_AUTH_FIELD = 'ysql.enable_auth';
+export const YSQL_PASSWORD_FIELD = 'ysql.password';
+export const YSQL_CONFIRM_PWD = 'ysql.confirm_pwd';
+
+export const YCQL_FIELD = 'ycql.enable';
+export const YCQL_AUTH_FIELD = 'ycql.enable_auth';
+export const YCQL_PASSWORD_FIELD = 'ycql.password';
+export const YCQL_CONFIRM_PWD = 'ycql.confirm_pwd';
+
+export const CONNECTION_POOLING_FIELD = 'enableConnectionPooling';
+export const PG_COMPATIBILITY_FIELD = 'enablePGCompatibitilty';

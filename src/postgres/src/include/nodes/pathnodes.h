@@ -985,6 +985,7 @@ struct IndexOptInfo
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
 	char	   *ybIndexName;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 };
 
 /*
@@ -1284,16 +1285,16 @@ typedef struct YbPlanInfo
 /*
  * YB: info used by YbIndexPathInfo.
  *
- * Holds info used for scalar array operation merge index [only] scans.
+ * Holds info used for merge scans.
  */
-typedef struct YbSaopMergeSaopColInfo
+typedef struct YbMergeScanSaopColInfo
 {
 	NodeTag		type;
 	ScalarArrayOpExpr *saop;
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
-} YbSaopMergeSaopColInfo;
+} YbMergeScanSaopColInfo;
 
 /*
  * Info propagated for YugabyteDB, for index scans.
@@ -1305,7 +1306,7 @@ typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *saop_merge_saop_cols;	/* List of YbSaopMergeSaopColInfo */
+	List	   *merge_scan_saop_cols;	/* List of YbMergeScanSaopColInfo */
 } YbIndexPathInfo;
 
 

@@ -886,6 +886,16 @@ message XClusterFailoverResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message IsXClusterFailoverDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsXClusterFailoverDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool done = 2;
+  optional AppStatusPB failover_error = 3;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -1026,4 +1036,7 @@ service MasterReplication {
 
   rpc XClusterFailover(XClusterFailoverRequestPB)
       returns (XClusterFailoverResponsePB);
+
+  rpc IsXClusterFailoverDone(IsXClusterFailoverDoneRequestPB)
+      returns (IsXClusterFailoverDoneResponsePB);
 }

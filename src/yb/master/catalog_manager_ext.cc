@@ -27,6 +27,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_type.h"
@@ -3310,7 +3311,8 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForSnapshotRestore(
+    deadline, kPitrFeatureName));
   LOG(INFO)
       << "Servicing RestoreSnapshotSchedule request. id: " << id
       << " restore_ht: " << ht;
@@ -3339,6 +3341,7 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
+  FillHeartbeatResponseClusterConfig(cluster_config, req, resp);
   RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
@@ -3358,6 +3361,16 @@ Status CatalogManager::FillHeartbeatResponseEncryption(
   RETURN_NOT_OK(encryption_manager_->FillHeartbeatResponseEncryption(encryption_info, resp));
 
   return Status::OK();
+}
+
+void CatalogManager::FillHeartbeatResponseClusterConfig(
+  const SysClusterConfigEntryPB& cluster_config,
+  const TSHeartbeatRequestPB& req,
+  TSHeartbeatResponsePB* resp) {
+  if (req.cluster_config_version() < cluster_config.version()) {
+    resp->set_cluster_config_version(cluster_config.version());
+    *resp->mutable_cluster_replication_info() = cluster_config.replication_info();
+  }
 }
 
 void CatalogManager::SetTabletSnapshotsState(SysSnapshotEntryPB::State state,

@@ -131,7 +131,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   // decoded as a DocDB key/value and converted to a human-readable string representation.
   std::string DocDBDebugDumpToStr();
 
-  void DocDBDebugDumpToContainer(std::unordered_set<std::string>* out);
+  void DocDBDebugDumpToContainer(std::unordered_set<std::string>& out);
 
   static std::shared_ptr<LWQLValuePB> MakeLWValue(const QLValuePB& value);
 

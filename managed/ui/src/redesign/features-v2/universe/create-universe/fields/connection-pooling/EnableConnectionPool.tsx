@@ -8,7 +8,7 @@ import { YBEarlyAccessTag } from '../../../../../components';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
-import { YSQL_FIELD } from '../ysql-settings/YSQLSettingsField';
+import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
@@ -22,7 +22,6 @@ interface ConnectionPoolFieldProps {
 }
 
 const MAX_PORT = 65535;
-const CONNECTION_POOLING_FIELD = 'enableConnectionPooling';
 
 const StyledSubText = styled(Typography)(({ theme }) => ({
   fontSize: '11.5px',

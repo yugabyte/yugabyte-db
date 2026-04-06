@@ -33,7 +33,8 @@ class PgClient;
 //
 class PgGlobalViewRead : public PgMemctx::Registrable {
  public:
-  explicit PgGlobalViewRead(std::vector<std::string>&& tserver_uuids);
+  PgGlobalViewRead(
+    const char* database_name, std::vector<std::string>&& tserver_uuids);
 
   void ResetScan();
 
@@ -49,6 +50,7 @@ class PgGlobalViewRead : public PgMemctx::Registrable {
   bool is_eof() const { return next_tserver_idx_ >= tserver_uuids_.size(); }
 
  private:
+  std::string database_name_;
   std::vector<std::string> tserver_uuids_;
   size_t next_tserver_idx_{0};
   // Holds the serialized PgResultPB between ExecScan and the caller's deserialization.

@@ -32,7 +32,6 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 public class ConnectionBuilder implements Cloneable {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
-  private static final int MAX_CONNECTION_ATTEMPTS = 15;
   private static final int INITIAL_CONNECTION_DELAY_MS = 500;
 
   // TODO(janand) GH #17899 Deduplicate DEFAULT_PG_DATABASE and TEST_PG_USER (present in
@@ -52,6 +51,7 @@ public class ConnectionBuilder implements Cloneable {
   private final List<InetSocketAddress> postgresContactPoints;
   private final List<InetSocketAddress> ysqlConnMgrContactPoints;
 
+  private int maxConnectionAttempts = 15;
   private boolean loadBalance;
   private int tserverIndex = 0;
   private String database = DEFAULT_PG_DATABASE;
@@ -261,7 +261,7 @@ public class ConnectionBuilder implements Cloneable {
         }
 
         boolean retry = false;
-        if (attempt < MAX_CONNECTION_ATTEMPTS) {
+        if (attempt < maxConnectionAttempts) {
           if (sqlEx.getMessage().contains(EX_DB_STARTING) ||
               sqlEx.getMessage().contains(EX_CONN_REFUSED)) {
             retry = true;
@@ -298,5 +298,13 @@ public class ConnectionBuilder implements Cloneable {
 
   public void setLoadBalance(boolean lb) {
     loadBalance = lb;
+  }
+
+  public int getMaxConnectionAttempts() {
+    return maxConnectionAttempts;
+  }
+
+  public void setMaxConnectionAttempts(int maxAttempts) {
+    maxConnectionAttempts = maxAttempts;
   }
 }

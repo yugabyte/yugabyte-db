@@ -4,24 +4,21 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Persists software upgrade progress to the universe (masters completion, per-AZ tserver progress
- * in {@code prevYBSoftwareConfig}, and {@code softwareUpgradeState = Paused}). The caller marks
- * this subtask group with {@code SubTaskGroup.setPausedAfter(true)} so TaskExecutor pauses cleanly
- * after this group finishes. Used at pause points during canary-style upgrades (e.g. after masters,
- * after an AZ's tservers). On resume, the upgrade task loads this state and skips completed work.
+ * Persists software upgrade AZ-level progress to {@code prevYBSoftwareConfig}. When {@code
+ * pauseAfter} is true (canary pause point), also sets {@code softwareUpgradeState} to Paused.
+ * Otherwise only updates progress fields and leaves upgrade state unchanged.
  */
 @Slf4j
 public class SaveSoftwareUpgradeProgress extends UniverseTaskBase {
@@ -32,14 +29,13 @@ public class SaveSoftwareUpgradeProgress extends UniverseTaskBase {
   }
 
   public static class Params extends UniverseTaskParams {
-    /** True if masters phase completed before this pause. */
-    public boolean mastersUpgradeCompleted = false;
+    public boolean isCanaryUpgrade;
+    public CanaryPauseState canaryPauseState = null;
+    public List<AZUpgradeState> masterAZUpgradeStatesList = new ArrayList<>();
+    public List<AZUpgradeState> tserverAZUpgradeStatesList = new ArrayList<>();
 
-    /** Primary cluster AZ UUIDs completed so far (in order). */
-    public List<UUID> primaryClusterAZsCompleted = new ArrayList<>();
-
-    /** Read replica cluster UUID -> list of completed AZ UUIDs. */
-    public Map<UUID, List<UUID>> readReplicaClusterAZsCompleted = new HashMap<>();
+    /** When true, set universe {@code softwareUpgradeState} to Paused after saving progress. */
+    public boolean pauseAfter;
   }
 
   protected Params taskParams() {
@@ -53,31 +49,35 @@ public class SaveSoftwareUpgradeProgress extends UniverseTaskBase {
 
   @Override
   public void run() {
+    Params p = taskParams();
     UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams details = universe.getUniverseDetails();
           if (!details.updateInProgress) {
             throw new RuntimeException(
-                "Universe " + taskParams().getUniverseUUID() + " is not being updated.");
+                "Universe " + p.getUniverseUUID() + " is not being updated.");
           }
-          details.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
           PrevYBSoftwareConfig prev = details.prevYBSoftwareConfig;
           if (prev == null) {
             prev = new PrevYBSoftwareConfig();
             details.prevYBSoftwareConfig = prev;
           }
-          prev.setMastersUpgradeCompleted(taskParams().mastersUpgradeCompleted);
-          prev.setPrimaryClusterAZsCompleted(
-              taskParams().primaryClusterAZsCompleted != null
-                  ? new ArrayList<>(taskParams().primaryClusterAZsCompleted)
+          prev.setCanaryUpgrade(p.isCanaryUpgrade);
+          prev.setCanaryPauseState(p.canaryPauseState);
+          prev.setMasterAZUpgradeStatesList(
+              p.masterAZUpgradeStatesList != null
+                  ? new ArrayList<>(p.masterAZUpgradeStatesList)
                   : new ArrayList<>());
-          prev.setReadReplicaClusterAZsCompleted(
-              taskParams().readReplicaClusterAZsCompleted != null
-                  ? new HashMap<>(taskParams().readReplicaClusterAZsCompleted)
-                  : new HashMap<>());
+          prev.setTserverAZUpgradeStatesList(
+              p.tserverAZUpgradeStatesList != null
+                  ? new ArrayList<>(p.tserverAZUpgradeStatesList)
+                  : new ArrayList<>());
+          if (p.pauseAfter) {
+            details.softwareUpgradeState = UniverseDefinitionTaskParams.SoftwareUpgradeState.Paused;
+          }
           universe.setUniverseDetails(details);
         };
     saveUniverseDetails(updater);
-    log.info("Software upgrade progress saved for universe {}.", taskParams().getUniverseUUID());
+    log.info("Software upgrade progress saved for universe {}.", p.getUniverseUUID());
   }
 }

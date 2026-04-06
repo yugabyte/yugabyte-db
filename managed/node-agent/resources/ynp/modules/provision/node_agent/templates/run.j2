@@ -207,7 +207,27 @@ airgap_flag="--airgap"
 airgap_flag=""
 {% endif %}
 
+installer_script="{{ ynp_dir }}/../../bin/node-agent-installer.sh"
+if [ ! -f "$installer_script" ]; then
+    # For backward compatibility when backported.
+    # Remove me later.
+    installer_script="{{ ynp_dir }}/../node-agent-installer.sh"
+fi
+# Copy node-agent binary to yugabyte home directory. This is needed so that yugabyte user
+# can read the binary in restricted environment.
 installer_dir="{{ yb_home_dir }}/.install"
+dest_script="$installer_dir/$(basename "$installer_script")"
+
+if [ "$SUDO_ACCESS" = "true" ]; then
+    su - {{ yb_user }} -c "mkdir -p $installer_dir"
+    cp "$installer_script" "$installer_dir"
+    chown {{ yb_user }}:{{ yb_user }} "$dest_script"
+    chmod 755 "$dest_script"
+else
+    mkdir -p "$installer_dir"
+    cp "$installer_script" "$installer_dir"
+    chmod 755 "$dest_script"
+fi
 
 # Check if system-level node agent service exists.
 if systemctl list-units --all 2>/dev/null | grep -qF yb-node-agent.service; then

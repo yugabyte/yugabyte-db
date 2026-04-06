@@ -50,6 +50,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ManageCatalogUpgradeSuperUser
 import com.yugabyte.yw.commissioner.tasks.subtasks.MoveTablesTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistUseClockbound;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
+import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetupYNP;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
@@ -91,6 +92,8 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.CapacityReservationUtil;
+import com.yugabyte.yw.forms.AZUpgradeState;
+import com.yugabyte.yw.forms.CanaryPauseState;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -4426,5 +4429,46 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             subTaskGroup.addSubTask(task);
           }
         });
+  }
+
+  /**
+   * Persists software upgrade AZ progress to universe {@code prevYBSoftwareConfig}. When {@code
+   * pauseAfter} is true, the subtask group pauses after this step (canary).
+   */
+  protected SubTaskGroup createSaveSoftwareUpgradeProgressTask(
+      boolean isCanaryUpgrade,
+      CanaryPauseState canaryPauseState,
+      List<AZUpgradeState> masterAZUpgradeStatesList,
+      List<AZUpgradeState> tserverAZUpgradeStatesList,
+      boolean pauseAfter) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("SaveSoftwareUpgradeProgress", SubTaskGroupType.UpgradingSoftware);
+    if (pauseAfter) {
+      subTaskGroup.setPausedAfter(true);
+    }
+    SaveSoftwareUpgradeProgress.Params params = new SaveSoftwareUpgradeProgress.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.isCanaryUpgrade = isCanaryUpgrade;
+    params.canaryPauseState = canaryPauseState;
+    params.masterAZUpgradeStatesList =
+        masterAZUpgradeStatesList != null
+            ? new ArrayList<>(masterAZUpgradeStatesList)
+            : new ArrayList<>();
+    params.tserverAZUpgradeStatesList =
+        tserverAZUpgradeStatesList != null
+            ? new ArrayList<>(tserverAZUpgradeStatesList)
+            : new ArrayList<>();
+    params.pauseAfter = pauseAfter;
+    SaveSoftwareUpgradeProgress task = createTask(SaveSoftwareUpgradeProgress.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Clears software upgrade AZ progress fields in {@code prevYBSoftwareConfig} (task API). */
+  protected void createClearSoftwareUpgradeProgressTask() {
+    createSaveSoftwareUpgradeProgressTask(
+        false, null, Collections.emptyList(), Collections.emptyList(), false);
   }
 }

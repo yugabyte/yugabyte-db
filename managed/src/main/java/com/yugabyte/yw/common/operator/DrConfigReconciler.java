@@ -76,6 +76,8 @@ public class DrConfigReconciler extends AbstractReconciler<DrConfig> {
     try {
       DrConfigStatus status = drConfig.getStatus();
       if (status != null && status.getResourceUUID() != null) {
+        OperatorUtils.maybeAddYbaResourceId(
+            drConfig, UUID.fromString(status.getResourceUUID()), resourceClient);
         log.info("DR Config {} is already initialized", drConfig.getMetadata().getName());
         return;
       }

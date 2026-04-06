@@ -605,6 +605,7 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
   public void testStartupParameterPrecedence() throws Exception {
     // Test the precedence between guc setting specified through "options" key and one specified
     // directly in the startup packet. pgJDBC driver only allows us to use the former method.

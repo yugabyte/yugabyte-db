@@ -111,6 +111,7 @@
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "yb/tserver/ysql_call_home_stats.h"
 #include "yb/tserver/ysql_lease.h"
 
 #include "yb/util/async_util.h"
@@ -276,6 +277,9 @@ DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
 
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
     "Inject delay to slowdown handling of updates in transaction status location.");
+
+DEFINE_test_flag(bool, block_apply_intent, false,
+    "When set, block handling of UpdateTransaction(APPLYING) until the flag is cleared.");
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
@@ -1416,6 +1420,10 @@ void TabletServiceImpl::UpdateTransaction(const UpdateTransactionRequestPB* req,
   if (req->state().status() == TransactionStatus::APPLYING ||
       req->state().status() == TransactionStatus::PROMOTING ||
       cleanup) {
+    if (req->state().status() == TransactionStatus::APPLYING &&
+        tablet.tablet->table_type() != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_block_apply_intent);
+    }
     auto* participant = tablet.tablet->transaction_participant();
     if (participant) {
       participant->Handle(std::move(state), tablet.leader_term);
@@ -3538,7 +3546,7 @@ void TabletServiceImpl::PgRemoteExec(
 
   // TODO(#30396): Maintain a pool of connections instead of creating a new connection
   auto conn = server_->CreateInternalPGConn(
-      "template1", /* simple_query_protocol */ false, context.GetClientDeadline());
+      req->database_name(), /* simple_query_protocol */ false, context.GetClientDeadline());
   if (!conn.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), conn.status(), &context);
     return;
@@ -3964,6 +3972,18 @@ void TabletServiceImpl::AdminExecutePgsql(
   } else {
     context.RespondSuccess();
   }
+}
+
+void TabletServiceImpl::CollectYsqlCallHomeStats(
+    const CollectYsqlCallHomeStatsRequestPB* req, CollectYsqlCallHomeStatsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto result = CollectYsqlClusterStatsJson(server_);
+  if (!result.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), result.status(), &context);
+    return;
+  }
+  resp->set_json_stats(*result);
+  context.RespondSuccess();
 }
 
 void TabletServiceImpl::GetLocalPgTxnSnapshot(

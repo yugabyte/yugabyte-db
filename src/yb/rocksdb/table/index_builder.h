@@ -41,7 +41,8 @@ class IndexBuilder {
       IndexType index_type,
       const Comparator* comparator,
       const SliceTransform* prefix_extractor,
-      const BlockBasedTableOptions& table_opt);
+      const BlockBasedTableOptions& table_opt,
+      const yb::MemTrackerPtr& mem_tracker);
 
   // Index builder will construct a set of blocks which contain:
   //  1. One primary index block.
@@ -117,10 +118,12 @@ YB_STRONGLY_TYPED_BOOL(ShortenKeys);
 //     substitute key that serves the same function.
 class ShortenedIndexBuilder : public IndexBuilder {
  public:
-  explicit ShortenedIndexBuilder(const Comparator* comparator,
-                                 int index_block_restart_interval)
+  explicit ShortenedIndexBuilder(
+      const Comparator* comparator, int index_block_restart_interval,
+      const yb::MemTrackerPtr& mem_tracker)
       : IndexBuilder(comparator),
-        index_block_builder_(index_block_restart_interval, kIndexBlockKeyValueEncodingFormat) {}
+        index_block_builder_(
+            index_block_restart_interval, kIndexBlockKeyValueEncodingFormat, mem_tracker) {}
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,
@@ -177,9 +180,10 @@ class HashIndexBuilder : public IndexBuilder {
  public:
   explicit HashIndexBuilder(const Comparator* comparator,
                             const SliceTransform* hash_key_extractor,
-                            int index_block_restart_interval)
+                            int index_block_restart_interval,
+                            const yb::MemTrackerPtr& mem_tracker)
       : IndexBuilder(comparator),
-        primary_index_builder_(comparator, index_block_restart_interval),
+        primary_index_builder_(comparator, index_block_restart_interval, mem_tracker),
         hash_key_extractor_(hash_key_extractor) {}
 
   void AddIndexEntry(
@@ -221,7 +225,9 @@ class HashIndexBuilder : public IndexBuilder {
 
 class MultiLevelIndexBuilder : public IndexBuilder {
  public:
-  MultiLevelIndexBuilder(const Comparator* comparator, const BlockBasedTableOptions& table_opt);
+  MultiLevelIndexBuilder(
+      const Comparator* comparator, const BlockBasedTableOptions& table_opt,
+      const yb::MemTrackerPtr& mem_tracker);
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,
@@ -306,6 +312,8 @@ class MultiLevelIndexBuilder : public IndexBuilder {
   } next_level_;
   // Buffer for block handle encoding.
   std::string block_handle_encoding_;
+
+  yb::ScopedTrackedConsumption consumption_;
 };
 
 } // namespace rocksdb

@@ -411,14 +411,19 @@ Status ReadQuery::DoPerform() {
   host_port_pb_.set_port(remote_address.port());
 
   if (serializable_isolation || has_row_mark) {
+    std::shared_ptr<tserver::WriteResponseMsg> response;
+    const bool use_async_write = req_->use_async_write();
+    if (use_async_write) {
+      response = std::make_shared<tserver::WriteResponseMsg>();
+    }
     auto query = std::make_unique<tablet::WriteQuery>(
-        leader_peer.leader_term,
-        context_.GetClientDeadline(),
-        leader_peer.peer.get(),
-        leader_peer.tablet,
-        nullptr /* rpc_context */);
+        leader_peer.leader_term, context_.GetClientDeadline(), leader_peer.peer.get(),
+        leader_peer.tablet, nullptr /* rpc_context */, response.get());
 
     auto& write = *query->operation().AllocateRequest();
+    if (use_async_write) {
+      query->set_use_async_write(true);
+    }
     auto& write_batch = *write.mutable_write_batch();
     *write_batch.mutable_transaction() = req_->transaction();
     if (has_row_mark) {
@@ -443,10 +448,14 @@ Status ReadQuery::DoPerform() {
 
     query->AdjustYsqlQueryTransactionality(req_->pgsql_batch_size());
 
-    query->set_callback([peer = leader_peer.peer, self = shared_from_this()](const Status& status) {
+    query->set_callback([peer = leader_peer.peer, self = shared_from_this(),
+                         response = std::move(response)](const Status& status) {
       if (!status.ok()) {
         self->RespondFailure(status);
       } else {
+        if (response && response->has_async_write_op_id()) {
+          *self->resp_->mutable_async_write_op_id() = response->async_write_op_id();
+        }
         self->retained_self_ = self;
         peer->Enqueue(self.get());
       }

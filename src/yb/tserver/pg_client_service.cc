@@ -176,7 +176,9 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
     if constexpr (HasMemberFunction_status<Resp>::value) {
       StatusToPB(status, resp->mutable_status());
     } else {
-      StatusToPB(status, resp->mutable_error()->mutable_status());
+      auto* error = resp->mutable_error();
+      StatusToPB(status, error->mutable_status());
+      error->set_code(error->code());
     }
   }
   context->RespondSuccess();
@@ -961,6 +963,11 @@ class PgClientServiceImpl::Impl : public SessionProvider {
         session_context_, session_id, req.pid(), lease_epoch(),
         tablet_server_.ts_local_lock_manager(), messenger_.scheduler());
     resp->set_session_id(session_id);
+    if (const auto v = tablet_server_.cluster_config_version(); req.cluster_config_version() < v) {
+      auto &cluster_config_pb = *resp->mutable_cluster_config();
+      cluster_config_pb.set_version(v);
+      *cluster_config_pb.mutable_replication_info() = tablet_server_.GetClusterReplicationInfo();
+    }
     if (FLAGS_pg_client_use_shared_memory) {
       std::call_once(exchange_thread_pool_once_flag_, [this] {
         exchange_thread_pool_ = std::make_unique<YBThreadPool>(ThreadPoolOptions {

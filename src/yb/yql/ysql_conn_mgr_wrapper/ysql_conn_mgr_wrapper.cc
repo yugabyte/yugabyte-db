@@ -92,6 +92,13 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, true,
     "When false, the older auth-passthrough implementation is used."
     );
 
+DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_auth_msg_timeout, 15000,
+    "Maximum time (in milliseconds) to wait for each startup & auth message from client. "
+    "If the client does not send a startup or auth packet/response within this timeout, the "
+    "connection is closed. Note that this is a per-message timeout, not a total timeout for the "
+    "entire auth process. This timeout applies individually to the TLS handshake, startup packet, "
+    "and each auth packet received from the client.");
+
 DEFINE_NON_RUNTIME_uint64(ysql_conn_mgr_log_max_size, 0,
     "Max ysql connection manager log size(in bytes) after which the log file gets rolled over");
 

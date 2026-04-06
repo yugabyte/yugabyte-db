@@ -88,6 +88,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
       (XClusterEnsureSequenceUpdatesAreInWal)
       (SetUniverseReplicationEnabled)
       (XClusterFailover)
+      (IsXClusterFailoverDone)
   )
 };
 

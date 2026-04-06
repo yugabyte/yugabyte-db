@@ -12094,7 +12094,7 @@ Status CatalogManager::SendCreateTabletRequests(
       }
     }
 
-    bool stream_exists_on_namespace = false;
+    bool can_set_cdc_sdk_retention_barriers = false;
     auto namespace_id = tablet->table()->namespace_id();
     {
       SharedLock lock(mutex_);
@@ -12103,8 +12103,11 @@ Status CatalogManager::SendCreateTabletRequests(
         // Set the CDCSDK retention barriers on the tablets at the time of creation only if atleast
         // one stream with replication slot consumption exists on the namespace.
         if (stream->IsCDCSDKStream() && stream->namespace_id() == namespace_id &&
-            !stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-          stream_exists_on_namespace =  true;
+            !stream->GetCdcsdkYsqlReplicationSlotName().empty() &&
+            IsTableEligibleForCDCSDKStream(
+                tablet->table(), tablet->table()->LockForRead(), /*check_schema=*/true,
+                stream->IsTablesWithoutPrimaryKeyAllowed())) {
+          can_set_cdc_sdk_retention_barriers = true;
           break;
         }
       }
@@ -12113,7 +12116,7 @@ Status CatalogManager::SendCreateTabletRequests(
     auto tablet_lock = tablet->LockForRead();
     for (const auto& peer : tablet_lock->pb.committed_consensus_state().config().peers()) {
       CDCSDKSetRetentionBarriers cdc_sdk_set_retention_barriers(
-          stream_exists_on_namespace && FLAGS_ysql_yb_enable_replication_slot_consumption);
+          can_set_cdc_sdk_retention_barriers && FLAGS_ysql_yb_enable_replication_slot_consumption);
       auto task = std::make_shared<AsyncCreateReplica>(
           master_, AsyncTaskPool(), peer.permanent_uuid(), tablet, tablet_lock, schedules, epoch,
           cdc_sdk_set_retention_barriers);

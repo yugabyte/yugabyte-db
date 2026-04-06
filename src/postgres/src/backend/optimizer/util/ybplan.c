@@ -226,13 +226,14 @@ is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
 							 bool bitmapindex)
 {
 	ListCell   *lc;
+	int			ncols = indexinfo->ncolumns - indexinfo->yb_num_decoded_pk_cols;
 
 	foreach(lc, colrefs)
 	{
 		bool		found = false;
 		YbExprColrefDesc *colref = castNode(YbExprColrefDesc, lfirst(lc));
 
-		for (int i = 0; i < indexinfo->ncolumns; i++)
+		for (int i = 0; i < ncols; i++)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
@@ -310,7 +311,8 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 							IndexOptInfo *indexinfo, bool bitmapindex,
 							List **local_quals, List **rel_remote_quals,
 							List **rel_colrefs, List **idx_remote_quals,
-							List **idx_colrefs, Oid relid)
+							List **idx_colrefs, Oid relid,
+							Bitmapset *non_pushable_attnums)
 {
 	ListCell   *lc;
 
@@ -331,6 +333,28 @@ yb_extract_pushdown_clauses(List *restrictinfo_list,
 		 * outer references replaced with Params.
 		 */
 		Assert(!ri->yb_pushable || pushable);
+
+		/*
+		 * If the filter clause involves a decoded PK
+		 * column, disable pushdown.
+		 */
+		if (pushable && non_pushable_attnums)
+		{
+			ListCell   *lc2;
+
+			foreach(lc2, colrefs)
+			{
+				YbExprColrefDesc *colref =
+					castNode(YbExprColrefDesc, lfirst(lc2));
+
+				if (bms_is_member(colref->attno, non_pushable_attnums))
+				{
+					pushable = false;
+					break;
+				}
+			}
+		}
+
 		if (!pushable)
 			*local_quals = lappend(*local_quals, ri->clause);
 		/*

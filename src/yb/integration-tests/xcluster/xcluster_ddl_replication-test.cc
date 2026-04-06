@@ -39,6 +39,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 
@@ -76,6 +77,8 @@ DECLARE_bool(TEST_xcluster_increment_logical_commit_time);
 DECLARE_int32(TEST_xcluster_producer_modify_sent_apply_safe_time_ms);
 DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_bool(TEST_usearch_exact);
+DECLARE_bool(TEST_block_apply_intent);
 
 using namespace std::chrono_literals;
 
@@ -4676,6 +4679,178 @@ TEST_F(XClusterDDLReplicationTest, DDLQueuePollerPreservesOriginalError) {
     }
   }
   ASSERT_TRUE(found_ddl_queue_poller) << "ddl_queue poller not found in TServer xCluster stats";
+}
+
+TEST_F(XClusterDDLReplicationTest, VectorIndex) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    return Status::OK();
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vec_test (id serial PRIMARY KEY, embedding vector(3))"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES "
+      "('[1.0, 2.0, 3.0]'), ('[4.0, 5.0, 6.0]'), ('[7.0, 8.0, 9.0]'), "
+      "('[1.5, 2.5, 3.5]'), ('[0.1, 0.2, 0.3]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_EQ(
+      ASSERT_RESULT(producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 5);
+  ASSERT_EQ(
+      ASSERT_RESULT(consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test")), 5);
+
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vec_test "
+      "ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  ASSERT_STR_CONTAINS(c_explain, "vec_test_idx");
+
+  // Vector search after backfill.
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 5"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Vector search after INSERT.
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES ('[0.5, 1.5, 2.5]'), ('[2.0, 3.0, 4.0]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Vector search after UPDATE.
+  ASSERT_OK(producer_conn_->Execute(
+      "UPDATE vec_test SET embedding = '[1.1, 2.1, 3.1]' WHERE id = 1"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto p_table = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id, embedding FROM vec_test ORDER BY id"));
+  auto c_table = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id, embedding FROM vec_test ORDER BY id"));
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 7"));
+  ASSERT_EQ(p_search, c_search);
+
+  // DELETE.
+  ASSERT_OK(producer_conn_->Execute("DELETE FROM vec_test WHERE id = 3"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  auto p_count = ASSERT_RESULT(
+      producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  auto c_count = ASSERT_RESULT(
+      consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  ASSERT_EQ(p_count, c_count);
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  ASSERT_EQ(p_search, c_search);
+
+  // Drop and recreate index.
+  auto p_search_before_drop = p_search;
+  ASSERT_OK(producer_conn_->Execute("DROP INDEX vec_test_idx"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vec_test_idx ON vec_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 6"));
+  ASSERT_EQ(p_search, c_search);
+  // Recreated index should match pre-drop results.
+  ASSERT_EQ(p_search, p_search_before_drop);
+
+  // Insert after recreated index. d
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vec_test (embedding) VALUES "
+      "('[10, 20, 30]'), ('[40, 50, 60]'), ('[70, 80, 90]'), "
+      "('[15, 25, 35]'), ('[55, 65, 75]')"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+  p_count = ASSERT_RESULT(
+      producer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  c_count = ASSERT_RESULT(
+      consumer_conn_->FetchRow<int64_t>("SELECT count(*) FROM vec_test"));
+  ASSERT_EQ(p_count, c_count);
+  p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
+  c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vec_test ORDER BY embedding <-> '[50.0, 50.0, 50.0]' LIMIT 11"));
+  ASSERT_EQ(p_search, c_search);
+}
+
+// When updating the vector index during apply intent, we skip the row if commit_ht is less than
+// the vector index's hybrid_time, to avoid double write since backfill will handle the committed
+// intents. However, this is an issue on xCluster target: backfill on target does not see committed
+// intents from the source, and commit_ht from the source can be less than the target vector
+// index's hybrid_time, so the write can be missing from the vector index. This test verifies
+// the fix.
+TEST_F(XClusterDDLReplicationTest, VectorIndexLateWriteAfterBackfillMissing) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+  auto params = XClusterDDLReplicationTestBase::kDefaultParams;
+  params.start_yb_controller_servers = true;
+  ASSERT_OK(SetUpClusters(params));
+  ASSERT_OK(RunOnBothClusters([this](Cluster* cluster) -> Status {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    return Status::OK();
+  }));
+  ASSERT_OK(CheckpointReplicationGroup(kReplicationGroupId, /*require_no_bootstrap_needed=*/false));
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+  auto c_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE TABLE vector_test (id int PRIMARY KEY, embedding vector(3)) SPLIT INTO 2 TABLETS"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Block DDL queue so create index runs on producer only.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "CREATE INDEX vector_test_idx ON vector_test USING ybhnsw (embedding vector_l2_ops)"));
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNowWithoutDDLQueue());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_apply_intent) = true;
+  ASSERT_OK(producer_conn_->Execute(
+      "INSERT INTO vector_test (id, embedding) VALUES (1, '[1.0, 2.0, 3.0]');"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_fail_at_start) = false;
+  constexpr auto kIndexStateWait = 30s;
+  ASSERT_OK(WaitFor(
+      [this]() -> Result<bool> {
+        auto conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+        return conn.FetchRow<bool>(
+            "SELECT EXISTS (SELECT 1 FROM pg_index i "
+            "JOIN pg_class c ON c.oid = i.indexrelid "
+            "WHERE c.relname = 'vector_test_idx' AND i.indisready AND i.indisvalid)");
+      },
+      kIndexStateWait,
+      "consumer vector index backfill"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_block_apply_intent) = false;
+  ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
+
+  // Verify consumer uses the index (LIMIT forces the index path).
+  auto c_explain = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "EXPLAIN (COSTS OFF) SELECT id FROM vector_test "
+      "ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  ASSERT_STR_CONTAINS(c_explain, "vector_test_idx");
+
+  auto p_search = ASSERT_RESULT(producer_conn_->FetchAllAsString(
+      "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  auto c_search = ASSERT_RESULT(consumer_conn_->FetchAllAsString(
+      "SELECT id FROM vector_test ORDER BY embedding <-> '[1.0, 2.0, 3.0]' LIMIT 1"));
+  ASSERT_EQ(p_search, c_search)
+      << "Producer and consumer vector search should match (commit_ht < index ht case).";
 }
 
 }  // namespace yb

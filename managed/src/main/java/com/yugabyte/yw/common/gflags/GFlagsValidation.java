@@ -21,6 +21,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -49,8 +50,6 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -64,7 +63,6 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.ValidateFlagValueResponse;
 import org.yb.client.YBClient;
 import play.Environment;
 
@@ -89,7 +87,7 @@ public class GFlagsValidation {
 
   private static final String YSQL_MAJOR_VERSION_FIELD_NAME = "ysql_major_version";
 
-  private final ConcurrentHashMap<String, ReentrantLock> versionLocks = new ConcurrentHashMap<>();
+  private final KeyLock<String> versionKeyLock = new KeyLock<>();
 
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
@@ -363,8 +361,7 @@ public class GFlagsValidation {
     if (requiredGFlagFileList.isEmpty()) {
       return;
     }
-    ReentrantLock lock = versionLocks.computeIfAbsent(dbVersion, k -> new ReentrantLock());
-    lock.lock();
+    versionKeyLock.acquireLock(dbVersion);
     try {
       List<String> missingRequiredGFlagFileList =
           requiredGFlagFileList.stream()
@@ -443,7 +440,7 @@ public class GFlagsValidation {
         throw e;
       }
     } finally {
-      lock.unlock();
+      versionKeyLock.releaseLock(dbVersion);
     }
   }
 
@@ -709,7 +706,7 @@ public class GFlagsValidation {
       String flagName = entry.getKey();
       String flagValue = entry.getValue();
       try {
-        ValidateFlagValueResponse resp = client.validateFlagValue(flagName, flagValue);
+        client.validateFlagValue(flagName, flagValue);
         // Success: no exception means valid flag.
       } catch (Exception e) {
         serverGFlagsValidationErrors.put(

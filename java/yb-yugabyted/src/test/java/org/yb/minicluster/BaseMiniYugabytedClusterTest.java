@@ -149,4 +149,10 @@ public class BaseMiniYugabytedClusterTest extends BaseYBTest {
     protected ConnectionBuilder getConnectionBuilder() {
         return new ConnectionBuilder(miniYugabytedCluster.getPostgresContactPoints());
     }
+
+    protected void configureDataPlacement(String dataPlacement) throws Exception {
+        MiniYugabytedCluster.configureDataPlacement(
+            clusterConfigurations.get(0).getBaseDir(),
+            dataPlacement);
+    }
 }

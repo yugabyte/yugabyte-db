@@ -7211,7 +7211,7 @@ yb_get_roundtrip_transfer_costs(Oid tablespace_id,
 	}
 	else
 	{
-		YbGeolocationDistance distance = get_tablespace_distance(tablespace_id);
+		YbGeolocationDistance distance = get_geolocation_distance(tablespace_id);
 
 		switch (distance)
 		{
@@ -8098,6 +8098,16 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	need_remote_index_filters =
 		!index_only && !index->hypothetical && !is_primary_index;
 
+	Bitmapset  *non_pushable_attnums = NULL;
+	if (index_only && index->yb_num_decoded_pk_cols > 0)
+	{
+		int			phys_natts = index->ncolumns - index->yb_num_decoded_pk_cols;
+
+		for (int i = phys_natts; i < index->ncolumns; i++)
+			non_pushable_attnums = bms_add_member(non_pushable_attnums,
+												  index->indexkeys[i]);
+	}
+
 	yb_extract_pushdown_clauses(qpquals,
 								need_remote_index_filters ? index : NULL,
 								false,	/* bitmapindex */
@@ -8106,7 +8116,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 								&base_table_colrefs,
 								&index_pushed_down_filters,
 								&index_colrefs,
-								baserel_oid);
+								baserel_oid,
+								non_pushable_attnums);
+
+	if (non_pushable_attnums)
+		bms_free(non_pushable_attnums);
 
 	/*
 	 * Sort the index conditions into `index_conditions_on_each_column`.
@@ -8658,11 +8672,11 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		startup_cost += disable_cost;
 
 	/* TODO(#29078): cost this better. */
-	if (path->yb_index_path_info.saop_merge_saop_cols)
+	if (path->yb_index_path_info.merge_scan_saop_cols)
 	{
 		/*
-		 * We need SAOP merge index scans to cost higher than plain index scans
-		 * to avoid doing SAOP merge where it doesn't give any gains for upper
+		 * We need merge index scans to cost higher than plain index scans to
+		 * avoid doing merge scan where it doesn't give any gains for upper
 		 * nodes.  Make them cost twice of STD_FUZZ_FACTOR higher, where
 		 * STD_FUZZ_FACTOR = 1.01.
 		 */
@@ -8920,7 +8934,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 								&rel_colrefs,
 								NULL,	/* idx_remote_quals */
 								NULL,	/* idx_colrefs */
-								planner_rt_fetch(baserel->relid, root)->relid);
+								planner_rt_fetch(baserel->relid, root)->relid,
+								NULL);
 
 	tuples_scanned = clamp_row_est(adjusted_baserel_tuples *
 								   clauselist_selectivity(root, indexquals,

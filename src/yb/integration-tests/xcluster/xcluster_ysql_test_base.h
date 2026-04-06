@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/util/is_operation_done_result.h"
 
 namespace yb {
 
@@ -37,6 +38,8 @@ class XClusterYsqlTestBase : public XClusterTestBase {
     // different OIDs?
     bool use_different_database_oids = false;
     bool start_yb_controller_servers = false;
+    std::string extra_columns = {};
+    bool create_vector_extension = false;
   };
 
   void SetUp() override;
@@ -83,12 +86,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
       Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
       const std::string& table_name, const std::optional<std::string>& tablegroup_name,
       uint32_t num_tablets, bool colocated = false, const ColocationId colocation_id = 0,
-      const bool ranged_partitioned = false);
+      const bool ranged_partitioned = false, const std::string& extra_columns = std::string());
 
   Result<client::YBTableName> CreateYsqlTable(
       uint32_t idx, uint32_t num_tablets, Cluster* cluster,
       const std::optional<std::string>& tablegroup_name = {}, bool colocated = false,
-      const bool ranged_partitioned = false);
+      const bool ranged_partitioned = false, const std::string& extra_columns = std::string());
 
   Result<client::YBTableName> GetYsqlTable(
       Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
@@ -207,6 +210,12 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
  protected:
   void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
+
+  Result<IsOperationDoneResult> IsXClusterFailoverDone(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Status StartXClusterFailover(
+      const xcluster::ReplicationGroupId& replication_group_id);
 
   Status XClusterFailover(
       const xcluster::ReplicationGroupId& replication_group_id);

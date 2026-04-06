@@ -332,6 +332,12 @@ extern int yb_fk_references_cache_limit;
 
 extern bool yb_xcluster_target_ddl_bypass;
 
+/*
+ * If true, when no tablespace is assigned to table, use cluster replication info to estimate
+ * network costs.
+ */
+extern bool yb_use_cluster_config_for_geolocation_costing;
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

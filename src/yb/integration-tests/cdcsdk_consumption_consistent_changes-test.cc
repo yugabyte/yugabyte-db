@@ -2103,7 +2103,8 @@ TEST_F(
   // Stalling the updates to cdc state table for one of the child tablets
   for (const auto& tablet : tablets_after_split) {
     if (tablet.tablet_id() != p_tablets.Get(0).tablet_id()) {
-      FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates = tablet.tablet_id();
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_tablet_id_to_stall_state_table_updates) =
+          tablet.tablet_id();
       break;
     }
   }

@@ -279,7 +279,7 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     Cluster* cluster, const std::string& namespace_name, const std::string& schema_name,
     const std::string& table_name, const std::optional<std::string>& tablegroup_name,
     uint32_t num_tablets, bool colocated, const ColocationId colocation_id,
-    const bool ranged_partitioned) {
+    const bool ranged_partitioned, const std::string& extra_columns) {
   auto conn = EXPECT_RESULT(cluster->ConnectToDB(namespace_name));
   std::string colocation_id_string = "";
   if (colocation_id > 0) {
@@ -291,8 +291,8 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
   std::string full_table_name =
       schema_name.empty() ? table_name : Format("$0.$1", schema_name, table_name);
   std::string query = Format(
-      "CREATE TABLE $0($1 int, PRIMARY KEY ($1$2)) ", full_table_name, kKeyColumnName,
-      ranged_partitioned ? " ASC" : "");
+      "CREATE TABLE $0($1 int$3, PRIMARY KEY ($1$2)) ", full_table_name, kKeyColumnName,
+      ranged_partitioned ? " ASC" : "", extra_columns.empty() ? "" : (", " + extra_columns));
   // One cannot use tablegroup together with split into tablets.
   if (tablegroup_name.has_value()) {
     std::string with_clause =
@@ -335,13 +335,13 @@ Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
 Result<YBTableName> XClusterYsqlTestBase::CreateYsqlTable(
     uint32_t idx, uint32_t num_tablets, Cluster* cluster,
     const std::optional<std::string>& tablegroup_name, bool colocated,
-    const bool ranged_partitioned) {
+    const bool ranged_partitioned, const std::string& extra_columns) {
   // Generate colocation_id based on index so that we have the same colocation_id for
   // producer/consumer.
   const int colocation_id = (tablegroup_name.has_value() || colocated) ? (idx + 1) * 111111 : 0;
   return CreateYsqlTable(
       cluster, namespace_name, "" /* schema_name */, Format("test_table_$0", idx), tablegroup_name,
-      num_tablets, colocated, colocation_id, ranged_partitioned);
+      num_tablets, colocated, colocation_id, ranged_partitioned, extra_columns);
 }
 
 Result<std::string> XClusterYsqlTestBase::GetUniverseId(Cluster* cluster) {
@@ -937,6 +937,10 @@ Status XClusterYsqlTestBase::SetUpWithParams(
       .num_masters = num_masters,
       .ranged_partitioned = ranged_partitioned,
       .is_colocated = false,
+      .use_different_database_oids = false,
+      .start_yb_controller_servers = false,
+      .extra_columns = {},
+      .create_vector_extension = false,
   };
 
   return SetUpClusters(params);
@@ -999,10 +1003,15 @@ Status XClusterYsqlTestBase::SetUpClusters(const SetupParams& params) {
       num_tablets = &params.num_consumer_tablets;
     }
 
+    if (params.create_vector_extension) {
+      auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+      RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    }
+
     for (uint32_t i = 0; i < num_tablets->size(); i++) {
       auto table_name = VERIFY_RESULT(CreateYsqlTable(
           i, num_tablets->at(i), cluster, std::nullopt /* tablegroup */, false /* colocated */,
-          params.ranged_partitioned));
+          params.ranged_partitioned, params.extra_columns));
       std::shared_ptr<client::YBTable> table;
       RETURN_NOT_OK(cluster->client_->OpenTable(table_name, &table));
       cluster->tables_.push_back(table);
@@ -1171,30 +1180,68 @@ Status XClusterYsqlTestBase::PerformPITROnConsumerCluster(HybridTime time) {
   return Status::OK();
 }
 
-Status XClusterYsqlTestBase::XClusterFailover(
+Result<IsOperationDoneResult> XClusterYsqlTestBase::IsXClusterFailoverDone(
     const xcluster::ReplicationGroupId& replication_group_id) {
-  const MonoDelta kFailoverRestoreRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  const MonoDelta kRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+  auto addr = VERIFY_RESULT(
+      consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
+  master::MasterReplicationProxy proxy(
+      &consumer_cluster_.client_->proxy_cache(), addr);
   rpc::RpcController rpc;
-  rpc.set_timeout(kFailoverRestoreRpcTimeout);
-
-  master::XClusterFailoverRequestPB req;
+  rpc.set_timeout(kRpcTimeout);
+  master::IsXClusterFailoverDoneRequestPB req;
   req.set_replication_group_id(replication_group_id.ToString());
+  master::IsXClusterFailoverDoneResponsePB resp;
+  RETURN_NOT_OK(proxy.IsXClusterFailoverDone(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  if (!resp.done()) {
+    return IsOperationDoneResult::NotDone();
+  }
+  if (resp.has_failover_error()) {
+    return IsOperationDoneResult::Done(StatusFromPB(resp.failover_error()));
+  }
+  return IsOperationDoneResult::Done();
+}
 
-  master::XClusterFailoverResponsePB resp;
+Status XClusterYsqlTestBase::StartXClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  const MonoDelta kFailoverRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
 
   auto master_address =
       VERIFY_RESULT(consumer_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr());
   master::MasterReplicationProxy master_replication_proxy(
       &consumer_cluster_.client_->proxy_cache(), master_address);
-
+  rpc::RpcController rpc;
+  rpc.set_timeout(kFailoverRpcTimeout);
+  master::XClusterFailoverRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  master::XClusterFailoverResponsePB resp;
   RETURN_NOT_OK(
       master_replication_proxy.XClusterFailover(req, &resp, &rpc));
-
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-
   return Status::OK();
+}
+
+Status XClusterYsqlTestBase::XClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  const MonoDelta kFailoverRpcTimeout = MonoDelta::FromSeconds(60 * kTimeMultiplier);
+
+  RETURN_NOT_OK(StartXClusterFailover(replication_group_id));
+
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        auto result = VERIFY_RESULT(IsXClusterFailoverDone(replication_group_id));
+        if (result.done()) {
+          RETURN_NOT_OK(result.status());
+          return true;
+        }
+        return false;
+      },
+      kFailoverRpcTimeout, "IsXClusterFailoverDone");
 }
 
 Result<YBTableName> XClusterYsqlTestBase::CreateMaterializedView(

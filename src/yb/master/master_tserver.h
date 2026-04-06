@@ -164,6 +164,10 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   tserver::ConnectivityStateResponsePB ConnectivityState() override;
 
+  ReplicationInfoPB GetClusterReplicationInfo() const override;
+
+  int32_t cluster_config_version() const override;
+
  private:
   Result<pgwrapper::PGConn> CreateInternalPGConn(
       const std::string& database_name, bool simple_query_protocol = false,

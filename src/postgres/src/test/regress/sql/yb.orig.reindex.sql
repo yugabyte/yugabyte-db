@@ -3,8 +3,10 @@
 --
 
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (costs off)'
 
 --
@@ -89,23 +91,23 @@ INSERT INTO yb SELECT g, -g FROM generate_series(1, 10) g;
 INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 
 -- 1. initial state
-\set hint1 '/*+SeqScan(pg_depend) */'
-\set hint2 '/*+IndexScan(pg_depend_depender_index) */'
+\set Q1 '/*+SeqScan(pg_depend) */'
+\set Q2 '/*+IndexScan(pg_depend pg_depend_depender_index) */'
 SELECT $$
+:P :Q
 SELECT deptype FROM pg_depend
-    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
 $$ AS query \gset
-:explain2run2
-\set hint1 '/*+SeqScan(tmp) */'
-\set hint2 '/*+IndexScan(tmp_j_idx) Set(enable_bitmapscan on) */'
-\set query 'SELECT i FROM tmp WHERE j = -5'
-:explain2run2
-\set hint1 '/*+SeqScan(yb) */'
-\set hint2 '/*+IndexScan(yb_j_idx) */'
-\set query 'SELECT i FROM yb WHERE j = -5'
-:explain2run2
-\set hint1
-\set hint2
+\set Pnext :iter_Q2
+\i :iter_P2
+\set Q1 '/*+SeqScan(tmp) */'
+\set Q2 '/*+BitmapScan(tmp tmp_j_idx) */'
+\set query ':P :Q SELECT i FROM tmp WHERE j = -5;'
+\i :iter_P2
+\set Q1 '/*+SeqScan(yb) */'
+\set Q2 '/*+IndexScan(yb yb_j_idx) */'
+\set query ':P :Q SELECT i FROM yb WHERE j = -5;'
+\i :iter_P2
 
 -- 2. corruption (for temp index)
 --
@@ -127,7 +129,7 @@ UPDATE pg_index SET indislive = true, indisready = true, indisvalid = true
 -- Show the corruption.
 /*+SeqScan(tmp) */
 SELECT i FROM tmp WHERE j = -5;
-/*+IndexScan(tmp_j_idx) */
+/*+IndexScan(tmp tmp_j_idx) */
 SELECT i FROM tmp WHERE j = -5;
 -- Disable reads/writes to the index.
 UPDATE pg_index SET indislive = false, indisready = false, indisvalid = false
@@ -139,14 +141,12 @@ UPDATE pg_index SET indislive = false, indisready = false, indisvalid = false
 REINDEX INDEX tmp_j_idx;
 
 -- 4. verification (for temp index)
-\set hint1 '/*+SeqScan(tmp) */'
+\set Q1 '/*+SeqScan(tmp) */'
 -- Somehow, IndexScan hint plan fails to work at this point.  Force usage of
 -- the index by setting enable_seqscan and enable_bitmapscan to off.
-\set hint2 '/*+Set(enable_seqscan off) Set(enable_bitmapscan off) */'
-\set query 'SELECT i FROM tmp WHERE j = -5'
-:explain2run2
-\set hint1
-\set hint2
+\set Q2 '/*+Set(enable_seqscan off) Set(enable_bitmapscan off) */'
+\set query ':P :Q SELECT i FROM tmp WHERE j = -5;'
+\i :iter_P2
 
 -- 5. corruption (for YB indexes)
 --
@@ -183,12 +183,12 @@ UPDATE pg_index SET indislive = true, indisready = true, indisvalid = true
 /*+SeqScan(pg_depend) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
-/*+IndexScan(pg_depend_depender_index) */
+/*+IndexScan(pg_depend pg_depend_depender_index) */
 SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
 /*+SeqScan(yb) */
 SELECT i FROM yb WHERE j = -5;
-/*+IndexScan(yb_j_idx) */
+/*+IndexScan(yb yb_j_idx) */
 SELECT i FROM yb WHERE j = -5;
 -- Disable reads to the indexes.
 UPDATE pg_index SET indisvalid = false
@@ -203,19 +203,18 @@ REINDEX INDEX pg_depend_depender_index;
 REINDEX INDEX yb_j_idx;
 
 -- 7. verification (for YB indexes)
-\set hint1 '/*+SeqScan(pg_depend) */'
-\set hint2 '/*+IndexScan(pg_depend_depender_index) */'
+\set Q1 '/*+SeqScan(pg_depend) */'
+\set Q2 '/*+IndexScan(pg_depend pg_depend_depender_index) */'
 SELECT $$
+:P :Q
 SELECT deptype FROM pg_depend
-    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass
+    WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
 $$ AS query \gset
-:explain2run2
-\set hint1 '/*+SeqScan(yb) */'
-\set hint2 '/*+IndexScan(yb_j_idx) */'
-\set query 'SELECT i FROM yb WHERE j = -5'
-:explain2run2
-\set hint1
-\set hint2
+\i :iter_P2
+\set Q1 '/*+SeqScan(yb) */'
+\set Q2 '/*+IndexScan(yb yb_j_idx) */'
+\set query ':P :Q SELECT i FROM yb WHERE j = -5;'
+\i :iter_P2
 
 --
 -- PART 3: misc
@@ -254,31 +253,30 @@ CREATE TABLEGROUP g;
 CREATE TABLE ing (i int PRIMARY KEY, j int) TABLEGROUP g;
 CREATE INDEX NONCONCURRENTLY ON ing (j ASC);
 INSERT INTO ing SELECT g, -g FROM generate_series(1, 10) g;
-\set hint1 '/*+IndexScan(ing_j_idx)*/'
-\set query 'SELECT i FROM ing WHERE j < -8 ORDER BY i'
-:explain1run1
+\set Q1 '/*+IndexScan(ing ing_j_idx)*/'
+\set query ':P :Q1 SELECT i FROM ing WHERE j < -8 ORDER BY i;'
+\set Pnext :iter_query
+\i :iter_P2
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'ing_j_idx'::regclass;
 \c
 REINDEX INDEX ing_j_idx;
-:explain1run1
-\set query 'SELECT i FROM ing WHERE j = -9'
-:explain1run1
-\set hint1
+\i :iter_P2
+\set query ':P :Q1 SELECT i FROM ing WHERE j = -9;'
+\i :iter_P2
 DROP TABLE ing;
 
 -- matview
 CREATE MATERIALIZED VIEW mv AS SELECT * FROM yb;
 CREATE INDEX NONCONCURRENTLY ON mv (j ASC);
-\set hint1 '/*+IndexScan(mv_j_idx)*/'
-\set query 'SELECT i FROM mv WHERE j > -3 ORDER BY i'
-:explain1run1
+\set Q1 '/*+IndexScan(mv mv_j_idx)*/'
+\set query ':P :Q1 SELECT i FROM mv WHERE j > -3 ORDER BY i;'
+\i :iter_P2
 UPDATE pg_index SET indisvalid = false
     WHERE indexrelid = 'mv_j_idx'::regclass;
 \c
 REINDEX INDEX mv_j_idx;
-:explain1run1
-\set hint1
+\i :iter_P2
 DROP MATERIALIZED VIEW mv;
 
 -- partitioned table
@@ -287,13 +285,12 @@ CREATE INDEX NONCONCURRENTLY ON parted (i);
 CREATE TABLE parted_odd PARTITION OF parted FOR VALUES IN (1, 3, 5, 7, 9);
 CREATE TABLE parted_even PARTITION OF parted FOR VALUES IN (2, 4, 6, 8);
 INSERT INTO parted SELECT (2 * g), g FROM generate_series(1, 9) g;
-\set hint1 '/*+IndexOnlyScan(parted_i_idx)*/'
-\set query 'SELECT i FROM parted WHERE i = (2 * 5)'
-:explain1run1
-\set hint1 '/*+IndexOnlyScan(parted_odd_i_idx)*/'
-\set query 'SELECT i FROM parted_odd WHERE i = (2 * 5)'
-:explain1run1
-\set hint1
+\set Q1 '/*+IndexOnlyScan(parted parted_i_idx)*/'
+\set query ':P :Q1 SELECT i FROM parted WHERE i = (2 * 5);'
+\i :iter_P2
+\set Q1 '/*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/'
+\set query ':P :Q1 SELECT i FROM parted_odd WHERE i = (2 * 5);'
+\i :iter_P2
 
 -- REINDEX fails if not all child indexes are marked invalid
 UPDATE pg_index SET indisvalid = false
@@ -319,13 +316,12 @@ UPDATE pg_index SET indisvalid = false
 \c
 REINDEX INDEX parted_odd_i_idx;
 
-\set hint1 '/*+IndexOnlyScan(parted_i_idx)*/'
-\set query 'SELECT i FROM parted WHERE i = (2 * 5)'
-:explain1run1
-\set hint1 '/*+IndexOnlyScan(parted_odd_i_idx)*/'
-\set query 'SELECT i FROM parted_odd WHERE i = (2 * 5)'
-:explain1run1
-\set hint1
+\set Q1 '/*+IndexOnlyScan(parted parted_i_idx)*/'
+\set query ':P :Q1 SELECT i FROM parted WHERE i = (2 * 5);'
+\i :iter_P2
+\set Q1 '/*+IndexOnlyScan(parted_odd parted_odd_i_idx)*/'
+\set query ':P :Q1 SELECT i FROM parted_odd WHERE i = (2 * 5);'
+\i :iter_P2
 DROP TABLE parted;
 
 --

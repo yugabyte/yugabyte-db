@@ -380,6 +380,26 @@ class TransactionParticipant::Impl
 
   void Start() {
     LOG_WITH_PREFIX(INFO) << "Start";
+
+    std::lock_guard lock(mutex_);
+    for (auto& deferred : deferred_apply_intents_tasks_) {
+      auto it = transactions_.find(deferred.transaction_id);
+      if (it == transactions_.end()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Unknown transaction for deferred apply: " << deferred.transaction_id;
+        continue;
+      }
+      ScopedRWOperation operation(pending_op_counter_blocking_rocksdb_shutdown_start_);
+      if (!operation.ok()) {
+        LOG_WITH_PREFIX(WARNING)
+            << "Deferred apply rejected for: " << deferred.transaction_id;
+        continue;
+      }
+      (**it).SetApplyData(deferred.apply_state, &deferred.apply_data, &operation);
+    }
+    deferred_apply_intents_tasks_.clear();
+
+    started_ = true;
     start_latch_.CountDown();
   }
 
@@ -1023,8 +1043,19 @@ class TransactionParticipant::Impl
       if (!apply_state.active()) {
         RemoveUnlocked(
             lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
-      } else {
+      } else if (started_) {
         lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
+      } else {
+        // During bootstrap, the strand/thread pool may not be ready yet, so we cannot
+        // schedule the async ApplyIntentsTask. Record the apply state on the transaction
+        // and defer the task scheduling until Start() is called, similar to how the
+        // transaction loader defers pending applies.
+        lock_and_iterator.transaction().SetApplyData(apply_state);
+        deferred_apply_intents_tasks_.push_back(DeferredApplyIntentsTask{
+          .transaction_id = data.transaction_id,
+          .apply_data = data,
+          .apply_state = apply_state,
+        });
       }
     }
     return Status::OK();
@@ -2918,6 +2949,14 @@ class TransactionParticipant::Impl
   std::mutex pending_applies_mutex_;
   std::vector<std::pair<TabletId, TransactionId>> pending_applies_
       GUARDED_BY(pending_applies_mutex_);
+
+  struct DeferredApplyIntentsTask {
+    TransactionId transaction_id;
+    TransactionApplyData apply_data;
+    docdb::ApplyTransactionState apply_state;
+  };
+  bool started_ GUARDED_BY(mutex_) = false;
+  std::vector<DeferredApplyIntentsTask> deferred_apply_intents_tasks_ GUARDED_BY(mutex_);
 
   // Counters for fast mode transactions. The first counter tracks serializable transactions, and
   // the second tracks RR/RC transactions. Each counter is incremented by one for every running fast

@@ -173,6 +173,10 @@ class TabletServerIf : public LocalTabletServer {
   virtual Status KillPg() const = 0;
 
   virtual ConnectivityStateResponsePB ConnectivityState() = 0;
+
+  virtual ReplicationInfoPB GetClusterReplicationInfo() const = 0;
+
+  virtual int32_t cluster_config_version() const = 0;
 };
 
 } // namespace tserver

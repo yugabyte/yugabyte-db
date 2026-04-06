@@ -455,7 +455,7 @@ yb-admin \
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to compact.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
-* ADD_INDEXES: Whether to compact the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to compact the secondary indexes associated with the table.
 
 **Example**
 
@@ -480,7 +480,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: The unique UUID associated with the table.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for compaction to end. Default is `20`.
-* ADD_INDEXES: Whether to compact the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to compact the secondary indexes associated with the table.
 
 **Example**
 
@@ -690,7 +690,7 @@ yb-admin \
 * *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
 * *table*: The name of the table to flush.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
-* ADD_INDEXES: Whether to flush the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to flush the secondary indexes associated with the table.
 
 **Example**
 
@@ -716,7 +716,7 @@ yb-admin \
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default is `localhost:7100`.
 * *table-id*: The unique UUID associated with the table.
 * *timeout-in-seconds*: Specifies duration (in seconds) yb-admin waits for flushing to end. Default is `20`.
-* ADD_INDEXES: Whether to flush the secondary indexes associated with the table. Default is `false`.
+* ADD_INDEXES: Indicates to flush the secondary indexes associated with the table.
 
 **Example**
 

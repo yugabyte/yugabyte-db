@@ -512,14 +512,19 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
 bool IsTopLevelIntentKey(Slice key) {
   const bool has_cotable_id    = *key.cdata() == KeyEntryTypeAsChar::kTableId;
   const bool has_colocation_id = *key.cdata() == KeyEntryTypeAsChar::kColocationId;
-  // kGroupEnd takes 1 byte
-  size_t payload = 1;
+
+  // A top-level intent key consists of an optional table/colocation prefix followed by a single
+  // kGroupEnd byte. Compute the expected total size:
+  // No prefix:      [kGroupEnd]                                         = 1 byte
+  // cotable_id:     [kTableId (1)] [UUID (kUuidSize)] [kGroupEnd (1)]   = kUuidSize + 2
+  // colocation_id:  [kColocationId (1)] [ColocationId (4)] [kGroupEnd]  = sizeof(ColocationId) + 2
+  size_t expected_size = 1;
   if (has_cotable_id) {
-    payload = kUuidSize + 1;
+    expected_size = kUuidSize + 2;
   } else if (has_colocation_id) {
-    payload = sizeof(ColocationId) + 1;
+    expected_size = sizeof(ColocationId) + 2;
   }
-  return payload == key.size();
+  return expected_size == key.size();
 }
 
 }  // namespace yb::dockv

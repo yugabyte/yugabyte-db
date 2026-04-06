@@ -545,7 +545,7 @@ GetTablePrimaryKeyBms(Relation rel,
 												   &column_info),
 								ybc_tabledesc);
 
-		if (column_info.is_hash || column_info.is_primary)
+		if (column_info.is_hash || column_info.is_key)
 		{
 			pkey = bms_add_member(pkey, attnum - minattr);
 		}
@@ -2256,6 +2256,7 @@ int			yb_index_state_flags_update_delay = 1000;
 bool		yb_enable_expression_pushdown = true;
 bool		yb_enable_distinct_pushdown = true;
 bool		yb_enable_index_aggregate_pushdown = true;
+bool		yb_enable_primary_key_decode_from_index = false;
 bool		yb_enable_optimizer_statistics = false;
 bool		yb_make_next_ddl_statement_nonbreaking = false;
 bool		yb_make_next_ddl_statement_nonincrementing = false;
@@ -2301,7 +2302,7 @@ YBUpdateOptimizationOptions yb_update_optimization_options = {
 };
 
 YbQpmConfiguration yb_qpm_configuration = {
-	.track = YB_QPM_TRACK_NONE,
+	.track = YB_QPM_TRACK_ALL,
 	.cache_replacement_algorithm = YB_QPM_SIMPLE_CLOCK_LRU,
 	.max_cache_size = 5000,
 	.track_catalog_queries = true,
@@ -5923,7 +5924,7 @@ yb_is_local_table(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_BOOL(true);
 	}
-	YbGeolocationDistance distance = get_tablespace_distance(tablespaceId);
+	YbGeolocationDistance distance = get_geolocation_distance(tablespaceId);
 
 	PG_RETURN_BOOL(distance == REGION_LOCAL || distance == ZONE_LOCAL);
 }
@@ -6489,7 +6490,7 @@ static bool
 YBNeedCollationEncoding(const YbcPgColumnInfo *column_info)
 {
 	/* We only need collation encoding for range keys. */
-	return (column_info->is_primary && !column_info->is_hash);
+	return (column_info->is_key && !column_info->is_hash);
 }
 
 void

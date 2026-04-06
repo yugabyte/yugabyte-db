@@ -348,9 +348,13 @@ public class QueryHelper {
               if (usePG15Fields) {
                 renamePG15Fields(queryObject);
               }
-              String queryID = queryObject.get("queryid").asText();
-              String queryStatement = queryObject.get("query").asText();
-              String databaseName = queryObject.get("datname").asText();
+              ObjectNode queryRow = (ObjectNode) queryObject;
+              JsonNode queryFieldNode = queryRow.get("query");
+              String queryStatement =
+                  queryFieldNode == null || queryFieldNode.isNull() ? "" : queryFieldNode.asText();
+              queryRow.put("query", queryStatement);
+              String queryID = queryRow.get("queryid").asText();
+              String databaseName = queryRow.get("datname").asText();
               if (!isExcluded(queryStatement, config, databaseName)) {
                 if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats

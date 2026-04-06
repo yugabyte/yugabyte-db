@@ -55,7 +55,7 @@ class MetaIndexBuilder {
   MetaIndexBuilder(const MetaIndexBuilder&) = delete;
   MetaIndexBuilder& operator=(const MetaIndexBuilder&) = delete;
 
-  MetaIndexBuilder();
+  explicit MetaIndexBuilder(const yb::MemTrackerPtr& mem_tracker);
   void Add(const std::string& key, const BlockHandle& handle);
 
   // Write all the added key/value pairs to the block and return the contents
@@ -73,7 +73,7 @@ class PropertyBlockBuilder {
   PropertyBlockBuilder(const PropertyBlockBuilder&) = delete;
   PropertyBlockBuilder& operator=(const PropertyBlockBuilder&) = delete;
 
-  PropertyBlockBuilder();
+  explicit PropertyBlockBuilder(const yb::MemTrackerPtr& mem_tracker);
 
   void AddTableProperty(const TableProperties& props);
   void Add(const std::string& key, uint64_t value);

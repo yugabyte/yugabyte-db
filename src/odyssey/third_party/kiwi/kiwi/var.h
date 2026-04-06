@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -83,22 +82,7 @@ static const char *avoid_enquote_guc_list[] = {
 
 static const int avoid_enquote_guc_list_sz = sizeof(avoid_enquote_guc_list)/sizeof(char *);
 
-static inline char *yb_lowercase_str(const char *str)
-{
-	if (str == NULL)
-		return NULL;
-
-	char *lower_str = malloc(strlen(str) + 1);
-	for (int i = 0; str[i]; i++)
-		lower_str[i] = tolower((unsigned char)str[i]);
-
-	// Null-terminate the new string
-	lower_str[strlen(str)] = '\0';
-	return lower_str;
-}
-
-static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len,
-				 bool lowercase_name)
+static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	var->type = KIWI_VAR_UNDEF;
@@ -106,14 +90,8 @@ static inline void kiwi_var_init(kiwi_var_t *var, char *name, int name_len,
 #else
 	if (name_len == 0)
 		var->name[0] = '\0';
-	else {
-		if (lowercase_name) {
-			const char *yb_lowercase_name = yb_lowercase_str(name);
-			memcpy(var->name, yb_lowercase_name, name_len);
-			free((void *)yb_lowercase_name);
-		} else
-			memcpy(var->name, name, name_len);
-	}
+	else
+		memcpy(var->name, name, name_len);
 #endif
 	var->name_len = name_len;
 	var->value_len = 0;
@@ -170,8 +148,7 @@ static inline kiwi_var_t *kiwi_vars_get(kiwi_vars_t *vars, kiwi_var_type_t type)
 
 /* Dynamically allocate a new GUC variable. */
 static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
-				    char *value, int value_len,
-				    bool lowercase_name)
+				    char *value, int value_len)
 {
 	vars->size++;
 	if (vars->size == 1)
@@ -181,16 +158,7 @@ static inline void yb_kiwi_var_push(kiwi_vars_t *vars, char *name, int name_len,
 		vars->vars = realloc(vars->vars, vars->size * sizeof(kiwi_var_t));
 
 	kiwi_var_t *var = &vars->vars[vars->size - 1];
-	if (lowercase_name) {
-		if (name_len == sizeof("TimeZone") && strcmp(name, "TimeZone") == 0)
-			memcpy(var->name, name, name_len);
-		else {
-			char *yb_lowercase_name = yb_lowercase_str(name);
-			memcpy(var->name, yb_lowercase_name, name_len);
-			free((void *)yb_lowercase_name);
-		}
-	} else
-		memcpy(var->name, name, name_len);
+	memcpy(var->name, name, name_len);
 
 	var->name_len = name_len;
 	memcpy(var->value, value, value_len);
@@ -207,32 +175,15 @@ static inline int yb_kiwi_var_set(kiwi_var_t *var, char *value, int value_len)
 	return 0;
 }
 
-static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name,
-					   bool lowercase_name)
+static inline kiwi_var_t *yb_kiwi_vars_get(kiwi_vars_t *vars, char *name)
 {
 	if (vars->size == 0)
 		return NULL;
-	/* TODO(arpit.saxena): This looks ugly with lowercase_name branches, see if we can fix this */
-	const char *name_for_comp =
-		lowercase_name ? yb_lowercase_str(name) : name;
 
 	for (int i = 0; i < vars->size; i++) {
-		const char *var_name_for_comp =
-			lowercase_name ? yb_lowercase_str(vars->vars[i].name) :
-					 vars->vars[i].name;
-		if (strcmp(var_name_for_comp, name_for_comp) == 0) {
-			if (lowercase_name) {
-				free((void *)var_name_for_comp);
-				free((void *)name_for_comp);
-			}
+		if (strcmp(vars->vars[i].name, name) == 0)
 			return &vars->vars[i];
-		}
-		if (lowercase_name)
-			free((void *)var_name_for_comp);
 	}
-
-	if (lowercase_name)
-		free((void *)name_for_comp);
 	return NULL;
 }
 #endif
@@ -241,60 +192,53 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars,
 				  bool add_compute_query_id_vars)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
-	/* lowercasing of name is never done in this case, last arg is ignored */
 	kiwi_var_init(&vars->vars[KIWI_VAR_CLIENT_ENCODING], "client_encoding",
-		      16, false);
-	kiwi_var_init(&vars->vars[KIWI_VAR_DATESTYLE], "DateStyle", 10, false);
-	kiwi_var_init(&vars->vars[KIWI_VAR_TIMEZONE], "TimeZone", 9, false);
+		      16);
+	kiwi_var_init(&vars->vars[KIWI_VAR_DATESTYLE], "DateStyle", 10);
+	kiwi_var_init(&vars->vars[KIWI_VAR_TIMEZONE], "TimeZone", 9);
 	kiwi_var_init(&vars->vars[KIWI_VAR_STANDARD_CONFORMING_STRINGS],
-		      "standard_conforming_strings", 28, false);
+		      "standard_conforming_strings", 28);
 	kiwi_var_init(&vars->vars[KIWI_VAR_APPLICATION_NAME],
-		      "application_name", 17, false);
-	kiwi_var_init(&vars->vars[KIWI_VAR_COMPRESSION], "compression", 12,
-		      false);
-	kiwi_var_init(&vars->vars[KIWI_VAR_SEARCH_PATH], "search_path", 12,
-		      false);
+		      "application_name", 17);
+	kiwi_var_init(&vars->vars[KIWI_VAR_COMPRESSION], "compression", 12);
+	kiwi_var_init(&vars->vars[KIWI_VAR_SEARCH_PATH], "search_path", 12);
 	kiwi_var_init(&vars->vars[KIWI_VAR_STATEMENT_TIMEOUT],
-		      "statement_timeout", sizeof("statement_timeout"), false);
+		      "statement_timeout", sizeof("statement_timeout"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_LOCK_TIMEOUT], "lock_timeout",
-		      sizeof("lock_timeout"), false);
+		      sizeof("lock_timeout"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_IDLE_IN_TRANSACTION_SESSION_TIMEOUT],
 		      "idle_in_transaction_session_timeout",
-		      sizeof("idle_in_transaction_session_timeout"), false);
+		      sizeof("idle_in_transaction_session_timeout"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_DEFAULT_TABLE_ACCESS_METHOD],
 		      "default_table_access_method",
-		      sizeof("default_table_access_method"), false);
+		      sizeof("default_table_access_method"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_DEFAULT_TOAST_COMPRESSION],
 		      "default_toast_compression",
-		      sizeof("default_toast_compression"), false);
+		      sizeof("default_toast_compression"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_CHECK_FUNCTION_BODIES],
-		      "check_function_bodies", sizeof("check_function_bodies"),
-		      false);
+		      "check_function_bodies", sizeof("check_function_bodies"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_DEFAULT_TRANSACTION_ISOLATION],
 		      "default_transaction_isolation",
-		      sizeof("default_transaction_isolation"), false);
+		      sizeof("default_transaction_isolation"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_DEFAULT_TRANSACTION_READ_ONLY],
 		      "default_transaction_read_only",
-		      sizeof("default_transaction_read_only"), false);
+		      sizeof("default_transaction_read_only"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_DEFAULT_TRANSACTION_DEFERRABLE],
 		      "default_transaction_deferrable",
-		      sizeof("default_transaction_deferrable"), false);
+		      sizeof("default_transaction_deferrable"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_TRANSACTION_ISOLATION],
-		      "transaction_isolation", sizeof("transaction_isolation"),
-		      false);
+		      "transaction_isolation", sizeof("transaction_isolation"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_TRANSACTION_READ_ONLY],
-		      "transaction_read_only", sizeof("transaction_read_only"),
-		      false);
+		      "transaction_read_only", sizeof("transaction_read_only"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_IDLE_SESSION_TIMEOUT],
-		      "idle_session_timeout", sizeof("idle_session_timeout"),
-		      false);
+		      "idle_session_timeout", sizeof("idle_session_timeout"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_GP_SESSION_ROLE], "gp_session_role",
-		      sizeof("gp_session_role"), false);
+		      sizeof("gp_session_role"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_IS_HOT_STANDBY], "is_hot_standby",
-		      sizeof("is_hot_standby"), false);
+		      sizeof("is_hot_standby"));
 	kiwi_var_init(&vars->vars[KIWI_VAR_ODYSSEY_CATCHUP_TIMEOUT],
 		      "odyssey_catchup_timeout",
-		      sizeof("odyssey_catchup_timeout"), false);
+		      sizeof("odyssey_catchup_timeout"));
 #else
 	vars->size = 0;
 	vars->vars = NULL;
@@ -314,9 +258,8 @@ static inline void kiwi_vars_init(kiwi_vars_t *vars,
 		 * we enforce this safe order of setting GUCs here.
 		 */
 		yb_kiwi_var_push(vars, "pg_hint_plan.enable_hint_table", 31,
-				 "off", 4, false);
-		yb_kiwi_var_push(vars, "compute_query_id", 17, "auto", 5,
-				 false);
+				 "off", 4);
+		yb_kiwi_var_push(vars, "compute_query_id", 17, "auto", 5);
 	}
 #endif
 }
@@ -359,8 +302,7 @@ static inline kiwi_var_type_t kiwi_vars_find(kiwi_vars_t *vars, char *name,
 #endif
 
 static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
-				   char *value, int value_len,
-				   bool lowercase_name)
+				   char *value, int value_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
@@ -374,46 +316,31 @@ static inline int kiwi_vars_update(kiwi_vars_t *vars, char *name, int name_len,
 	kiwi_vars_set(vars, type, value, value_len);
 #else
 	/* Act as a "safe" set. (find and update, else push new value) */
-	kiwi_var_t *var = yb_kiwi_vars_get(vars, name, lowercase_name);
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
 	if (var != NULL)
 		yb_kiwi_var_set(var, value, value_len);
 	else
-		yb_kiwi_var_push(vars, name, name_len, value, value_len,
-				 lowercase_name);
+		yb_kiwi_var_push(vars, name, name_len, value, value_len);
 #endif
 	return 0;
 }
 
 static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
-						 int name_len,
-						 bool lowercase_name)
+						 int name_len)
 {
 	/* We don't support removing vars with YB_GUC_SUPPORT_VIA_SHMEM */
 #ifndef YB_GUC_SUPPORT_VIA_SHMEM
-	/* TODO(arpit.saxena): This looks ugly with lowercase_name branches, see if we can fix this */
 	if (vars->size == 0)
 		return;
 
-	char *name_for_comp = lowercase_name ? yb_lowercase_str(name) : name;
-
 	int idx_to_remove = -1;
 	for (int i = 0; i < vars->size; i++) {
-		char *var_name_for_comp =
-			lowercase_name ? yb_lowercase_str(vars->vars[i].name) :
-					 vars->vars[i].name;
-
-		int comparison_result =
-			strcmp(var_name_for_comp, name_for_comp);
-		if (lowercase_name)
-			free(var_name_for_comp);
-		if (comparison_result == 0) {
+		if (vars->vars[i].name_len == name_len &&
+		    strcmp(vars->vars[i].name, name) == 0) {
 			idx_to_remove = i;
 			break;
 		}
 	}
-
-	if (lowercase_name)
-		free(name_for_comp);
 
 	/* not found, just return */
 	if (idx_to_remove == -1)
@@ -430,8 +357,7 @@ static inline void yb_kiwi_vars_remove_if_exists(kiwi_vars_t *vars, char *name,
 
 static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
 						 int name_len, char *value,
-						 int value_len,
-						 bool lowercase_name)
+						 int value_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
@@ -444,17 +370,16 @@ static inline int yb_kiwi_vars_set_if_not_exists(kiwi_vars_t *vars, char *name,
 	}
 	kiwi_vars_set(vars, type, value, value_len);
 #else
-	kiwi_var_t *var = yb_kiwi_vars_get(vars, name, lowercase_name);
+	kiwi_var_t *var = yb_kiwi_vars_get(vars, name);
 	if (var == NULL)
-		yb_kiwi_var_push(vars, name, name_len, value, value_len,
-				 lowercase_name);
+		yb_kiwi_var_push(vars, name, name_len, value, value_len);
 #endif
 	return 0;
 }
 
 static inline int kiwi_vars_update_both(kiwi_vars_t *a, kiwi_vars_t *b,
 					char *name, int name_len, char *value,
-					int value_len, bool lowercase_name)
+					int value_len)
 {
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
 	kiwi_var_type_t type;
@@ -464,8 +389,8 @@ static inline int kiwi_vars_update_both(kiwi_vars_t *a, kiwi_vars_t *b,
 	kiwi_vars_set(a, type, value, value_len);
 	kiwi_vars_set(b, type, value, value_len);
 #else
-	kiwi_vars_update(a, name, name_len, value, value_len, lowercase_name);
-	kiwi_vars_update(b, name, name_len, value, value_len, lowercase_name);
+	kiwi_vars_update(a, name, name_len, value, value_len);
+	kiwi_vars_update(b, name, name_len, value, value_len);
 #endif
 	return 0;
 }
@@ -493,7 +418,7 @@ static inline int kiwi_vars_override(kiwi_vars_t *vars,
 		kiwi_vars_update(vars, override_vars->vars[i].name,
 				 override_vars->vars[i].name_len,
 				 override_vars->vars[i].value,
-				 override_vars->vars[i].value_len, false);
+				 override_vars->vars[i].value_len);
 	}
 #endif
 	return 0;
@@ -535,14 +460,13 @@ static bool yb_is_avoid_enquoting_guc_var(char *name)
 /*
  * YB: Return true if vars1 is a superset of vars2
  */
-static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2,
-				       bool lowercase_name)
+static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2)
 {
 	kiwi_var_t *var2;
 	for (int i = 0; i < vars2->size; i++) {
 		var2 = &vars2->vars[i];
 		kiwi_var_t *var1;
-		var1 = yb_kiwi_vars_get(vars1, var2->name, lowercase_name);
+		var1 = yb_kiwi_vars_get(vars1, var2->name);
 		if (!kiwi_var_compare(var1, var2))
 			return 0;
 	}
@@ -556,13 +480,10 @@ static inline int yb_check_is_superset(kiwi_vars_t *vars1, kiwi_vars_t *vars2,
 static inline int yb_check_reset_needed(kiwi_vars_t *client_startup_vars,
 					kiwi_vars_t *client_session_vars,
 					kiwi_vars_t *server_default_vars,
-					kiwi_vars_t *server_session_vars,
-					bool lowercase_name)
+					kiwi_vars_t *server_session_vars)
 {
-	return !(yb_check_is_superset(client_startup_vars, server_default_vars,
-				      lowercase_name) &&
-		 yb_check_is_superset(client_session_vars, server_session_vars,
-				      lowercase_name));
+	return !(yb_check_is_superset(client_startup_vars, server_default_vars) &&
+		 yb_check_is_superset(client_session_vars, server_session_vars));
 }
 
 static inline bool yb_only_white_space(char *value)
@@ -632,8 +553,7 @@ yb_kiwi_add_var_to_query(kiwi_var_t *var, char *query, int pos, int query_len)
 
 __attribute__((hot)) static inline int
 kiwi_vars_cas(kiwi_vars_t *client_session_vars,
-	      kiwi_vars_t *server_session_vars, char *query, int query_len,
-	      bool lowercase_name)
+	      kiwi_vars_t *server_session_vars, char *query, int query_len)
 {
 	int pos = 0;
 #ifdef YB_GUC_SUPPORT_VIA_SHMEM
@@ -658,8 +578,7 @@ kiwi_vars_cas(kiwi_vars_t *client_session_vars,
 			continue;
 
 		kiwi_var_t *server_var;
-		server_var = yb_kiwi_vars_get(server_session_vars, var->name,
-					      lowercase_name);
+		server_var = yb_kiwi_vars_get(server_session_vars, var->name);
 #endif
 		if (kiwi_var_compare(var, server_var))
 			continue;

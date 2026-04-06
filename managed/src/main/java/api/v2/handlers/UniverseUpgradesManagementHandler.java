@@ -9,6 +9,7 @@ import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.mappers.UniverseEditKubernetesOverridesParamsMapper;
 import api.v2.mappers.UniverseMetricsExportConfigParamsMapper;
 import api.v2.mappers.UniverseQueryLogsExportMapper;
+import api.v2.mappers.UniverseResizeNodeParamsMapper;
 import api.v2.mappers.UniverseRestartParamsMapper;
 import api.v2.mappers.UniverseRollbackUpgradeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeMapper;
@@ -25,7 +26,9 @@ import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseQueryLogsExport;
+import api.v2.models.UniverseResizeNodes;
 import api.v2.models.UniverseRestart;
+import api.v2.models.UniverseResumeCanaryUpgrade;
 import api.v2.models.UniverseRollbackUpgradeReq;
 import api.v2.models.UniverseSoftwareUpgradeFinalize;
 import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
@@ -57,6 +60,7 @@ import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -219,6 +223,15 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
 
     log.info("Started software rollback task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask resumeCanarySoftwareUpgrade(
+      UUID cUUID, UUID uniUUID, UniverseResumeCanaryUpgrade req) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid = v1Handler.resumeCanarySoftwareUpgrade(cUUID, uniUUID, req.getTaskUuid());
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
   }
 
@@ -554,5 +567,21 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
             .map(UniverseMetricsExporterConfig::getExporterUuid)
             .collect(Collectors.toSet())
         : Collections.emptySet();
+  }
+
+  public YBATask resizeNodes(Request request, UUID cUUID, UUID uniUUID, UniverseResizeNodes spec)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    ResizeNodeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toResizeNodeParams(
+            universe.getUniverseDetails(), request);
+    UniverseResizeNodeParamsMapper.INSTANCE.copyToV1ResizeNodeParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.resizeNode(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started resize node upgrade task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
   }
 }

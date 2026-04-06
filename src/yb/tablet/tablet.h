@@ -659,10 +659,16 @@ class Tablet : public AbstractTablet,
   Result<SplitKeysData> GetSplitKeys(int split_factor) const;
 
   std::string TEST_DocDBDumpStr(
-      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse);
+      docdb::IncludeIntents include_intents = docdb::IncludeIntents::kFalse,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   void TEST_DocDBDumpToContainer(
-      docdb::IncludeIntents include_intents, std::unordered_set<std::string>* out);
+      std::unordered_set<std::string>& out, docdb::IncludeIntents include_intents,
+      docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
+
+  void TEST_DocDBDumpToContainer(
+    std::vector<std::string>& out, docdb::IncludeIntents include_intents,
+    docdb::IncludeWriteTime include_write_time = docdb::IncludeWriteTime::kTrue);
 
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(docdb::IncludeIntents include_intents);
@@ -1040,7 +1046,7 @@ class Tablet : public AbstractTablet,
   std::vector<ColumnId> GetColumnSchemasForIndex(
       const std::vector<qlexpr::IndexInfo>& indexes);
 
-  void DocDBDebugDump(std::vector<std::string> *lines);
+  void DocDBDebugDump(std::vector<std::string>* lines);
 
   Status WriteTransactionalBatch(
       int64_t batch_idx,  // index of this batch in its transaction
@@ -1124,6 +1130,10 @@ class Tablet : public AbstractTablet,
   Status ProcessPgsqlGetTableKeyRangesRequest(
       const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const;
 
+  template <class Out>
+  void TEST_DocDBDumpToContainerImpl(
+      Out& out, docdb::IncludeIntents include_intents, docdb::IncludeWriteTime include_write_time);
+
   std::unique_ptr<const Schema> key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -1149,9 +1159,19 @@ class Tablet : public AbstractTablet,
 
   scoped_refptr<log::LogAnchorRegistry> log_anchor_registry_;
   std::shared_ptr<MemTracker> mem_tracker_;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker_;
-  std::shared_ptr<MemTracker> regulardb_mem_tracker_;
-  std::shared_ptr<MemTracker> intentdb_mem_tracker_;
+  // Specifies parent tserver-wise mem trackers under which per-tablet BlockBasedTable and
+  // BlockBasedTableBuilder mem trackers would be grouped.
+  // parent_block_based_table_builder_mem_tracker_ is optional, if not set, BlockBasedTableBuilder
+  // mem tracker will be added under corresponding per-RocksDB mem tracker (as of 2026-03-11:
+  // [Regular|Intents]DB->tablet-<tablet_id>->Tablets_overhead->server->root).
+  std::shared_ptr<MemTracker> parent_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> parent_block_based_table_builder_mem_tracker_;
+  // Mem trackers for BlockBasedTable and BlockBasedTableBuilder components for each of RegularDB
+  // and IntentsDB.
+  std::shared_ptr<MemTracker> regulardb_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> regulardb_block_based_table_builder_mem_tracker_;
+  std::shared_ptr<MemTracker> intentsdb_block_based_table_mem_tracker_;
+  std::shared_ptr<MemTracker> intentsdb_block_based_table_builder_mem_tracker_;
 
   MetricEntityPtr tablet_metrics_entity_;
   MetricEntityPtr table_metrics_entity_;
@@ -1285,7 +1305,8 @@ class Tablet : public AbstractTablet,
   template <class F>
   auto GetRegularDbStat(const F& func, const decltype(func())& default_value) const;
 
-  HybridTime DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs);
+  docdb::CompactionHybridTimeConstraints CompactionHybridTimeConstraints(
+      const std::vector<rocksdb::FileMetaData*>& inputs);
 
   Result<rocksdb::Options> CommonRocksDBOptions();
   Status OpenRegularDB(const rocksdb::Options& common_options);

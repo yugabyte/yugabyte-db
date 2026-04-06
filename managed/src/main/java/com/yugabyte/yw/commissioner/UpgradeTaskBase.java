@@ -1216,12 +1216,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return tServerNodes;
   }
 
-  public int getSleepTimeForProcess(ServerType processType) {
-    return processType == ServerType.MASTER
-        ? taskParams().sleepAfterMasterRestartMillis
-        : taskParams().sleepAfterTServerRestartMillis;
-  }
-
   // Find the master leader and move it to the end of the list.
   public static List<NodeDetails> sortMastersInRestartOrder(
       Universe universe, String leaderMasterAddress, List<NodeDetails> nodes) {

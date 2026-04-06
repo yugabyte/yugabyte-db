@@ -235,6 +235,14 @@ class PgClient {
                                   uint64_t* num_rows_read_from_table,
                                   double* num_rows_backfilled);
 
+  struct ReplicationInfo {
+    int32_t version;
+    ReplicationInfoPB value;
+  };
+
+  std::optional<ReplicationInfo> RefreshClusterReplicationInfo(
+      std::optional<int32_t> known_version);
+
   Result<yb::tserver::PgGetLockStatusResponsePB> GetLockStatusData(
       const std::string& table_id, const std::string& transaction_id);
 
@@ -381,8 +389,8 @@ class PgClient {
   Result<tserver::PgYCQLStatementStatsResponsePB> YCQLStatementStats();
 
   Result<tserver::PgRemoteExecResponsePB> RemoteExec(
-      std::string_view query, const std::string& tserver_uuid,
-      const std::vector<std::optional<std::string>>& params);
+      std::string_view query, const std::string& database_name,
+      const std::string& tserver_uuid, const std::vector<std::optional<std::string>>& params);
 
  private:
   class Impl;

@@ -30,8 +30,9 @@ bool CloudInfoContainsCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
 bool PlacementInfoContainsCloudInfo(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info);
 
-// Returns true if the cloud_info (possibly a wildcard/prefix) matches any placement block.
-// This is useful for validating preferred zones with wildcards.
+// Returns true if the cloud_info matches any placement block in either direction: the cloud_info
+// is a prefix of the block, or the block is a prefix of the cloud_info. Either side may use
+// wildcards (missing fields).
 bool CloudInfoMatchesPlacementInfo(
     const CloudInfoPB& cloud_info, const PlacementInfoPB& placement_info);
 

@@ -13,13 +13,11 @@
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tserver.messages.h"
-#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
@@ -104,9 +102,10 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
             "Wait for peer $0 to catch up with leader $1. Op id: $2", new_leader_idx, leader_idx,
             leader_op_id)));
 
-    RETURN_NOT_OK(yb::StepDown(
-        leader_peer, cluster_->mini_tablet_server(new_leader_idx)->server()->permanent_uuid(),
-        ForceStepDown::kTrue));
+    RETURN_NOT_OK(
+        yb::StepDown(
+            leader_peer, cluster_->mini_tablet_server(new_leader_idx)->server()->permanent_uuid(),
+            ForceStepDown::kTrue));
 
     return LoggedWaitFor(
         [this, new_leader_idx, tablet_id]() -> Result<bool> {
@@ -176,6 +175,42 @@ class YSqlAsyncWriteTest : public pgwrapper::PgMiniTestBase {
     const size_t old_leader_idx = 1;
     RETURN_NOT_OK(StepDown(GetLeaderIdx(tablet_id), old_leader_idx, tablet_id));
     return old_leader_idx;
+  }
+
+  Result<std::vector<tablet::TabletPeerPtr>> DelayFollowers(
+      const std::string& table_name, MonoDelta delay) {
+    auto peers = VERIFY_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), table_name, ListPeersFilter::kNonLeaders));
+    SCHECK_EQ(peers.size(), 2, IllegalState, "Expected 2 follower peers");
+    for (auto& peer : peers) {
+      VERIFY_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(delay);
+    }
+    return peers;
+  }
+
+  void ResumeFollowersAndWait(const std::vector<tablet::TabletPeerPtr>& peers, MonoDelta delay) {
+    ASSERT_FALSE(peers.empty());
+    const auto& tablet_id = peers[0]->tablet_id();
+    auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+    auto leader_consensus = ASSERT_RESULT(leader_peer->GetRaftConsensus());
+    const auto leader_op_id =
+        ASSERT_RESULT(leader_consensus->GetLastOpId(consensus::RECEIVED_OPID));
+
+    for (auto& peer : peers) {
+      ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(0s);
+    }
+
+    // Wait until each follower has caught up to the leader.
+    const auto timeout = delay + MonoDelta::FromSeconds(5);
+    ASSERT_OK(LoggedWaitFor(
+        [leader_consensus, leader_op_id]() -> Result<bool> {
+          return VERIFY_RESULT(leader_consensus->GetLastOpId(consensus::COMMITTED_OPID)) >=
+                 leader_op_id;
+        },
+        timeout,
+        Format(
+            "Wait for leader to commit up to op id $0 after clearing follower delay",
+            leader_op_id)));
   }
 
   void LeaderStepDownAfterWriteAckTest(bool perform_read);
@@ -568,18 +603,13 @@ END $$$$;)",
 TEST_F(YSqlAsyncWriteTest, ReadsNotBlockedByAsyncWrites) {
   ASSERT_OK(
       conn_->ExecuteFormat("CREATE TABLE $0 (a INT PRIMARY KEY) SPLIT INTO 1 TABLETS", kTableName));
+
+  const auto delay_duration = MonoDelta(30s);
+  auto follower_peers = ASSERT_RESULT(DelayFollowers(kTableName, delay_duration));
+
   ASSERT_OK(conn_->Execute("BEGIN TRANSACTION"));
 
-  auto follower_peers = ASSERT_RESULT(
-      ListTabletPeersForTableName(cluster_.get(), kTableName, ListPeersFilter::kNonLeaders));
-  ASSERT_EQ(follower_peers.size(), 2);
-
-  const auto delay_duration = 30s;
-  for (auto& peer : follower_peers) {
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(delay_duration);
-  }
-
-  // Async wite should not be blocked by the delay.
+  // Async write should not be blocked by the delay.
   const auto insert_start_time = CoarseMonoClock::now();
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
   auto now = CoarseMonoClock::now();
@@ -594,17 +624,92 @@ TEST_F(YSqlAsyncWriteTest, ReadsNotBlockedByAsyncWrites) {
   ASSERT_LT(now - read_start_time, 5s);
   ASSERT_EQ(result, "1");
 
-  for (auto& peer : follower_peers) {
-    ASSERT_RESULT(peer->GetRaftConsensus())->TEST_DelayUpdate(0s);
-  }
-
-  // Wait for the heartbeats to resume.
-  SleepFor(delay_duration + 5s);
+  ResumeFollowersAndWait(follower_peers, delay_duration);
 
   ASSERT_OK(conn_->CommitTransaction());
 
   result = ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0", kTableName)));
   ASSERT_EQ(result, "1");
+}
+
+TEST_F(YSqlAsyncWriteTest, SelectForUpdateAsyncWrite) {
+  google::SetVLOGLevel("write_query*", 2);
+  // Internal async writes are triggered by the read path's write query to lock rows.
+  auto internal_async_write_count = StringWaiterLogSink("Performing Async write: Internal request");
+
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 'a'), (2, 'b'), (3, 'c')", kTableName));
+
+  auto initial_count = internal_async_write_count.GetEventCount();
+
+  const auto delay_duration = MonoDelta(30s);
+  auto follower_peers = ASSERT_RESULT(DelayFollowers(kTableName, delay_duration));
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  // SELECT FOR UPDATE acquires row-level locks, which go through the read path's write query.
+  const auto select_for_update_start = CoarseMonoClock::now();
+  auto rows = ASSERT_RESULT(
+      conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key FOR UPDATE", kTableName)));
+  // SELECT FOR UPDATE should complete quickly despite follower delay.
+  auto elapsed = CoarseMonoClock::now() - select_for_update_start;
+  LOG(INFO) << "SELECT FOR UPDATE time: " << MonoDelta(elapsed);
+  ASSERT_LT(elapsed, 5s);
+  ASSERT_EQ(rows, "1, a; 2, b; 3, c");
+
+  // Verify that the async write was triggered.
+  auto count_after = internal_async_write_count.GetEventCount();
+  LOG(INFO) << "Counts after SELECT FOR UPDATE: " << count_after << " - " << initial_count;
+  ASSERT_EQ(count_after, initial_count + 1);
+
+  const auto read_start = CoarseMonoClock::now();
+  rows =
+      ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  // Follow-up read should also be fast.
+  elapsed = CoarseMonoClock::now() - read_start;
+  LOG(INFO) << "Follow-up read time: " << MonoDelta(elapsed);
+  ASSERT_LT(elapsed, 5s);
+  ASSERT_EQ(rows, "1, a; 2, b; 3, c");
+
+  ResumeFollowersAndWait(follower_peers, delay_duration);
+
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET value = 'x' WHERE key = 2", kTableName));
+  ASSERT_OK(conn_->CommitTransaction());
+
+  rows =
+      ASSERT_RESULT(conn_->FetchAllAsString(Format("SELECT * FROM $0 ORDER BY key", kTableName)));
+  ASSERT_EQ(rows, "1, a; 2, x; 3, c");
+}
+
+TEST_F(YSqlAsyncWriteTest, ForeignKeyAsyncWrite) {
+  google::SetVLOGLevel("write_query*", 2);
+  // Internal async writes are triggered by the read path's write query to lock rows.
+  auto async_write_count = StringWaiterLogSink("Performing Async write: Internal request");
+
+  ASSERT_OK(
+      conn_->Execute("CREATE TABLE parent(id INT PRIMARY KEY, name TEXT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE child(id INT PRIMARY KEY, parent_id INT REFERENCES parent(id)) "
+      "SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn_->Execute("INSERT INTO parent VALUES (1, 'p1'), (2, 'p2')"));
+
+  auto initial_count = async_write_count.GetEventCount();
+
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  // Foreign key insert triggers a lock on the parent row to prevent concurrent deletion.
+  ASSERT_OK(conn_->Execute("INSERT INTO child VALUES (10, 1)"));
+  ASSERT_OK(conn_->Execute("INSERT INTO child VALUES (20, 2)"));
+
+  auto count_after = async_write_count.GetEventCount();
+  LOG(INFO) << "Counts after FOREIGN KEY INSERT: " << count_after << " - " << initial_count;
+  ASSERT_EQ(count_after, initial_count + 2);  // Two async writes for the two INSERTs.
+
+  ASSERT_OK(conn_->CommitTransaction());
+
+  auto parent_rows = ASSERT_RESULT(conn_->FetchAllAsString("SELECT * FROM parent ORDER BY id"));
+  ASSERT_EQ(parent_rows, "1, p1; 2, p2");
+  auto child_rows = ASSERT_RESULT(conn_->FetchAllAsString("SELECT * FROM child ORDER BY id"));
+  ASSERT_EQ(child_rows, "10, 1; 20, 2");
 }
 
 }  // namespace yb

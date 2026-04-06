@@ -27,6 +27,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tserver/tserver.proto";
+import "yb/common/common_net.proto";
 
 // Common information sent with every request from the tablet server
 // to the master.
@@ -330,6 +331,8 @@ message TSHeartbeatResponsePB {
     map<string, XClusterNamespaceInfoPB> xcluster_info_per_namespace = 1;
   }
   optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
+
+  optional ReplicationInfoPB cluster_replication_info = 31;
 }
 
 service MasterHeartbeat {

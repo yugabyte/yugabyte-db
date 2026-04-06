@@ -20,6 +20,7 @@
 #include "yb/rocksdb/util/coding.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
@@ -33,18 +34,19 @@ IndexBuilder* IndexBuilder::CreateIndexBuilder(
     IndexType type,
     const Comparator* comparator,
     const SliceTransform* prefix_extractor,
-    const BlockBasedTableOptions& table_opt) {
+    const BlockBasedTableOptions& table_opt,
+    const yb::MemTrackerPtr& mem_tracker) {
   switch (type) {
     case IndexType::kBinarySearch: {
-      return new ShortenedIndexBuilder(comparator,
-                                       table_opt.index_block_restart_interval);
+      return new ShortenedIndexBuilder(
+          comparator, table_opt.index_block_restart_interval, mem_tracker);
     }
     case IndexType::kHashSearch: {
-      return new HashIndexBuilder(comparator, prefix_extractor,
-                                  table_opt.index_block_restart_interval);
+      return new HashIndexBuilder(
+          comparator, prefix_extractor, table_opt.index_block_restart_interval, mem_tracker);
     }
     case IndexType::kMultiLevelBinarySearch: {
-      return new MultiLevelIndexBuilder(comparator, table_opt);
+      return new MultiLevelIndexBuilder(comparator, table_opt, mem_tracker);
     }
     default: {
       assert(!"Do not recognize the index type ");
@@ -139,15 +141,19 @@ void HashIndexBuilder::FlushPendingPrefix() {
 }
 
 MultiLevelIndexBuilder::MultiLevelIndexBuilder(
-    const Comparator* comparator, const BlockBasedTableOptions& table_opt)
+    const Comparator* comparator, const BlockBasedTableOptions& table_opt,
+    const yb::MemTrackerPtr& mem_tracker)
     : IndexBuilder(comparator),
-      table_opt_(table_opt) {}
+      table_opt_(table_opt),
+      consumption_(
+          mem_tracker ? yb::ScopedTrackedConsumption(mem_tracker, 0)
+                      : yb::ScopedTrackedConsumption()) {}
 
 void MultiLevelIndexBuilder::EnsureCurrentLevelIndexBuilderCreated() {
   if (!current_level_index_block_builder_) {
     DCHECK(!flush_policy_);
-    current_level_index_block_builder_.reset(
-        new ShortenedIndexBuilder(comparator_, table_opt_.index_block_restart_interval));
+    current_level_index_block_builder_.reset(new ShortenedIndexBuilder(
+        comparator_, table_opt_.index_block_restart_interval, consumption_.mem_tracker()));
     flush_policy_ = FlushBlockBySizePolicyFactory::NewFlushBlockPolicy(
         table_opt_.index_block_size, table_opt_.block_size_deviation,
         table_opt_.min_keys_per_index_block,
@@ -248,7 +254,7 @@ Result<bool> MultiLevelIndexBuilder::FlushNextBlock(
       // level, i.e. if we have next block at current level. Otherwise current level will be the top
       // level with single index block.
       next_level_index_builder_ = std::make_unique<MultiLevelIndexBuilder>(
-          comparator_, table_opt_);
+          comparator_, table_opt_, consumption_.mem_tracker());
     }
     if (next_level_index_builder_) {
       // Postpone adding index entry for just flushed block for next FlushNextBlock() call, since

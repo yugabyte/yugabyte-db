@@ -33,6 +33,7 @@
 #include "yb/client/table_info.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_net.pb.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -547,6 +548,13 @@ PgClient::ProxyInitInfo MakeProxyInitInfo(
   }
   LOG(INFO) << "Using TServer host_port: " << result.host_port;
   return result;
+}
+
+YbcCloudInfo MakeYbcCloudInfo(const CloudInfoPB& pb) {
+  return YbcCloudInfo{
+      pb.placement_cloud().c_str(),
+      pb.placement_region().c_str(),
+      pb.placement_zone().c_str()};
 }
 
 } // namespace
@@ -1563,6 +1571,48 @@ Result<dockv::KeyBytes> PgApiImpl::BuildTupleId(const YbcPgYBTupleIdDescriptor& 
     return tuple_id_builder_.Build(pg_session_.get(), descr);
 }
 
+Status PgApiImpl::DecodePKColumnsFromBasectid(
+    const PgObjectId& table_id, Slice basectid,
+    int num_attrs, YbcPgAttrValueDescriptor* attrs) {
+  auto table_desc = VERIFY_RESULT(pg_session_->LoadTable(table_id));
+
+  dockv::DocKey doc_key;
+  RETURN_NOT_OK(doc_key.DecodeFrom(
+      &basectid, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+
+  const auto& hash_group = doc_key.hashed_group();
+  const auto& range_group = doc_key.range_group();
+  size_t hash_idx = 0;
+  size_t range_idx = 0;
+
+  // Walk PK columns, decode each matching requested attribute.
+  for (auto i : Range(table_desc->num_key_columns())) {
+    PgColumn col(table_desc->schema(), i);
+    if (col.is_partition()) {
+      SCHECK(hash_idx < hash_group.size(), Corruption,
+             "DocKey hash group too short for table schema");
+    } else {
+      SCHECK(range_idx < range_group.size(), Corruption,
+             "DocKey range group too short for table schema");
+    }
+    const auto& key_val = col.is_partition()
+        ? hash_group[hash_idx++]
+        : range_group[range_idx++];
+
+    for (int j = 0; j < num_attrs; ++j) {
+      if (attrs[j].attr_num == col.attr_num()) {
+        QLValuePB ql_val;
+        key_val.ToQLValuePB(col.desc().type(), &ql_val);
+        RETURN_NOT_OK(PBToDatum(
+            attrs[j].type_entity, YbcPgTypeAttrs{-1},
+            ql_val, &attrs[j].datum, &attrs[j].is_null));
+        break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status PgApiImpl::StartOperationsBuffering() {
   return pg_session_->StartOperationsBuffering();
 }
@@ -1968,6 +2018,43 @@ Status PgApiImpl::OperatorAppendArg(PgExpr *op_handle, PgExpr *arg) {
 
 Result<bool> PgApiImpl::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
+}
+
+void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
+  auto info = client_.RefreshClusterReplicationInfo(
+      value_ ? std::optional(value_->version) : std::nullopt);
+  if (!info) {
+    return;
+  }
+  value_ = std::move(info);
+  cloud_infos_holder_.clear();
+  auto& replication_pb = value_->value;
+  const auto& live_replicas = replication_pb.live_replicas().placement_blocks();
+  const auto& affinitized_leaders =
+      replication_pb.multi_affinitized_leaders().empty()
+          ? replication_pb.affinitized_leaders()
+          : replication_pb.multi_affinitized_leaders().begin()->zones();
+
+  const auto num_live_replicas = live_replicas.size();
+  const auto num_affinitized_leaders = affinitized_leaders.size();
+
+  cloud_infos_holder_.reserve(num_live_replicas + num_affinitized_leaders);
+
+  for (const auto& lr : live_replicas) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(lr.cloud_info()));
+  }
+
+  for (const auto& al : affinitized_leaders) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(al));
+  }
+
+  const auto* data = cloud_infos_holder_.data();
+  postgres_view_ = {
+    .num_live_replicas = num_live_replicas,
+    .live_replicas = num_live_replicas ? data : nullptr,
+    .num_affinitized_leaders = num_affinitized_leaders,
+    .affinitized_leaders = num_affinitized_leaders ? (data + num_live_replicas) : nullptr
+  };
 }
 
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
@@ -2734,7 +2821,7 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
     return result;
 }
 
-Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
+Status PgApiImpl::NewGlobalViewRead(const char* database_name, PgGlobalViewRead** handle) {
   auto ts_info = VERIFY_RESULT(ListTabletServers());
   auto& t_servers = ts_info.tablet_servers;
   std::vector<std::string> uuids;
@@ -2742,7 +2829,7 @@ Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
   for (auto& ts : t_servers) {
     uuids.emplace_back(std::move(ts.server.uuid));
   }
-  auto read = std::make_unique<PgGlobalViewRead>(std::move(uuids));
+  auto read = std::make_unique<PgGlobalViewRead>(database_name, std::move(uuids));
   *handle = read.get();
   pg_callbacks_.GetCurrentYbMemctx()->Register(read.release());
   return Status::OK();

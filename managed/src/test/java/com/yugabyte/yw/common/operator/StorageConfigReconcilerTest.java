@@ -66,6 +66,7 @@ public class StorageConfigReconcilerTest extends FakeDBApplication {
   public void setup() throws Exception {
     when(scInformer.getIndexer()).thenReturn(indexer);
     when(resourceClient.inNamespace(anyString())).thenReturn(inNamespaceResource);
+    when(inNamespaceResource.withName(anyString())).thenReturn(storageConfigResource);
     when(inNamespaceResource.resource(any(StorageConfig.class))).thenReturn(storageConfigResource);
     when(operatorUtils.getCustomerUUID()).thenThrow(new RuntimeException("mock - skip processing"));
     storageConfigReconciler =

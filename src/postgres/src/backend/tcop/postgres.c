@@ -1687,7 +1687,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 				   Oid *paramTypes, /* parameter types */
 				   int numParams,	/* number of parameters */
 				   CommandDest output_dest, /* where to send output */
-				   bool yb_parse_no_parse_complete) /* do not send
+				   bool yb_parse_custom_parse_complete) /* do not send
 													 * ParseComplete */
 {
 	MemoryContext unnamed_stmt_context = NULL;
@@ -1892,13 +1892,17 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	/*
 	 * Send ParseComplete.
 	 *
-	 * YB: Do not send this packet only if a Parse was specifically requested
-	 * by Connection Manager without the need for ParseComplete.
+	 * YB: Send a custom packet if a Parse was requested by Connection Manager
+	 * without the need for ParseComplete for packet protocol alignment.
 	 */
-	if (output_dest == DestRemote &&
-		!(YbIsClientYsqlConnMgr() && yb_parse_no_parse_complete))
-		pq_putemptymessage('1');
 
+	if (output_dest == DestRemote)
+	{
+		if (YbIsClientYsqlConnMgr() && yb_parse_custom_parse_complete)
+			pq_putemptymessage('7');
+		else
+			pq_putemptymessage('1');
+	}
 	/*
 	 * Emit duration logging if appropriate.
 	 */
@@ -6795,6 +6799,7 @@ PostgresMain(const char *dbname, const char *username)
 			 */
 			YbInvalidateCatalogSnapshot();
 			YBCheckSharedCatalogCacheVersion();
+			YBCRefreshClusterReplicationInfo();
 			yb_run_with_explain_analyze = false;
 			if (IsYsqlUpgrade &&
 				yb_catalog_version_type != CATALOG_VERSION_CATALOG_TABLE)
@@ -6887,7 +6892,7 @@ PostgresMain(const char *dbname, const char *username)
 				}
 				break;
 
-			case 'n':			/* YB: no-op but return ParseComplete */
+			case 'n':			/* YB: no-op, return custom ParseComplete */
 				if (!YbIsClientYsqlConnMgr())
 					ereport(FATAL,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -6895,7 +6900,11 @@ PostgresMain(const char *dbname, const char *username)
 									firstchar)));
 				if (whereToSendOutput == DestRemote)
 				{
-					pq_putemptymessage('1');
+					/*
+					 * YB: Send a custom ParseComplete packet to indicate that the server
+					 * has received the no-op parse request.
+					 */
+					pq_putemptymessage('6');
 					pq_flush();
 				}
 				break;
@@ -7091,7 +7100,7 @@ PostgresMain(const char *dbname, const char *username)
 												   NULL /* param_types */ ,
 												   0 /* num_params */ ,
 												   DestNone,
-												   false);	/* yb_parse_no_parse_complete */
+												   false);	/* yb_parse_custom_parse_complete */
 
 								/* 2. Redo the Bind step */
 								Portal		portal;

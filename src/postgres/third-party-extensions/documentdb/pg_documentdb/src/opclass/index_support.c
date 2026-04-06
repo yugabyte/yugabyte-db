@@ -2101,7 +2101,7 @@ ConsiderIndexOrderByPushdownForId(PlannerInfo *root, RelOptInfo *rel, RangeTblEn
 				NIL /* yb_bitmap_idx_pushdowns */,
 				NIL, NIL, NIL, scanDir, false, NULL,
 				1, false,
-				NULL);	/* yb_saop_merge_append_saop_cols */
+				NULL);	/* yb_merge_scan_append_saop_cols */
 			primaryKeyPath->path.pathkeys = list_make1(sortDetailsInput->sortPathKey);
 			pathsToAdd = lappend(pathsToAdd, primaryKeyPath);
 		}
@@ -4121,7 +4121,7 @@ TryUseAlternateIndexForIndexHint(PlannerInfo *root, RelOptInfo *rel,
 											    NIL, NIL, NIL, NIL,
 											   ForwardScanDirection, false, NULL, 1,
 											   false,
-											   NULL);	/* yb_saop_merge_append_saop_cols */
+											   NULL);	/* yb_merge_scan_append_saop_cols */
 		add_path(rel, (Path *) newPath);
 		return true;
 	}
@@ -4197,7 +4197,7 @@ TryUseAlternateIndexForIndexHint(PlannerInfo *root, RelOptInfo *rel,
 										   NIL, NIL, NIL,
 										   ForwardScanDirection, false, NULL, 1,
 										   false,
-										   NULL);	/* yb_saop_merge_append_saop_cols */
+										   NULL);	/* yb_merge_scan_append_saop_cols */
 
 	/* See comment as well in MatchIndexPathForIndexHint */
 	newPath->indextotalcost = 0;
@@ -4321,7 +4321,7 @@ TryUseAlternateIndexForPrimaryKeyLookup(PlannerInfo *root, RelOptInfo *rel,
 								 ForwardScanDirection, indexOnly,
 								 outerRelids,
 								 loopCount, partialPath,
-								 NULL);	/* yb_saop_merge_append_saop_cols */
+								 NULL);	/* yb_merge_scan_append_saop_cols */
 	}
 
 	path->indextotalcost = 0;

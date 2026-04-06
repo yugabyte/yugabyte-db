@@ -6404,7 +6404,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 									  NIL, NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false,
-									  NULL);	/* yb_saop_merge_saop_cols */
+									  NULL);	/* yb_merge_scan_saop_cols */
 
 	return (seqScanAndSortPath.total_cost < indexScanPath->path.total_cost);
 }

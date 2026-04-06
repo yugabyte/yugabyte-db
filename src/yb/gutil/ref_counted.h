@@ -42,6 +42,7 @@ typedef std::atomic<intptr_t> AtomicRefCount;
 class RefCountedBase {
  public:
   bool HasOneRef() const { return ref_count_ == 1; }
+  bool HasTwoRef() const { return ref_count_ == 2; }
 
  protected:
   RefCountedBase();
@@ -242,19 +243,35 @@ void intrusive_ptr_release(RefCountedThreadSafe<T, Traits>* px) {
 // A thread-safe wrapper for some piece of data so we can place other
 // things in scoped_refptrs<>.
 //
-template<typename T>
-class RefCountedData
-    : public yb::RefCountedThreadSafe< yb::RefCountedData<T> > {
+template <class T>
+class RefCountedData : public RefCountedThreadSafe<RefCountedData<T>> {
  public:
-  RefCountedData() : data() {}
-  explicit RefCountedData(const T& in_value) : data(in_value) {}
+  using element_type = T;
 
-  T data;
+  RefCountedData() = default;
+  RefCountedData(RefCountedData&&) = default;
+  RefCountedData(const RefCountedData&) = default;
+
+  template <class... Ts>
+  requires (std::is_constructible_v<element_type, Ts...>)
+  explicit RefCountedData(Ts&&... args) : value_(std::forward<Ts>(args)...) {}
+
+  element_type* operator->() { return &value_; }
+  const element_type* operator->() const { return &value_; }
+  element_type& operator*() { return value_; }
+  const element_type& operator*() const { return value_; }
 
  private:
-  friend class yb::RefCountedThreadSafe<yb::RefCountedData<T> >;
-  ~RefCountedData() {}
+  friend class RefCountedThreadSafe<RefCountedData>;
+  ~RefCountedData() = default;
+
+  element_type value_;
 };
+
+template <class T>
+constexpr bool kIsRefCountedData = false;
+template <class T>
+constexpr bool kIsRefCountedData<RefCountedData<T>> = true;
 
 }  // namespace yb
 
@@ -417,8 +434,121 @@ class scoped_refptr {
     *this = p;
   }
 
+  bool HasOneRef() const { return ptr_->HasOneRef(); }
+  bool HasTwoRef() const { return ptr_->HasTwoRef(); }
+
  protected:
   T* ptr_;
+
+ private:
+  template <typename U> friend class scoped_refptr;
+};
+
+template <class T>
+requires (yb::kIsRefCountedData<T>)
+class scoped_refptr<T> {
+ public:
+  using element_type = T::element_type;
+
+  scoped_refptr() = default;
+
+  scoped_refptr(T* p) : ptr_(p) { // NOLINT
+    if (ptr_)
+      ptr_->AddRef();
+  }
+
+  scoped_refptr(const scoped_refptr<T>& r) : ptr_(r.ptr_) {
+    if (ptr_)
+      ptr_->AddRef();
+  }
+
+  template <typename U>
+  scoped_refptr(const scoped_refptr<U>& r) : ptr_(r.ptr_) {
+    if (ptr_)
+      ptr_->AddRef();
+  }
+
+  template <typename U>
+  scoped_refptr(scoped_refptr<U>&& r) : ptr_(std::exchange(r.ptr_, nullptr)) {}
+
+  ~scoped_refptr() {
+    if (ptr_)
+      ptr_->Release();
+  }
+
+  element_type* get() const { return operator->(); }
+
+  T* detach() {
+    auto* temp = ptr_;
+    ptr_ = nullptr;
+    return temp;
+  }
+
+  explicit operator bool() const { return ptr_ != nullptr; }
+
+  bool operator!() const { return ptr_ == nullptr; }
+
+  element_type* operator->() const {
+    ScopedRefPtrCheck(ptr_ != nullptr);
+    return ptr_->operator->();
+  }
+
+  element_type& operator*() const {
+    return *operator->();
+  }
+
+  scoped_refptr<T>& operator=(T* p) {
+    // AddRef first so that self assignment should work
+    if (p)
+      p->AddRef();
+    auto* old_ptr = ptr_;
+    ptr_ = p;
+    if (old_ptr)
+      old_ptr->Release();
+    return *this;
+  }
+
+  scoped_refptr<T>& operator=(const scoped_refptr<T>& r) {
+    return *this = r.ptr_;
+  }
+
+  template <typename U>
+  scoped_refptr<T>& operator=(const scoped_refptr<U>& r) {
+    return *this = r.ptr_;
+  }
+
+  scoped_refptr<T>& operator=(scoped_refptr<T>&& r) {
+    scoped_refptr<T>(r).swap(*this);
+    return *this;
+  }
+
+  template <typename U>
+  scoped_refptr<T>& operator=(scoped_refptr<U>&& r) {
+    scoped_refptr<T>(r).swap(*this);
+    return *this;
+  }
+
+  void swap(T** pp) {
+    auto* p = ptr_;
+    ptr_ = *pp;
+    *pp = p;
+  }
+
+  void swap(scoped_refptr<T>& r) {
+    swap(&r.ptr_);
+  }
+
+  // Like std::unique_ptr::reset(), drops a reference on the currently held object
+  // (if any), and adds a reference to the passed-in object (if not NULL).
+  void reset(T* p = NULL) {
+    *this = p;
+  }
+
+  bool HasOneRef() const { return ptr_->HasOneRef(); }
+  bool HasTwoRef() const { return ptr_->HasTwoRef(); }
+
+ protected:
+  T* ptr_ = nullptr;
 
  private:
   template <typename U> friend class scoped_refptr;

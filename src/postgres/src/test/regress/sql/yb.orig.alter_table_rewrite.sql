@@ -2,8 +2,10 @@
 -- ALTER TABLE with table rewrite tests.
 --
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
 
 -- Suppress NOTICE messages during table rewrite operations.
 SET client_min_messages TO WARNING;
@@ -573,13 +575,15 @@ WHERE new.relname = 'idx_collation';
 -- query after collation change should return correct results
 -- should return: xyz and 'U&'\00E4bc''
 \set explain 'EXPLAIN (COSTS OFF)'
-\set hint1 '/*+ IndexScan(collation_test idx_collation) */'
-\set hint2 '/*+ SeqScan(collation_test) */'
+\set Q1 '/*+ IndexScan(collation_test idx_collation) */'
+\set Q2 '/*+ SeqScan(collation_test) */'
+\set Pnext :iter_Q2
 SELECT $$
+:P :Q
 SELECT encode(name::bytea, 'escape') as utf8_bytes
 FROM collation_test WHERE name > 'x' ORDER BY name;
 $$ AS query \gset
-:explain2run2
+\i :iter_P2
 DROP TABLE table_info;
 DROP TABLE index_info;
 RESET enable_seqscan;

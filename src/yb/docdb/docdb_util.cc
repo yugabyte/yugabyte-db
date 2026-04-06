@@ -351,11 +351,11 @@ string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
              intents_db(), this /*schema_packing_provider*/, StorageDbType::kIntents);
 }
 
-void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>* out) {
+void DocDBRocksDBUtil::DocDBDebugDumpToContainer(std::unordered_set<std::string>& out) {
   DocDB db;
   db.regular = rocksdb();
   db.intents = intents_db();
-  docdb::DocDBDebugDumpToContainer(db, this /*schema_packing_provider*/, out);
+  docdb::DocDBDebugDumpToContainer(out, db, this /*schema_packing_provider*/);
 }
 
 Status DocDBRocksDBUtil::SetPrimitive(
@@ -564,7 +564,9 @@ Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {
-        return delete_marker_retention_time_;
+        return CompactionHybridTimeConstraints {
+          .other_min = delete_marker_retention_time_,
+        };
       } ,
       this);
   regular_db_options_.compaction_file_filter_factory = compaction_file_filter_factory_;

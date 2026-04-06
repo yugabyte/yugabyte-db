@@ -492,14 +492,15 @@ void TabletSplitManager::DisableSplittingForSmallKeyRangeTablet(const TabletId& 
   }
 }
 
-Status TabletSplitManager::PrepareForPitr(const CoarseTimePoint& deadline) {
+Status TabletSplitManager::PrepareForSnapshotRestore(
+    const CoarseTimePoint& deadline, const std::string& feature_name) {
   const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
       (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
   const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
       MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
 
   // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableSplittingFor(disable_duration_ms, kPitrFeatureName);
+  DisableSplittingFor(disable_duration_ms, feature_name);
 
   bool inflight_splits_finished = false;
   while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
@@ -512,7 +513,7 @@ Status TabletSplitManager::PrepareForPitr(const CoarseTimePoint& deadline) {
   }
 
   if (!inflight_splits_finished) {
-    ReenableSplittingFor(kPitrFeatureName);
+    ReenableSplittingFor(feature_name);
     return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
   }
   return Status::OK();

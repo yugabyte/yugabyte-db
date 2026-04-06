@@ -1122,8 +1122,7 @@ Refer to [get data-migration-report](../../reference/data-migration/import-data/
 
 ### Archive changes (Optional)
 
-As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command:
-
+As the migration continuously exports changes on the source database to the `EXPORT-DIR`, disk use continues to grow. To prevent the disk from filling up, you can optionally use the `archive changes` command.
 
 Run the command as follows:
 
@@ -1143,7 +1142,7 @@ You can specify additional `archive changes` parameters in the `archive-changes`
 
 ```sh
 # Replace the argument values with those applicable for your migration.
-yb-voyager archive changes --export-dir <EXPORT-DIR> --move-to <DESTINATION-DIR>
+yb-voyager archive changes --export-dir <EXPORT-DIR> --policy <POLICY-TYPE>
 ```
 
   {{% /tab %}}

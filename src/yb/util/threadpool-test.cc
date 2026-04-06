@@ -47,6 +47,7 @@
 #include "yb/gutil/sysinfo.h"
 
 #include "yb/util/barrier.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
@@ -826,5 +827,36 @@ TEST_F(TestThreadPool, TestTaskRunnerStopWait) {
   ASSERT_NOK(runner.Wait(StopWaitIfFailed::kFalse));
   ASSERT_EQ(2, val);
 }
+
+#ifdef __linux__
+TEST_F(TestThreadPool, TestCgroupTaggedPools) {
+  constexpr size_t kTotalTasks = 100;
+  constexpr size_t kTotalPools = 13;
+
+  ASSERT_OK(SetupCgroupManagement(ClearChildCgroups::kTrue));
+  Cgroup* root_cgroup = RootCgroup();
+  std::vector<Cgroup*> cgroups;
+  for (size_t i = 0; i < kTotalPools + 1; ++i) {
+    cgroups.push_back(&ASSERT_RESULT_REF(root_cgroup->CreateOrLoadChild(Format("test-$0", i))));
+  }
+
+  TaggedThreadPools tagged_pools{[&](TaggedThreadPools::Tag tag) {
+    return ThreadPoolOptions {
+      .name = Format("test-pool-$0", tag),
+      .max_workers = 100,
+      .cgroup = cgroups[tag],
+    };
+  }};
+
+  for (size_t i = 0; i < kTotalTasks; ++i) {
+    TaggedThreadPools::Tag tag = i % kTotalPools;
+    ASSERT_OK(ASSERT_RESULT(tagged_pools.Pool(tag)).SubmitFunc([tag, &cgroups] {
+      auto active_cgroup = ASSERT_RESULT(GetThreadCpuCgroup());
+      ASSERT_EQ(active_cgroup, cgroups[tag]->full_name());
+    }));
+  }
+  ASSERT_EQ(tagged_pools.ActivePools(), kTotalPools);
+}
+#endif
 
 } // namespace yb

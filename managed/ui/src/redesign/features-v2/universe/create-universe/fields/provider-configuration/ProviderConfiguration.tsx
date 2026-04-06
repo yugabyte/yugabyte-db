@@ -7,19 +7,11 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { ChangeEvent } from 'react';
-import { sortBy } from 'lodash';
+import { ChangeEvent, useState, useEffect } from 'react';
+import { sortBy, isEmpty } from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { useUpdateEffect } from 'react-use';
-import {
-  Controller,
-  FieldValues,
-  Path,
-  PathValue,
-  useFormContext,
-  useWatch
-} from 'react-hook-form';
+import { Controller, FieldValues, Path, PathValue, useFormContext } from 'react-hook-form';
 import { YBAutoComplete, YBLabel, YBSelectProps, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/utils/api';
 import { YBProvider } from '../../../../../../components/configRedesign/providerRedesign/types';
@@ -60,21 +52,33 @@ export const ProviderConfigurationField = <T extends FieldValues>({
   sx,
   disabled
 }: ProviderConfigurationFieldProps<T>) => {
-  const { control, setValue } = useFormContext<T>();
+  const { control, setValue, getValues } = useFormContext<T>();
+  const [filteredProviders, setFilteredProviders] = useState<Provider[]>([]);
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.generalSettings' });
-  const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
-    enabled: !!filterByProvider
-  });
 
-  let providersList: Provider[] = [];
-  if (!isLoading && data) {
-    providersList = (data as YBProvider[]).filter(
+  const getFilteredProviders = (providersList: Provider[], cloud: any) => {
+    let providers: Provider[] = [];
+    providers = (providersList as YBProvider[]).filter(
       (provider) =>
         provider.usabilityState === ProviderStatus.READY &&
         (!filterByProvider || provider.code === filterByProvider)
     ) as Provider[];
-    providersList = sortBy(providersList, 'code', 'name'); //sort by provider code and name
-  }
+    providers = sortBy(providers, 'code', 'name');
+    return providers;
+  };
+
+  const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
+    enabled: !!filterByProvider,
+    onSuccess: (providers) => {
+      // Pre-select provider by default
+      if (isEmpty(getValues(name)) && providers.length >= 1) {
+        const provider = getFilteredProviders(providers, filterByProvider)[0];
+        const isOnPremManuallyProvisioned =
+          provider?.code === ProviderCode.ON_PREM && provider?.details?.skipProvisioning;
+        setValue(name, { ...provider, isOnPremManuallyProvisioned } as PathValue<T, Path<T>>);
+      }
+    }
+  });
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     if (option) {
@@ -85,13 +89,19 @@ export const ProviderConfigurationField = <T extends FieldValues>({
         shouldValidate: true
       });
     } else {
-      setValue(name, null as PathValue<T, Path<T>>, { shouldValidate: true });
+      setValue(name, null as PathValue<T, Path<T>>);
     }
   };
 
-  useUpdateEffect(() => {
-    setValue('providerConfiguration' as Path<T>, null as PathValue<T, Path<T>>);
-  }, [filterByProvider]);
+  useEffect(() => {
+    if (data && !isLoading) {
+      const currentProvider = getValues(name);
+      const updatedList = getFilteredProviders(data, filterByProvider);
+      setFilteredProviders(updatedList);
+      if (!isEmpty(currentProvider) && currentProvider?.code !== filterByProvider)
+        setValue('providerConfiguration' as Path<T>, updatedList[0] as PathValue<T, Path<T>>);
+    }
+  }, [filterByProvider, isLoading]);
 
   const renderEmptyState = () => {
     return (
@@ -113,7 +123,8 @@ export const ProviderConfigurationField = <T extends FieldValues>({
       control={control}
       name={name}
       render={({ field, fieldState }) => {
-        const value = providersList.find((provider) => provider.uuid === field.value?.uuid) ?? null;
+        const value =
+          filteredProviders.find((provider) => provider.uuid === field.value?.uuid) ?? null;
         return (
           <div>
             <YBLabel error={!!fieldState.error}>
@@ -128,7 +139,7 @@ export const ProviderConfigurationField = <T extends FieldValues>({
               <YBAutoComplete
                 loading={isLoading}
                 value={(value as unknown) as Record<string, string>}
-                options={(providersList as unknown) as Record<string, string>[]}
+                options={(filteredProviders as unknown) as Record<string, string>[]}
                 getOptionLabel={(option: Record<string, string> | string) =>
                   typeof option === 'string' ? option : option.name
                 }
