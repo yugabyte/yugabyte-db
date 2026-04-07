@@ -549,7 +549,7 @@ class WriteQueryCompletionCallback {
       }
 
       if (status.IsTryAgain()) {
-          LOG_DETAIL << "Write failed: " << status;
+          LOG(DETAIL) << "Write failed: " << status;
       } else {
           LOG(INFO) << "Write failed: " << status;
       }

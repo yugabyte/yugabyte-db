@@ -672,7 +672,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         vector_metadata_filter_(CreateVectorMetadataFilter(
             compaction_reason, key_bounds_, vector_metadata_iterator_provider)) {
     // TODO: switch this to VLOG if it becomes too chatty.
-    LOG_DETAIL
+    LOG(DETAIL)
         << "DocDB compaction feed, min_other_data_ht: " << encoded_min_other_data_ht_.ToString()
         << ", history_cutoff = " << retention_directive_.history_cutoff
         << ", repack range: " << encoded_repack_min_ht_.ToString()

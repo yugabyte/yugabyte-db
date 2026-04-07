@@ -933,9 +933,9 @@ class RocksDBPatcher::Impl {
       auto& consensus_frontier = down_cast<ConsensusFrontier&>(*file.largest.user_frontier);
       // If all the data in the file is already as of old time, no need to set any filter.
       if (consensus_frontier.hybrid_time() <= value) {
-        LOG_DETAIL << "No need to set hybrid time filter since the largest frontier is already"
-                  << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
-                  << ", filter HT " << value;
+        LOG(DETAIL) << "No need to set hybrid time filter since the largest frontier is already"
+                    << " older. Largest frontier HT " << consensus_frontier.hybrid_time()
+                    << ", filter HT " << value;
         return;
       }
       if (db_oid) {
