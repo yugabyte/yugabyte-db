@@ -29,6 +29,15 @@ namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ClearChildCgroups);
 
+struct CgroupCpuStats {
+  int64_t nr_periods = 0;
+  int64_t nr_throttled = 0;
+  int64_t throttled_time_ns = 0;
+  int64_t usage_ns = 0;
+  int64_t usage_user_ns = 0;
+  int64_t usage_sys_ns = 0;
+};
+
 class Cgroup {
  public:
   // Default of cfs_period_us.
@@ -73,6 +82,11 @@ class Cgroup {
 
   // Move a child process (by PID) into this cgroup. Writes to cgroup.procs.
   Status MoveProcessToGroup(int64_t pid) EXCLUDES(mutex_);
+
+  // Read CPU throttling stats (cpu.stat) and usage counters (cpuacct.usage*).
+  // All values are cumulative since cgroup creation.
+  Result<CgroupCpuStats> ReadCpuStats() const;
+
   // These functions have an inherent race condition: the threads they read may change
   // cgroups or exit immediately after reading, and the thread id may even be reused by
   // another thread before returning. They should only be used for testing and for

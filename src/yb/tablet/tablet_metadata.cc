@@ -39,6 +39,7 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/colocated_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -516,6 +517,12 @@ MetricAttributeMap TableInfo::CreateMetricAttributeMap() const {
   attrs["table_name"] = table_name;
   attrs["table_type"] = TableType_Name(table_type);
   attrs["namespace_name"] = namespace_name;
+  if (table_type == PGSQL_TABLE_TYPE && !namespace_id.empty()) {
+    auto db_oid = GetPgsqlDatabaseOid(namespace_id);
+    if (db_oid.ok()) {
+      attrs["database_oid"] = std::to_string(*db_oid);
+    }
+  }
   return attrs;
 }
 

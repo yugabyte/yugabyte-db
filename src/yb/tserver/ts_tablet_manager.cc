@@ -2043,11 +2043,13 @@ Status MaybeAssignPerDbCgroups(
   bool compaction_per_db = FLAGS_qos_compaction_per_db_cgroups;
   if (!consensus_per_db && !compaction_per_db) return Status::OK();
 
+  if (meta.table_type() != PGSQL_TABLE_TYPE) return Status::OK();
   auto namespace_id = meta.namespace_id();
   if (namespace_id.empty()) return Status::OK();
 
   auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
   auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
+  cm->RegisterDbName(db_oid, meta.namespace_name());
   if (consensus_per_db) {
     tablet_peer->SetPerDbCgroup(&cgroup);
   }

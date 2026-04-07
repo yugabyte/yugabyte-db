@@ -462,6 +462,53 @@ Result<std::vector<std::string>> Cgroup::ReadThreadNames() {
   return names;
 }
 
+Result<CgroupCpuStats> Cgroup::ReadCpuStats() const {
+  CgroupCpuStats stats;
+
+  if (cgroup_manager.version() == CgroupVersion::kVersion1) {
+    // cpu.stat: "nr_periods N\nnr_throttled N\nthrottled_time N\n"
+    auto cpu_stat = VERIFY_RESULT(ReadConfig("cpu.stat", /*max_length=*/256));
+    for (const auto& line : StringSplit(cpu_stat, '\n')) {
+      auto parts = StringSplit(line, ' ');
+      if (parts.size() < 2) continue;
+      if (parts[0] == "nr_periods") {
+        stats.nr_periods = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "nr_throttled") {
+        stats.nr_throttled = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "throttled_time") {
+        stats.throttled_time_ns = VERIFY_RESULT(CheckedStoll(parts[1]));
+      }
+    }
+    stats.usage_ns = VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage"))));
+    stats.usage_user_ns =
+        VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage_user"))));
+    stats.usage_sys_ns =
+        VERIFY_RESULT(CheckedStoll(VERIFY_RESULT(ReadConfig("cpuacct.usage_sys"))));
+  } else {
+    // cgv2: cpu.stat has all fields in one file.
+    auto cpu_stat = VERIFY_RESULT(ReadConfig("cpu.stat", /*max_length=*/512));
+    for (const auto& line : StringSplit(cpu_stat, '\n')) {
+      auto parts = StringSplit(line, ' ');
+      if (parts.size() < 2) continue;
+      if (parts[0] == "usage_usec") {
+        stats.usage_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "user_usec") {
+        stats.usage_user_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "system_usec") {
+        stats.usage_sys_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      } else if (parts[0] == "nr_periods") {
+        stats.nr_periods = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "nr_throttled") {
+        stats.nr_throttled = VERIFY_RESULT(CheckedStoll(parts[1]));
+      } else if (parts[0] == "throttled_usec") {
+        stats.throttled_time_ns = VERIFY_RESULT(CheckedStoll(parts[1])) * 1000;
+      }
+    }
+  }
+
+  return stats;
+}
+
 std::string Cgroup::full_name() const {
   return std::string(cgroup_manager.cpu_group()) + name_;
 }

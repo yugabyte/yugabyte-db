@@ -21,6 +21,8 @@
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/metrics.h"
+#include "yb/util/thread.h"
 
 DECLARE_bool(enable_qos);
 
@@ -94,6 +96,37 @@ DEFINE_validator(qos_capped_pool_cpu_weight,
 DEFINE_validator(qos_system_med_cpu_max_percent,
     FLAG_RANGE_VALIDATOR(0.0, 100.0));
 
+DEFINE_RUNTIME_int32(qos_metrics_interval_sec, 2,
+    "How often (seconds) to sample cgroup CPU stats for metrics. "
+    "0 disables cgroup metrics collection.");
+
+METRIC_DEFINE_entity(cgroup);
+
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_cpu_usage_ns,
+    "Cgroup CPU Usage (ns)", yb::MetricUnit::kNanoseconds,
+    "Cumulative CPU time (ns) consumed by this cgroup.",
+    yb::EXPOSE_AS_COUNTER);
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_cpu_user_ns,
+    "Cgroup User CPU (ns)", yb::MetricUnit::kNanoseconds,
+    "Cumulative user-mode CPU time (ns) for this cgroup.",
+    yb::EXPOSE_AS_COUNTER);
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_cpu_sys_ns,
+    "Cgroup Kernel CPU (ns)", yb::MetricUnit::kNanoseconds,
+    "Cumulative kernel-mode CPU time (ns) for this cgroup.",
+    yb::EXPOSE_AS_COUNTER);
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_nr_periods,
+    "Cgroup CFS Periods", yb::MetricUnit::kUnits,
+    "Cumulative CFS scheduling periods for this cgroup.",
+    yb::EXPOSE_AS_COUNTER);
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_nr_throttled,
+    "Cgroup Throttled Periods", yb::MetricUnit::kUnits,
+    "Cumulative CFS periods where this cgroup was throttled.",
+    yb::EXPOSE_AS_COUNTER);
+METRIC_DEFINE_gauge_int64(cgroup, cgroup_throttled_time_ns,
+    "Cgroup Throttled Time (ns)", yb::MetricUnit::kNanoseconds,
+    "Cumulative time (ns) threads in this cgroup were throttled by CFS.",
+    yb::EXPOSE_AS_COUNTER);
+
 namespace yb::tserver {
 
 namespace {
@@ -157,7 +190,20 @@ TServerCgroupManager::TServerCgroupManager() {
 }
 
 TServerCgroupManager::~TServerCgroupManager() {
+  Shutdown();
   flag_update_callbacks.Unregister(this);
+}
+
+void TServerCgroupManager::Shutdown() {
+  if (metrics_thread_) {
+    {
+      std::lock_guard lock(shutdown_mutex_);
+      shutdown_requested_ = true;
+    }
+    shutdown_cv_.notify_one();
+    metrics_thread_->Join();
+    metrics_thread_ = nullptr;
+  }
 }
 
 Status TServerCgroupManager::Init() {
@@ -186,9 +232,8 @@ Status TServerCgroupManager::Init() {
   // Move the infrastructure-created @default under @normal.
   // SetupCgroupManagement() creates @default under $ROOT as a landing zone; we create the
   // "real" @default under @normal and move threads there.
-  auto& default_under_normal =
-      VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild("@default"));
-  RETURN_NOT_OK(default_under_normal.MoveCurrentThreadToGroup());
+  default_cgroup_ = &VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild("@default"));
+  RETURN_NOT_OK(default_cgroup_->MoveCurrentThreadToGroup());
 
   return ApplyCpuLimits();
 }
@@ -259,12 +304,130 @@ Result<Cgroup&> TServerCgroupManager::CgroupForDb(PgOid db_oid) {
   return iter->second;
 }
 
+void TServerCgroupManager::RegisterDbName(PgOid db_oid, std::string name) {
+  std::lock_guard lock(mutex_);
+  db_names_[db_oid] = std::move(name);
+}
+
 Status TServerCgroupManager::UpdateDbCpuLimits(double max_cpu, int period) {
   std::lock_guard lock(mutex_);
   for (auto& cgroup : db_cgroups_ | std::views::values) {
     RETURN_NOT_OK(cgroup.UpdateCpuLimits(max_cpu, period));
   }
   return Status::OK();
+}
+
+TServerCgroupManager::CgroupMetrics TServerCgroupManager::CreateCgroupMetrics(
+    Cgroup* cgroup, const std::string& name, MetricRegistry* registry,
+    const MetricAttributeMap& extra_attrs) {
+  CgroupMetrics m;
+  m.cgroup = cgroup;
+  MetricEntity::AttributeMap attrs;
+  attrs["cgroup_name"] = name;
+  for (const auto& [k, v] : extra_attrs) {
+    attrs[k] = v;
+  }
+  m.entity = METRIC_ENTITY_cgroup.Instantiate(registry, name, attrs);
+  m.cpu_usage_ns = METRIC_cgroup_cpu_usage_ns.Instantiate(m.entity, 0);
+  m.cpu_user_ns = METRIC_cgroup_cpu_user_ns.Instantiate(m.entity, 0);
+  m.cpu_sys_ns = METRIC_cgroup_cpu_sys_ns.Instantiate(m.entity, 0);
+  m.nr_periods = METRIC_cgroup_nr_periods.Instantiate(m.entity, 0);
+  m.nr_throttled = METRIC_cgroup_nr_throttled.Instantiate(m.entity, 0);
+  m.throttled_time_ns = METRIC_cgroup_throttled_time_ns.Instantiate(m.entity, 0);
+  return m;
+}
+
+Status TServerCgroupManager::RegisterMetrics(MetricRegistry* registry) {
+  metric_registry_ = DCHECK_NOTNULL(registry);
+
+  if (system_high_cgroup_) {
+    system_cgroup_metrics_.push_back(
+        CreateCgroupMetrics(system_high_cgroup_, "@system-high", registry));
+  }
+  if (capped_pool_cgroup_) {
+    system_cgroup_metrics_.push_back(
+        CreateCgroupMetrics(capped_pool_cgroup_, "@capped-pool", registry));
+  }
+  if (system_med_cgroup_) {
+    system_cgroup_metrics_.push_back(
+        CreateCgroupMetrics(system_med_cgroup_, "@system-med", registry));
+  }
+  if (normal_pool_cgroup_) {
+    system_cgroup_metrics_.push_back(
+        CreateCgroupMetrics(normal_pool_cgroup_, "@normal", registry));
+  }
+  if (default_cgroup_) {
+    system_cgroup_metrics_.push_back(
+        CreateCgroupMetrics(default_cgroup_, "@default", registry));
+  }
+
+  return Thread::Create(
+      "cgroup", "metrics-collector",
+      &TServerCgroupManager::MetricsCollectorThread, this, &metrics_thread_);
+}
+
+void TServerCgroupManager::UpdateCgroupMetrics(CgroupMetrics& m) {
+  auto result = m.cgroup->ReadCpuStats();
+  if (!result.ok()) {
+    VLOG(2) << "Failed to read cgroup stats: " << result.status();
+    return;
+  }
+  m.cpu_usage_ns->set_value(result->usage_ns);
+  m.cpu_user_ns->set_value(result->usage_user_ns);
+  m.cpu_sys_ns->set_value(result->usage_sys_ns);
+  m.nr_periods->set_value(result->nr_periods);
+  m.nr_throttled->set_value(result->nr_throttled);
+  m.throttled_time_ns->set_value(result->throttled_time_ns);
+}
+
+void TServerCgroupManager::MetricsCollectorThread() {
+  auto is_shutdown = [this] {
+    std::lock_guard lock(shutdown_mutex_);
+    return shutdown_requested_;
+  };
+
+  while (!is_shutdown()) {
+    int interval = FLAGS_qos_metrics_interval_sec;
+    if (interval <= 0) {
+      std::unique_lock lock(shutdown_mutex_);
+      shutdown_cv_.wait_for(lock, std::chrono::seconds(1),
+          [this] { return shutdown_requested_; });
+      continue;
+    }
+
+    for (auto& m : system_cgroup_metrics_) {
+      UpdateCgroupMetrics(m);
+    }
+
+    // Create metric entities for newly registered per-DB cgroups, refresh attributes
+    // (e.g. after a database rename), and update all gauge values.
+    {
+      std::lock_guard lock(mutex_);
+      for (auto& [db_oid, cgroup] : db_cgroups_) {
+        auto name_it = db_names_.find(db_oid);
+        auto metrics_it = db_cgroup_metrics_.find(db_oid);
+        if (metrics_it == db_cgroup_metrics_.end()) {
+          auto entity_id = Format("db_$0", db_oid);
+          MetricAttributeMap extra_attrs;
+          extra_attrs["database_oid"] = std::to_string(db_oid);
+          if (name_it != db_names_.end()) {
+            extra_attrs["database_name"] = name_it->second;
+          }
+          db_cgroup_metrics_.emplace(
+              db_oid, CreateCgroupMetrics(&cgroup, entity_id, metric_registry_, extra_attrs));
+        } else if (name_it != db_names_.end()) {
+          metrics_it->second.entity->SetAttribute("database_name", name_it->second);
+        }
+      }
+    }
+    for (auto& [_, m] : db_cgroup_metrics_) {
+      UpdateCgroupMetrics(m);
+    }
+
+    std::unique_lock lock(shutdown_mutex_);
+    shutdown_cv_.wait_for(lock, std::chrono::seconds(interval),
+        [this] { return shutdown_requested_; });
+  }
 }
 
 Status TServerCgroupManager::MovePgBackendToCgroup(PgOid db_oid) {

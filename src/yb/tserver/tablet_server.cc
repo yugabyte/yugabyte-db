@@ -507,6 +507,8 @@ Status TabletServer::Init() {
   if (cgroup_manager_) {
     RETURN_NOT_OK_PREPEND(cgroup_manager_->Init(),
                           "Could not init TServer cgroup manager");
+    RETURN_NOT_OK_PREPEND(cgroup_manager_->RegisterMetrics(metric_registry()),
+                          "Could not register cgroup metrics");
   }
 #endif
 
@@ -835,6 +837,12 @@ void TabletServer::Shutdown() {
   if (xcluster_consumer) {
     xcluster_consumer->Shutdown();
   }
+
+#ifdef __linux__
+  if (cgroup_manager_) {
+    cgroup_manager_->Shutdown();
+  }
+#endif
 
   maintenance_manager_->Shutdown();
   heartbeater_->Shutdown();
