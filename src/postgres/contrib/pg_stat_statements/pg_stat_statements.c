@@ -316,7 +316,7 @@ static const struct config_enum_entry track_options[] =
 #define YB_HDR_DEFAULT_LATENCY_RES_MS 0.1
 #define YB_HDR_DEFAULT_BUCKET_FACTOR 16
 #define YB_HDR_DEFAULT_MAX_VALUE YB_HDR_DEFAULT_MAX_LATENCY_MS / YB_HDR_DEFAULT_LATENCY_RES_MS
-#define YB_DEFAULT_QTEXT_LIMIT_KB (512 * 1024)
+#define YB_DEFAULT_QTEXT_LIMIT_KB -1
 
 static int	pgss_max;			/* max # statements to track */
 static int	pgss_track;			/* tracking level */
