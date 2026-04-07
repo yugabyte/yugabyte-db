@@ -58,6 +58,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
+#include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -77,12 +78,18 @@ using namespace yb::size_literals;
 DECLARE_uint64(rpc_max_message_size);
 
 DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 DEFINE_RUNTIME_int32(follower_unavailable_considered_failed_sec, 900,
              "Seconds that a leader is unable to successfully heartbeat to a "
              "follower after which the follower is considered to be failed and "
              "evicted from the config.");
 TAG_FLAG(follower_unavailable_considered_failed_sec, advanced);
+DEFINE_validator(follower_unavailable_considered_failed_sec,
+    FLAG_GE_VALUE_VALIDATOR(
+      FLAGS_raft_heartbeat_interval_ms *
+      static_cast<int64_t>(FLAGS_leader_failure_max_missed_heartbeat_periods) / 1000));
 
 DEFINE_UNKNOWN_int32(consensus_inject_latency_ms_in_notifications, 0,
              "Injects a random sleep between 0 and this many milliseconds into "
