@@ -260,7 +260,8 @@ std::atomic<uint64_t>& ThreadCategoryTracker::RegisterGaugeForAllMetricEntities(
 class ThreadMgr {
  public:
   ThreadMgr() {
-    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_started", /*expose_as_counter=*/true);
+    started_category_tracker_ = std::make_unique<ThreadCategoryTracker>(
+        "threads_started", /*expose_as_counter=*/true);
     running_category_tracker_ = std::make_unique<ThreadCategoryTracker>("threads_running");
   }
 
