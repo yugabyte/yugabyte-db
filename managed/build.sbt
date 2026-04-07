@@ -161,9 +161,9 @@ libraryDependencies ++= Seq(
   guice,
   "org.postgresql" % "postgresql" % "42.5.6",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "ch.qos.logback" % "logback-classic" % "1.4.14",
+  "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-lang3" % "3.17.0",
+  "org.apache.commons" % "commons-lang3" % "3.20.0",
   "org.apache.commons" % "commons-collections4" % "4.4",
   "org.apache.commons" % "commons-compress" % "1.27.1",
   "org.apache.commons" % "commons-csv" % "1.13.0",
@@ -206,7 +206,7 @@ libraryDependencies ++= Seq(
   "com.azure.resourcemanager" % "azure-resourcemanager-marketplaceordering" % "1.0.0",
   "com.github.seancfoley" % "ipaddress" % "2.0.1",
   "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
-  "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
+  "org.eclipse.angus" % "jakarta.mail" % "2.0.5",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "prometheus-metrics-core" % "1.4.3",
   "io.prometheus" % "prometheus-metrics-exporter-httpserver" % "1.4.3",
@@ -215,8 +215,8 @@ libraryDependencies ++= Seq(
   "org.pac4j" %% "play-pac4j" % "11.0.0-PLAY2.8",
   "org.pac4j" % "pac4j-oauth" % "5.7.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "5.7.7"  exclude("commons-io" , "commons-io"),
-  "com.nimbusds" % "nimbus-jose-jwt" % "9.37.2",
-  "com.nimbusds" % "oauth2-oidc-sdk" % "10.1",
+  "com.nimbusds" % "nimbus-jose-jwt" % "10.8",
+  "com.nimbusds" % "oauth2-oidc-sdk" % "11.34",
   "commons-validator" % "commons-validator" % "1.10.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.4.1",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -239,7 +239,7 @@ libraryDependencies ++= Seq(
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
-  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "2.17.2",
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-xml" % "3.1.0",
   // Compatible with protoc 33.0 https://protobuf.dev/support/version-support/
   "com.google.protobuf" % "protobuf-java" % "4.33.0",
   "com.google.protobuf" % "protobuf-java-util" % "4.33.0",
@@ -249,11 +249,11 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.7",
-  "io.fabric8" % "crd-generator-apt" % "6.8.0",
-  "io.fabric8" % "kubernetes-client" % "6.8.0",
-  "io.fabric8" % "kubernetes-client-api" % "6.8.0",
-  "io.fabric8" % "kubernetes-model" % "6.8.0",
-  "io.fabric8" % "kubernetes-server-mock" % "6.8.0",
+  "io.fabric8" % "crd-generator-apt" % "6.14.0",
+  "io.fabric8" % "kubernetes-client" % "6.14.0",
+  "io.fabric8" % "kubernetes-client-api" % "6.14.0",
+  "io.fabric8" % "kubernetes-model-core" % "6.14.0",
+  "io.fabric8" % "kubernetes-server-mock" % "6.14.0",
   "org.modelmapper" % "modelmapper" % "2.4.4",
   "com.datadoghq" % "datadog-api-client" % "2.25.0" classifier "shaded-jar",
   "javax.xml.bind" % "jaxb-api" % "2.3.1",
@@ -1029,7 +1029,9 @@ libraryDependencies ++= Seq(
 
 
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "io.netty" % "netty-all" % "4.1.128.Final"
+dependencyOverrides += "io.netty" % "netty-all" % "4.1.132.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http" % "4.1.132.Final"
+dependencyOverrides += "io.netty" % "netty-codec-http2" % "4.1.132.Final"
 
 // Following library versions for jersey, jakarta glassfish, jakarta ws.rs and
 // jackson-module-jaxb-annotations are needed by the openapi java client. The
@@ -1071,7 +1073,7 @@ val pekkoOverrides = pekkoLibs.map(_ % pekkoVersion)
 
 dependencyOverrides ++= pekkoOverrides
 
-val jacksonVersion         = "2.17.1"
+val jacksonVersion         = "2.18.6"
 
 val jacksonLibs = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
