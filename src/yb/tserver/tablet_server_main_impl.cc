@@ -324,7 +324,7 @@ Status StartServices(Services& services) {
         FLAGS_pgsql_proxy_bind_address,
         tablet_server_options.fs_opts.data_paths.front() + "/pg_data");
     RETURN_NOT_OK(pg_process_conf_result);
-    RETURN_NOT_OK(docdb::DocPgInit());
+    RETURN_NOT_OK(docdb::DocPgInit(pgwrapper::PgWrapper::GetPostgresExecutablePath()));
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options.master_addresses_flag;
     RETURN_NOT_OK(pg_process_conf.SetSslConf(
