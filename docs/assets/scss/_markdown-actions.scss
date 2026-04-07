@@ -100,7 +100,7 @@
         left: -14px !important;
         min-width: 185px;
         list-style: none;
-        padding: 8px 0 0  !important;
+        padding: 8px 0 0 !important;
 
         li {
           list-style: none;
@@ -111,7 +111,7 @@
           margin: 0 !important;
 
           a {
-            color: inherit !important;
+            color: inherit;
             padding: 0;
           }
 
@@ -125,7 +125,6 @@
         }
 
         .copy-item {
-          color: #ffffffd9;
           border-radius: 4px;
           padding: 4px 10px;
           text-decoration: none;
