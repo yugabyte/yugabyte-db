@@ -115,6 +115,32 @@ export const ResilienceAndRegions = forwardRef<
     saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
   }, [resilienceType]);
 
+  const prevFormModeRef = useRef<ResilienceFormMode | null>(null);
+
+  useEffect(() => {
+    if (prevFormModeRef.current === null) {
+      prevFormModeRef.current = formMode;
+      return;
+    }
+    if (prevFormModeRef.current === formMode) {
+      return;
+    }
+    prevFormModeRef.current = formMode;
+
+    saveNodesAvailabilitySettings(initialCreateUniverseFormState.nodesAvailabilitySettings!);
+
+    if (formMode === ResilienceFormMode.EXPERT_MODE) {
+      const ft = methods.getValues(FAULT_TOLERANCE_TYPE);
+      if (ft === FaultToleranceType.NODE_LEVEL || ft === FaultToleranceType.NONE) {
+        methods.setValue(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL, { shouldValidate: true });
+        saveResilienceAndRegionsSettings({
+          ...methods.getValues(),
+          [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL
+        });
+      }
+    }
+  }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
+
   // When guided/expert mode, fault tolerance type, RF, or resilience type changes, hide submit
   // errors until the user clicks Next again (do not carry forward stale validation UI).
   const resilienceGoalRef = useRef<{

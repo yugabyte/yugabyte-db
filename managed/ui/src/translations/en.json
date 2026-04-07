@@ -3497,7 +3497,7 @@
         "cloudProvider": "Provider",
         "providerconfiguration": "Provider Configuration",
         "providerConfigurationPlaceholder": "Select Provider Configuration",
-        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges tocomplete this step.",
+        "providerEmptyState": "You don't have an {{providerCode}} provider configuration yet .<a /><a />To continue, create a provider configuration in <b>Admin → Advanced → Provider Configuration</b>. You may need admin privileges to complete this step.",
         "providerTooltip": "A reusable configuration that defines the infrastructure and allowed deployment scope (cloud, regions, networking, and credentials) for Universes.",
         "databaseVersion": "Database Version",
         "databaseVersionPlaceholder": "Select Database Version",
@@ -3560,7 +3560,6 @@
           "requirementTagRegionsOnePlus": "1+ {{entity}}",
           "requirementTagAvailabilityZones": "{{count}} {{entity}}",
           "requirementTagNodesMinimum": "{{count}} {{entity}} minimum",
-          "requirementTagAzRangeNodeLevel": "1 to {{max}} {{entity}}",
           "nodesStepTitleOutageResilience": "{{count}} {{entity}} outage resilience requires:",
           "noneResilienceCautionMsg": "Clusters that are not resilient to outages are subject to downtime during failures and operations that require a restart.",
           "cautionLabel": "Caution!",
@@ -3598,7 +3597,13 @@
       "nodesAndAvailability": {
         "expertMode": {
           "nodes": "Nodes",
-          "totalNodes": "Total Nodes"
+          "totalNodes": "Total Nodes",
+          "replicationFactorLabel": "Replication Factor (RF)",
+          "replicationFactorInfoAria": "Learn about replication factor",
+          "disabledRfTooltip": "RF {{rf}} is not supported for this setup. RF must be equal to or greater than the number of availability zones. The current setup exceeds this limit.",
+          "requirementHint": "Requirement: <rf>RF {{rf}}</rf> requires either <az>{{rf}} AZs</az> or a minimum of <nodes>{{rf}} total nodes</nodes> across AZs.",
+          "requirementHintSingleAZ": "Requirement: <rf>RF {{rf}}</rf> requires <az>{{rf}} AZ</az>.",
+          "replicationFactorInfo": "Number of copies of data in a YugabyteDB cluster. <a>Learn more</a>"
         },
         "guidedMode": {
           "nodes": "Nodes",
@@ -3607,6 +3612,13 @@
           "totalNodes": "Total Nodes",
           "totalNodesTserver": "Total Nodes (Tserver)"
         },
+        "inferredResilienceCard": {
+          "resilientMessage": "Current setup is resilient to <b>{{count}} {{outageLevel}}</b>",
+          "notResilientBody": "<b>Caution!</b> Current setup is not resilient to any outages. Clusters with replication factor of 1 won't be resilient to outages and are subject to downtime during operations that require a restart.",
+          "regionOutage": "region outage",
+          "availabilityZoneOutage": "availability zone outage",
+          "nodeOutage": "node outage"
+        },
         "availabilityZones": {
           "title": "Availability Zones and Nodes",
           "region": "Region {{region_count}}",
@@ -3614,7 +3626,8 @@
           "tooltips": {
             "regionTag": "You can add or remove regions in the previous step (Regions).",
             "addAvailabilityZoneDisabled": "{{outage_count}} availability zone outage resilience supports exactly {{az_count}} AZs. Remove an availability zone from another region before adding one here.<br/><br/><a>Learn more</a>",
-            "addAvailabilityZoneDisabledNodeLevel": "Node-level resilience allows at most {{max_az}} availability zones.Remove an availability zone before adding.",
+            "addAvailabilityZoneDisabledExpert": "RF {{rf}} supports exactly {{rf}} availability zones. To add more zones, increase the RF value.<br/><a>Learn more</a>",
+            "addAvailabilityZoneDisabledExpertMaxRf": "RF {{rf}} supports exactly {{rf}} availability zones.<br/><a>Learn more</a>",
             "regionNoMoreAz": "This region has only {{count}} availability zones.",
             "guidedNodeCount": "To set up a cluster with different node counts per availability zone, switch to <b>Expert Mode</b> in the previous step (Regions).",
             "learnMore": "Learn more"
@@ -3672,13 +3685,16 @@
           "azCountTooFew": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration falls below this requirement.",
           "azCountTooMany": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{required_zones}} availability zones</b>. The current configuration exceeds this requirement.",
           "expertAzCountMismatch": "<b>Invalid configuration:</b> The selected resilience level requires exactly <b>{{faultToleranceNeeded}} availability zones</b>. You have selected <b>{{nodeCount}} availability zones</b>. Update your selection to proceed.",
+          "expertRfPlacementRequirement": "<b>Invalid configuration:</b> RF <b>{{rf}}</b> requires either <b>at least {{rf}} availability zones</b> or <b>at least {{rf}} total nodes</b> across zones.",
           "lessNodes": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} nodes</b>. The current configuration falls below this requirement.",
           "lessNodesDedicated": "<b>Invalid configuration:</b> The selected resilience level requires <b>{{faultToleranceNeeded}} T-Server nodes</b>. The current configuration falls below this requirement.",
           "nodeLevelOneRegionOneAz": "<b>Invalid configuration:</b> Node-level resilience requires placement in <b>one region</b> only. Remove availability zones in other regions or consolidate regions in the previous step.",
-          "nodeLevelAzTooMany": "<b>Invalid configuration:</b> Node-level resilience allows at most <b>{{max_az}} availability zones</b> (replication factor minus one). You have selected <b>{{availability_zone}}</b>. Remove zones to proceed.",
+          "nodeLevelGuidedExactlyOneAz": "<b>Invalid configuration:</b> Guided node-level resilience requires exactly <b>one availability zone</b>. Remove extra zones to proceed.",
           "azZeroNodes": "<b>Invalid configuration:</b> Every selected availability zone must have <b>at least one node</b>. Increase the node count for any zone showing zero.",
           "preferredRankRequired": "<b>Invalid configuration:</b> Each selected availability zone must have a <b>preferred rank</b> assigned.",
-          "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps."
+          "missingPreferredValue": "<b>Invalid configuration:</b> Preferred ranks must be <b>in order</b> with no gaps.",
+          "expertResilienceUninferable": "<b>Invalid configuration!</b> RF {{rf}} requires either {{rf}} AZs or a minimum of {{rf}} total nodes. The current placement falls below this requirement.",
+          "expertAzBlank":"<b>Invalid configuration!</b> Availability zone cannot be left blank."
         }
       },
       "instanceSettings": {

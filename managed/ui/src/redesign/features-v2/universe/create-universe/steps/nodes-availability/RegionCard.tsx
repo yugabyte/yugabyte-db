@@ -1,15 +1,13 @@
-import { FC, useContext } from 'react';
+import { FC } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { AlertVariant, YBAlert, YBButton, YBTag, YBTooltip, mui } from '@yugabyte-ui-library/core';
 import { Zone } from './Zone';
 import { shouldMarkNodesFieldError } from './lessNodesFieldError';
-import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
-import { canSelectMultipleRegions, getFaultToleranceNeeded } from '../../CreateUniverseUtils';
-import { FaultToleranceType, ResilienceFormMode } from '../resilence-regions/dtos';
 import { NodeAvailabilityProps, Zone as ZoneType } from './dtos';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
+import { ResilienceFormMode } from '../resilence-regions/dtos';
 
 //icons
 import AddIcon from '../../../../../assets/add2.svg';
@@ -17,7 +15,14 @@ import AddIcon from '../../../../../assets/add2.svg';
 interface RegionCardProps {
   region: Region;
   index: number;
+  mode: ResilienceFormMode;
   showErrorsAfterSubmit?: boolean;
+  showAddAzButton: boolean;
+  isAddAzDisabled: boolean;
+  isAddAzDisabledByAzLevelCap: boolean;
+  addAzTooltip: string;
+  addAzTooltipKey?: string;
+  addAzTooltipValues?: Record<string, unknown>;
 }
 
 const { styled, Typography, Box, Link } = mui;
@@ -55,16 +60,24 @@ const StyledTooltipText = styled('div')(({ theme }) => ({
   color: theme.palette.grey[700]
 }));
 
-export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfterSubmit = true }) => {
+export const RegionCard: FC<RegionCardProps> = ({
+  region,
+  index,
+  mode,
+  showErrorsAfterSubmit = true,
+  showAddAzButton,
+  isAddAzDisabled,
+  isAddAzDisabledByAzLevelCap,
+  addAzTooltip,
+  addAzTooltipKey,
+  addAzTooltipValues
+}) => {
   const {
     control,
     watch,
     setValue,
     formState: { errors }
   } = useFormContext<NodeAvailabilityProps>();
-  const [{ resilienceAndRegionsSettings }] = (useContext(
-    CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.availabilityZones'
@@ -72,40 +85,11 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
 
   const az = watch(`availabilityZones.${region.code}`);
   const allAz = watch('availabilityZones');
-  const totalAzCount = Object.values(allAz ?? {}).reduce((acc, zones) => acc + zones.length, 0);
 
   const showNodesCountError = shouldMarkNodesFieldError(
     showErrorsAfterSubmit,
     (errors as any)?.lesserNodes?.message
   );
-  const isRegionAzLimitReached = az.length >= region.zones.length;
-  const ft = resilienceAndRegionsSettings?.faultToleranceType;
-  const displayReplicationFactor = getFaultToleranceNeeded(
-    resilienceAndRegionsSettings?.resilienceFactor ?? 1
-  );
-  const maxTotalAzCount =
-    ft === FaultToleranceType.NODE_LEVEL
-      ? Math.max(1, displayReplicationFactor - 1)
-      : displayReplicationFactor;
-  const isGuided = resilienceAndRegionsSettings?.resilienceFormMode === ResilienceFormMode.GUIDED;
-  const isTotalAzLimitReached =
-    isGuided &&
-    (ft === FaultToleranceType.AZ_LEVEL || ft === FaultToleranceType.NODE_LEVEL) &&
-    totalAzCount >= maxTotalAzCount;
-  const isAddAzDisabled = isRegionAzLimitReached || isTotalAzLimitReached;
-  const isAddAzDisabledByAzLevelCap = isTotalAzLimitReached && ft !== FaultToleranceType.NODE_LEVEL;
-  const addAzTooltip = isAddAzDisabled
-    ? isTotalAzLimitReached
-      ? ft === FaultToleranceType.NODE_LEVEL
-        ? t('tooltips.addAvailabilityZoneDisabledNodeLevel', {
-          max_az: maxTotalAzCount
-        })
-        : t('tooltips.addAvailabilityZoneDisabled', {
-          outage_count: resilienceAndRegionsSettings?.resilienceFactor ?? 1,
-          az_count: maxTotalAzCount
-        })
-      : t('tooltips.regionNoMoreAz', { count: region.zones.length })
-    : '';
   const addAvailabilityZone = () => {
     const azToAdd = region.zones.find((zone) => !az.find((a) => a.name === zone.name));
     if (!azToAdd) return;
@@ -115,10 +99,12 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
       existingZones.find((z) => typeof z.nodeCount === 'number' && z.nodeCount >= 1)?.nodeCount ??
       1;
 
-    setValue(`availabilityZones.${region.code}`, [
-      ...az,
-      { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: az.length }
-    ], { shouldValidate: true });
+    const newZone =
+      mode === ResilienceFormMode.EXPERT_MODE
+        ? { name: '', uuid: '', nodeCount: nodeCountFromConfig, preffered: az.length }
+        : { ...azToAdd, nodeCount: nodeCountFromConfig, preffered: az.length };
+
+    setValue(`availabilityZones.${region.code}`, [...az, newZone], { shouldValidate: true });
   };
 
   const updatePreferredRanks = (azs: ZoneType[], removedPreferredRank: number) => {
@@ -174,33 +160,33 @@ export const RegionCard: FC<RegionCardProps> = ({ region, index, showErrorsAfter
             }}
           />
         ))}
-        {(resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.AZ_LEVEL || resilienceAndRegionsSettings?.faultToleranceType === FaultToleranceType.NODE_LEVEL) &&
-          canSelectMultipleRegions(resilienceAndRegionsSettings?.resilienceType) && (
+        {showAddAzButton && (
             <YBTooltip
               title={
                 isAddAzDisabled ? (
                   isAddAzDisabledByAzLevelCap ? (
                     <StyledTooltipText>
-                      <Trans
-                        t={t}
-                        i18nKey="tooltips.addAvailabilityZoneDisabled"
-                        values={{
-                          outage_count: resilienceAndRegionsSettings?.resilienceFactor ?? 1,
-                          az_count: maxTotalAzCount
-                        }}
-                        components={{
-                          br: <br />,
-                          a: (
-                            <Link
-                              href={"#"}
-                              rel="noopener noreferrer"
-                              underline="always"
-                              onClick={(e) => e.stopPropagation()}
-                              sx={{ fontSize: '11.5px', lineHeight: '16px' }}
-                            />
-                          )
-                        }}
-                      />
+                      {addAzTooltipKey ? (
+                        <Trans
+                          t={t}
+                          i18nKey={addAzTooltipKey}
+                          values={addAzTooltipValues}
+                          components={{
+                            br: <br />,
+                            a: (
+                              <Link
+                                href={'#'}
+                                rel="noopener noreferrer"
+                                underline="always"
+                                onClick={(e) => e.stopPropagation()}
+                                sx={{ fontSize: '11.5px', lineHeight: '16px' }}
+                              />
+                            )
+                          }}
+                        />
+                      ) : (
+                        addAzTooltip
+                      )}
                     </StyledTooltipText>
                   ) : (
                     <StyledTooltipText>{addAzTooltip}</StyledTooltipText>

@@ -5,12 +5,14 @@ import { createUniverseFormProps } from './CreateUniverseContext';
 import {
   FaultToleranceType,
   ResilienceAndRegionsProps,
+  ResilienceFormMode,
   ResilienceType
 } from './steps/resilence-regions/dtos';
 import { AvailabilityZone, ClusterType, Region } from '../../../helpers/dtos';
 import { OtherAdvancedProps } from './steps/advanced-settings/dtos';
 import {
   ClusterNodeSpec,
+  ClusterStorageSpec,
   CommunicationPortsSpec,
   PlacementRegion,
   UniverseCreateReqBody,
@@ -23,7 +25,13 @@ import {
   RunTimeConfig
 } from '@app/redesign/features/universe/universe-form/utils/dto';
 import { Provider } from '@app/components/configRedesign/providerRedesign/types';
-import { FAULT_TOLERANCE_TYPE, RESILIENCE_FACTOR } from './fields/FieldNames';
+import {
+  FAULT_TOLERANCE_TYPE,
+  REGIONS_FIELD,
+  RESILIENCE_FACTOR,
+  RESILIENCE_FORM_MODE,
+  RESILIENCE_TYPE
+} from './fields/FieldNames';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 import { SecuritySettingsProps, CertType } from './steps/security-settings/dtos';
 
@@ -280,6 +288,230 @@ export const assignRegionsAZNodeByReplicationFactor = (
   return updatedRegions;
 };
 
+export type ExpertNodesStepDefaultPlacement = {
+  replicationFactor: number;
+  availabilityZones: NodeAvailabilityProps['availabilityZones'];
+};
+
+const EXPERT_SINGLE_REGION_DEFAULT_RF = 3;
+const EXPERT_DEFAULT_RFS = [3, 5, 7] as const;
+
+function expertMultiRegionRfAndAzCount(regionCount: number): { rf: number; azCount: number } | null {
+  const rf = EXPERT_DEFAULT_RFS.find((v) => v >= regionCount);
+  if (rf === undefined) return null;
+  const azCount = regionCount === 2 ? rf : regionCount;
+  return { rf, azCount };
+}
+
+function pickZonesRoundRobin(
+  regions: ResilienceAndRegionsProps[typeof REGIONS_FIELD],
+  azCount: number
+): NodeAvailabilityProps['availabilityZones'] {
+  const result: NodeAvailabilityProps['availabilityZones'] = {};
+  const usedSlots = new Map<string, number>();
+
+  regions.forEach((r) => {
+    result[r.code] = [];
+    usedSlots.set(r.code, 0);
+  });
+
+  let preferred = 0;
+  let added = 0;
+  let rIdx = 0;
+  const maxIter = Math.max(azCount * regions.length * 20, 100);
+  let iter = 0;
+
+  while (added < azCount && iter < maxIter) {
+    iter += 1;
+    const region = regions[rIdx % regions.length];
+    rIdx += 1;
+    const used = usedSlots.get(region.code) ?? 0;
+    // Expert mode defaults should not pre-select AZ names; create empty AZ slots
+    // and let users choose specific AZs.
+    if (used >= region.zones.length) continue;
+    usedSlots.set(region.code, used + 1);
+    result[region.code].push({
+      name: '',
+      uuid: '',
+      nodeCount: 1,
+      preffered: preferred++
+    });
+    added += 1;
+  }
+
+  return result;
+}
+
+function distributeNodesUntilTotalAtLeastRf(
+  availabilityZones: NodeAvailabilityProps['availabilityZones'],
+  rf: number
+): void {
+  const entries: { code: string; zi: number }[] = [];
+  Object.entries(availabilityZones).forEach(([code, zones]) => {
+    zones.forEach((_, zi) => entries.push({ code, zi }));
+  });
+  if (entries.length === 0) return;
+
+  let total = entries.reduce(
+    (s, e) => s + availabilityZones[e.code][e.zi].nodeCount,
+    0
+  );
+  let i = 0;
+  const maxBoost = rf * entries.length + 20;
+  let boost = 0;
+  while (total < rf && boost < maxBoost) {
+    const e = entries[i % entries.length];
+    availabilityZones[e.code][e.zi].nodeCount += 1;
+    total += 1;
+    i += 1;
+    boost += 1;
+  }
+}
+
+/**
+ * Decrements per-AZ node counts (never below 1) until total nodes are at most `rf`.
+ * Mutates `availabilityZones`. Picks decrements from zones with the highest preferred rank
+ * among zones with more than one node; tie-breaks by larger nodeCount, region code, then index.
+ */
+export function reduceExpertNodeCountsToAtMostRf(
+  availabilityZones: NodeAvailabilityProps['availabilityZones'],
+  rf: number
+): void {
+  let total = getNodeCount(availabilityZones);
+  const maxIter = Math.max(total * 50, 100);
+  let iter = 0;
+
+  while (total > rf && iter < maxIter) {
+    iter += 1;
+    let best: {
+      regionCode: string;
+      zi: number;
+      preferred: number;
+      nodeCount: number;
+    } | null = null;
+
+    for (const regionCode of Object.keys(availabilityZones)) {
+      const zones = availabilityZones[regionCode];
+      if (!zones?.length) continue;
+      for (let zi = 0; zi < zones.length; zi += 1) {
+        const zone = zones[zi];
+        const nc = zone.nodeCount;
+        if (typeof nc !== 'number' || nc <= 1) {
+          continue;
+        }
+        const preferred = typeof zone.preffered === 'number' ? zone.preffered : -1;
+
+        if (!best) {
+          best = { regionCode, zi, preferred, nodeCount: nc };
+          continue;
+        }
+        if (preferred > best.preferred) {
+          best = { regionCode, zi, preferred, nodeCount: nc };
+          continue;
+        }
+        if (preferred < best.preferred) {
+          continue;
+        }
+        if (nc > best.nodeCount) {
+          best = { regionCode, zi, preferred, nodeCount: nc };
+          continue;
+        }
+        if (nc < best.nodeCount) {
+          continue;
+        }
+        if (regionCode > best.regionCode) {
+          best = { regionCode, zi, preferred, nodeCount: nc };
+          continue;
+        }
+        if (regionCode < best.regionCode) {
+          continue;
+        }
+        if (zi > best.zi) {
+          best = { regionCode, zi, preferred, nodeCount: nc };
+        }
+      }
+    }
+
+    if (!best) {
+      break;
+    }
+
+    availabilityZones[best.regionCode][best.zi].nodeCount -= 1;
+    total -= 1;
+  }
+}
+
+/**
+ * Expert-mode defaults when landing on Nodes & availability with no prior zone selection
+ * Applies when fault tolerance is AZ-level or region-level; node-level and none use {@link assignRegionsAZNodeByReplicationFactor}.
+ * Returns null when defaults do not apply.
+ */
+export function getExpertNodesStepDefaultPlacement(
+  resilience: ResilienceAndRegionsProps
+): ExpertNodesStepDefaultPlacement | null {
+  if (resilience[RESILIENCE_FORM_MODE] !== ResilienceFormMode.EXPERT_MODE) {
+    return null;
+  }
+  if (resilience[RESILIENCE_TYPE] !== ResilienceType.REGULAR) {
+    return null;
+  }
+  const ft = resilience[FAULT_TOLERANCE_TYPE];
+  if (ft !== FaultToleranceType.AZ_LEVEL && ft !== FaultToleranceType.REGION_LEVEL) {
+    return null;
+  }
+
+  const regions = resilience[REGIONS_FIELD] ?? [];
+  if (regions.length === 0) {
+    return null;
+  }
+
+  if (regions.length === 1) {
+    const region = regions[0];
+    const zl = region.zones?.length ?? 0;
+    if (zl === 0) {
+      return null;
+    }
+
+    if (zl > 2) {
+      const azToUse = Math.min(EXPERT_SINGLE_REGION_DEFAULT_RF, zl);
+      const availabilityZones: NodeAvailabilityProps['availabilityZones'] = {
+        [region.code]: region.zones.slice(0, azToUse).map((_, index) => ({
+          name: '',
+          uuid: '',
+          nodeCount: 1,
+          preffered: index
+        }))
+      };
+      distributeNodesUntilTotalAtLeastRf(availabilityZones, EXPERT_SINGLE_REGION_DEFAULT_RF);
+      return { replicationFactor: EXPERT_SINGLE_REGION_DEFAULT_RF, availabilityZones };
+    }
+
+    return {
+      replicationFactor: EXPERT_SINGLE_REGION_DEFAULT_RF,
+      availabilityZones: {
+        [region.code]: [
+          {
+            name: '',
+            uuid: '',
+            nodeCount: EXPERT_SINGLE_REGION_DEFAULT_RF,
+            preffered: 0
+          }
+        ]
+      }
+    };
+  }
+
+  const spec = expertMultiRegionRfAndAzCount(regions.length);
+  if (!spec) {
+    return null;
+  }
+
+  const availabilityZones = pickZonesRoundRobin(regions, spec.azCount);
+  distributeNodesUntilTotalAtLeastRf(availabilityZones, spec.rf);
+
+  return { replicationFactor: spec.rf, availabilityZones };
+}
+
 export const canSelectMultipleRegions = (resilienceType?: ResilienceType) => {
   return resilienceType !== ResilienceType.SINGLE_NODE;
 };
@@ -387,7 +619,7 @@ export const mapCreateUniversePayload = (
       encryption_at_rest_spec: {
         kms_config_uuid: securitySettings.kmsConfig
       },
-      encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType),
+      encryption_in_transit_spec: getCreateEITPayload(securitySettings, providerType!),
       use_time_sync: otherAdvancedSettings.useTimeSync,
       ycql: {
         ...databaseSettings.ycql
@@ -434,7 +666,7 @@ export const mapCreateUniversePayload = (
           }),
           networking_spec: {
             enable_lb: true,
-            enable_exposing_service: 'UNEXPOSED',
+            enable_exposing_service: otherAdvancedSettings?.enableExposingService ? ClusterNetworkingSpecAllOfEnableExposingService.EXPOSED : ClusterNetworkingSpecAllOfEnableExposingService.UNEXPOSED,
             ...(proxySettings.enableProxyServer
               ? {
                   proxy_config: {
@@ -456,13 +688,13 @@ export const mapCreateUniversePayload = (
               : getNodeCount(nodesAvailabilitySettings.availabilityZones),
           node_spec: {
             ...getNodeSpec(formValues),
-            dedicated_nodes: nodesAvailabilitySettings.useDedicatedNodes
+            dedicated_nodes: effectiveUseDedicatedNodes(formValues)
           },
           placement_spec: {
             cloud_list: [
               {
                 code: generalSettings.cloud,
-                uuid: generalSettings.providerConfiguration.uuid,
+                uuid: generalSettings.providerConfiguration!.uuid!,
                 default_region: regionList[0].uuid,
                 region_list: regionList
               }
@@ -473,11 +705,12 @@ export const mapCreateUniversePayload = (
               name: 'default',
               default_partition: true,
               replication_factor: resilienceAndRegionsSettings.resilienceFactor,
+              tablespace_name: 'default',
               placement: {
                 cloud_list: [
                   {
                     code: generalSettings.cloud,
-                    uuid: generalSettings.providerConfiguration.uuid,
+                    uuid: generalSettings.providerConfiguration!.uuid!,
                     default_region: regionList[0].uuid,
                     region_list: regionList
                   }
@@ -486,7 +719,7 @@ export const mapCreateUniversePayload = (
             }
           ],
           provider_spec: {
-            provider: generalSettings.providerConfiguration.uuid,
+            provider: generalSettings.providerConfiguration!.uuid!,
             region_list: regionList.map((r) => r.uuid!),
             image_bundle_uuid: instanceSettings.imageBundleUUID!,
             access_key_code: otherAdvancedSettings.accessKeyCode
@@ -636,6 +869,42 @@ const mapGFlags = (
   return gflagsMap;
 };
 
+/**
+ * Builds API storage_spec from form device info. Omits storage_type when unset (e.g. Kubernetes).
+ * Matches legacy fillNodeSpec: num_volumes fixed to 1, volume_size = numVolumes * volumeSize from deviceInfo.
+ */
+const buildStorageSpecFromDeviceInfo = (
+  deviceInfo: DeviceInfo,
+  enableEbsVolumeEncryption?: boolean,
+  ebsKmsConfigUUID?: string | null
+): ClusterStorageSpec => {
+  const numVol = Number(deviceInfo.numVolumes);
+  const volSize = Number(deviceInfo.volumeSize);
+  const storage_spec: ClusterStorageSpec = {
+    num_volumes: 1,
+    volume_size:
+      (Number.isFinite(numVol) && numVol > 0 ? numVol : 1) *
+      (Number.isFinite(volSize) && volSize > 0 ? volSize : 1),
+    ...(deviceInfo.storageClass ? { storage_class: deviceInfo.storageClass } : {}),
+    ...(deviceInfo.diskIops !== undefined && deviceInfo.diskIops !== null
+      ? { disk_iops: deviceInfo.diskIops }
+      : {}),
+    ...(deviceInfo.throughput !== undefined && deviceInfo.throughput !== null
+      ? { throughput: deviceInfo.throughput }
+      : {}),
+    ...(deviceInfo.storageType ? { storage_type: deviceInfo.storageType } : {})
+  };
+
+  if (enableEbsVolumeEncryption) {
+    storage_spec.cloud_volume_encryption = {
+      enable_volume_encryption: enableEbsVolumeEncryption,
+      kms_config_uuid: ebsKmsConfigUUID ?? ''
+    };
+  }
+
+  return storage_spec;
+};
+
 const fillNodeSpec = (
   deviceType?: string | null,
   deviceInfo?: DeviceInfo | null,
@@ -645,26 +914,28 @@ const fillNodeSpec = (
   if (!deviceInfo || !deviceType) {
     throw new Error('Instance settings are required to fill node spec');
   }
-  const instanceObj: ClusterNodeSpec = {
+  return {
     instance_type: deviceType,
-    storage_spec: {
-      num_volumes: 1,
-      storage_type: deviceInfo.storageType!,
-      storage_class: deviceInfo.storageClass!,
-      volume_size: deviceInfo.numVolumes * deviceInfo.volumeSize!,
-      disk_iops: deviceInfo.diskIops!,
-      throughput: deviceInfo.throughput!
-    }
+    storage_spec: buildStorageSpecFromDeviceInfo(
+      deviceInfo,
+      enableEbsVolumeEncryption,
+      ebsKmsConfigUUID
+    )
   };
+};
 
-  if (enableEbsVolumeEncryption && instanceObj.storage_spec) {
-    instanceObj.storage_spec.cloud_volume_encryption = {
-      enable_volume_encryption: enableEbsVolumeEncryption,
-      kms_config_uuid: ebsKmsConfigUUID ?? ''
-    };
+/**
+ * Dedicated-nodes toggle is hidden for Kubernetes; still treat K8s as dedicated for node_spec and API payload.
+ */
+export const effectiveUseDedicatedNodes = (formContext: createUniverseFormProps): boolean => {
+  const { generalSettings, nodesAvailabilitySettings } = formContext;
+  if (!nodesAvailabilitySettings) {
+    return false;
   }
-
-  return instanceObj;
+  if (generalSettings?.cloud === CloudType.kubernetes) {
+    return true;
+  }
+  return nodesAvailabilitySettings.useDedicatedNodes;
 };
 
 export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSpec => {
@@ -672,7 +943,8 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
   if (!instanceSettings || !nodesAvailabilitySettings) {
     throw new Error('Missing required form values to get node spec');
   }
-  if (!nodesAvailabilitySettings.useDedicatedNodes) {
+  const useDedicated = effectiveUseDedicatedNodes(formContext);
+  if (!useDedicated) {
     return fillNodeSpec(
       instanceSettings.instanceType,
       instanceSettings.deviceInfo,
@@ -681,49 +953,67 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
     );
   }
 
-  if (nodesAvailabilitySettings.useDedicatedNodes) {
-    if (instanceSettings.keepMasterTserverSame) {
-      return {
-        master: fillNodeSpec(
-          instanceSettings.instanceType,
-          instanceSettings.deviceInfo,
-          instanceSettings.enableEbsVolumeEncryption,
-          instanceSettings.ebsKmsConfigUUID
-        ),
-        tserver: fillNodeSpec(
-          instanceSettings.instanceType,
-          instanceSettings.deviceInfo,
-          instanceSettings.enableEbsVolumeEncryption,
-          instanceSettings.ebsKmsConfigUUID
-        )
-      };
+  const ebsEnc = instanceSettings.enableEbsVolumeEncryption;
+  const ebsKms = instanceSettings.ebsKmsConfigUUID;
+
+  // Kubernetes: K8s custom resources may have null instanceType; fillNodeSpec would throw.
+  // When master/tserver settings match, both pods use tserver resource spec.
+  if (generalSettings?.cloud === CloudType.kubernetes) {
+    const tserverK8s = instanceSettings.tserverK8SNodeResourceSpec;
+    const masterK8s = instanceSettings.keepMasterTserverSame
+      ? tserverK8s
+      : instanceSettings.masterK8SNodeResourceSpec;
+    const k8sSpec: ClusterNodeSpec = {
+      k8s_master_resource_spec: {
+        cpu_core_count: masterK8s?.cpuCoreCount,
+        memory_gib: masterK8s?.memoryGib
+      },
+      k8s_tserver_resource_spec: {
+        cpu_core_count: tserverK8s?.cpuCoreCount,
+        memory_gib: tserverK8s?.memoryGib
+      }
+    };
+    if (instanceSettings.deviceInfo) {
+      k8sSpec.storage_spec = buildStorageSpecFromDeviceInfo(
+        instanceSettings.deviceInfo,
+        ebsEnc,
+        ebsKms
+      );
+      if (instanceSettings.instanceType) {
+        k8sSpec.instance_type = instanceSettings.instanceType;
+      }
     }
-    if (generalSettings?.cloud === CloudType.kubernetes) {
-      return {
-        k8s_master_resource_spec: {
-          cpu_core_count: instanceSettings.masterK8SNodeResourceSpec?.cpuCoreCount,
-          memory_gib: instanceSettings.masterK8SNodeResourceSpec?.memoryGib
-        },
-        k8s_tserver_resource_spec: {
-          cpu_core_count: instanceSettings.tserverK8SNodeResourceSpec?.cpuCoreCount,
-          memory_gib: instanceSettings.tserverK8SNodeResourceSpec?.memoryGib
-        }
-      };
-    }
+    return k8sSpec;
   }
+  if (instanceSettings.keepMasterTserverSame) {
+    const shared = fillNodeSpec(
+      instanceSettings.instanceType,
+      instanceSettings.deviceInfo,
+      ebsEnc,
+      ebsKms
+    );
+    // Top-level storage_spec is required so UserIntentMapper populates userIntent.deviceInfo.
+    return {
+      ...shared,
+      master: { ...shared },
+      tserver: { ...shared }
+    };
+  }
+  const tserverSpec = fillNodeSpec(
+    instanceSettings.instanceType,
+    instanceSettings.deviceInfo,
+    ebsEnc,
+    ebsKms
+  );
   return {
+    ...tserverSpec,
     master: fillNodeSpec(
       instanceSettings.masterInstanceType,
       instanceSettings.masterDeviceInfo,
-      instanceSettings.enableEbsVolumeEncryption,
-      instanceSettings.ebsKmsConfigUUID
+      ebsEnc,
+      ebsKms
     ),
-    tserver: fillNodeSpec(
-      instanceSettings.instanceType,
-      instanceSettings.deviceInfo,
-      instanceSettings.enableEbsVolumeEncryption,
-      instanceSettings.ebsKmsConfigUUID
-    )
+    tserver: tserverSpec
   };
 };
 
@@ -777,7 +1067,14 @@ export const inferResilience = (
   const { regions } = resilience;
   const { replicationFactor = 1, availabilityZones } = nodesAndAvailability;
 
+  if (replicationFactor < 1 || regions.length === 0) {
+    return null;
+  }
+
   const azCount = getAZCount(availabilityZones);
+  if (azCount === 0) {
+    return null;
+  }
 
   if (regions.length > replicationFactor) {
     return null;
@@ -785,6 +1082,39 @@ export const inferResilience = (
   if (regions.length === replicationFactor) {
     return 'REGION_LEVEL';
   }
+  if (regions.length < replicationFactor && azCount === replicationFactor) {
+    return 'AZ_LEVEL';
+  }
+  if (regions.length < replicationFactor && azCount < replicationFactor) {
+    return 'NODE_LEVEL';
+  }
 
-  return azCount === replicationFactor ? 'AZ_LEVEL' : 'NODE_LEVEL';
+  // Config does not match inference formula (e.g. selected AZs > RF).
+  return null;
+};
+
+/**
+ * Computes the outage count shown in the inferred resilience card.
+ * For NODE_LEVEL, cap RF-based tolerance with placement-based tolerance so
+ * under-provisioned layouts do not over-claim resilience.
+ */
+export const getInferredOutageCount = (
+  inferredResilience: ReturnType<typeof inferResilience>,
+  replicationFactor: number,
+  availabilityZones: NodeAvailabilityProps['availabilityZones']
+) => {
+  const rfOutageCount = Math.max(0, Math.floor((replicationFactor - 1) / 2));
+  const nodeCount = getNodeCount(availabilityZones);
+
+  // Placement is under-provisioned for this RF; do not claim outage tolerance.
+  if (nodeCount < replicationFactor) {
+    return 0;
+  }
+
+  if (inferredResilience !== FaultToleranceType.NODE_LEVEL) {
+    return rfOutageCount;
+  }
+
+  const nodePlacementOutageCount = Math.max(0, Math.floor((nodeCount - 1) / 2));
+  return Math.min(rfOutageCount, nodePlacementOutageCount);
 };

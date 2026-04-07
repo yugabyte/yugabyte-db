@@ -24,12 +24,7 @@ export const GeoPartitionNodesAndAvailability = () => {
   const [addGeoPartitionContext, addGeoPartitionMethods] = (useContext(
     AddGeoPartitionContext
   ) as unknown) as AddGeoPartitionContextMethods;
-  const {
-    activeStep,
-    geoPartitions,
-    activeGeoPartitionIndex,
-    universeData
-  } = addGeoPartitionContext;
+  const { activeStep, geoPartitions, activeGeoPartitionIndex } = addGeoPartitionContext;
   const { setActiveStep, addGeoPartition, updateGeoPartition } = addGeoPartitionMethods;
   const nodesAndAvailabilityRef = useRef<StepsRef>(null);
   const { moveToNextPage, moveToPreviousPage } = useGeoPartitionNavigation();
@@ -79,11 +74,7 @@ export const GeoPartitionNodesAndAvailability = () => {
           groupTitle={<>{geoPartitions[activeGeoPartitionIndex].name}</>}
           subTitle={<>Nodes and Availability</>}
         />
-        <NodesAvailability
-          isGeoPartition
-          ref={nodesAndAvailabilityRef}
-          universeData={universeData}
-        />
+        <NodesAvailability ref={nodesAndAvailabilityRef} />
         <UniverseActionButtons
           prevButton={{
             text: 'Prev',

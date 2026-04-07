@@ -8,6 +8,7 @@ import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
 
 //icons
 import Return from '../../../../../assets/tree.svg';
@@ -48,14 +49,20 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.dedicatedNodes'
   });
   const { control, watch } = useFormContext<NodeAvailabilityProps>();
-  const [{ resilienceAndRegionsSettings }] = (useContext(
+  const [{ resilienceAndRegionsSettings, generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+  const isK8sUniverse =
+    generalSettings?.cloud === CloudType.kubernetes;
 
   const availabilityZones = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
   const nodeCount = getNodeCount(availabilityZones);
   const replicationFactor = watch(REPLICATION_FACTOR) ?? 1;
+
+  if (isK8sUniverse) {
+    return null;
+  }
 
   const getStyledToggleArea = () => (
     <>

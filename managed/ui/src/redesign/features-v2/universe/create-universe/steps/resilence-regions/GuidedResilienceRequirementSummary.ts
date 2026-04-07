@@ -7,8 +7,7 @@ export type GuidedRequirementTag =
   | { kind: 'regions'; count: number }
   | { kind: 'regions_one_plus' }
   | { kind: 'availability_zones'; count: number }
-  | { kind: 'nodes_minimum'; count: number }
-  | { kind: 'az_range_node_level'; maxAz: number };
+  | { kind: 'nodes_minimum'; count: number };
 
 export interface GuidedResilienceRequirementSummary {
   tags: GuidedRequirementTag[];
@@ -39,16 +38,14 @@ export function getGuidedResilienceRequirementSummary(
         tags: [{ kind: 'regions_one_plus' }, { kind: 'availability_zones', count: n }],
         displayReplicationFactor: n
       };
-    case FaultToleranceType.NODE_LEVEL: {
-      const maxAzForNodeLevel = Math.max(1, n - 1);
+    case FaultToleranceType.NODE_LEVEL:
       return {
         tags: [
-          { kind: 'az_range_node_level', maxAz: maxAzForNodeLevel },
+          { kind: 'availability_zones', count: 1 },
           { kind: 'nodes_minimum', count: n }
         ],
         displayReplicationFactor: n
       };
-    }
     default:
       return { tags: [], displayReplicationFactor: n };
   }

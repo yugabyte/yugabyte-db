@@ -115,12 +115,6 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
-  },
-  generalSettings: {
-    cloud: CloudType.aws,
-    universeName: '',
-    providerConfiguration: undefined,
-    databaseVersion: ''
   }
 };
 
