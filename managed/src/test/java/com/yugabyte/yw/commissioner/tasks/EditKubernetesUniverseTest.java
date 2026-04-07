@@ -59,6 +59,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
 import java.io.FileInputStream;
@@ -1061,5 +1062,67 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     doReturn(sizeResponseList)
         .when(mockMetricQueryHelper)
         .queryDirect(contains(serverType.equals(ServerType.TSERVER) ? "yb-tserver" : "yb-master"));
+  }
+
+  private EditKubernetesUniverse createTaskWithParams(UniverseDefinitionTaskParams taskParams) {
+    EditKubernetesUniverse task =
+        new EditKubernetesUniverse(
+            mockBaseTaskDependencies,
+            mockKubernetesManagerFactory,
+            mockOperatorStatusUpdaterFactory,
+            mockYbcManager);
+    task.initialize(taskParams);
+    return task;
+  }
+
+  @Test
+  public void testValidateStorageClassesOnEditSuccess() {
+    setupUniverseSingleAZ(true);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.deviceInfo.storageClass = "standard";
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+
+    when(mockKubernetesManager.getStorageClass(any(), eq("standard")))
+        .thenReturn(mock(StorageClass.class));
+
+    EditKubernetesUniverse task = createTaskWithParams(taskParams);
+    task.validateStorageClassesOnEdit();
+  }
+
+  @Test
+  public void testValidateStorageClassesOnEditFailure() {
+    setupUniverseSingleAZ(true);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.deviceInfo.storageClass = "nonexistent-sc";
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+
+    when(mockKubernetesManager.getStorageClass(any(), eq("nonexistent-sc")))
+        .thenThrow(new RuntimeException("storage class not found"));
+
+    EditKubernetesUniverse task = createTaskWithParams(taskParams);
+    Exception thrown = null;
+    try {
+      task.validateStorageClassesOnEdit();
+    } catch (RuntimeException e) {
+      thrown = e;
+    }
+    assertNotNull(thrown);
+    assertTrue(thrown.getMessage().contains("does not exist"));
+    assertTrue(thrown.getMessage().contains("nonexistent-sc"));
+    assertTrue(thrown.getMessage().contains("tserver"));
   }
 }
