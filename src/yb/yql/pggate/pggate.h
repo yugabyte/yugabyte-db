@@ -793,6 +793,7 @@ class PgApiImpl {
   void PauseSysTablePrefetching();
   void ResumeSysTablePrefetching();
   bool IsSysTablePrefetchingStarted() const;
+  bool IsParallelWorker() const;
   void RegisterSysTableForPrefetching(
       const PgObjectId& table_id, const PgObjectId& index_id, int row_oid_filtering_attr,
       bool fetch_ybctid);
@@ -994,6 +995,8 @@ class PgApiImpl {
   YbcPgCallbacks pg_callbacks_;
 
   const WaitEventWatcher wait_event_watcher_;
+
+  bool is_parallel_worker_;
 
   PgSharedDataHolder pg_shared_data_;
 

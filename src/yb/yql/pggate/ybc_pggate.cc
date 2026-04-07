@@ -2064,7 +2064,7 @@ bool YBCIsLegacyModeForCatalogOps() {
   //     the TransactionSnapshot's read time serial number.
   //
   return !YBCIsObjectLockingEnabled() || !yb_enable_concurrent_ddl || YBCIsInitDbModeEnvVarSet()
-    || YBCIsSysTablePrefetchingStarted();
+      || YBCIsSysTablePrefetchingStarted() || pgapi->IsParallelWorker();
 }
 
 //------------------------------------------------------------------------------------------------
