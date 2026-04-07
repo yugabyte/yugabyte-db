@@ -235,7 +235,7 @@ libraryDependencies ++= Seq(
   "com.oracle.oci.sdk" % "oci-java-sdk-core" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-identity" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-keymanagement" % "3.57.2",
-  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2", 
+  "com.oracle.oci.sdk" % "oci-java-sdk-vault" % "3.57.2",
   "com.oracle.oci.sdk" % "oci-java-sdk-common-httpclient-jersey" % "3.57.2",
   "org.projectlombok" % "lombok" % "1.18.26",
   "com.squareup.okhttp3" % "okhttp" % "4.12.0",
@@ -610,6 +610,13 @@ openApiFormat / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiFormat := {
   import java.nio.file.Path
+  def installOpenapiFormat(): Unit = {
+    ybLog(s"Install openapi-format if required")
+    val rc = Process(s"./openapi_format_install.sh", baseDirectory.value / "scripts").!
+    if (rc != 0) {
+      throw new RuntimeException("openapi format installation failed!!!")
+    }
+  }
   def formatFile(file: Path): Unit = {
     ybLog(s"formatting api file $file")
     val rc = Process(s"./openapi_format.sh $file", baseDirectory.value / "scripts").!
