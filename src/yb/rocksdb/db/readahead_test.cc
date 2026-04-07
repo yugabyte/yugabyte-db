@@ -165,9 +165,10 @@ class ReadaheadTest : public DBTestBase {
  public:
   ReadaheadTest() :
       DBTestBase("/readahead_test"), rnd_(301) {
-    FLAGS_TEST_rocksdb_record_readahead_stats_only_for_data_blocks = true;
-    FLAGS_rocksdb_iterator_init_readahead_size = kBlockSize * 4;
-    FLAGS_rocksdb_iterator_max_readahead_size = kBlockSize * 32;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_rocksdb_record_readahead_stats_only_for_data_blocks) =
+        true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_init_readahead_size) = kBlockSize * 4;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_max_readahead_size) = kBlockSize * 32;
 
     num_keys_ = static_cast<int>(FLAGS_rocksdb_iterator_max_readahead_size * 10 / kValueSize);
 
@@ -321,7 +322,8 @@ TEST_F(ReadaheadTest, SequentialScan) {
        seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
     LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
               << seq_disk_reads_factor;
-    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_factor) =
+        seq_disk_reads_factor;
     for (auto seq_disk_reads_for_readahead : {0, 1, 2, 3, 4, 5, 8, 16}) {
       LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
                 << seq_disk_reads_for_readahead;
@@ -419,7 +421,7 @@ TEST_F(ReadaheadTest, SequentialScan) {
 }
 
 TEST_F(ReadaheadTest, MixedReadsWith1SeqDiskReadsForReadahead) {
-  FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead) = 1;
 
   Options options = CurrentOptions();
   Reopen(options);
@@ -430,7 +432,8 @@ TEST_F(ReadaheadTest, MixedReadsWith1SeqDiskReadsForReadahead) {
        seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
     LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
               << seq_disk_reads_factor;
-    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_factor) =
+        seq_disk_reads_factor;
 
     PurgeBlockCache();
 
@@ -519,7 +522,8 @@ TEST_F(ReadaheadTest, MixedReads) {
        seq_disk_reads_factor < kMaxSequentialDiskReadsFactorForTests; ++seq_disk_reads_factor) {
     LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_factor = "
               << seq_disk_reads_factor;
-    FLAGS_rocksdb_iterator_sequential_disk_reads_factor = seq_disk_reads_factor;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_factor) =
+        seq_disk_reads_factor;
     for (auto seq_disk_reads_for_readahead : {2, 3, 4, 5, 8, 16}) {
       LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
                 << seq_disk_reads_for_readahead;

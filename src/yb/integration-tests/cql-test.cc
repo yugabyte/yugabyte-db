@@ -1024,7 +1024,7 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
   CHECK_EQ(addrs.size(), 1);
 
-  FLAGS_cql_unprepared_stmts_entries_limit = 205;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_unprepared_stmts_entries_limit) = 205;
   const string create_table_stmt = "CREATE TABLE t1 (i INT PRIMARY KEY, j INT)";
   const string insert_stmt_1 = "INSERT INTO t1 (i, j) VALUES (1,11)";
   const string insert_stmt_2 = "INSERT INTO t1 (i, j) VALUES (2,22)";

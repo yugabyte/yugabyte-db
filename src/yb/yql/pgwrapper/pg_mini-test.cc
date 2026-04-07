@@ -2577,8 +2577,9 @@ TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
 class PgMiniStreamCompressionTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_stream_compression_algo = 1; // gzip
-    FLAGS_gzip_stream_compression_level = 6; // old default compression level
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1; // gzip
+    // old default compression level
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_gzip_stream_compression_level) = 6;
     PgMiniTest::SetUp();
   }
 };

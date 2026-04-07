@@ -2054,7 +2054,7 @@ class QLTransactionTestSmallWriteBuffer :
     public TransactionCustomLogSegmentSizeTest<64_KB, QLTransactionTest> {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 4_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 4_KB;
     QLTransactionTest::SetUp();
   }
 

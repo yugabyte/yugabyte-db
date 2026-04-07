@@ -82,11 +82,11 @@ struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCou
 class PgFKeyTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_enable_automatic_tablet_splitting = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     // This test counts number of performed RPC calls, so turn off pg client shared memory.
-    FLAGS_pg_client_use_shared_memory = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = false;
     // Disable auto analyze in this test suite because it introduce flakiness of metrics.
-    FLAGS_ysql_enable_auto_analyze = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     AppendPgConfOption(MaxQueryLayerRetriesConf(0));
     // Tests assert for expected rpc counts from ysql which change with object locking enabled.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
@@ -707,7 +707,7 @@ class PgFKeyFKCacheLimitTest : public PgFKeyTest {
 
   void SetUp() override {
     AppendPgConfOption(FKReferenceCacheLimitPgConfOption(kDefaultRefCacheLimit));
-    FLAGS_ysql_session_max_batch_size = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_session_max_batch_size) = 1;
     PgFKeyTest::SetUp();
   }
 

@@ -172,11 +172,11 @@ class VectorLSMTest : public YBTest, public testing::WithParamInterface<ANNMetho
           .max_workers = 10,
         }),
         priority_thread_pool_(/* max_running_tasks = */ 2) {
-    FLAGS_TEST_usearch_exact = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
   }
 
   void SetUp() override {
-    FLAGS_vector_index_enable_compactions = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     YBTest::SetUp();
   }
 
@@ -673,11 +673,13 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
 
   // Turn off compactions by size ratio to not interfere with compactions by size amp.
-  FLAGS_vector_index_compaction_size_ratio_percent = -100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_ratio_percent) = -100;
 
   // Ensure background compaction flags.
-  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_compaction_size_amp_max_percent = narrow_cast<int32_t>((kNumChunks - 1) * 100);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_files_number_compaction_trigger) =
+      narrow_cast<int32_t>(kNumChunks / 2);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_amp_max_percent) =
+      narrow_cast<int32_t>((kNumChunks - 1) * 100);
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kDefaultChunkSize));
@@ -709,7 +711,7 @@ TEST_P(VectorLSMTest, BackgroundCompactionSizeAmp) {
   // Trigger background compaction on the same size. At this point there's one big chunk which
   // is approximately equal to the size of six random chunks. So, inserting six more chunks
   // should trigger next background compaction.
-  FLAGS_vector_index_compaction_size_amp_max_percent = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_amp_max_percent) = 100;
   for (size_t n = 0; n < kNumChunks; ++n) {
     // Check files right before the background compaction would trigger.
     if (n == kNumChunks - 1) {
@@ -751,16 +753,19 @@ void VectorLSMTest::TestBackgroundCompactionSizeRatio(bool test_metrics) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = false;
 
   // Turn off compactions by size amp to not interfere with compactions by size ratio.
-  FLAGS_vector_index_compaction_size_amp_max_percent = -1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_amp_max_percent) = -1;
 
   // Ensure background compaction flags.
-  FLAGS_vector_index_compaction_always_include_size_threshold = 0;
-  FLAGS_vector_index_files_number_compaction_trigger = narrow_cast<int32_t>(kNumChunks / 2);
-  FLAGS_vector_index_compaction_size_ratio_min_merge_width = kNumMinChunks + 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_always_include_size_threshold) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_files_number_compaction_trigger) =
+      narrow_cast<int32_t>(kNumChunks / 2);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_ratio_min_merge_width) =
+      kNumMinChunks + 1;
 
   // Round up to the nearest tens (e.g. 1.33 => 40%).
-  FLAGS_vector_index_compaction_size_ratio_percent = -100 + 10 * static_cast<int>(
-      std::ceil((10.0 * kMediumChunkNumVectors) / (kNumSmallChunks * kSmallChunkNumVectors)));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_compaction_size_ratio_percent) =
+      -100 + 10 * static_cast<int>(
+          std::ceil((10.0 * kMediumChunkNumVectors) / (kNumSmallChunks * kSmallChunkNumVectors)));
 
   FloatVectorLSM lsm;
   ASSERT_OK(OpenVectorLSM(lsm, kDimensions, kChunkSize));
@@ -943,8 +948,9 @@ TEST_P(VectorLSMTest, BootstrapWithFlush) {
 }
 
 TEST_P(VectorLSMTest, NotSavedChunk) {
-  FLAGS_TEST_vector_index_delay_saving_first_chunk_ms = 1000 * kTimeMultiplier;
-  FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_delay_saving_first_chunk_ms) =
+      1000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_skip_manifest_update_during_shutdown) = true;
   TestBootstrap(/* flush= */ false);
 }
 

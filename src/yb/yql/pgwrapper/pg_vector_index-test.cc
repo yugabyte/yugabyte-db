@@ -122,13 +122,13 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
   }
 
   void SetUp() override {
-    FLAGS_TEST_use_custom_varz = true;
-    FLAGS_TEST_usearch_exact = true;
-    FLAGS_vector_index_enable_compactions = true;
-    FLAGS_vector_index_num_compactions_limit = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_use_custom_varz) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
     auto packing_mode = GetPackingMode();
-    FLAGS_ysql_enable_packed_row = packing_mode != PackingMode::kNone;
-    FLAGS_ysql_use_packed_row_v2 = packing_mode == PackingMode::kV2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
     switch (Engine()) {
       case VectorIndexEngine::kUsearch:
         ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_backend) = "usearch";
@@ -142,14 +142,15 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     }
 
     // Make sure compaction has predictable trigger threshold.
-    FLAGS_rocksdb_level0_file_num_compaction_trigger = GetFileNumCompactionTrigger();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) =
+        GetFileNumCompactionTrigger();
 
     // Disable auto analyze in this test suite because auto analyze runs
     // analyze which can violate the check used in this test suite:
     // !TEST_fail_on_seq_scan_with_vector_indexes || pgsql_read_request.has_ybctid_column_value()
-    FLAGS_ysql_enable_auto_analyze = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
     // (Auto-Analyze #28666)
-    FLAGS_ysql_enable_auto_analyze_infra = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_infra) = false;
     itest::SetupQuickSplit(1_KB);
 
     PgMiniTestBase::SetUp();
@@ -1082,14 +1083,14 @@ TEST_P(PgVectorIndexTest, Cosine) {
 }
 
 TEST_P(PgVectorIndexTest, EfSearch) {
-  FLAGS_vector_index_no_deletions_skip_filter_check = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_no_deletions_skip_filter_check) = false;
 
   constexpr size_t kNumRows = 1000;
   constexpr int kIterations = 10;
   constexpr int kSmallEf = 1;
   constexpr int kBigEf = 1000;
 
-  FLAGS_TEST_usearch_exact = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_usearch_exact) = false;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
@@ -1325,7 +1326,8 @@ class PgDistributedVectorIndexTest
 
  protected:
   void SetUp() override {
-    FLAGS_cleanup_split_tablets_interval_sec = GetCleanupSplitTabletsIntervalSec();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) =
+        GetCleanupSplitTabletsIntervalSec();
     Base::SetUp();
   }
 

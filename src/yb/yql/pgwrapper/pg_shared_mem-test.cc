@@ -50,11 +50,11 @@ namespace yb::pgwrapper {
 class PgSharedMemTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    FLAGS_pg_client_use_shared_memory = true;
-    FLAGS_pg_client_extra_timeout_ms = 0;
-    FLAGS_ysql_client_read_write_timeout_ms = GetReadWriteTimeout();
-    FLAGS_big_shared_memory_segment_session_expiration_time_ms = 1000;
-    FLAGS_big_shared_memory_segment_expiration_time_ms = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_extra_timeout_ms) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = GetReadWriteTimeout();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_big_shared_memory_segment_session_expiration_time_ms) = 1000;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_big_shared_memory_segment_expiration_time_ms) = 1000;
     PgMiniTestBase::SetUp();
   }
 
@@ -95,13 +95,13 @@ TEST_F(PgSharedMemTest, Simple) {
 }
 
 TEST_F(PgSharedMemTest, ThreadStartFailure) {
-  TEST_fail_to_create_second_thread_in_thread_pool_without_queue = true;
+  ANNOTATE_UNPROTECTED_WRITE(TEST_fail_to_create_second_thread_in_thread_pool_without_queue) = true;
 
   TestSimple();
 }
 
 TEST_F(PgSharedMemTest, Restart) {
-  FLAGS_TEST_skip_remove_tserver_shared_memory_object = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_remove_tserver_shared_memory_object) = true;
 
   auto conn = ASSERT_RESULT(Connect());
 
@@ -235,7 +235,7 @@ TEST_F_EX(PgSharedMemTest, LongRead, PgSharedMemBigTimeoutTest) {
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1)"));
 
-  FLAGS_TEST_transactional_read_delay_ms = 65000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transactional_read_delay_ms) = 65000;
   auto result = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM t"));
   ASSERT_EQ(result, 1);
   ASSERT_OK(conn.CommitTransaction());
