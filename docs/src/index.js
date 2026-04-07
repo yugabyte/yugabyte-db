@@ -251,6 +251,39 @@ $(document).ready(() => {
     });
   })();
 
+  /**
+   * Add markdown copy functionality.
+   */
+  (() => {
+    document
+      .querySelector('.markdown-actions button.copy-link')
+      .addEventListener('click', function () {
+        const button = this;
+        const originalHtml = button.innerHTML;
+        const url = button.getAttribute('data-copy-file');
+
+        // Fetch the file content.
+        fetch(url)
+          .then((response) => {
+            if (!response.ok) throw new Error('File not found');
+            return response.text();
+          })
+          .then((text) => {
+            // Copy content to clipboard.
+            navigator.clipboard.writeText(text).then(() => {
+              button.innerHTML = '<i class="fa fa-copy me-2"></i><span>Copied to clipboard!</span>';
+
+              setTimeout(() => {
+                button.innerHTML = originalHtml;
+              }, 2000);
+            });
+          })
+          .catch((err) => {
+            console.error(err);
+          });
+      });
+  })();
+
   (() => {
     const contributeEditFilePath = document.querySelector('.contribute-edit-file-path');
     if (contributeEditFilePath) {
