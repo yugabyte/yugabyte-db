@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, YBButton } from '@yugabyte-ui-library/core';
 import {
@@ -6,11 +7,13 @@ import {
   StyledInfoRow,
   StyledPanel
 } from '../../create-universe/components/DefaultComponents';
+import { EncryptionInTransit } from '@app/redesign/features/universe/universe-actions/encryption-in-transit/EncryptionInTransit';
 import { FormProvider, useForm } from 'react-hook-form';
 import { SecuritySettingsProps } from '../../create-universe/steps/security-settings/dtos';
 import { AssignPublicIPField } from '../../create-universe/fields';
 import { getClusterByType, useEditUniverseContext } from '../EditUniverseUtils';
 import { ClusterSpecClusterType } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 import Checked from '@app/redesign/assets/check-new.svg';
 import EditIcon from '@app/redesign/assets/edit2.svg';
@@ -42,12 +45,18 @@ export const SecurityTab = () => {
   const { universeData } = useEditUniverseContext();
   const primaryCluster = getClusterByType(universeData!, ClusterSpecClusterType.PRIMARY);
 
+  const [eitModalOpen, setEitModalOpen] = useState(false);
+  const universeUUID = universeData?.info?.universe_uuid;
+
   const providerCode = primaryCluster?.placement_spec?.cloud_list[0].code;
-  const nodeToNodeEnabled = !!universeData?.spec?.encryption_in_transit_spec
-    ?.enable_node_to_node_encrypt;
-  const clientToNodeEnabled = !!universeData?.spec?.encryption_in_transit_spec
-    ?.enable_client_to_node_encrypt;
+  const nodeToNodeEnabled =
+    !!universeData?.spec?.encryption_in_transit_spec?.enable_node_to_node_encrypt;
+  const clientToNodeEnabled =
+    !!universeData?.spec?.encryption_in_transit_spec?.enable_client_to_node_encrypt;
   const encryptionAtRestEnabled = !!universeData?.spec?.encryption_at_rest_spec?.kms_config_uuid;
+
+  const isItKubernetesUniverse = providerCode === CloudType.kubernetes;
+
   return (
     <FormProvider {...methods}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -66,8 +75,8 @@ export const SecurityTab = () => {
               dataTestId="edit-security-transit-button"
               variant="ghost"
               startIcon={<EditIcon />}
-              onClick={() => {}}
-              disabled
+              onClick={() => setEitModalOpen(true)}
+              disabled={eitModalOpen}
             >
               {t('edit', { keyPrefix: 'common' })}
             </YBButton>
@@ -101,7 +110,6 @@ export const SecurityTab = () => {
               variant="ghost"
               startIcon={<EditIcon />}
               onClick={() => {}}
-              disabled
             >
               {t('edit', { keyPrefix: 'common' })}
             </YBButton>
@@ -119,6 +127,19 @@ export const SecurityTab = () => {
           </StyledContent>
         </StyledPanel>
       </Box>
+      {universeData?.spec?.encryption_in_transit_spec && (
+        <EncryptionInTransit
+          open={eitModalOpen}
+          onClose={() => {
+            setEitModalOpen(false);
+          }}
+          isItKubernetesUniverse={isItKubernetesUniverse}
+          v2Spec={{
+            universeUUID: universeUUID || '',
+            eitSpec: universeData?.spec?.encryption_in_transit_spec
+          }}
+        />
+      )}
     </FormProvider>
   );
 };
