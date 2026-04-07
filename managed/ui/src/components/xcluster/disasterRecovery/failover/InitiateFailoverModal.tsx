@@ -117,7 +117,7 @@ export const InitiateFailoverModal = ({
       namespaceIdSafetimeEpochUsMap
     }: {
       drConfig: DrConfig;
-      namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: string };
+      namespaceIdSafetimeEpochUsMap: { [namespaceId: string]: number };
     }) =>
       api.initiateFailover(drConfig.uuid, {
         primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
