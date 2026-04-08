@@ -222,6 +222,16 @@ Status ValidateYsqlMigrationCompatibility(const std::string& old_version_base_pa
     RETURN_NOT_OK(env->GetChildren(migration_dir, &migration_files));
 
     for (const auto& file : migration_files) {
+      // macOS creates ._ resource fork companion files when extracting tarballs.
+      // These mirror the original filename (e.g., ._V53__22144__foo.sql), so they
+      // pass the .sql extension below but fail on migration_regex. The solution is
+      // to filter them out right away.
+      #ifdef __APPLE__
+      if (file.starts_with("._")) {
+        continue;
+      }
+      #endif
+
       if (!file.ends_with(".sql")) {
         continue;
       }
