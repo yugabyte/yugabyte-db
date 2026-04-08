@@ -626,6 +626,7 @@ openApiFormat := {
   }
   val changes = openApiFormat.inputFileChanges
   val changedFiles = (changes.created ++ changes.modified).toSet
+  installOpenapiFormat()
   changedFiles.par.foreach(formatFile)
 }
 
