@@ -795,27 +795,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   }
 
   VLOG(1) << "Number of " << table_type << " operations to send: " << send_count;
-  YbcReadPointHandle catalog_read_time_serial_no = YbcInvalidReadPointHandle;
-  TxnReadPoint read_point_before_catalog_op{};
-  if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table()) {
-    // TODO(#29284): Are catalog writes buffered in the legacy mode? Allow buffering of catalog
-    // writes.
-    force_non_bufferable = ForceNonBufferable::kTrue;
-    read_point_before_catalog_op = pg_session_->GetCurrentReadPointState();
-    // Switch to catalog snapshot's read time serial no.
-    catalog_read_time_serial_no = pg_session_->GetCatalogSnapshotReadPoint(
-        table_->pg_table_id().object_oid, true /* create_if_not_exists */);
-    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
-      LOG(INFO) << "Using catalog snapshot read time serial number: " << catalog_read_time_serial_no
-                << " and saving read time serial no "
-                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
-                << read_point_before_catalog_op.txn;
-    }
-    RSTATUS_DCHECK(
-        catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(catalog_read_time_serial_no));
-  }
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), {pgsql_ops_.begin(), send_count}, *table_,
       {HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable}, is_write));
@@ -828,15 +807,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
     }
   }
 
-  if (!YBCIsLegacyModeForCatalogOps() &&
-      table_->schema().table_properties().is_ysql_catalog_table()) {
-    if (VLOG_IS_ON(2) || yb_debug_log_snapshot_mgmt) {
-      LOG(INFO) << "Restoring read time serial no after catalog operation to "
-                << read_point_before_catalog_op.read_time_serial_no << " for txn no "
-                << read_point_before_catalog_op.txn;
-    }
-    RETURN_NOT_OK(pg_session_->RestoreReadPoint(read_point_before_catalog_op));
-  }
   return Status::OK();
 }
 
