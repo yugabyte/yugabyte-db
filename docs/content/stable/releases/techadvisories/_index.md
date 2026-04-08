@@ -25,7 +25,7 @@ For an RSS feed of all technical advisories, point your feed reader to the [RSS 
 | Index inconsistency with in-place update on INCLUDE column
 | {{<product "ysql">}}
 | {{<release "2024.2.0.0">}} to {{<release "2024.2.8.0">}}, {{<release "2025.1.0.0">}} to {{<release "2025.1.3.0">}}, {{<release "2025.2.0.0">}} to {{<release "2025.2.1.0">}}
-| {{<nobreak "7 April 2026">}}
+| {{<nobreak "8 April 2026">}}
 |
 | {{<ta 26910>}}
 | Incorrectly configured ulimit along with snapshot operations can cause data loss
