@@ -3434,6 +3434,107 @@ TEST_F_EX(PgLibPqTest, YB_LINUX_ONLY_TEST(TestOomScoreAdjPGWebserver), PgLibPqYS
   ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 
+class PgLibPqPgssQtextLeakTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgLibPqTest::UpdateMiniClusterOptions(options);
+    options->replication_factor = 1;
+    // Auto-analyze tries to create its backing table at RF3, which fails
+    // with only one tserver and causes cascading backend crashes.
+    options->extra_tserver_flags.push_back("--ysql_enable_auto_analyze=false");
+    options->extra_tserver_flags.push_back(
+        "--ysql_pg_conf_csv=yb_enable_memory_tracking=true");
+  }
+
+  int GetNumMasters() const override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+};
+
+// Verify that repeatedly hitting an encoding error in pg_stat_statements does
+// not leak the qtext file buffer. Before the palloc_extended fix, the buffer
+// was allocated with malloc and freed only on the normal exit path. An
+// ereport(ERROR) from pg_any_to_server would longjmp past the free(), leaking
+// the entire buffer on every call.
+TEST_F(PgLibPqPgssQtextLeakTest, TestNoMemoryLeakOnCorruptedPgssQtext) {
+  constexpr int kNumPopulateQueries = 500;
+  constexpr int kPgMaxIdentifierLen = 63;  // NAMEDATALEN - 1
+  const int kLeakIterations = RegularBuildVsSanitizers(2000, 500);
+  const int64_t kMaxRssGrowthKb = RegularBuildVsSanitizers(50, 200) * 1024;
+  constexpr size_t kCorruptOffset = 500;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"));
+  ASSERT_OK(conn.Fetch("SELECT pg_stat_statements_reset()"));
+
+  // Populate pg_stat_statements with unique queries so the qtext file grows large.
+  // Each query uses a padded CTE name to maximize per-entry size.
+  for (int i = 0; i < kNumPopulateQueries; ++i) {
+    std::string cte_name = Format("q_$0", i);
+    while (cte_name.size() < kPgMaxIdentifierLen) {
+      cte_name += '_';
+    }
+    ASSERT_OK(conn.FetchFormat(
+        "WITH $0 AS (SELECT 1) SELECT * FROM $0 a1, $0 a2, $0 a3", cte_name));
+  }
+
+  auto entry_count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      "SELECT COUNT(*) FROM pg_stat_statements WHERE query LIKE '%q\\_%' ESCAPE '\\'"));
+  LOG(INFO) << "pg_stat_statements populated with " << entry_count << " entries";
+  ASSERT_EQ(entry_count, kNumPopulateQueries);
+
+  auto data_dir = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW data_directory"));
+  std::string qtext_path = JoinPathSegments(data_dir, "pg_stat_tmp/pgss_query_texts.stat");
+
+  // Inject an invalid UTF-8 byte (0xFF) into the qtext file. This causes
+  // pg_any_to_server to throw ERROR on the entry that spans this offset.
+  std::string file_contents;
+  {
+    std::ifstream ifs(qtext_path, std::ios::binary);
+    ASSERT_TRUE(ifs.good()) << "Failed to open qtext file: " << qtext_path;
+    file_contents.assign(
+        std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
+  }
+  LOG(INFO) << "Query text file: " << qtext_path << " (" << file_contents.size() << " bytes)";
+  ASSERT_GT(file_contents.size(), kCorruptOffset);
+
+  file_contents[kCorruptOffset] = static_cast<char>(0xFF);
+  {
+    std::ofstream ofs(qtext_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(ofs.good()) << "Failed to write qtext file: " << qtext_path;
+    ofs.write(file_contents.data(), file_contents.size());
+  }
+
+  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+  auto get_backend_rss_kb = [&conn, backend_pid]() -> Result<int64_t> {
+    auto rss_bytes = VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT yb_pg_stat_get_backend_rss_mem_bytes(beid) "
+        "FROM pg_stat_get_backend_idset() AS beid "
+        "WHERE pg_stat_get_backend_pid(beid) = $0", backend_pid)));
+    return rss_bytes / 1024;
+  };
+
+  auto rss_before = ASSERT_RESULT(get_backend_rss_kb());
+  LOG(INFO) << "Backend PID: " << backend_pid << ", RSS before: " << rss_before << " KB";
+
+  for (int i = 0; i < kLeakIterations; ++i) {
+    auto result = conn.Fetch("SELECT count(*) FROM pg_stat_statements");
+    ASSERT_NOK(result);
+    ASSERT_STR_CONTAINS(result.status().ToString(), "invalid byte sequence");
+  }
+
+  auto rss_after = ASSERT_RESULT(get_backend_rss_kb());
+  int64_t rss_growth_kb = rss_after - rss_before;
+  LOG(INFO) << "RSS before: " << rss_before << " KB, after: " << rss_after
+            << " KB, growth: " << rss_growth_kb << " KB";
+
+  ASSERT_LT(rss_growth_kb, kMaxRssGrowthKb)
+      << Format(
+             "RSS grew by $0 KB ($1 MB) after $2 iterations - likely memory leak. "
+             "File was $3 bytes; theoretical leak if unfixed: ~$4 MB.",
+             rss_growth_kb, rss_growth_kb / 1024, kLeakIterations, file_contents.size(),
+             (static_cast<int64_t>(file_contents.size()) * kLeakIterations) / (1024 * 1024));
+}
+
 TEST_F_EX(PgLibPqTest, YbcTableProperties, PgLibPqTestRF1) {
   const string kDatabaseName = "yugabyte";
   const string kTableName = "test";
