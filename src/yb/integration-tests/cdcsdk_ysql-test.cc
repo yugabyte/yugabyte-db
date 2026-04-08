@@ -12048,7 +12048,9 @@ TEST_F(CDCSDKYsqlTest, TestYbRestartCommitTimeInPgReplicationSlots) {
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   auto result = ASSERT_RESULT(conn.Fetch(
-      "SELECT to_char(yb_restart_time AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.USOF') FROM pg_replication_slots"));
+      "SELECT to_char(yb_restart_time AT TIME ZONE 'UTC',"
+          " 'YYYY-MM-DD HH24:MI:SS.US') || '+00'"
+          " FROM pg_replication_slots"));
 
   ASSERT_EQ(PQntuples(result.get()), 1);
 
