@@ -192,6 +192,11 @@ Cgroup* RootCgroup();
 // explicitly.
 Cgroup* DefaultThreadCgroup();
 
+// Override the default thread cgroup. Called by TServerCgroupManager after it sets up the
+// hierarchy so that thread pools without an explicit cgroup assignment land in @system-med
+// rather than the initial landing zone.
+void SetDefaultThreadCgroup(Cgroup* cgroup);
+
 Result<std::string> GetProcessCpuCgroup(int64_t process_id = -1, bool check_controllers = true);
 
 Result<std::string> GetProcessCpuCgroupPath(int64_t process_id = -1, bool check_controllers = true);

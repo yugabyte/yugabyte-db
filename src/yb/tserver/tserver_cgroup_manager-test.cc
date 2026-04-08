@@ -24,6 +24,8 @@
 
 #include "yb/gutil/sysinfo.h"
 
+#include "yb/common/entity_ids.h"
+
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -31,6 +33,7 @@
 #include "yb/util/test_util.h"
 
 DECLARE_bool(enable_qos);
+DECLARE_bool(qos_system_dbs_use_shared_pool);
 DECLARE_double(qos_max_db_cpu_percent);
 DECLARE_int32(qos_evaluation_window_us);
 DECLARE_int32(qos_metrics_interval_sec);
@@ -352,6 +355,33 @@ TEST_F(TServerCgroupManagerTest, TestCgroupMetricsLateMetadata) {
     ASSERT_EQ(ASSERT_RESULT(entity->TEST_GetAttributeFromMap("database_oid")),
               std::to_string(db_oid));
   });
+}
+
+TEST_F(TServerCgroupManagerTest, TestSystemDbOidsExcludedFromPerDbPools) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_system_dbs_use_shared_pool) = true;
+
+  // IsQosSystemDatabaseOid should identify system OIDs.
+  ASSERT_TRUE(IsQosSystemDatabaseOid(kPgSequencesDataDatabaseOid));
+  ASSERT_TRUE(IsQosSystemDatabaseOid(kTemplate1Oid));
+  ASSERT_FALSE(IsQosSystemDatabaseOid(16640));  // Normal user DB OID.
+
+  // Normal user DB should create a per-DB cgroup.
+  constexpr PgOid user_db_oid = 16640;
+  auto& user_cgroup = ASSERT_RESULT_REF(manager_->CgroupForDb(user_db_oid));
+  ASSERT_EQ(user_cgroup.name(), "/@capped-pool/@normal/db_16640");
+
+  ASSERT_TRUE(IsQosSystemDatabaseOid(kPgSequencesDataDatabaseOid));
+
+  // Now disable the flag and verify the system OID CAN create a cgroup.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_system_dbs_use_shared_pool) = false;
+  auto& seq_cgroup = ASSERT_RESULT_REF(
+      manager_->CgroupForDb(kPgSequencesDataDatabaseOid));
+  ASSERT_EQ(seq_cgroup.name(), "/@capped-pool/@normal/db_65535");
+
+  // Re-enable the flag -- the cgroup still exists (it's already created), but
+  // PerDbCgroupProvider and PoolTag() would route new RPCs away from it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_qos_system_dbs_use_shared_pool) = true;
+  ASSERT_TRUE(IsQosSystemDatabaseOid(kPgSequencesDataDatabaseOid));
 }
 
 } // namespace yb::tserver

@@ -118,7 +118,6 @@ class TServerCgroupManager {
   Cgroup* capped_pool_cgroup_ = nullptr;   // parent of @system-med and @normal
   Cgroup* system_med_cgroup_ = nullptr;
   Cgroup* normal_pool_cgroup_ = nullptr;
-  Cgroup* default_cgroup_ = nullptr;       // @default under @normal
 
   // Background metrics collector. shutdown_mutex_ + shutdown_cv_ enable responsive
   // shutdown: MetricsCollectorThread sleeps via cv.wait_for instead of SleepFor,

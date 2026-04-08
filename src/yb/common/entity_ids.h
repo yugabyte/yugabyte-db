@@ -47,6 +47,13 @@ static const uint32_t kPgEnumTableOid = 3501;         // Hardcoded for pg_enum (
 static const uint32_t kPgTypeTableOid = 1247;         // Hardcoded for pg_type (in pg_type.h)
 static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1. (in initdb.c)
 
+// Returns true for database OIDs that are system-internal and should not get
+// per-DB cgroup/pool treatment under QoS.  Currently: system_postgres (the
+// synthetic namespace that holds sequences_data, OID 0xFFFF) and template1.
+inline bool IsQosSystemDatabaseOid(uint32_t db_oid) {
+  return db_oid == kPgSequencesDataDatabaseOid || db_oid == kTemplate1Oid;
+}
+
 // Hardcoded for pg_yb_invalidation_messages hardcoded (in pg_yb_invalidation_messages.h).
 static const uint32_t kPgYbInvalidationMessagesTableOid = 8080;
 

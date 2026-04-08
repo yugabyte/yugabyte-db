@@ -339,6 +339,7 @@ DECLARE_int64(rocksdb_compact_flush_rate_limit_bytes_per_sec);
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
+DECLARE_bool(qos_system_dbs_use_shared_pool);
 
 namespace yb::tserver {
 
@@ -2048,6 +2049,9 @@ Status MaybeAssignPerDbCgroups(
   if (namespace_id.empty()) return Status::OK();
 
   auto db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_id));
+  if (FLAGS_qos_system_dbs_use_shared_pool && IsQosSystemDatabaseOid(db_oid)) {
+    return Status::OK();
+  }
   auto& cgroup = VERIFY_RESULT_REF(cm->CgroupForDb(db_oid));
   cm->RegisterDbName(db_oid, meta.namespace_name());
   if (consensus_per_db) {

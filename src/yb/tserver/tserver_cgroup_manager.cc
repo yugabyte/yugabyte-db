@@ -68,6 +68,11 @@ DEFINE_RUNTIME_double(qos_system_med_cpu_max_percent, 0,
     "0 means uncapped within @capped-pool. 100.0 = the full @capped-pool budget.");
 TAG_FLAG(qos_system_med_cpu_max_percent, advanced);
 
+DEFINE_RUNTIME_bool(qos_system_dbs_use_shared_pool, true,
+    "When true, system-internal database OIDs (system_postgres/sequences OID 0xFFFF, template1 "
+    "OID 1) are routed to the shared system worker pool instead of creating per-DB cgroup slots. "
+    "Prevents these synthetic/system databases from consuming per-DB pool capacity.");
+
 DEFINE_RUNTIME_bool(qos_compaction_per_db_cgroups, false,
     "When true, compaction/flush tasks run in the tablet's per-database cgroup (db_$DBOID) "
     "instead of the shared @system-med cgroup.");
@@ -222,10 +227,10 @@ Status TServerCgroupManager::Init() {
   // $ROOT_CGROUP
   //   - @system-high  (latency-sensitive: reactors, consensus, WAL, network)
   //   - @capped-pool  (cap = 100% - reserved%; contains tenant and background work)
-  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance)
+  //     - @system-med  (hard cap -- background: compaction, flushes, maintenance,
+  //                     and all uncategorized threads)
   //     - @normal      (uncapped within @capped-pool; groups tenant work so that
   //                     @system-med's weight share stays constant as DBs come and go)
-  //       - @default   (uncategorized threads; uncapped within @normal)
   //       - db_$DBOID  (per-database query processing threads; individually capped)
   //
   // Protection model (configured via gflags, both mechanisms compose):
@@ -240,11 +245,13 @@ Status TServerCgroupManager::Init() {
   system_med_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@system-med"));
   normal_pool_cgroup_ = &VERIFY_RESULT_REF(capped_pool_cgroup_->CreateOrLoadChild("@normal"));
 
-  // Move the infrastructure-created @default under @normal.
-  // SetupCgroupManagement() creates @default under $ROOT as a landing zone; we create the
-  // "real" @default under @normal and move threads there.
-  default_cgroup_ = &VERIFY_RESULT_REF(normal_pool_cgroup_->CreateOrLoadChild("@default"));
-  RETURN_NOT_OK(default_cgroup_->MoveCurrentThreadToGroup());
+  // Uncategorized threads default to @system-med rather than a separate @default cgroup.
+  // This keeps the hierarchy simpler and ensures all non-tenant, non-latency-sensitive
+  // threads share the same CPU budget and are visible in @system-med metrics.
+  // Also update the global default so that thread pools without an explicit cgroup
+  // assignment (e.g. CQL reactors, misc infrastructure) land in @system-med.
+  SetDefaultThreadCgroup(system_med_cgroup_);
+  RETURN_NOT_OK(system_med_cgroup_->MoveCurrentThreadToGroup());
 
   return ApplyCpuLimits();
 }
@@ -296,7 +303,7 @@ Status TServerCgroupManager::ApplyCpuLimits() {
             << ", @capped-pool=" << (capped_pool_fraction * 100.0) << "%"
             << " weight=" << FLAGS_qos_capped_pool_cpu_weight
             << " (system-med max=" << FLAGS_qos_system_med_cpu_max_percent
-            << "% of pool, @normal uncapped within pool, includes @default)"
+            << "% of pool, @normal uncapped within pool)"
             << ", per-db cap=" << (per_db_fraction * 100.0)
             << "% (qos_max_db_cpu_percent=" << FLAGS_qos_max_db_cpu_percent
             << "% of @capped-pool)";
@@ -367,11 +374,11 @@ Status TServerCgroupManager::RegisterMetrics(MetricRegistry* registry) {
     system_cgroup_metrics_.push_back(
         CreateCgroupMetrics(normal_pool_cgroup_, "@normal", registry));
   }
-  if (default_cgroup_) {
+  auto* landing_zone = RootCgroup()->child("@default");
+  if (landing_zone) {
     system_cgroup_metrics_.push_back(
-        CreateCgroupMetrics(default_cgroup_, "@default", registry));
+        CreateCgroupMetrics(landing_zone, "@default", registry));
   }
-
   return Thread::Create(
       "cgroup", "metrics-collector",
       &TServerCgroupManager::MetricsCollectorThread, this, &metrics_thread_);

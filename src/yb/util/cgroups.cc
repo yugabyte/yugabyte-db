@@ -36,6 +36,7 @@ DECLARE_int32(num_cpus);
 #include <syscall.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cstdlib>
 
 #include "yb/util/enums.h"
@@ -208,15 +209,20 @@ class CgroupManager {
     }
     root_ = std::make_unique<Cgroup>(nullptr /* parent */, "" /* name */);
     RETURN_NOT_OK(root_->Init(true /* is_root */));
-    default_group_ = &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName));
-    RETURN_NOT_OK(default_group_->MoveCurrentThreadToGroup());
+    default_group_.store(
+        &VERIFY_RESULT_REF(root_->CreateOrLoadChild(kDefaultThreadCgroupName)),
+        std::memory_order_release);
+    RETURN_NOT_OK(default_group_.load(std::memory_order_relaxed)->MoveCurrentThreadToGroup());
 
     initialized_ = true;
     return Status::OK();
   }
 
   Cgroup* root_group() { return root_.get(); }
-  Cgroup* default_thread_group() { return default_group_; }
+  Cgroup* default_thread_group() { return default_group_.load(std::memory_order_acquire); }
+  void set_default_thread_group(Cgroup* cg) {
+    default_group_.store(cg, std::memory_order_release);
+  }
   CgroupVersion version() { return version_; }
   std::string_view cpu_group() { return process_cpu_cgroup_; }
   std::string_view cpu_root_path() { return cpu_root_path_; }
@@ -230,7 +236,7 @@ class CgroupManager {
   std::string cpu_root_path_;
   std::string process_cpu_cgroup_path_;
   std::unique_ptr<Cgroup> root_;
-  Cgroup* default_group_;
+  std::atomic<Cgroup*> default_group_{nullptr};
   bool initialized_ = false;
 };
 
@@ -587,6 +593,10 @@ Cgroup* RootCgroup() {
 
 Cgroup* DefaultThreadCgroup() {
   return cgroup_manager.default_thread_group();
+}
+
+void SetDefaultThreadCgroup(Cgroup* cgroup) {
+  cgroup_manager.set_default_thread_group(cgroup);
 }
 
 Result<std::string> GetProcessCpuCgroup(int64_t process_id, bool check_controllers) {
