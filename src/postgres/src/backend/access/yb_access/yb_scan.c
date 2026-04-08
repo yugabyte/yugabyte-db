@@ -1601,8 +1601,15 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	 * We can only push down right now if the key columns are specified in the
 	 * correct order and the key has no hashed columns. We also need to ensure
 	 * that the same comparison operation is done to all subkeys.
+	 *
+	 * YB: A leading yb_hash_code subkey (sk_attno = InvalidAttrNumber,
+	 * YB_SK_SEARCHHASHCODE flag) is allowed but not yet pushed down as a
+	 * DocDB bound.  Skip it in validation to avoid an out-of-bounds access
+	 * on rd_indoption, and disable pushdown so the condition is rechecked
+	 * at the Postgres level.
 	 */
 	bool		can_pushdown = true;
+	bool		has_yb_hash_code_subkey = false;
 
 	int			strategy = header_key->sk_strategy;
 	int			subkey_count = length_of_key - 1;
@@ -1610,6 +1617,17 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 	for (int j = 0; j < subkey_count; j++)
 	{
 		ScanKey		key = subkeys[j];
+
+		/*
+		 * Skip the leading yb_hash_code subkey.  It has sk_attno =
+		 * InvalidAttrNumber and cannot be validated against rd_indoption.
+		 */
+		if (j == 0 && YbIsHashCodeSearch(key))
+		{
+			has_yb_hash_code_subkey = true;
+			last_att_no = key->sk_attno;
+			continue;
+		}
 
 		/* Make sure that the specified keys are in the right order. */
 		if (key->sk_attno <= last_att_no)
@@ -1619,9 +1637,9 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		}
 
 		/*
-			* Make sure that the same comparator is applied to
-			* all subkeys.
-			*/
+		 * Make sure that the same comparator is applied to
+		 * all subkeys.
+		 */
 		if (strategy != key->sk_strategy)
 		{
 			can_pushdown = false;
@@ -1633,10 +1651,25 @@ YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
 		if (index->rd_indoption[key->sk_attno - 1]
 			& INDOPTION_HASH)
 		{
+			/*
+			 * Hash columns in a ROW comparison are allowed when led by
+			 * yb_hash_code, but we don't push them down yet.
+			 */
+			if (has_yb_hash_code_subkey)
+				continue;
 			can_pushdown = false;
 			break;
 		}
 	}
+
+	/*
+	 * If a yb_hash_code subkey is present, disable pushdown for now.
+	 * The pggate EncodeRowKeyForBound API needs to be updated to accept
+	 * a pre-computed hash code before we can push these down as DocDB
+	 * row bounds.  The condition will be rechecked at the Postgres level.
+	 */
+	if (has_yb_hash_code_subkey)
+		can_pushdown = false;
 
 	/* Make sure that there are no hash keys in order to push down. */
 	for (int i = 0; (i < index->rd_index->indnkeyatts) && can_pushdown; i++)

@@ -223,6 +223,12 @@ static List *yb_truncate_embedded_index_pathkeys(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 IndexOptInfo *index,
 												 List *useful_pathkeys);
+static IndexClause *yb_match_clause_to_index(PlannerInfo *root,
+											 RestrictInfo *rinfo,
+											 IndexOptInfo *index);
+static IndexClause *yb_match_rowcompare_to_index(PlannerInfo *root,
+												 RestrictInfo *rinfo,
+												 IndexOptInfo *index);
 
 bool yb_enable_derived_equalities;
 
@@ -2897,6 +2903,25 @@ match_clause_to_index(PlannerInfo *root,
 	if (!restriction_is_securely_promotable(rinfo, index->rel))
 		return;
 
+	/*
+	 * YB: In Yugabyte there are clauses that may match the whole index, not
+	 * just a single column.  For example, the yb_hash_code function may match
+	 * the hash code of a hash index, and a ROW comparison may start with
+	 * yb_hash_code followed by key columns.  Handle such expressions here,
+	 * before the per-column loop.
+	 */
+	{
+		IndexClause *yb_iclause = yb_match_clause_to_index(root, rinfo, index);
+
+		if (yb_iclause)
+		{
+			clauseset->indexclauses[0] =
+				lappend(clauseset->indexclauses[0], yb_iclause);
+			clauseset->nonempty = true;
+			return;
+		}
+	}
+
 	/* OK, check each index key column for a match */
 	for (indexcol = 0; indexcol < index->nkeycolumns; indexcol++)
 	{
@@ -5082,4 +5107,375 @@ yb_truncate_embedded_index_pathkeys(PlannerInfo *root, RelOptInfo *rel,
 		++useful;
 	}
 	return useful_pathkeys;
+}
+
+/*
+ * yb_hash_code_match_index
+ *	  Check if the given expression is a yb_hash_code call matching the index.
+ *	  That is, the index is a hash index and the expression is a yb_hash_code
+ *	  call whose arguments match the hash columns of the index in order.
+ */
+bool
+yb_hash_code_match_index(Node *expr, IndexOptInfo *index)
+{
+	FuncExpr   *fn;
+	ListCell   *lc;
+	int			indexcol;
+
+	if (!expr || !IsA(expr, FuncExpr))
+		return false;
+
+	if (index->nhashcolumns == 0)
+		return false;
+
+	fn = (FuncExpr *) expr;
+	if (fn->funcid != F_YB_HASH_CODE ||
+		list_length(fn->args) != index->nhashcolumns)
+		return false;
+
+	indexcol = 0;
+	foreach(lc, fn->args)
+	{
+		Expr	   *arg = (Expr *) lfirst(lc);
+
+		if (!IsA(arg, Var))
+			return false;
+
+		if (index->rel->relid != ((Var *) arg)->varno ||
+			index->indexkeys[indexcol] != ((Var *) arg)->varattno)
+			return false;
+
+		indexcol++;
+	}
+	return true;
+}
+
+/*
+ * yb_match_clause_to_index
+ *	  Handle YB-specific index matching for clauses that apply to the whole
+ *	  index rather than a single column.  Currently this covers:
+ *
+ *	  1. OpExpr on yb_hash_code(hash_cols): e.g. yb_hash_code(h) = 10
+ *	  2. RowCompareExpr with leading yb_hash_code(hash_cols): e.g.
+ *	     (yb_hash_code(h), h, r) > (10, 'a', 1)
+ *
+ *	  Returns an IndexClause if matched, NULL otherwise.
+ */
+static IndexClause *
+yb_match_clause_to_index(PlannerInfo *root,
+						 RestrictInfo *rinfo,
+						 IndexOptInfo *index)
+{
+	if (IsA(rinfo->clause, OpExpr))
+	{
+		OpExpr	   *clause = (OpExpr *) rinfo->clause;
+		Node	   *leftop;
+		Node	   *rightop;
+
+		if (!op_in_opfamily(clause->opno, INTEGER_LSM_FAM_OID))
+			return NULL;
+		if (list_length(clause->args) != 2)
+			return NULL;
+
+		leftop = (Node *) linitial(clause->args);
+		rightop = (Node *) lsecond(clause->args);
+
+		if (yb_hash_code_match_index(leftop, index))
+		{
+			IndexClause *iclause = makeNode(IndexClause);
+
+			iclause->rinfo = rinfo;
+			iclause->indexquals = list_make1(rinfo);
+			iclause->lossy = false;
+			iclause->indexcol = 0;
+			iclause->indexcols = NIL;
+			return iclause;
+		}
+		else if (yb_hash_code_match_index(rightop, index))
+		{
+			Oid			comm_op = get_commutator(clause->opno);
+
+			if (OidIsValid(comm_op) &&
+				op_in_opfamily(comm_op, INTEGER_LSM_FAM_OID))
+			{
+				RestrictInfo *commrinfo;
+				IndexClause *iclause;
+
+				commrinfo = commute_restrictinfo(rinfo, comm_op);
+				iclause = makeNode(IndexClause);
+				iclause->rinfo = rinfo;
+				iclause->indexquals = list_make1(commrinfo);
+				iclause->lossy = false;
+				iclause->indexcol = 0;
+				iclause->indexcols = NIL;
+				return iclause;
+			}
+		}
+	}
+	else if (IsA(rinfo->clause, RowCompareExpr))
+	{
+		return yb_match_rowcompare_to_index(root, rinfo, index);
+	}
+
+	return NULL;
+}
+
+/*
+ * yb_match_rowcompare_to_index
+ *	  Match a RowCompareExpr to a YB hash index when the leading element is
+ *	  yb_hash_code(hash_cols).  The remaining elements must reference the
+ *	  index key columns in order (hash columns first, then range columns),
+ *	  forming a prefix of the index key.  This ensures the ROW comparison
+ *	  can be converted to a DocDB row bound.
+ *
+ *	  Example: index (h1, h2) HASH, r1 ASC, r2 ASC
+ *	    Good:  (yb_hash_code(h1,h2), h1, h2, r1, r2) > (...)
+ *	    Good:  (yb_hash_code(h1,h2), h1, h2, r1) > (...)  -- partial prefix
+ *	    Bad:   (yb_hash_code(h1,h2), h1, r1) > (...)  -- skips h2
+ *	    Bad:   (h1, h2, r1) > (...)  -- no leading yb_hash_code
+ */
+static IndexClause *
+yb_match_rowcompare_to_index(PlannerInfo *root,
+							RestrictInfo *rinfo,
+							IndexOptInfo *index)
+{
+	RowCompareExpr *clause = (RowCompareExpr *) rinfo->clause;
+	List	   *var_args;
+	List	   *non_var_args;
+	Node	   *first_var;
+	Oid			first_opno;
+	int			hc_strategy;
+	int			matching_cols;
+	int			indexcol;
+	bool		var_on_left;
+
+	/* Only btree/lsm indexes support row comparisons. */
+	if (index->relam != BTREE_AM_OID && index->relam != LSM_AM_OID)
+		return NULL;
+
+	/* Only useful for hash indexes. */
+	if (index->nhashcolumns == 0)
+		return NULL;
+
+	/* Need at least yb_hash_code + one column. */
+	if (list_length(clause->largs) < 2)
+		return NULL;
+
+	/*
+	 * Determine which side has the index keys.  The first element on the
+	 * var side must be yb_hash_code(hash_cols).
+	 */
+	first_var = (Node *) linitial(clause->largs);
+	if (IsA(first_var, RelabelType))
+		first_var = (Node *) ((RelabelType *) first_var)->arg;
+
+	if (yb_hash_code_match_index(first_var, index))
+	{
+		var_on_left = true;
+		var_args = clause->largs;
+		non_var_args = castNode(List, clause->rargs);
+	}
+	else
+	{
+		Node	   *first_rarg;
+
+		first_rarg = (Node *) linitial(castNode(List, clause->rargs));
+		if (IsA(first_rarg, RelabelType))
+			first_rarg = (Node *) ((RelabelType *) first_rarg)->arg;
+
+		if (yb_hash_code_match_index(first_rarg, index))
+		{
+			var_on_left = false;
+			var_args = castNode(List, clause->rargs);
+			non_var_args = clause->largs;
+		}
+		else
+			return NULL;
+	}
+
+	/*
+	 * Check the operator on the yb_hash_code element.  It must be a range
+	 * comparison in INTEGER_LSM_FAM_OID.
+	 */
+	first_opno = linitial_oid(clause->opnos);
+	if (!var_on_left)
+	{
+		first_opno = get_commutator(first_opno);
+		if (!OidIsValid(first_opno))
+			return NULL;
+	}
+	hc_strategy = get_op_opfamily_strategy(first_opno, INTEGER_LSM_FAM_OID);
+	switch (hc_strategy)
+	{
+		case BTLessStrategyNumber:
+		case BTLessEqualStrategyNumber:
+		case BTGreaterEqualStrategyNumber:
+		case BTGreaterStrategyNumber:
+			break;
+		default:
+			return NULL;
+	}
+
+	/*
+	 * Walk the remaining ROW elements.  Each must reference the next index
+	 * key column in order (forming a prefix), with a compatible operator.
+	 */
+	matching_cols = 1;
+	indexcol = 0;
+
+	while (matching_cols < list_length(var_args) &&
+		   indexcol < index->nkeycolumns)
+	{
+		Node	   *varop = (Node *) list_nth(var_args, matching_cols);
+		Node	   *constop = (Node *) list_nth(non_var_args, matching_cols);
+		Oid			opno;
+		int			col_strategy;
+
+		if (IsA(varop, RelabelType))
+			varop = (Node *) ((RelabelType *) varop)->arg;
+
+		/* Must be a Var referencing the expected index key column. */
+		if (!IsA(varop, Var))
+			break;
+		if (((Var *) varop)->varno != index->rel->relid)
+			break;
+		if (((Var *) varop)->varattno != index->indexkeys[indexcol])
+			break;
+
+		/* The constant side must not reference the indexed relation. */
+		if (bms_is_member(index->rel->relid, pull_varnos(root, constop)))
+			break;
+		if (contain_volatile_functions(constop))
+			break;
+
+		/* Operator must have the same strategy in the column's opfamily. */
+		opno = list_nth_oid(clause->opnos, matching_cols);
+		if (!var_on_left)
+		{
+			opno = get_commutator(opno);
+			if (!OidIsValid(opno))
+				break;
+		}
+		col_strategy = get_op_opfamily_strategy(opno,
+											   index->opfamily[indexcol]);
+		if (col_strategy != hc_strategy)
+			break;
+
+		/* Collation must match. */
+		if (!IndexCollMatchesExprColl(index->indexcollations[indexcol],
+									 list_nth_oid(clause->inputcollids,
+												 matching_cols)))
+			break;
+
+		indexcol++;
+		matching_cols++;
+	}
+
+	/* Must have matched at least yb_hash_code + one real column. */
+	if (matching_cols < 2)
+		return NULL;
+
+	{
+		IndexClause *iclause = makeNode(IndexClause);
+		bool		is_lossy;
+		int			adjusted_strategy;
+		int			i;
+
+		is_lossy = (matching_cols != list_length(clause->opnos));
+		iclause->rinfo = rinfo;
+		iclause->indexcol = 0;
+		iclause->lossy = is_lossy;
+
+		if (!is_lossy && var_on_left)
+		{
+			/* All columns matched and var is on left -- use as-is. */
+			iclause->indexquals = list_make1(rinfo);
+		}
+		else
+		{
+			/*
+			 * Build a (possibly truncated, possibly commuted) RowCompareExpr.
+			 * For strict inequalities (< or >), widen to <= or >= since the
+			 * truncated bound is lossy.
+			 */
+			List	   *new_ops = NIL;
+			List	   *new_largs = NIL;
+			List	   *new_rargs = NIL;
+			List	   *new_collids = NIL;
+			RowCompareExpr *rc;
+			RestrictInfo *new_rinfo;
+
+			adjusted_strategy = hc_strategy;
+			if (is_lossy)
+			{
+				if (hc_strategy == BTLessStrategyNumber)
+					adjusted_strategy = BTLessEqualStrategyNumber;
+				else if (hc_strategy == BTGreaterStrategyNumber)
+					adjusted_strategy = BTGreaterEqualStrategyNumber;
+			}
+
+			for (i = 0; i < matching_cols; i++)
+			{
+				Oid			new_opno;
+
+				if (i == 0)
+				{
+					/* yb_hash_code element */
+					new_opno = get_opfamily_member(INTEGER_LSM_FAM_OID,
+												  INT4OID, INT4OID,
+												  adjusted_strategy);
+				}
+				else
+				{
+					Oid			lefttype;
+					Oid			righttype;
+					int			dummy;
+
+					get_op_opfamily_properties(
+						list_nth_oid(clause->opnos, i),
+						index->opfamily[i - 1], false,
+						&dummy, &lefttype, &righttype);
+					new_opno = get_opfamily_member(index->opfamily[i - 1],
+												  lefttype, righttype,
+												  adjusted_strategy);
+				}
+
+				if (!OidIsValid(new_opno))
+					return NULL;
+
+				if (!var_on_left)
+					new_opno = get_commutator(new_opno);
+
+				new_ops = lappend_oid(new_ops, new_opno);
+				new_largs = lappend(new_largs,
+									list_nth(clause->largs, i));
+				new_rargs = lappend(new_rargs,
+									list_nth(castNode(List, clause->rargs), i));
+				new_collids = lappend_oid(new_collids,
+										  list_nth_oid(clause->inputcollids, i));
+			}
+
+			rc = makeNode(RowCompareExpr);
+			rc->rctype = (RowCompareType) adjusted_strategy;
+			rc->opnos = new_ops;
+			rc->opfamilies = NIL;
+			rc->inputcollids = new_collids;
+			rc->largs = new_largs;
+			rc->rargs = (Node *) new_rargs;
+
+			new_rinfo = make_simple_restrictinfo(root, (Expr *) rc);
+			iclause->indexquals = list_make1(new_rinfo);
+		}
+
+		/*
+		 * Build the indexcols list.  Element 0 is yb_hash_code which has no
+		 * real index column; use 0 as placeholder.  The rest map to index
+		 * columns 0, 1, 2, ...
+		 */
+		iclause->indexcols = list_make1_int(0);
+		for (i = 0; i < matching_cols - 1; i++)
+			iclause->indexcols = lappend_int(iclause->indexcols, i);
+
+		return iclause;
+	}
 }

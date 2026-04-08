@@ -87,6 +87,7 @@ extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
+extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
 
 /*
  * tidpath.h
