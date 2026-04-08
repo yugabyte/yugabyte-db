@@ -4281,6 +4281,70 @@ public class NodeManagerTest extends FakeDBApplication {
     return new ArrayList<>(arg.getValue());
   }
 
+  @Test
+  public void testGetUserIntentFromParams_usesPlacementUuidForMissingNode() {
+    Customer customer = ModelFactory.testCustomer();
+    // Create primary provider and RR provider (different providers).
+    Provider primaryProvider = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    Provider rrProvider = ModelFactory.newProvider(customer, Common.CloudType.aws, "rr-provider");
+    Region primaryRegion =
+        Region.create(primaryProvider, "eu-north-1", "EU North 1", "ami-primary");
+    AvailabilityZone primaryAz =
+        AvailabilityZone.createOrThrow(primaryRegion, "eu-north-1b", "EU North 1b", "subnet-1");
+    Region rrRegion = Region.create(rrProvider, "eu-west-3", "EU West 3", "ami-rr");
+    AvailabilityZone rrAz =
+        AvailabilityZone.createOrThrow(rrRegion, "eu-west-3a", "EU West 3a", "subnet-2");
+
+    Universe universe = createUniverse();
+    // Set up primary cluster with a node.
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          Cluster primaryCluster = details.getPrimaryCluster();
+          primaryCluster.userIntent.provider = primaryProvider.getUuid().toString();
+          primaryCluster.userIntent.providerType = Common.CloudType.aws;
+          primaryCluster.userIntent.regionList = ImmutableList.of(primaryRegion.getUuid());
+          NodeDetails primaryNode = new NodeDetails();
+          primaryNode.nodeName = "primary-n1";
+          primaryNode.placementUuid = primaryCluster.uuid;
+          primaryNode.azUuid = primaryAz.getUuid();
+          primaryNode.cloudInfo = new CloudSpecificInfo();
+          primaryNode.cloudInfo.region = primaryRegion.getCode();
+          primaryNode.state = NodeDetails.NodeState.Live;
+          details.nodeDetailsSet = new HashSet<>();
+          details.nodeDetailsSet.add(primaryNode);
+
+          // Add RR cluster with different provider.
+          UserIntent rrIntent = new UserIntent();
+          rrIntent.provider = rrProvider.getUuid().toString();
+          rrIntent.providerType = Common.CloudType.aws;
+          rrIntent.regionList = ImmutableList.of(rrRegion.getUuid());
+          Cluster rrCluster = new Cluster(ClusterType.ASYNC, rrIntent);
+          details.clusters.add(rrCluster);
+
+          u.setUniverseDetails(details);
+        });
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Cluster rrCluster =
+        universe.getUniverseDetails().clusters.stream()
+            .filter(c -> c.clusterType == ClusterType.ASYNC)
+            .findFirst()
+            .orElseThrow();
+
+    // Simulate a new RR node that is NOT in the universe's nodeDetailsSet.
+    NodeTaskParams params = new NodeTaskParams();
+    params.nodeName = "rr-node-n5-not-in-universe";
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.placementUuid = rrCluster.uuid;
+    params.azUuid = rrAz.getUuid();
+
+    UserIntent result = nodeManager.getUserIntentFromParams(universe, params);
+    // Should resolve to the RR cluster's userIntent, not the primary's.
+    assertEquals(rrProvider.getUuid().toString(), result.provider);
+  }
+
   private void assertFails(Runnable r, String expectedError) {
     try {
       r.run();
