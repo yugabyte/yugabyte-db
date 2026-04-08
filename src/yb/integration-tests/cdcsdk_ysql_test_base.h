@@ -22,8 +22,6 @@
 #include <gtest/gtest.h>
 
 #include <boost/assign.hpp>
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -700,7 +698,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void PollUntilTabletSplit(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      GetChangesResponsePB* change_resp,
+      GetChangesResponsePB* change_resp = nullptr,
       int tablet_idx = -1);
 
   void VerifyTabletList(
