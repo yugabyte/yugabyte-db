@@ -24,6 +24,7 @@
 #include "yb/client/meta_data_cache.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/tserver/pg_client.pb.h"
@@ -672,15 +673,19 @@ Status CQLServiceImpl::LoadJwtOptions(std::string* jwks_url) {
       return STATUS(InvalidArgument, "Invalid JWT option format");
     }
 
+    // Handle optional double quotes around the value.
+    std::string value = option_kv[1];
+    TrimString(&value, "\"");
+
     if (option_kv[0] == kJwtAuthJwksUrl) {
       DCHECK(jwks_url);
-      *jwks_url = option_kv[1];
+      *jwks_url = value;
     } else if (option_kv[0] == kJwtAudiences) {
-      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_audience_));
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_audience_));
     } else if (option_kv[0] == kJwtIssuers) {
-      RETURN_NOT_OK(ReadCSVValues(option_kv[1], &jwt_allowed_issuers_));
+      RETURN_NOT_OK(ReadCSVValues(value, &jwt_allowed_issuers_));
     } else if (option_kv[0] == kJwtMatchingClaimKey) {
-      jwt_matching_claim_key_ = option_kv[1];
+      jwt_matching_claim_key_ = value;
     } else {
       return STATUS_FORMAT(InvalidArgument, "Unknown JWT option $0", option_kv[0]);
     }
