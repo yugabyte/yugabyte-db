@@ -5198,6 +5198,179 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
   }
 
   @Test
+  public void testWithTableRewriteOnColocatedTable() throws Exception {
+    setFlagsForDynamicTablesTest(getTServerFlags(), getMasterFlags(),
+        false /* usePubRefresh */, false /* streamTablesWithoutPrimaryKey */);
+
+    String slotName = "test_with_table_rewrite_colocated_slot";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("DROP DATABASE IF EXISTS col_db");
+      stmt.executeUpdate("CREATE DATABASE col_db WITH colocation = true");
+    }
+
+    Connection colConn = getConnectionBuilder().withDatabase("col_db").connect();
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("CREATE TABLE t1 (a int primary key, b int) WITH (COLOCATED = true)");
+      stmt.execute("CREATE TABLE t2 (a int primary key, b int) WITH (COLOCATED = true)");
+      stmt.execute(
+          "CREATE TABLE t3 (a int , b int, PRIMARY KEY(a, b)) WITH (COLOCATED = true)");
+      stmt.execute("CREATE TABLE t4 (a int primary key, b int) WITH (COLOCATED = true)");
+      stmt.execute("CREATE TABLE t5 (a int primary key, b int) WITH (COLOCATED = true)");
+
+      stmt.execute("CREATE PUBLICATION pub FOR ALL TABLES");
+    }
+
+    Connection replConn = getConnectionBuilder()
+        .withDatabase("col_db").withTServer(0)
+        .replicationConnect();
+    PGReplicationConnection replConnection =
+        replConn.unwrap(PGConnection.class).getReplicationAPI();
+    createSlot(replConnection, slotName, YB_OUTPUT_PLUGIN_NAME);
+
+    // Write a row to each table.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t2 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t3 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t4 VALUES (1, 1)");
+      stmt.execute("INSERT INTO t5 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+    }
+
+    // Perform DDLs that will cause a table rewrite. When a colocated table is
+    // rewritten, cdc service sends a DELETE record with no pk which is filtered out
+    // by the VWAL.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("ALTER TABLE t1 ALTER COLUMN b TYPE BIGINT");
+      stmt.execute("ALTER TABLE t2 ADD COLUMN serial_num SERIAL");
+      stmt.execute("ALTER TABLE t3 DROP COLUMN b");
+      // TODO(#29674): This should result in streaming a TRUNCATE message, similar to
+      // RELATION messages.
+      stmt.execute("TRUNCATE TABLE t4");
+      stmt.execute("DROP TABLE t5");
+    }
+
+    // Write another row to each table after table rewrite.
+    try (Statement stmt = colConn.createStatement()) {
+      stmt.execute("BEGIN");
+      stmt.execute("INSERT INTO t1 VALUES (2, 2)");
+      stmt.execute("INSERT INTO t2 VALUES (2, 2)");
+      // After dropping a primary key column, table t3 does not have any pk and is
+      // hence disqualified for CDC streaming. As a result the below insert to t3 will
+      // not be streamed.
+      stmt.execute("INSERT INTO t3 VALUES (2)");
+      stmt.execute("INSERT INTO t4 VALUES (1, 1)");
+      stmt.execute("COMMIT");
+    }
+
+    PGReplicationStream stream = replConnection.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .withSlotOption("proto_version", 1)
+        .withSlotOption("publication_names", "pub")
+        .start();
+
+    List<PgOutputMessage> result = new ArrayList<PgOutputMessage>();
+    result.addAll(receiveMessage(stream, 25));
+
+    List<PgOutputMessage> expectedResult = new ArrayList<PgOutputMessage>() {
+      {
+        // First txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/8"), 2));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t3", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t4", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t5", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/8"), LogSequenceNumber.valueOf("0/9")));
+
+        // Relation message corresponding to DDL for t1, the re-written row (INSERT).
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/B"), 3));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t1", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 20))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/B"), LogSequenceNumber.valueOf("0/C")));
+
+        // Relation message corresponding to DDL for t2 and the re-written row (INSERT).
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/E"), 4));
+        add(PgOutputRelationMessage.CreateForComparison("public", "t2", 'c',
+            Arrays.asList(PgOutputRelationMessageColumn.CreateForComparison("a", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("b", 23),
+                PgOutputRelationMessageColumn.CreateForComparison("serial_num", 23))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/E"), LogSequenceNumber.valueOf("0/F")));
+
+        // Second txn.
+        add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 8));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 3,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("2"),
+                new PgOutputMessageTupleColumnValue("101")))));
+        add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 2,
+            Arrays.asList(
+                new PgOutputMessageTupleColumnValue("1"),
+                new PgOutputMessageTupleColumnValue("1")))));
+        add(PgOutputCommitMessage.CreateForComparison(
+            LogSequenceNumber.valueOf("0/19"), LogSequenceNumber.valueOf("0/1A")));
+      }
+    };
+    assertEquals(expectedResult, result);
+
+    stream.close();
+    colConn.close();
+    replConn.close();
+  }
+
+  @Test
   public void testAddDropPrimaryKey() throws Exception {
     setFlagsForDynamicTablesTest(super.getTServerFlags(), super.getMasterFlags(),
         false /* usePubRefresh */, true /* streamTablesWithoutPrimaryKey */);

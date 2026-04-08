@@ -5309,6 +5309,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesAfterComple
             : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
     CheckTabletsInCDCStateTable(
         expected_tablets_in_cdc_state_table, test_client(), stream_id,
+        {} /* expected_colocated_table_ids */,
         "Timed out waiting for state table entries to get deleted",
         true /* include_catalog_tables */);
 
@@ -5403,6 +5404,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestHiddenTableDeletesOnceExpired
             : std::unordered_set<TabletId>{new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId};
     CheckTabletsInCDCStateTable(
         expected_tablets_in_cdc_state_table, test_client(), stream_id,
+        {} /* expected_colocated_table_ids */,
         "Timed out waiting for state table entries to get deleted",
         true /* include_catalog_tables */);
 
@@ -5546,6 +5548,7 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenT
       Format("Timed out waiting for hidden table $0 to be deleted", table1.table_name())));
   CheckTabletsInCDCStateTable(
       {table2_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      {} /* expected_colocated_table_ids */,
       "Timed out waiting for state table entries to get deleted",
       true /* include_catalog_tables */);
   VerifyTablesInStreamMetadata(
@@ -5683,6 +5686,7 @@ TEST_F(
       Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
   CheckTabletsInCDCStateTable(
       {new_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      {} /* expected_colocated_table_ids */,
       "Timed out waiting for state table entries to get deleted",
       true /* include_catalog_tables */);
   VerifyTablesInStreamMetadata(
@@ -5958,7 +5962,7 @@ TEST_F(
 
   // We should only have slot entry and an entry for the sys catalog tablet.
   CheckTabletsInCDCStateTable(
-      {kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      {kCDCSDKSlotEntryTabletId}, test_client(), stream_id, {} /* expected_colocated_table_ids */,
       "Timed out while verifying the state table entries", true /* include_catalog_tables */);
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -5970,6 +5974,311 @@ TEST_F(
 
   // Drop slot should proceed successfully since the slot is inactive.
   ASSERT_OK(conn.Fetch("select pg_drop_replication_slot('test_slot')"));
+}
+
+// This test verifies that VWAL is able to correctly switchover to new table upon table rewrite for
+// colocated table.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestTableRewriteOnColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &old_tablets, nullptr));
+  ASSERT_EQ(old_tablets.size(), 1);
+
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, "test_table_2", 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table_1.table_id()}, kVWALSessionId1, nullptr,
+      true /* include_oid_to_relfilenode */));
+
+  // Insert a record each in the two tables.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (1, 1)"));
+
+  // Even though VWAL was started with only one table, we will get changes for both, since cdc
+  // service sends records for all the colocated tables.
+  auto change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_1.table_id()}, 2, false /* init_virtual_wal */));
+  ASSERT_EQ(change_resp.records.size(), 6);
+
+  // Truncate table_1 to cause a table rewrite.
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
+
+  // Call GetConsistentChanges twice to get the pub refresh indicator. The first
+  // GetConsistentChanges call returns empty response due to sys catalog tablet queue being empty.
+  auto cp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  cp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_TRUE(
+      cp.has_needs_publication_table_list_refresh() && cp.needs_publication_table_list_refresh() &&
+      cp.has_publication_refresh_time());
+  ASSERT_GT(cp.publication_refresh_time(), 0);
+
+  // Get the re-written table and call UpdatePublicationTableList.
+  auto new_table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
+  ASSERT_OK(test_client()->GetTablets(new_table_1, 0, &new_tablets, nullptr));
+  ASSERT_EQ(new_tablets.size(), 1);
+
+  ASSERT_OK(UpdatePublicationTableList(
+      stream_id, {new_table_1.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */));
+
+  // Insert another record. This will be written to the new table.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+
+  // Consume the new record from VWAL.
+  change_resp = ASSERT_RESULT(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {new_table_1.table_id()}, 1 /* expected_dml_records*/,
+      false /* init_virtual_wal */));
+}
+
+// This test verifies that we retain the colocated table from deletion upon table rewrite. If the
+// older colocated table is not retained properly, then a FATAL is generated in this test on calling
+// GetConsistentChanges.
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoFailureOnPollingOldColocatedTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  // This will increase the frequency of bg task which cleans up hidden tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table.table_id()}, kVWALSessionId1, nullptr,
+      true /* include_oid_to_relfilenode */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN rand_val INT DEFAULT random()"));
+
+  // Sleep to ensure that bg task doing hidden table deletion has run.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // This GetConsistentChanges call will fetch records from old table and will fail if the table is
+  // not properly retained for CDC.
+  ASSERT_OK(GetConsistentChangesFromCDC(stream_id));
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterConsumption) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  // These will increase the frequency of bg task which cleans up hidden tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 2;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto old_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
+  ASSERT_EQ(old_tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {old_table.table_id()}, kVWALSessionId1, nullptr,
+      true /* include_oid_to_relfilenode */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+
+  // Perform table rewrite.
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+
+  // Consume all the records from old table (before rewrite).
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_TRUE(
+      change_resp.has_needs_publication_table_list_refresh() &&
+      change_resp.needs_publication_table_list_refresh() &&
+      change_resp.has_publication_refresh_time());
+  ASSERT_GT(change_resp.publication_refresh_time(), 0);
+
+  // Get the re-written table and call UpdatePublicationTableList.
+  auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> new_tablets;
+  ASSERT_OK(test_client()->GetTablets(new_table, 0, &new_tablets, nullptr));
+  ASSERT_EQ(new_tablets.size(), 1);
+
+  ASSERT_OK(UpdatePublicationTableList(
+      stream_id, {new_table.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */));
+
+  // This GetConsistentChanges will return empty response since the sys catalog tablet queue is
+  // empty.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+
+  uint64_t confirmed_flush_lsn;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage_Op_COMMIT) {
+      confirmed_flush_lsn = record.row_message().pg_lsn();
+    }
+  }
+
+  // This will move the restart time beyond the hide time of hidden colocated table, hence clearing
+  // it for deletion.
+  ASSERT_OK(UpdateAndPersistLSN(stream_id, confirmed_flush_lsn, confirmed_flush_lsn));
+
+  // Verify that old table is no longer available.
+  ASSERT_OK(WaitFor(
+    [&]() -> Result<bool> {
+      SleepFor(MonoDelta::FromSeconds(1));
+      return test_client()
+          ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+          .IsNotFound();
+    },
+    MonoDelta::FromSeconds(15),
+    Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+
+  // Verify that old table is deleted from stream metadata.
+  VerifyTablesInStreamMetadata(
+      stream_id, {new_table.table_id()},
+      Format(
+          "Timed out waiting for hidden table $0 to be removed from stream metadata",
+          old_table.table_name()),
+      std::nullopt, true /* include_catalog_tables */);
+
+  // Verify that colocated tablet's entries are not removed from state table.
+  CheckTabletsInCDCStateTable(
+      {old_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      {old_table.table_id()} /* expected_colocated_table_ids */,
+      "Timed out waiting for state table entries to get deleted",
+      true /* include_catalog_tables */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestOldColocatedTableDeletedAfterExpiry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  // These will increase the frequency of bg task which cleans up hidden tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto old_table = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> old_tablets;
+  ASSERT_OK(test_client()->GetTablets(old_table, 0, &old_tablets, nullptr));
+  ASSERT_EQ(old_tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  // Insert a record and perform table rewrite.
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE test_table"));
+
+  // Verify that old table is no longer available.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        SleepFor(MonoDelta::FromSeconds(1));
+        return test_client()
+            ->GetTabletsFromTableId(old_table.table_id(), 0, &old_tablets)
+            .IsNotFound();
+      },
+      MonoDelta::FromSeconds(15),
+      Format("Timed out waiting for hidden table $0 to be deleted", old_table.table_name())));
+
+  // Verify that old table ID is deleted and new table ID is written to the stream metadata.
+  auto new_table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  VerifyTablesInStreamMetadata(
+      stream_id, {new_table.table_id()},
+      Format(
+          "Timed out waiting for hidden table $0 to be removed from stream metadata",
+          old_table.table_name()),
+      std::nullopt, true /* include_catalog_tables */);
+
+  // Verify that colocated tablet's entries are not removed from state table.
+  CheckTabletsInCDCStateTable(
+      {old_tablets[0].tablet_id(), kCDCSDKSlotEntryTabletId}, test_client(), stream_id,
+      {old_table.table_id()} /* expected_colocated_table_ids */,
+      "Timed out waiting for state table entries to get deleted",
+      true /* include_catalog_tables */);
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestColocatedTabletRemovedFromVWAL) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, true /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+  auto table_2 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, "test_table_2", 1 /* num_tablets */, true /* add_pk */,
+      true /* colocated */));
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  // Start VWAL with both the colocated tables in the polling list.
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table_1.table_id(), table_2.table_id()}, kVWALSessionId1, nullptr));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (1, 1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (1, 1)"));
+
+  // Consume the 2 records (2 BEGIN + 2 INSERT + 2 COMMIT).
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+
+  // Remove test_table_2 from the polling list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {table_1.table_id()}, kVWALSessionId1));
+
+  // Insert one more record each in the two tables.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (2, 2)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (2, 2)"));
+
+  // Even though we have removed test_table_2 from the polling list, we will still receive
+  // records from both the tables.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+
+  // Remove test_table from the polling list. This will remove the colocated tablet from the VWAL's
+  // polling list.
+  ASSERT_OK(UpdatePublicationTableList(stream_id, {} /* table_ids */, kVWALSessionId1));
+
+  // Insert one more record each in the two tables.
+  ASSERT_OK(conn.Execute("INSERT INTO test_table values (3, 3)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table_2 values (3, 3)"));
+
+  // Since we don't have any tables in the polling list, we will receive an empty response.
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
 }
 
 }  // namespace cdc

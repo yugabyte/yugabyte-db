@@ -3073,8 +3073,10 @@ void CDCSDKYsqlTest::VerifyTabletList(
 }
 
 void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
-    const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
-    const xrepl::StreamId& stream_id, const std::string timeout_msg, bool include_catalog_tables) {
+    const std::unordered_set<TabletId>& expected_tablet_ids, client::YBClient* client,
+    const xrepl::StreamId& stream_id,
+    const std::unordered_set<TabletId>& expected_colocated_table_ids, const std::string timeout_msg,
+    bool include_catalog_tables) {
   auto cdc_state_table = MakeCDCStateTable(test_client());
   Status s;
   auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
@@ -3087,6 +3089,7 @@ void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         std::unordered_set<TabletId> seen_tablet_ids;
+        std::unordered_set<TableId> seen_colocated_table_ids;
         uint32_t seen_rows = 0;
         for (auto row_result : table_range) {
           RETURN_NOT_OK(row_result);
@@ -3100,13 +3103,17 @@ void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
           }
 
           seen_tablet_ids.insert(row.key.tablet_id);
+          if (!row.key.colocated_table_id.empty()) {
+            seen_colocated_table_ids.insert(row.key.colocated_table_id);
+          }
           seen_rows += 1;
         }
         RETURN_NOT_OK(s);
 
         return (
             all_expected_tablet_ids == seen_tablet_ids &&
-            seen_rows == all_expected_tablet_ids.size());
+            seen_colocated_table_ids == expected_colocated_table_ids &&
+            seen_rows == all_expected_tablet_ids.size() + expected_colocated_table_ids.size());
       },
       MonoDelta::FromSeconds(60), timeout_msg));
 }

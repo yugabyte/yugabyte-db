@@ -3112,6 +3112,22 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
+bool CatalogManager::SkipRemovalOfHiddenColocatedTableFromTablet(
+    const TableInfoPtr& table, const TabletInfo& tablet_info,
+    const ScheduleMinRestoreTime& schedule_min_restore_time) {
+  if (FLAGS_enable_table_rewrite_for_cdcsdk_table &&
+      CDCSDKShouldRetainHiddenColocatedTable(table->id())) {
+    return true;
+  }
+
+  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
+          *table, tablet_info, schedule_min_restore_time)) {
+    return true;
+  }
+
+  return false;
+}
+
 void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
@@ -3126,10 +3142,11 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
     return;
   }
   for (const auto& tablet_info : *list) {
-    if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
-            *table, *tablet_info, schedule_min_restore_time)) {
+    if (SkipRemovalOfHiddenColocatedTableFromTablet(
+            table, *tablet_info, schedule_min_restore_time)) {
       continue;
     }
+
     LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
     auto call = std::make_shared<AsyncRemoveTableFromTablet>(
         master_, AsyncTaskPool(), tablet_info, table, epoch);
