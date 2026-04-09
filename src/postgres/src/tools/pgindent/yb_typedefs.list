@@ -116,6 +116,7 @@ YbIntCounters
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
+YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
 YbLogicalClientVersionType
