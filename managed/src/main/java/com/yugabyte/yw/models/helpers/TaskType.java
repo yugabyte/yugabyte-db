@@ -937,6 +937,10 @@ public enum TaskType {
   WaitForReplicationDrain(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain.class),
 
+  XClusterFailoverWithOnDemandSnapshot(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterFailoverWithOnDemandSnapshot
+          .class),
+
   ResetXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ResetXClusterConfigEntry.class),
 

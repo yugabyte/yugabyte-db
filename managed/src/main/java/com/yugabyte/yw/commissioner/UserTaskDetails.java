@@ -292,6 +292,9 @@ public class UserTaskDetails {
     // PITR Restore step during failover
     PITRRestore,
 
+    // xCluster failover with on-demand snapshot
+    XClusterFailover,
+
     // Pause replication
     PauseReplication,
 
@@ -690,6 +693,10 @@ public class UserTaskDetails {
       case PITRRestore:
         title = "PITR Restore";
         description = "Restoring namespaces using PITR to a consistent cut";
+        break;
+      case XClusterFailover:
+        title = "xCluster Failover";
+        description = "Running xCluster failover with on-demand snapshots creation and restore";
         break;
       case PauseReplication:
         title = "Pause Replication";

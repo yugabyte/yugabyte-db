@@ -2455,6 +2455,18 @@ public class YBClient implements AutoCloseable {
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
+  public XClusterFailoverResponse xClusterFailover(String replicationGroupId) throws Exception {
+    Deferred<XClusterFailoverResponse> d = asyncClient.xClusterFailover(replicationGroupId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public IsXClusterFailoverDoneResponse isXClusterFailoverDone(String replicationGroupId)
+      throws Exception {
+    Deferred<IsXClusterFailoverDoneResponse> d =
+        asyncClient.isXClusterFailoverDone(replicationGroupId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
   public WaitForReplicationDrainResponse waitForReplicationDrain(
       List<String> streamIds, @Nullable Long targetTime) throws Exception {
     Deferred<WaitForReplicationDrainResponse> d =
