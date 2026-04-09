@@ -41,6 +41,7 @@ import org.yb.client.IsInitDbDoneResponse;
 import org.yb.client.TestUtils;
 import org.yb.minicluster.*;
 import org.yb.pgsql.ConnectionBuilder;
+import org.yb.pgsql.ConnectionEndpoint;
 import org.yb.util.ProcessUtil;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -564,18 +565,20 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
         },
         600000);
     LOG.info("initdb has completed successfully on master");
-    verifyClusterAcceptsPGConnections();
+    verifyClusterAcceptsConnMgrConnections();
   }
 
   public ConnectionBuilder connectionBuilderForVerification(ConnectionBuilder builder) {
     return builder;
   }
 
-  public void verifyClusterAcceptsPGConnections() throws Exception {
+  public void verifyClusterAcceptsConnMgrConnections() throws Exception {
     LOG.info("Waiting for the cluster to accept pg connections");
     TestUtils.waitFor(() -> {
         try {
-          connectionBuilderForVerification(getConnectionBuilder()).connect().close();
+          connectionBuilderForVerification(
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR))
+                .connect().close();
           return true;
         } catch (Exception e) {
           return false;
