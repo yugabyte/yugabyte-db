@@ -7478,6 +7478,8 @@ PostgresMain(const char *dbname, const char *username)
 											   true /* ssl_done */ ,
 											   true /* gss_done */ );
 
+						YbLogAuthPassthroughConnReceived(MyProcPort);
+
 						/*
 						 * Set up a timeout in case a buggy or malicious client
 						 * fails to respond during authentication.  Since we're
@@ -7492,10 +7494,6 @@ PostgresMain(const char *dbname, const char *username)
 						/*
 						 * Done with authentication.  Disable the timeout, and
 						 * log if needed.
-						 * TODO (vikram.damle) (#29817):
-						 * Add connection logging (cf postinit.c:284) and update
-						 * YbGetAuthorizedConnections as done in
-						 * `PerformaAuthentication()`.
 						 */
 						disable_timeout(STATEMENT_TIMEOUT, false);
 
@@ -7508,6 +7506,8 @@ PostgresMain(const char *dbname, const char *username)
 						 */
 						if (!MyProcPort->yb_has_auth_passthrough_failed)
 						{
+							YbLogAuthPassthroughConnAuthenticated(MyProcPort);
+
 							if (YbCreateClientId() == 0)
 								YbAuthPassthroughSetupGUCAndReport();
 						}

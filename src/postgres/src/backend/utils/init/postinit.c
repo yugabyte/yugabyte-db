@@ -337,6 +337,68 @@ PerformAuthentication(Port *port)
 	ClientAuthInProgress = false;	/* client_min_messages is active now */
 }
 
+void
+YbLogAuthPassthroughConnReceived(struct Port *port)
+{
+	/*
+	 * YB: Now we issue the Log_connections message, if wanted.
+	 * Conn Mgr does not provide the port number, so we only log the host.
+	 */
+
+	if (Log_connections)
+		ereport(LOG,
+				(errmsg("connection received (Auth Passthrough): host=%s",
+						port->remote_host)));
+}
+
+/*
+ * YbLogAuthPassthroughConnAuthenticated -- post-authentication bookkeeping
+ * for connections authenticated via the auth passthrough path.
+ *
+ * Mirrors the logging and counter updates done in PerformAuthentication(),
+ * adapted for logical connections through the connection manager.
+ */
+void
+YbLogAuthPassthroughConnAuthenticated(Port *port)
+{
+	Assert(YbIsAuthPassthroughInProgress(port));
+	/*
+	 * YB: SSL details are not available for logical connections, so we only
+	 * log that SSL is enabled on the CM-client side. Similarly, GSS is not
+	 * supported with Connection Manager, so we don't log that either.
+	 */
+	if (Log_connections)
+	{
+		StringInfoData logmsg;
+
+		initStringInfo(&logmsg);
+		if (am_walsender)
+			appendStringInfo(&logmsg,
+							 _("replication connection authorized: user=%s"),
+							 port->user_name);
+		else
+			appendStringInfo(&logmsg, _("connection authorized: user=%s"),
+							 port->user_name);
+		if (!am_walsender)
+			appendStringInfo(&logmsg, _(" database=%s"),
+							 port->database_name);
+
+		if (port->application_name != NULL)
+			appendStringInfo(&logmsg, _(" application_name=%s"),
+							 port->application_name);
+
+		if (port->yb_is_ssl_enabled_in_logical_conn)
+			appendStringInfo(&logmsg, _(" SSL enabled"));
+
+		appendStringInfo(&logmsg, _(" (via Auth Passthrough)"));
+
+		ereport(LOG, errmsg_internal("%s", logmsg.data));
+		pfree(logmsg.data);
+	}
+
+	YbNumAuthorizedConnections++;
+}
+
 static int
 YbHandleAuthPassthroughFailureAndGetElevel()
 {
