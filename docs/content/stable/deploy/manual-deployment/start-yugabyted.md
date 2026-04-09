@@ -60,7 +60,7 @@ For example, if you installed v{{< yb-version version="stable">}}, extract the `
 
 ```sh
 cd yugabyte-{{< yb-version version="stable" >}}
-mkdir ybc | tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
+mkdir -p ybc && tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
 ## PostgreSQL compatibility

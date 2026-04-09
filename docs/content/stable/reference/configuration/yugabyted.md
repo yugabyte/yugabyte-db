@@ -38,7 +38,7 @@ For example, if you installed v{{< yb-version version="stable"  format="short">}
 
 ```sh
 cd yugabyte-{{< yb-version version="stable" >}}
-mkdir ybc | tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
+mkdir -p ybc && tar -xvf share/ybc-2.2.0.3-b17-linux-x86_64.tar.gz -C ybc --strip-components=1
 ```
 
 To use the service, when creating nodes run the [yugabyted start](#start) command with `--backup_daemon=true`:
