@@ -291,9 +291,28 @@ public class UniverseCRUDHandler {
   }
 
   private static boolean isKubernetesVolumeUpdate(Cluster cluster, Cluster currentCluster) {
-    return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
-        && currentCluster.userIntent.deviceInfo.volumeSize
-            < cluster.userIntent.deviceInfo.volumeSize;
+    if (currentCluster.userIntent.providerType != Common.CloudType.kubernetes) {
+      return false;
+    }
+    Set<UUID> currentAZs = currentCluster.placementInfo.getAllAZUUIDs();
+    for (UUID azUUID : cluster.placementInfo.getAllAZUUIDs()) {
+      // Skip for new AZs being added
+      if (!currentAZs.contains(azUUID)) {
+        continue;
+      }
+      for (boolean isDedicatedMaster : new boolean[] {false, true}) {
+        DeviceInfo newDeviceInfo = cluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+        DeviceInfo currentDeviceInfo =
+            currentCluster.userIntent.getDeviceInfoForAz(azUUID, isDedicatedMaster);
+        if (currentDeviceInfo != null
+            && newDeviceInfo != null
+            && currentDeviceInfo.volumeSize < newDeviceInfo.volumeSize) {
+          LOG.info("Volume size changed for {}!", isDedicatedMaster ? "Master" : "Tserver");
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
