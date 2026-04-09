@@ -963,6 +963,18 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	{
 		ScanKey		key = ybScan->keys[i];
 
+		/*
+		 * YB: A yb_hash_code subkey inside a ROW comparison has
+		 * sk_attno = InvalidAttrNumber.  Skip the normal attnum
+		 * mapping to avoid an out-of-bounds access on indkey.
+		 */
+		if (key->sk_attno == InvalidAttrNumber)
+		{
+			ybScan->target_key_attnums[i] = InvalidAttrNumber;
+			scan_plan->bind_key_attnums[i] = InvalidAttrNumber;
+			continue;
+		}
+
 		if (!index)
 		{
 			/* Sequential scan */
@@ -1029,8 +1041,14 @@ YbIsHashCodeSearch(ScanKey key)
 {
 	bool		is_hash_search = (key->sk_flags & YB_SK_SEARCHHASHCODE) != 0;
 
-	/* We currently don't support hash code search with any other flags */
-	Assert(!is_hash_search || key->sk_flags == YB_SK_SEARCHHASHCODE);
+	/*
+	 * We currently don't support hash code search with any other flags,
+	 * except SK_ROW_MEMBER which is set on yb_hash_code subkeys inside
+	 * a RowCompareExpr.
+	 */
+	Assert(!is_hash_search ||
+		   key->sk_flags == YB_SK_SEARCHHASHCODE ||
+		   key->sk_flags == (YB_SK_SEARCHHASHCODE | SK_ROW_MEMBER));
 	return is_hash_search;
 }
 
@@ -1265,7 +1283,7 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
 
 		if (attnum == InvalidAttrNumber)
-			break;
+			continue;
 
 		int			idx = YBAttnumToBmsIndex(scan_plan->target_relation, attnum);
 
