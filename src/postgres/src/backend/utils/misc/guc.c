@@ -3923,6 +3923,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_fatal_after_notifs_queue_write", PGC_SIGHUP, DEVELOPER_OPTIONS,
+			gettext_noop("When true, the notifications poller exits with FATAL "
+						 "after writing to the async queue but before the CDC ack."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fatal_after_notifs_queue_write,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
