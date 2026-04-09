@@ -55,6 +55,10 @@ DEFINE_test_flag(bool, block_acquires_to_simulate_out_of_order, false,
     " the gflag TEST_release_blocked_acquires is set to true. ");
 DEFINE_test_flag(bool, release_blocked_acquires_to_simulate_out_of_order, false,
     "Will cause the blocked acquire objects handling to unblock");
+DEFINE_test_flag(uint64, delay_release_locks_ms, 0,
+    "Will delay all object lock release requests by set milliseconds.");
+DEFINE_test_flag(bool, make_global_lock_release_async, false,
+    "Will fallback to async mode for global lock release path");
 
 DECLARE_int32(tserver_yb_client_default_timeout_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
@@ -68,7 +72,7 @@ namespace {
 void ReleaseWithRetriesGlobalNow(
     yb::client::YBClient& client, std::weak_ptr<TSLocalLockManager> lock_manager_weak,
     const std::shared_ptr<master::ReleaseObjectLocksGlobalRequestPB>& release_req,
-    int attempt = 1) {
+    std::optional<StdStatusCallback>&& opt_cb = std::nullopt, int attempt = 1) {
   // Practically speaking, if the TServer cannot reach the master/leader for the ysql lease
   // interval it can safely give up. The Master is responsible for cleaning up the locks for any
   // tserver that loses its lease. We have additional retries just to be safe. Also the timeout
@@ -82,24 +86,35 @@ void ReleaseWithRetriesGlobalNow(
     LOG(INFO) << "Session is no longer valid. Most likely lease epoch "
               << release_req->lease_epoch() << " is not valid. Will not retry "
               << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    if (opt_cb) {
+      (*opt_cb)(Status::OK());
+    }
     return;
   } else if (ptr->IsShutdownInProgress()) {
     LOG(INFO) << "Shutdown in progress. Will not retry "
               << " Release request " << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
+    if (opt_cb) {
+      (*opt_cb)(Status::OK());
+    }
     return;
   }
   client.ReleaseObjectLocksGlobalAsync(
       *release_req,
-      [&client, lock_manager_weak, release_req, attempt](const Status& s) {
+      [&client, lock_manager_weak, release_req, attempt, opt_cb](const Status& s) {
         if (s.ok()) {
           VLOG(1) << "Release global request done. "
                   << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-          return;
         } else {
-          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry."
+          VLOG_WITH_FUNC(1) << "Release global locks failed. Will retry async."
                             << " attempt : " << attempt << " status " << s
                             << (VLOG_IS_ON(2) ? release_req->ShortDebugString() : "");
-          ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req, attempt + 1);
+          ReleaseWithRetriesGlobalNow(
+              client, lock_manager_weak, release_req, std::nullopt /* callback */, attempt + 1);
+        }
+        // Execute the callback immaterial of success/failure. In case of failure, we fallback
+        // to async global locks release semantics.
+        if (opt_cb) {
+          (*opt_cb)(s);
         }
       },
       ToCoarse(deadline));
@@ -470,6 +485,7 @@ class TSLocalLockManager::Impl {
 
   Result<docdb::TxnBlockedTableLockRequests> ReleaseObjectLocks(
       const tserver::ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_release_locks_ms);
     RETURN_NOT_OK(CheckShutdown());
     RETURN_NOT_OK(WaitUntilBootstrapped(deadline));
     auto txn = VERIFY_RESULT(FullyDecodeTransactionId(req.txn_id()));
@@ -800,7 +816,23 @@ void ReleaseWithRetriesGlobal(
 
   ptr->ScheduleReleaseForLostMessages(client, lock_manager_weak, txn_id, subtxn_id, release_req);
 
-  ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req);
+  std::optional<StdStatusCallback> opt_cb;
+  std::shared_ptr<Synchronizer> shared_sync;
+  const auto wait_for_completion = release_req->wait_for_completion() &&
+                                   !PREDICT_FALSE(FLAGS_TEST_make_global_lock_release_async);
+  if (wait_for_completion) {
+    shared_sync = std::make_shared<Synchronizer>();
+    opt_cb.emplace(Synchronizer::AsStdStatusCallback(shared_sync));
+  }
+  ReleaseWithRetriesGlobalNow(client, lock_manager_weak, release_req, std::move(opt_cb));
+  if (wait_for_completion) {
+    // In the case we aren't able to release the global locks inline, we ignore the error and
+    // respond success to the user (giving up on the semantics of subsequent reads fully observing
+    // all modified state if the new requested object locks aren't conflicting).
+    WARN_NOT_OK(
+        shared_sync->WaitFor(FLAGS_tserver_yb_client_default_timeout_ms * 1ms),
+        "Not waiting in-line for release of global object locks, falling back to async release.");
+  }
 }
 
 void AcquireObjectLockLocallyWithRetries(

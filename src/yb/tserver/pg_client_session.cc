@@ -169,6 +169,7 @@ namespace yb::tserver {
 namespace {
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence)(kPgSession));
+YB_DEFINE_ENUM(GlobalObjectLocksReleaseMode, (kAsync)(kSync));
 
 constexpr const size_t kPgSequenceLastValueColIdx = 2;
 constexpr const size_t kPgSequenceIsCalledColIdx = 3;
@@ -2123,9 +2124,9 @@ class PgClientSession::Impl {
     * ------ Commands...
     * ------ Rollback to Savepoint 1
     */
+    const auto is_ddl_mode = req.has_options() && req.options().ddl_mode();
     const auto kind = GetSessionKindBasedOnDDLOptions(
-        req.has_options() && req.options().ddl_mode(),
-        req.has_options() && req.options().ddl_use_regular_transaction_block());
+        is_ddl_mode, req.has_options() && req.options().ddl_use_regular_transaction_block());
 
     auto transaction = Transaction(kind);
 
@@ -2177,8 +2178,7 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(transaction->RollbackToSubTransaction(subtxn_id, deadline));
 
     if (YsqlDdlSavepointEnabled() &&
-        req.has_options() && req.options().ddl_mode() &&
-        req.options().ddl_use_regular_transaction_block() &&
+        is_ddl_mode && req.options().ddl_use_regular_transaction_block() &&
         // Ensure that we have executed a DDL in this transaction block.
         // We can arrive here in case a transaction aborts due to a failure
         // during processing a DDL. In that case, ddl_mode in the request will
@@ -2192,27 +2192,31 @@ class PgClientSession::Impl {
           client_.WaitForRollbackDocdbSchemaToSubtxnToFinish(ddl_txn_metadata_, subtxn_id));
     }
 
-    return ReleaseObjectLocksIfNecessary(transaction, kind, deadline, subtxn_id);
+    return ReleaseObjectLocksIfNecessary(
+        transaction, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kAsync, subtxn_id);
   }
 
   Status FinishTransaction(
       const PgFinishTransactionRequestPB& req, PgFinishTransactionResponsePB* resp,
       rpc::RpcContext* context) {
     saved_priority_.reset();
-    const bool is_ddl = req.has_ddl_mode();
+    const bool is_ddl_mode = req.has_ddl_mode();
     const bool is_commit = req.commit();
     const bool ddl_use_regular_transaction_block =
-        is_ddl && req.ddl_mode().use_regular_transaction_block();
-    const auto kind = GetSessionKindBasedOnDDLOptions(is_ddl, ddl_use_regular_transaction_block);
+        is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
+    const auto kind =
+        GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
     const auto deadline = context->GetClientDeadline();
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
       VLOG_WITH_PREFIX_AND_FUNC(2)
-          << "ddl: " << is_ddl << ", " << (is_commit ? "commit" : "abort")
+          << "ddl: " << is_ddl_mode << ", " << (is_commit ? "commit" : "abort")
+          << ", session_kind: " << ToString(kind)
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
           << ", no running distributed transaction";
-      if (is_commit || is_ddl || !IsObjectLockingEnabled()) {
-        return ReleaseObjectLocksIfNecessary(txn, kind, deadline);
+      if (is_commit || is_ddl_mode || !IsObjectLockingEnabled()) {
+        return ReleaseObjectLocksIfNecessary(
+            txn, kind, deadline, is_ddl_mode, GlobalObjectLocksReleaseMode::kSync);
       }
       // When object locking is enabled, prevent re-use of plain docdb txn is case of abort.
       if (!transaction_provider_.HasNextTxnForPlain()) {
@@ -3060,7 +3064,7 @@ class PgClientSession::Impl {
   PrefixLogger LogPrefix() const { return PrefixLogger{id_, pid_}; }
 
   Status DdlAtomicityFinishTransaction(
-      const client::YBTransactionPtr& txn, PgClientSessionKind used_session_kind,
+      const client::YBTransactionPtr& txn, PgClientSessionKind used_session_kind, bool is_ddl,
       bool has_docdb_schema_changes, const TransactionMetadata* metadata,
       std::optional<bool> commit, CoarseTimePoint deadline) {
     // If this transaction was DDL that had DocDB syscatalog changes, then the YB-Master may have
@@ -3102,8 +3106,10 @@ class PgClientSession::Impl {
     // 2. transactions without docdb schema changes (hence not tracked by master's ddl verification
     //    task) but with exclusive object locks. For instance, as part of CREATE INDEX, we launch
     //    a DDL that changes the permissions of the index and increments the catalog version.
-    // 3. DMLs without any exclusive locks
-    return ReleaseObjectLocksIfNecessary(txn, used_session_kind, deadline);
+    // 3. DDLs without any exclusive locks - GRANT/REVOKE without concurrent DDL enabled
+    // 4. DMLs without any exclusive locks
+    return ReleaseObjectLocksIfNecessary(
+        txn, used_session_kind, deadline, is_ddl, GlobalObjectLocksReleaseMode::kSync);
   }
 
   template <class DataPtr, class Options>
@@ -3969,6 +3975,7 @@ class PgClientSession::Impl {
 
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "ddl: " << is_ddl
+          << ", session_kind: " << ToString(used_session_kind)
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
           << ", has_docdb_schema_changes: " << has_docdb_schema_changes
           << ", txn: " << txn->id() << ", commit: " << commit_status;
@@ -3979,7 +3986,8 @@ class PgClientSession::Impl {
       // background task to figure out whether the transaction succeeded or failed.
       if (!commit_status.ok()) {
         auto status = DdlAtomicityFinishTransaction(
-            txn, used_session_kind, has_docdb_schema_changes, metadata, std::nullopt, deadline);
+            txn, used_session_kind, is_ddl, has_docdb_schema_changes, metadata, std::nullopt,
+            deadline);
         if (!status.ok()) {
           // As of 2024-09-24, it is known that if we come here it is possible that YB-Master will
           // not be able to start a background task to figure out whether the DDL transaction
@@ -4002,17 +4010,20 @@ class PgClientSession::Impl {
     } else {
       VLOG_WITH_PREFIX_AND_FUNC(2)
           << "ddl: " << is_ddl
+          << ", session_kind: " << ToString(used_session_kind)
           << ", ddl_use_regular_transaction_block: " << ddl_use_regular_transaction_block
           << ", has_docdb_schema_changes: " << has_docdb_schema_changes
           << ", txn: " << txn->id() << ", abort";
       txn->Abort();
     }
     return DdlAtomicityFinishTransaction(
-        txn, used_session_kind, has_docdb_schema_changes, metadata, req.commit(), deadline);
+        txn, used_session_kind, is_ddl, has_docdb_schema_changes, metadata, req.commit(), deadline);
   }
 
   Status ReleaseObjectLocksIfNecessary(
       const client::YBTransactionPtr& txn, PgClientSessionKind kind, CoarseTimePoint deadline,
+      bool is_ddl = false,
+      GlobalObjectLocksReleaseMode release_mode = GlobalObjectLocksReleaseMode::kAsync,
       std::optional<SubTransactionId> subtxn_id = std::nullopt) {
     if (!IsObjectLockingEnabled()) {
       return Status::OK();
@@ -4027,15 +4038,16 @@ class PgClientSession::Impl {
         ? MakeOptionalScopeExit([this] { transaction_provider_.ResetObjectLockOwner(); })
         : std::nullopt;
 
-    const auto has_exclusive_locks =
-        kind == PgClientSessionKind::kDdl || plain_session_has_exclusive_object_locks_.load();
-    if (has_exclusive_locks && kind == PgClientSessionKind::kPlain && !subtxn_id) {
+    const auto ddl_mode_used = kind == PgClientSessionKind::kDdl || is_ddl;
+    const auto use_global_release_path =
+        ddl_mode_used || plain_session_has_exclusive_object_locks_.load();
+    if (plain_session_has_exclusive_object_locks_.load() && !subtxn_id) {
       plain_session_has_exclusive_object_locks_.store(false);
       DEBUG_ONLY_TEST_SYNC_POINT("PlainTxnStateReset");
     }
     if (txn) {
-      return ResultToStatus(
-          DoReleaseObjectLocks(txn->id(), subtxn_id, deadline, has_exclusive_locks));
+      return ResultToStatus(DoReleaseObjectLocks(
+          txn->id(), subtxn_id, deadline, use_global_release_path, release_mode));
     }
     // It could happen that transaction_provider_.next_plain_ is null when txn finish
     // calls are redundant. If so, treat it as a no-op instead of setting next_plain_.
@@ -4044,7 +4056,8 @@ class PgClientSession::Impl {
     }
     auto txn_meta = VERIFY_RESULT(transaction_provider_.CheckTxnMetaForPlainFinish());
     if (VERIFY_RESULT((DoReleaseObjectLocks(
-            txn_meta.transaction_id, subtxn_id, deadline, has_exclusive_locks)))) {
+            txn_meta.transaction_id, subtxn_id, deadline, use_global_release_path,
+            release_mode)))) {
       // This re-usable transaction was a blocker for some other transaction. Consume it to
       // prevent re-use so in order to avoid false deadlock issues.
       transaction_provider_.ConsumePlainTxn();
@@ -4054,13 +4067,14 @@ class PgClientSession::Impl {
 
   Result<docdb::TxnBlockedTableLockRequests> DoReleaseObjectLocks(
       const TransactionId& txn_id, std::optional<SubTransactionId> subtxn_id,
-      CoarseTimePoint deadline, bool has_exclusive_locks) {
+      CoarseTimePoint deadline, bool use_global_release_path,
+      GlobalObjectLocksReleaseMode release_mode) {
     auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
-    VLOG_WITH_PREFIX_AND_FUNC(1) << "Requesting release of "
-                                 << (has_exclusive_locks ? "global" : "local") << " locks for txn "
-                                 << txn_id << " subtxn_id " << AsString(subtxn_id) << " ash_meta: "
-                                 << (wait_state ? wait_state->metadata().ToString() : "n/a");
-    if (!has_exclusive_locks) {
+    VLOG_WITH_PREFIX_AND_FUNC(1)
+        << "Requesting release of " << (use_global_release_path ? "global" : "local")
+        << " locks for txn " << txn_id << " subtxn_id " << AsString(subtxn_id)
+        << " ash_meta: " << (wait_state ? wait_state->metadata().ToString() : "n/a");
+    if (!use_global_release_path) {
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),
@@ -4069,6 +4083,9 @@ class PgClientSession::Impl {
     auto release_req = std::make_shared<master::ReleaseObjectLocksGlobalRequestPB>(
         ReleaseRequestFor<master::ReleaseObjectLocksGlobalRequestPB>(
             instance_uuid(), txn_id, subtxn_id, lease_epoch_, context_.clock.get()));
+    if (release_mode == GlobalObjectLocksReleaseMode::kSync) {
+      release_req->set_wait_for_completion(true);
+    }
     ReleaseWithRetriesGlobal(client_, ts_lock_manager(), txn_id, subtxn_id, release_req);
     return docdb::TxnBlockedTableLockRequests::kTrue;
   }
