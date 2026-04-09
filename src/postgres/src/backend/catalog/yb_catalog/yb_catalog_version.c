@@ -36,6 +36,7 @@
 #include "storage/lmgr.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -49,14 +50,14 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
-											   bool acquire_lock);
+											   bool acquire_row_lock);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(Relation catalog_version_rel,
 													   Oid db_oid);
 
 /* Retrieve Catalog Version */
 
 static uint64_t
-YbGetMasterCatalogVersionImpl(bool acquire_lock)
+YbGetMasterCatalogVersionImpl(bool acquire_row_lock)
 {
 	uint64_t	version = YB_CATCACHE_VERSION_UNINITIALIZED;
 
@@ -64,7 +65,7 @@ YbGetMasterCatalogVersionImpl(bool acquire_lock)
 	{
 		case CATALOG_VERSION_CATALOG_TABLE:
 			if (YbGetMasterCatalogVersionFromTable(YbMasterCatalogVersionTableDBOid(), &version,
-												   acquire_lock))
+												   acquire_row_lock))
 				return version;
 			/*
 			 * In spite of the fact the pg_yb_catalog_version table exists it has no actual
@@ -90,7 +91,15 @@ YbGetMasterCatalogVersionImpl(bool acquire_lock)
 uint64_t
 YbGetMasterCatalogVersion()
 {
-	return YbGetMasterCatalogVersionImpl(false /* acquire_lock */ );
+	/*
+	 * Fetch the latest catalog invalidation messages to see catalog version increments
+	 * from recently committed DDLs. This avoids reading a stale catalog version.
+	 * XXX: AcceptInvalidationMessages() must not call YbGetMasterCatalogVersion() to avoid recursion.
+	 */
+	if (!YBCIsLegacyModeForCatalogOps())
+		AcceptInvalidationMessages();
+
+	return YbGetMasterCatalogVersionImpl(false /* acquire_row_lock */ );
 }
 
 void
@@ -121,7 +130,7 @@ YbMaybeLockMasterCatalogVersion()
 		YbIsInvalidationMessageEnabled() && YBIsDBCatalogVersionMode())
 	{
 		elog(DEBUG3, "Locking catalog version for db oid %d", MyDatabaseId);
-		YbGetMasterCatalogVersionImpl(true /* acquire_lock */ );
+		YbGetMasterCatalogVersionImpl(true /* acquire_row_lock */ );
 	}
 }
 
@@ -928,7 +937,7 @@ YbIsSystemCatalogChange(Relation rel)
 
 bool
 YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
-								   bool acquire_lock)
+								   bool acquire_row_lock)
 {
 	*version = 0;				/* unset; */
 
@@ -950,7 +959,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 								  false /* is_region_local */ ,
 								  &ybc_stmt));
 
-	if (!(acquire_lock && yb_use_internal_auto_analyze_service_conn))
+	if (!(acquire_row_lock && yb_use_internal_auto_analyze_service_conn))
 	{
 		Datum		oid_datum = Int32GetDatum(db_oid);
 		YbcPgExpr	pkey_expr = YBCNewConstant(ybc_stmt, oid_attrdesc->atttypid,
@@ -965,7 +974,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 
 	YbcPgExecParameters exec_params = {0};
 
-	if (acquire_lock)
+	if (acquire_row_lock)
 	{
 		/*
 		 * We want to stick to Fail-on-Conflict concurrency control to ensure that higher priority
@@ -980,7 +989,7 @@ YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version,
 			ROW_MARK_KEYSHARE;
 	}
 
-	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_lock ? &exec_params : NULL));
+	HandleYBStatus(YBCPgExecSelect(ybc_stmt, acquire_row_lock ? &exec_params : NULL));
 
 	bool		has_data = false;
 
