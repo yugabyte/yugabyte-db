@@ -5371,22 +5371,27 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 		matching_cols++;
 	}
 
-	/* Must have matched at least yb_hash_code + one real column. */
+	/*
+	 * Must have matched yb_hash_code + all remaining ROW elements as a
+	 * prefix.  We require at least yb_hash_code + one real column, and
+	 * all elements from the original ROW must have matched (no lossy
+	 * truncation for now -- the executor doesn't support partial
+	 * yb_hash_code row bounds yet).
+	 */
 	if (matching_cols < 2)
+		return NULL;
+	if (matching_cols != list_length(clause->opnos))
 		return NULL;
 
 	{
 		IndexClause *iclause = makeNode(IndexClause);
-		bool		is_lossy;
-		int			adjusted_strategy;
 		int			i;
 
-		is_lossy = (matching_cols != list_length(clause->opnos));
 		iclause->rinfo = rinfo;
 		iclause->indexcol = 0;
-		iclause->lossy = is_lossy;
+		iclause->lossy = false;
 
-		if (!is_lossy && var_on_left)
+		if (var_on_left)
 		{
 			/* All columns matched and var is on left -- use as-is. */
 			iclause->indexquals = list_make1(rinfo);
@@ -5394,9 +5399,8 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 		else
 		{
 			/*
-			 * Build a (possibly truncated, possibly commuted) RowCompareExpr.
-			 * For strict inequalities (< or >), widen to <= or >= since the
-			 * truncated bound is lossy.
+			 * Var is on right -- commute all operators so that index keys
+			 * are on the left side as the executor expects.
 			 */
 			List	   *new_ops = NIL;
 			List	   *new_largs = NIL;
@@ -5405,58 +5409,26 @@ yb_match_rowcompare_to_index(PlannerInfo *root,
 			RowCompareExpr *rc;
 			RestrictInfo *new_rinfo;
 
-			adjusted_strategy = hc_strategy;
-			if (is_lossy)
-			{
-				if (hc_strategy == BTLessStrategyNumber)
-					adjusted_strategy = BTLessEqualStrategyNumber;
-				else if (hc_strategy == BTGreaterStrategyNumber)
-					adjusted_strategy = BTGreaterEqualStrategyNumber;
-			}
-
 			for (i = 0; i < matching_cols; i++)
 			{
 				Oid			new_opno;
 
-				if (i == 0)
-				{
-					/* yb_hash_code element */
-					new_opno = get_opfamily_member(INTEGER_LSM_FAM_OID,
-												  INT4OID, INT4OID,
-												  adjusted_strategy);
-				}
-				else
-				{
-					Oid			lefttype;
-					Oid			righttype;
-					int			dummy;
-
-					get_op_opfamily_properties(
-						list_nth_oid(clause->opnos, i),
-						index->opfamily[i - 1], false,
-						&dummy, &lefttype, &righttype);
-					new_opno = get_opfamily_member(index->opfamily[i - 1],
-												  lefttype, righttype,
-												  adjusted_strategy);
-				}
-
+				new_opno = get_commutator(list_nth_oid(clause->opnos, i));
 				if (!OidIsValid(new_opno))
 					return NULL;
 
-				if (!var_on_left)
-					new_opno = get_commutator(new_opno);
-
 				new_ops = lappend_oid(new_ops, new_opno);
+				/* Swap largs and rargs to put index keys on left. */
 				new_largs = lappend(new_largs,
-									list_nth(clause->largs, i));
-				new_rargs = lappend(new_rargs,
 									list_nth(castNode(List, clause->rargs), i));
+				new_rargs = lappend(new_rargs,
+									list_nth(clause->largs, i));
 				new_collids = lappend_oid(new_collids,
 										  list_nth_oid(clause->inputcollids, i));
 			}
 
 			rc = makeNode(RowCompareExpr);
-			rc->rctype = (RowCompareType) adjusted_strategy;
+			rc->rctype = (RowCompareType) hc_strategy;
 			rc->opnos = new_ops;
 			rc->opfamilies = NIL;
 			rc->inputcollids = new_collids;
