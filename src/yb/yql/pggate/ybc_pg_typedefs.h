@@ -1101,6 +1101,19 @@ typedef struct {
   void *sortstate;
 } YbcSortKey;
 
+typedef struct YbcCloudInfo {
+  const char *cloud;
+  const char *region;
+  const char *zone;
+} YbcCloudInfo;
+
+typedef struct YbcReplicationInfo {
+  int32_t num_live_replicas;
+  const YbcCloudInfo *live_replicas;
+  int32_t num_affinitized_leaders;
+  const YbcCloudInfo *affinitized_leaders;
+} YbcReplicationInfo;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

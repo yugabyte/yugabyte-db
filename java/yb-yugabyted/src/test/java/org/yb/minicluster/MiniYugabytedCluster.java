@@ -823,4 +823,19 @@ public class MiniYugabytedCluster implements AutoCloseable {
         return tserverWebPort;
     }
 
+    public static void configureDataPlacement(
+                String baseDir, String dataPlacement) throws Exception {
+        String binDir = YugabytedTestUtils.getYugabytedBinDir();
+        String command = binDir + "/yugabyted configure data_placement" +
+            " --constraint_value=" + dataPlacement +
+            " --base_dir=" + baseDir;
+        LOG.info("Running command: " + command);
+        ProcessBuilder procBuilder = new ProcessBuilder("/bin/sh", "-c", command);
+        procBuilder.redirectErrorStream(true);
+        Process proc = procBuilder.start();
+        int exitCode = proc.waitFor();
+        if (exitCode != 0) {
+            LOG.error("Configure data placement command failed with exit code: " + exitCode);
+        }
+    }
 }

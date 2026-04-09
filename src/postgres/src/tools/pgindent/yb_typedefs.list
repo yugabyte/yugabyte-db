@@ -241,6 +241,7 @@ YbcBindColumn
 YbcCatalogMessageList
 YbcCatalogMessageLists
 YbcCloneInfo
+YbcCloudInfo
 YbcConnectionMetrics
 YbcConstSliceSet
 YbcConstSliceVector
@@ -331,6 +332,7 @@ YbcReadAfterCommitVisibilityEnum
 YbcReadHybridTime
 YbcReadPointHandle
 YbcRecordTempRelationDDL_hook_type
+YbcReplicationInfo
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
 YbcRpczEntry

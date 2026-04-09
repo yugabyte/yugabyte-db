@@ -136,6 +136,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Default tserver and consensus RPC queue length per service.
   static constexpr uint32_t kDefaultSvcQueueLength = 5000;
 
+  static constexpr int32_t kUnknownClusterConfigVersion = -1;
+
   explicit TabletServer(const TabletServerOptions& opts);
   ~TabletServer();
 
@@ -365,8 +367,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   SchemaVersion GetMinXClusterSchemaVersion(const TableId& table_id,
       const ColocationId& colocation_id) const;
 
-  // Currently only used by cdc.
-  virtual int32_t cluster_config_version() const;
+  virtual int32_t cluster_config_version() const override;
 
   Result<uint32_t> XClusterConfigVersion() const;
 
@@ -405,6 +406,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status XClusterPopulateMasterHeartbeatRequest(
       master::TSHeartbeatRequestPB& req, bool needs_full_tablet_report);
+
+  Status ClusterConfigHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
+
   Status XClusterHandleMasterHeartbeatResponse(const master::TSHeartbeatResponsePB& resp);
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
@@ -466,6 +470,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   ConnectivityStateResponsePB ConnectivityState() override;
+
+  ReplicationInfoPB GetClusterReplicationInfo() const override;
 
  protected:
   virtual Status RegisterServices();
@@ -609,6 +615,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
 
  private:
+  struct ClusterConfig {
+    std::atomic<int32_t> version{kUnknownClusterConfigVersion};
+    mutable std::mutex mutex;
+    ReplicationInfoPB replication_info GUARDED_BY(mutex);
+  };
+
+  ClusterConfig cluster_config_;
+
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 

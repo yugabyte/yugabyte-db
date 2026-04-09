@@ -125,6 +125,7 @@
 #include "optimizer/yb_merge_scan.h"
 #include "pg_yb_utils.h"
 #include "tcop/pquery.h"
+#include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb_ash.h"
@@ -2580,6 +2581,18 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_enable_geolocation_costing,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_use_cluster_config_for_geolocation_costing", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("When no tablespace is assigned to table, use cluster "
+						 "replication info to estimate network costs"),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&yb_use_cluster_config_for_geolocation_costing,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -16848,6 +16861,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	yb_enable_optimizer_statistics = false;
 	yb_ignore_stats = false;
 	yb_legacy_bnl_cost = false;
+	yb_use_cluster_config_for_geolocation_costing = false;
 
 	switch (new_value)
 	{
@@ -16887,6 +16901,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	 *  - yb_parallel_range_rows to 10000
 	 *  - yb_enable_parallel_append to on
 	 *  - yb_enable_update_reltuples_after_create_index to on
+	 *  - yb_use_cluster_config_for_geolocation_costing to on
 	 */
 	if (new_value == YB_COST_MODEL_ON)
 	{
@@ -16898,6 +16913,8 @@ assign_yb_enable_cbo(int new_value, void *extra)
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "on",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "on",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 	/*
 	 * When disabling CBO, also reset:
@@ -16905,6 +16922,7 @@ assign_yb_enable_cbo(int new_value, void *extra)
 	 *  - yb_parallel_range_rows
 	 *  - yb_enable_parallel_append
 	 *  - yb_enable_update_reltuples_after_create_index
+	 *  - yb_use_cluster_config_for_geolocation_costing
 	 */
 	else
 	{
@@ -16915,6 +16933,8 @@ assign_yb_enable_cbo(int new_value, void *extra)
 		SetConfigOption("yb_enable_parallel_append", "off",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 		SetConfigOption("yb_enable_update_reltuples_after_create_index", "off",
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
+		SetConfigOption("yb_use_cluster_config_for_geolocation_costing", "off",
 						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }
