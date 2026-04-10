@@ -137,29 +137,29 @@ The following table outlines the various authentication methods supported by Yug
 | {{<icon/yes>}} | SCRAM-SHA-256  | A secure password-based authentication that protects credentials using hashing, salting, and challenge-response. |
 | {{<icon/no>}} | SCRAM-SHA-256-PLUS  | A variant of SCRAM-SHA-256 over TLS channels that performs TLS channel-binding as part of authentication. |
 | {{<icon/yes>}} | MD5 | Password-based authentication where the user's password is by default stored in MD5 encryption format in the database. |
-| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA auth method (server-side), where the server authenticates the user via the client's certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported. See [Client SSL modes and TLS](#client-ssl-modes-and-tls). |
+| {{<icon/partial>}} | Cert  | Currently, Connection Manager does not support the HBA auth-method `cert`, where the server authenticates users via the client certificate (for example, CN/DN mapping). Client-side `sslmode` (such as verify-ca, verify-full), where the client verifies the *server* certificate, is a different layer and is supported. See [Client SSL modes and TLS](#client-ssl-modes-and-tls). |
 
 ## Client SSL modes and TLS
 
-To enable encrypted connections between your client application and YugabyteDB via the YSQL Connection Manager (TLS/SSL), configure the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
+To enable encrypted connections (TLS/SSL) between your client application and YugabyteDB via YSQL Connection Manager, enable client-to-server encryption in transit on your universe by configuring the following [yb-tserver](../../../reference/configuration/yb-tserver/) flags:
 
 - Set [use_client_to_server_encryption](../../../reference/configuration/yb-tserver/#use-client-to-server-encryption) to true.
-- Set [certs_for_client_dir](../../../reference/configuration/yb-tserver/#certs-for-client-dir) to the path containing the TLS certificates.
+- Set [certs_for_client_dir](../../../reference/configuration/yb-tserver/#certs-for-client-dir) to the path containing the server TLS certificates.
 
 **Client and server connection handling**
 
 Client connection behavior and server-side policy are handled separately as follows:
 
 - **SSL mode** (client-side connection behavior): controls whether the client uses TLS and how it verifies the server (disable, allow, prefer, require, verify-ca, verify-full). Connection Manager supports all of these client SSL modes.
-- **pg_hba.conf** (server-side cert-related settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support this HBA authentication method.
+- **ysql_hba.conf** (host-based authentication settings): controls whether the connection must be over TLS, if the client must present a certificate, and whether the server authenticates the client via that certificate. Currently, Connection Manager does not support HBA certificate authentication.
 
 ### Connection Manager SSL modes
 
-The YSQL Connection Manager can be configured in the following two modes with respect to SSL, driven by your cluster TLS settings. The mode is reflected in the connection manager configuration file which is the Odyssey configuration that the Connection Manager process reads at startup. (see the [connection manager template config file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
+YSQL Connection Manager can be configured with universes with or without encryption in transit enabled. The mode is determined by the settings in the connection manager configuration file (which is the Odyssey configuration that the Connection Manager process reads at startup). (You can review the default settings in the [template configuration file](https://github.com/yugabyte/yugabyte-db/blob/2025.2.2/src/yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr.template.conf)).
 
-#### Cluster TLS is disabled
+#### Encryption in transit disabled
 
-When TLS is not enabled in the cluster, TLS is not enabled in the connection manager config file either.
+When encryption in transit is not enabled, TLS is not enabled in the connection manager configuration file either.
 
 The default HBA configuration allows unencrypted connections as follows:
 
@@ -171,7 +171,7 @@ host all all all trust
 local all yugabyte trust
 ```
 
-The following table describes how each client SSL mode behaves when connecting through the YSQL Connection Manager with the default HBA configuration when cluster TLS is disabled.
+The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit disabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? |
 | :-- | :-- | :-- | :-- |
@@ -184,9 +184,9 @@ The following table describes how each client SSL mode behaves when connecting t
 
 With the default HBA configuration above, customizing the HBA file does not change behavior for any of these client SSL modes.
 
-#### Cluster TLS is enabled
+#### Encryption in transit enabled
 
-When TLS is enabled in the cluster (by setting the flags `use_client_to_server_encryption` and `certs_for_client_dir` as above), the connection manager automatically switches to require mode (that is, it starts with Odyssey `tls "require"` by reading the TLS-related flags and overwriting the connection manager config file).
+When encryption in transit is enabled for the cluster (by setting the `use_client_to_server_encryption` and `certs_for_client_dir` flags), Connection Manager automatically switches to require mode (that is, it starts with Odyssey `tls "require"` by reading the TLS-related flags and overwriting the connection manager configuration file).
 
 The default HBA file in this mode is as follows:
 
@@ -198,7 +198,7 @@ hostssl all all all trust
 local all yugabyte trust
 ```
 
-The following table describes how each client SSL mode behaves when connecting through the YSQL Connection Manager with the default HBA configuration when cluster TLS is enabled.
+The following table describes how each client SSL mode behaves when connecting via YSQL Connection Manager with the default HBA configuration and encryption in transit enabled.
 
 | Client SSL mode | Description | Same as PostgreSQL? | Authentication mechanism followed? | HBA customization changes behavior? |
 | :-- | :-- | :-- | :-- | :-- |
@@ -215,7 +215,7 @@ When using `sslmode=verify-full`, the security handshake happens at the client l
 
 - Client-side validation: The client checks if the server's certificate is signed by a trusted CA.
 - Identity match: The client ensures the certificate's hostname matches the actual server address.
-- Connection failure on mismatch: If either checks fail, the connection is rejected (for example, JDBC and ysqlsh perform this verification).
+- Connection failure on mismatch: If either check fails, the connection is rejected (for example, JDBC and ysqlsh perform this verification).
 
 ## Sticky connections
 
